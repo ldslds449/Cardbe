@@ -1,0 +1,8 @@
+{
+  "githubOwner": "ldslds449",
+  "githubRepository": "Cardbe",
+  "includePrereleases": true,
+  "startupDelayMs": 3000,
+  "checkIntervalHours": 24,
+  "requestTimeoutMs": 8000
+}

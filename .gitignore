@@ -1,0 +1,39 @@
+# Dependencies and generated frontend output
+node_modules/
+.pnpm-store/
+/build/
+/.svelte-kit/
+/package/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Rust and Tauri generated output (the nested .gitignore also covers /target)
+/src-tauri/target/
+/src-tauri/gen/schemas/
+
+# Local configuration and secrets. Commit only documented example files.
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+
+# Local data, exports, backups, and logs that may contain task content
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.backup
+*.bak
+*.log
+
+# Editor and operating-system files
+.vscode/
+.idea/
