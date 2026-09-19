@@ -74,6 +74,14 @@
   let app_name = $state("");
   let app_name_promise: Promise<string> | undefined;
   let update_check_in_progress = $state(false);
+  let startup_screen_dismissed = false;
+
+  $effect(() => {
+    if (startup_screen_dismissed || !board.column_fetch_finish) return;
+    startup_screen_dismissed = true;
+    // Let the workspace paint before the HTML-level startup card fades away.
+    requestAnimationFrame(() => window.dispatchEvent(new Event("cardbe:workspace-ready")));
+  });
 
   // archive panel
   let archive_open = $state(false);
