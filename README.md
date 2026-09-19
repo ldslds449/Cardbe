@@ -24,6 +24,7 @@ The update checker contacts the GitHub Releases API to check for a newer version
 - [Node.js](https://nodejs.org/) and [pnpm](https://pnpm.io/)
 - [Rust](https://www.rust-lang.org/tools/install)
 - The [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system
+- [Gitleaks](https://github.com/gitleaks/gitleaks#installing) for the pre-commit secret scan
 
 ## Getting started
 
@@ -35,6 +36,18 @@ pnpm tauri dev
 ```
 
 `pnpm tauri dev` starts the complete desktop app. `pnpm dev` starts only the Vite frontend, so native features such as tray controls, notifications, file dialogs, and LAN sharing are unavailable there.
+
+## Secret scanning
+
+`pnpm install` configures Git to use this repository's hooks. Before every commit, the
+`pre-commit` hook runs `gitleaks protect --staged --redact` and rejects staged secrets.
+Install the Gitleaks CLI and make sure `gitleaks` is available on your `PATH` before committing.
+
+If hooks were installed before this change, run the following once from the repository root:
+
+```bash
+git config core.hooksPath .githooks
+```
 
 ## Scripts
 
