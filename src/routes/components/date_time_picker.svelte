@@ -6,7 +6,7 @@
     import CalendarIcon from "@lucide/svelte/icons/calendar";
     import ClockIcon from "@lucide/svelte/icons/clock";
     import XIcon from "@lucide/svelte/icons/x";
-    import { CalendarDate, getLocalTimeZone, Time, today } from "@internationalized/date";
+    import { CalendarDate, getLocalTimeZone, Time, today, type DateValue } from "@internationalized/date";
 
     const id = $props.id();
 
@@ -14,7 +14,7 @@
 
     type DueDateMode = "none" | "date" | "datetime";
 
-    let date = $state(today(getLocalTimeZone()));
+    let date = $state<DateValue>(today(getLocalTimeZone()));
     let time = $state<Time>(new Time());
     let mode = $state<DueDateMode>("none");
     let date_open = $state(false);
@@ -37,7 +37,7 @@
     }
 
     function value_from_parts(
-        next_date: CalendarDate,
+        next_date: DateValue,
         next_time: Time,
         next_mode: DueDateMode,
     ): Date | undefined {
@@ -105,7 +105,7 @@
         write_value(value_from_parts(next_date, next_time, next_mode));
     }
 
-    function set_date(next_date: CalendarDate | undefined) {
+    function set_date(next_date: DateValue | undefined) {
         if (!next_date) return;
 
         const next_mode = mode === "none" ? "date" : mode;
