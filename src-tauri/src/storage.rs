@@ -1,4 +1,7 @@
-use crate::models::{Archive, Column, ColumnSort, Note, StoredData, Task, TaskTemplate};
+use crate::models::{
+    Archive, Board, Column, ColumnSort, Note, StoredData, Task, TaskTemplate,
+    CURRENT_SCHEMA_VERSION,
+};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use std::{
     collections::HashMap,
@@ -21,6 +24,7 @@ pub struct Database {
     connection: Connection,
     path: PathBuf,
     positions: DatabasePositions,
+    active_board_id: i64,
 }
 
 #[derive(Clone, Default)]
@@ -87,7 +91,8 @@ impl Database {
              CREATE TABLE IF NOT EXISTS metadata (
                  key TEXT PRIMARY KEY,
                  value TEXT NOT NULL
-             );",
+             );
+             ",
         )?;
         let has_sort_order = connection
             .prepare("PRAGMA table_info(columns)")?
@@ -101,19 +106,21 @@ impl Database {
                 [],
             )?;
         }
-        let positions = DatabasePositions {
-            columns: load_positions(&connection, "columns", "id")?,
-            tasks: load_positions(&connection, "tasks", "id")?,
-        };
+        let positions = DatabasePositions::default();
         Ok(Self {
             connection,
             path,
             positions,
+            active_board_id: 0,
         })
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn active_board_id(&self) -> i64 {
+        self.active_board_id
     }
 
     pub fn get_notes(&self) -> StorageResult<Vec<Note>> {
@@ -138,6 +145,201 @@ impl Database {
 
     pub fn create_note(&mut self, now: i64) -> StorageResult<Note> {
         self.create_note_with_content(now, String::new(), String::new())
+    }
+
+    pub fn boards(&self) -> StorageResult<Vec<Board>> {
+        Ok(self
+            .connection
+            .prepare(
+                "SELECT b.id, b.name, COUNT(t.id)
+                 FROM cardbe_boards b
+                 LEFT JOIN cardbe_tasks t ON t.board_id = b.id
+                 GROUP BY b.id, b.name
+                 ORDER BY b.id",
+            )?
+            .query_map([], |row| {
+                Ok(Board {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    task_count: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn initialize_boards(
+        &mut self,
+        legacy: &StoredData,
+    ) -> StorageResult<(Vec<Board>, StoredData)> {
+        self.migrate_multiboard_schema(legacy)?;
+        let boards = self.boards()?;
+        if let Some(board) = boards.first() {
+            let id = namespaced_metadata_parse::<i64>(&self.connection, "active_board_id")?
+                .filter(|id| boards.iter().any(|board| board.id == *id))
+                .unwrap_or(board.id);
+            let stored = self.load_board(id)?;
+            return Ok((boards, stored));
+        }
+        self.connection
+            .execute("INSERT INTO cardbe_boards(name) VALUES ('My board')", [])?;
+        let id = self.connection.last_insert_rowid();
+        self.write_board(id, legacy)?;
+        self.set_active_board_id(id)?;
+        Ok((
+            vec![Board {
+                id,
+                name: "My board".into(),
+                task_count: legacy
+                    .columns
+                    .iter()
+                    .map(|column| column.tasks.len() as i64)
+                    .sum(),
+            }],
+            legacy.clone(),
+        ))
+    }
+
+    pub fn load_board(&mut self, id: i64) -> StorageResult<StoredData> {
+        let stored = self.load_board_data(id, true)?;
+        self.positions = self.load_board_positions(id)?;
+        self.set_active_board_id(id)?;
+        Ok(stored)
+    }
+
+    /// Read a board without changing the active-board metadata or cached positions.
+    pub fn read_board(&self, id: i64) -> StorageResult<StoredData> {
+        self.load_board_data(id, false)
+    }
+
+    /// Read every board-owned collection without changing active state.
+    pub fn read_board_complete(&self, id: i64) -> StorageResult<StoredData> {
+        self.load_board_data(id, true)
+    }
+
+    pub fn load_board_archives_for_export(&self, id: i64) -> StorageResult<Vec<Archive>> {
+        self.load_board_archives(id)
+    }
+
+    pub fn replace_all_boards(
+        &mut self,
+        boards: &[(String, StoredData)],
+        active_index: usize,
+        notes: &[Note],
+        settings: &crate::models::Settings,
+    ) -> StorageResult<(Vec<Board>, StoredData)> {
+        if boards.is_empty() || active_index >= boards.len() {
+            return Err("Backup must contain an active board".into());
+        }
+        let tx = self.connection.transaction()?;
+        tx.execute("DELETE FROM cardbe_boards", [])?;
+        tx.execute("DELETE FROM notes", [])?;
+        let mut created = Vec::with_capacity(boards.len());
+        for (name, data) in boards {
+            tx.execute("INSERT INTO cardbe_boards(name) VALUES(?1)", [name])?;
+            let id = tx.last_insert_rowid();
+            write_board_transaction(&tx, id, data)?;
+            created.push(Board {
+                id,
+                name: name.clone(),
+                task_count: data
+                    .columns
+                    .iter()
+                    .map(|column| column.tasks.len() as i64)
+                    .sum(),
+            });
+        }
+        for note in notes {
+            tx.execute("INSERT INTO notes(id,title,content,pinned,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6)", params![note.id, note.title, note.content, note.pinned, note.created_at, note.updated_at])?;
+        }
+        let active_id = created[active_index].id;
+        tx.execute("INSERT INTO cardbe_global_metadata(key,value) VALUES('active_board_id',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [active_id.to_string()])?;
+        tx.execute("INSERT INTO cardbe_global_metadata(key,value) VALUES('settings',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [serde_json::to_string(settings)?])?;
+        tx.commit()?;
+        self.active_board_id = active_id;
+        self.positions = self.load_board_positions(active_id)?;
+        let active = self.load_board_data(active_id, true)?;
+        Ok((created, active))
+    }
+
+    pub fn create_board(&mut self, name: &str) -> StorageResult<Board> {
+        // Board creation writes both the row and its scoped metadata. Keep
+        // those writes in the same transaction so a storage error cannot
+        // leave a selectable, half-initialized board behind.
+        self.create_board_with_data(name, &StoredData::default())
+    }
+
+    pub fn board_exists(&self, id: i64) -> StorageResult<bool> {
+        Ok(self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM cardbe_boards WHERE id=?1)",
+            [id],
+            |row| row.get(0),
+        )?)
+    }
+
+    /// Replace one board without changing which board is active.
+    pub fn replace_board(&mut self, board_id: i64, data: &StoredData) -> StorageResult<()> {
+        if !self.board_exists(board_id)? {
+            return Err("Board not found".into());
+        }
+        self.write_board(board_id, data)?;
+        if self.active_board_id == board_id {
+            self.positions = self.load_board_positions(board_id)?;
+        }
+        Ok(())
+    }
+
+    /// Create and populate a board atomically.
+    pub fn create_board_with_data(
+        &mut self,
+        name: &str,
+        data: &StoredData,
+    ) -> StorageResult<Board> {
+        let tx = self.connection.transaction()?;
+        tx.execute("INSERT INTO cardbe_boards(name) VALUES (?1)", [name])?;
+        let id = tx.last_insert_rowid();
+        write_board_transaction(&tx, id, data)?;
+        tx.commit()?;
+        Ok(Board {
+            id,
+            name: name.into(),
+            task_count: data
+                .columns
+                .iter()
+                .map(|column| column.tasks.len() as i64)
+                .sum(),
+        })
+    }
+
+    pub fn rename_board(&mut self, id: i64, name: &str) -> StorageResult<()> {
+        if self.connection.execute(
+            "UPDATE cardbe_boards SET name = ?2 WHERE id = ?1",
+            params![id, name],
+        )? == 0
+        {
+            return Err("Board not found".into());
+        }
+        Ok(())
+    }
+
+    pub fn delete_board(&mut self, id: i64) -> StorageResult<()> {
+        if self
+            .connection
+            .execute("DELETE FROM cardbe_boards WHERE id = ?1", [id])?
+            == 0
+        {
+            return Err("Board not found".into());
+        }
+        Ok(())
+    }
+
+    fn set_active_board_id(&mut self, id: i64) -> StorageResult<()> {
+        self.connection.execute(
+            "INSERT INTO cardbe_global_metadata(key, value) VALUES ('active_board_id', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [id.to_string()],
+        )?;
+        self.active_board_id = id;
+        Ok(())
     }
 
     pub fn create_note_with_content(
@@ -213,12 +415,22 @@ impl Database {
     ) -> StorageResult<PersistStats> {
         let mut positions = self.positions.clone();
         let transaction = self.connection.transaction()?;
-        let stats = persist_diff_transaction(
+        if self.active_board_id == 0 {
+            return Err("No active board is selected".into());
+        }
+        let stats = persist_board_diff_transaction(
             &transaction,
+            self.active_board_id,
             before,
             after,
             &mut positions,
             include_archives,
+        )?;
+        // Settings are global application preferences, not board content.
+        transaction.execute(
+            "INSERT INTO cardbe_global_metadata(key,value) VALUES ('settings',?1)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [serde_json::to_string(&after.settings)?],
         )?;
         transaction.commit()?;
         self.positions = positions;
@@ -250,6 +462,20 @@ impl Database {
         )?;
         transaction.commit()?;
         self.positions = positions;
+        if self.active_board_id != 0 {
+            let board_id = self.active_board_id;
+            let tx = self.connection.transaction()?;
+            tx.execute("DELETE FROM cardbe_columns WHERE board_id=?1", [board_id])?;
+            tx.execute("DELETE FROM cardbe_archives WHERE board_id=?1", [board_id])?;
+            tx.execute("DELETE FROM cardbe_templates WHERE board_id=?1", [board_id])?;
+            tx.execute(
+                "DELETE FROM cardbe_board_metadata WHERE board_id=?1",
+                [board_id],
+            )?;
+            write_board_transaction(&tx, board_id, data)?;
+            tx.commit()?;
+            self.positions = self.load_board_positions(board_id)?;
+        }
         Ok(())
     }
 
@@ -258,11 +484,10 @@ impl Database {
     }
 
     fn load(&self) -> StorageResult<StoredData> {
+        if self.active_board_id != 0 {
+            return self.load_board_data(self.active_board_id, true);
+        }
         self.load_internal(true)
-    }
-
-    fn load_without_archives(&self) -> StorageResult<StoredData> {
-        self.load_internal(false)
     }
 
     fn load_internal(&self, include_archives: bool) -> StorageResult<StoredData> {
@@ -346,6 +571,9 @@ impl Database {
     }
 
     pub fn load_archives(&self) -> StorageResult<Vec<Archive>> {
+        if self.active_board_id != 0 {
+            return self.load_board_archives(self.active_board_id);
+        }
         let mut archives = self
             .connection
             .prepare("SELECT archived_at, payload FROM archives ORDER BY position, task_id")?;
@@ -377,6 +605,179 @@ impl Database {
         )?;
         Ok(())
     }
+
+    fn migrate_multiboard_schema(&mut self, legacy: &StoredData) -> StorageResult<()> {
+        let tx = self.connection.transaction()?;
+        tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS cardbe_global_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS cardbe_boards(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS cardbe_columns(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,id INTEGER NOT NULL,name TEXT NOT NULL,color TEXT NOT NULL,sort_order TEXT NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(board_id,id));
+             CREATE TABLE IF NOT EXISTS cardbe_tasks(board_id INTEGER NOT NULL,id INTEGER NOT NULL,column_id INTEGER NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,id),FOREIGN KEY(board_id,column_id) REFERENCES cardbe_columns(board_id,id) ON DELETE CASCADE);
+             CREATE INDEX IF NOT EXISTS cardbe_tasks_by_board_column_position ON cardbe_tasks(board_id,column_id,position);
+             CREATE TABLE IF NOT EXISTS cardbe_archives(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,task_id INTEGER NOT NULL,archived_at TEXT NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,task_id));
+             CREATE TABLE IF NOT EXISTS cardbe_templates(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,id INTEGER NOT NULL,name TEXT NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,id));
+             CREATE TABLE IF NOT EXISTS cardbe_board_metadata(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(board_id,key));"
+        )?;
+        validate_cardbe_schema(&tx)?;
+        let migrated: Option<String> = tx
+            .query_row(
+                "SELECT value FROM cardbe_global_metadata WHERE key='multiboard_schema_version'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if migrated.as_deref() != Some("1") {
+            let experimental = experimental_snapshots(&tx)?;
+            if experimental.is_empty() {
+                tx.execute("INSERT INTO cardbe_boards(name) VALUES ('My board')", [])?;
+                let id = tx.last_insert_rowid();
+                write_board_transaction(&tx, id, legacy)?;
+                tx.execute(
+                    "INSERT INTO cardbe_global_metadata(key,value) VALUES ('active_board_id',?1)",
+                    [id.to_string()],
+                )?;
+            } else {
+                let mut first = None;
+                for (old_id, name, data) in experimental {
+                    tx.execute(
+                        "INSERT INTO cardbe_boards(id,name) VALUES (?1,?2)",
+                        params![old_id, name],
+                    )?;
+                    write_board_transaction(&tx, old_id, &data)?;
+                    first.get_or_insert(old_id);
+                }
+                let preferred = legacy_metadata_parse::<i64>(&tx, "active_board_id")?
+                    .filter(|id| {
+                        tx.query_row(
+                            "SELECT EXISTS(SELECT 1 FROM cardbe_boards WHERE id=?1)",
+                            [id],
+                            |r| r.get::<_, bool>(0),
+                        )
+                        .unwrap_or(false)
+                    })
+                    .or(first)
+                    .ok_or("Experimental board migration contained no boards")?;
+                tx.execute(
+                    "INSERT INTO cardbe_global_metadata(key,value) VALUES ('active_board_id',?1)",
+                    [preferred.to_string()],
+                )?;
+            }
+            tx.execute("INSERT INTO cardbe_global_metadata(key,value) VALUES ('settings',?1) ON CONFLICT(key) DO NOTHING", [serde_json::to_string(&legacy.settings)?])?;
+            tx.execute("INSERT INTO cardbe_global_metadata(key,value) VALUES ('multiboard_schema_version','1')", [])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn write_board(&mut self, board_id: i64, data: &StoredData) -> StorageResult<()> {
+        let tx = self.connection.transaction()?;
+        write_board_transaction(&tx, board_id, data)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn load_board_positions(&self, board_id: i64) -> StorageResult<DatabasePositions> {
+        Ok(DatabasePositions {
+            columns: load_board_positions(&self.connection, "cardbe_columns", board_id)?,
+            tasks: load_board_positions(&self.connection, "cardbe_tasks", board_id)?,
+        })
+    }
+
+    fn load_board_data(&self, board_id: i64, include_archives: bool) -> StorageResult<StoredData> {
+        let mut stored = StoredData::default();
+        let mut stmt=self.connection.prepare("SELECT id,name,color,sort_order FROM cardbe_columns WHERE board_id=?1 ORDER BY position,id")?;
+        stored.columns = stmt
+            .query_map([board_id], |r| {
+                Ok(Column {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    color: r.get(2)?,
+                    sort_order: ColumnSort::from_str(&r.get::<_, String>(3)?),
+                    tasks: vec![],
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let indexes = stored
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.id, i))
+            .collect::<HashMap<_, _>>();
+        let mut stmt=self.connection.prepare("SELECT column_id,payload FROM cardbe_tasks WHERE board_id=?1 ORDER BY column_id,position,id")?;
+        for row in stmt.query_map([board_id], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })? {
+            let (column_id, payload) = row?;
+            let task: Task = serde_json::from_str(&payload)?;
+            let index = indexes.get(&column_id).ok_or_else(|| {
+                format!(
+                    "Board {board_id} task {} refers to missing column {column_id}",
+                    task.id
+                )
+            })?;
+            stored.columns[*index].tasks.push(task);
+        }
+        if include_archives {
+            stored.archives = self.load_board_archives(board_id)?;
+        }
+        let mut stmt = self.connection.prepare(
+            "SELECT id,name,payload FROM cardbe_templates WHERE board_id=?1 ORDER BY position,id",
+        )?;
+        stored.templates = stmt
+            .query_map([board_id], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .map(|row| {
+                let (id, name, payload) = row?;
+                Ok(TaskTemplate {
+                    id,
+                    name,
+                    task: serde_json::from_str(&payload).map_err(|e| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            2,
+                            rusqlite::types::Type::Text,
+                            Box::new(e),
+                        )
+                    })?,
+                })
+            })
+            .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+        stored.schema_version = board_metadata_parse(&self.connection, board_id, "schema_version")?
+            .unwrap_or(CURRENT_SCHEMA_VERSION);
+        stored.next_column_id =
+            board_metadata_parse(&self.connection, board_id, "next_column_id")?.unwrap_or_default();
+        stored.next_task_id =
+            board_metadata_parse(&self.connection, board_id, "next_task_id")?.unwrap_or_default();
+        stored.next_template_id =
+            board_metadata_parse(&self.connection, board_id, "next_template_id")?
+                .unwrap_or_default();
+        stored.label_recency =
+            board_metadata_json(&self.connection, board_id, "label_recency")?.unwrap_or_default();
+        stored.settings =
+            namespaced_metadata_json(&self.connection, "settings")?.unwrap_or_default();
+        Ok(stored)
+    }
+
+    fn load_board_archives(&self, board_id: i64) -> StorageResult<Vec<Archive>> {
+        let mut stmt=self.connection.prepare("SELECT archived_at,payload FROM cardbe_archives WHERE board_id=?1 ORDER BY position,task_id")?;
+        let result = stmt
+            .query_map([board_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?
+            .map(|row| {
+                let (time, payload) = row?;
+                Ok(Archive {
+                    time: time.parse()?,
+                    task: serde_json::from_str(&payload)?,
+                })
+            })
+            .collect();
+        result
+    }
 }
 
 pub fn load(app_data_dir: &Path) -> StorageResult<LoadedData> {
@@ -386,13 +787,12 @@ pub fn load(app_data_dir: &Path) -> StorageResult<LoadedData> {
     let mut messages = Vec::new();
     let mut database = Database::open(database_path)?;
 
-    let (stored, archives_loaded) = if database_existed && database.is_initialized()? {
+    let (legacy, _archives_loaded) = if database_existed && database.is_initialized()? {
         let archives_loaded = !database.lazy_archives_ready()?;
-        let stored = if archives_loaded {
-            database.load()?
-        } else {
-            database.load_without_archives()?
-        };
+        // Snapshots must include archives even when the legacy store is still
+        // using lazy archive hydration, otherwise the first board migration
+        // would omit them.
+        let stored = database.load()?;
         let (migrated, changed) = stored.clone().migrate().map_err(std::io::Error::other)?;
         if changed {
             if archives_loaded {
@@ -419,11 +819,22 @@ pub fn load(app_data_dir: &Path) -> StorageResult<LoadedData> {
         (stored, true)
     };
 
+    // Board snapshots were introduced after the original single-board SQLite
+    // layout.  The first run copies that complete document into the default
+    // board before any future writes, preserving every old field verbatim.
+    let (_boards, stored) = database.initialize_boards(&legacy)?;
+    let (mut stored, changed) = stored.migrate().map_err(std::io::Error::other)?;
+    if changed {
+        database.persist_diff(&legacy, &stored)?;
+    }
+    if !_archives_loaded {
+        stored.archives.clear();
+    }
     Ok(LoadedData {
         stored,
         database,
         recovery_messages: messages,
-        archives_loaded,
+        archives_loaded: _archives_loaded,
     })
 }
 
@@ -580,6 +991,309 @@ fn persist_diff_transaction(
     Ok(stats)
 }
 
+fn persist_board_diff_transaction(
+    tx: &Transaction<'_>,
+    board_id: i64,
+    before: &StoredData,
+    after: &StoredData,
+    positions: &mut DatabasePositions,
+    include_archives: bool,
+) -> StorageResult<PersistStats> {
+    let mut stats = PersistStats::default();
+    let before_tasks = task_locations(before);
+    let after_tasks = task_locations(after);
+    let column_ids = after.columns.iter().map(|c| c.id).collect::<Vec<_>>();
+    let column_positions = assign_sparse_positions(&column_ids, &positions.columns)?;
+    let mut task_positions = HashMap::new();
+    for column in &after.columns {
+        let ids = column.tasks.iter().map(|t| t.id).collect::<Vec<_>>();
+        let old = column
+            .tasks
+            .iter()
+            .filter_map(|t| positions.tasks.get(&t.id).map(|p| (t.id, *p)))
+            .collect();
+        task_positions.extend(assign_sparse_positions(&ids, &old)?);
+    }
+    for id in before_tasks
+        .keys()
+        .filter(|id| !after_tasks.contains_key(id))
+    {
+        tx.execute(
+            "DELETE FROM cardbe_tasks WHERE board_id=?1 AND id=?2",
+            params![board_id, id],
+        )?;
+        stats.tasks_changed += 1;
+    }
+    let bc = before
+        .columns
+        .iter()
+        .map(|c| (c.id, c))
+        .collect::<HashMap<_, _>>();
+    let ac = after
+        .columns
+        .iter()
+        .map(|c| (c.id, c))
+        .collect::<HashMap<_, _>>();
+    for id in bc.keys().filter(|id| !ac.contains_key(id)) {
+        tx.execute(
+            "DELETE FROM cardbe_columns WHERE board_id=?1 AND id=?2",
+            params![board_id, id],
+        )?;
+        stats.columns_changed += 1;
+    }
+    for (id, c) in &ac {
+        let pos = column_positions[id];
+        if bc.get(id).is_none_or(|o| {
+            positions.columns.get(id) != Some(&pos)
+                || o.name != c.name
+                || o.color != c.color
+                || o.sort_order != c.sort_order
+        }) {
+            tx.execute("INSERT INTO cardbe_columns(board_id,id,name,color,sort_order,position) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(board_id,id) DO UPDATE SET name=excluded.name,color=excluded.color,sort_order=excluded.sort_order,position=excluded.position",params![board_id,id,c.name,c.color,c.sort_order.as_str(),pos])?;
+            stats.columns_changed += 1;
+        }
+    }
+    for (id, (column_id, task)) in &after_tasks {
+        let pos = task_positions[id];
+        if before_tasks.get(id).is_none_or(|(oc, ot)| {
+            oc != column_id || positions.tasks.get(id) != Some(&pos) || ot != task
+        }) {
+            tx.execute("INSERT INTO cardbe_tasks(board_id,id,column_id,position,payload) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(board_id,id) DO UPDATE SET column_id=excluded.column_id,position=excluded.position,payload=excluded.payload",params![board_id,id,column_id,pos,serde_json::to_string(task)?])?;
+            stats.tasks_changed += 1;
+        }
+    }
+    if include_archives && before.archives != after.archives {
+        tx.execute("DELETE FROM cardbe_archives WHERE board_id=?1", [board_id])?;
+        for (i, a) in after.archives.iter().enumerate() {
+            tx.execute("INSERT INTO cardbe_archives(board_id,task_id,archived_at,position,payload) VALUES(?1,?2,?3,?4,?5)",params![board_id,a.task.id,a.time.to_string(),i as i64,serde_json::to_string(&a.task)?])?;
+        }
+        stats.archives_changed = after.archives.len().max(before.archives.len());
+    }
+    if before.templates != after.templates {
+        tx.execute("DELETE FROM cardbe_templates WHERE board_id=?1", [board_id])?;
+        for (i, t) in after.templates.iter().enumerate() {
+            tx.execute("INSERT INTO cardbe_templates(board_id,id,name,position,payload) VALUES(?1,?2,?3,?4,?5)",params![board_id,t.id,t.name,i as i64,serde_json::to_string(&t.task)?])?;
+        }
+        stats.templates_changed = after.templates.len().max(before.templates.len());
+    }
+    let metadata = [
+        ("schema_version", after.schema_version.to_string()),
+        ("next_column_id", after.next_column_id.to_string()),
+        ("next_task_id", after.next_task_id.to_string()),
+        ("next_template_id", after.next_template_id.to_string()),
+        (
+            "label_recency",
+            serde_json::to_string(&after.label_recency)?,
+        ),
+    ];
+    for (key, value) in metadata {
+        let current: Option<String> = tx
+            .query_row(
+                "SELECT value FROM cardbe_board_metadata WHERE board_id=?1 AND key=?2",
+                params![board_id, key],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if current.as_deref() != Some(value.as_str()) {
+            tx.execute("INSERT INTO cardbe_board_metadata(board_id,key,value) VALUES(?1,?2,?3) ON CONFLICT(board_id,key) DO UPDATE SET value=excluded.value",params![board_id,key,value])?;
+            stats.metadata_changed += 1;
+        }
+    }
+    positions.columns = column_positions;
+    positions.tasks = task_positions;
+    Ok(stats)
+}
+
+fn write_board_transaction(
+    tx: &Transaction<'_>,
+    board_id: i64,
+    data: &StoredData,
+) -> StorageResult<()> {
+    let mut p = DatabasePositions::default();
+    persist_board_diff_transaction(tx, board_id, &StoredData::default(), data, &mut p, true)?;
+    Ok(())
+}
+
+fn load_board_positions(
+    connection: &Connection,
+    table: &str,
+    board_id: i64,
+) -> StorageResult<HashMap<i64, i64>> {
+    let mut s = connection.prepare(&format!(
+        "SELECT id,position FROM {table} WHERE board_id=?1"
+    ))?;
+    let result = s
+        .query_map([board_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(result)
+}
+
+fn table_columns(tx: &Transaction<'_>, table: &str) -> StorageResult<Vec<(String, String)>> {
+    let mut s = tx.prepare(&format!("PRAGMA table_info({table})"))?;
+    let result = s
+        .query_map([], |r| Ok((r.get(1)?, r.get(2)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(result)
+}
+fn table_exists(tx: &Transaction<'_>, table: &str) -> StorageResult<bool> {
+    Ok(tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+        [table],
+        |r| r.get(0),
+    )?)
+}
+fn validate_cardbe_schema(tx: &Transaction<'_>) -> StorageResult<()> {
+    for (t, required) in [
+        ("cardbe_boards", vec!["id", "name"]),
+        (
+            "cardbe_columns",
+            vec!["board_id", "id", "name", "color", "sort_order", "position"],
+        ),
+        (
+            "cardbe_tasks",
+            vec!["board_id", "id", "column_id", "position", "payload"],
+        ),
+    ] {
+        let columns = table_columns(tx, t)?
+            .into_iter()
+            .map(|v| v.0)
+            .collect::<Vec<_>>();
+        if !required.iter().all(|c| columns.iter().any(|v| v == c)) {
+            return Err(format!(
+                "Cardbe database schema conflict in {t}; expected columns: {}",
+                required.join(", ")
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn experimental_snapshots(tx: &Transaction<'_>) -> StorageResult<Vec<(i64, String, StoredData)>> {
+    let has_boards = table_exists(tx, "boards")?;
+    let has_snapshots = table_exists(tx, "board_snapshots")?;
+    if !has_boards && !has_snapshots {
+        return Ok(vec![]);
+    }
+    if has_boards && !has_snapshots {
+        let bc = table_columns(tx, "boards")?;
+        let looks_experimental = bc
+            .iter()
+            .any(|(n, t)| n == "id" && t.eq_ignore_ascii_case("INTEGER"))
+            && bc.iter().any(|(n, _)| n == "name");
+        if !looks_experimental {
+            return Ok(vec![]);
+        }
+    }
+    if !(has_boards && has_snapshots) {
+        return Err("Incomplete experimental multi-board schema: both boards and board_snapshots are required. No data was changed.".into());
+    }
+    let bc = table_columns(tx, "boards")?;
+    let sc = table_columns(tx, "board_snapshots")?;
+    let valid = bc
+        .iter()
+        .any(|(n, t)| n == "id" && t.eq_ignore_ascii_case("INTEGER"))
+        && bc.iter().any(|(n, _)| n == "name")
+        && sc.iter().any(|(n, _)| n == "board_id")
+        && sc.iter().any(|(n, _)| n == "payload");
+    if !valid {
+        return Ok(vec![]);
+    } // Unknown/conflicting tables belong to another application.
+    let mut s=tx.prepare("SELECT b.id,b.name,s.payload FROM boards b JOIN board_snapshots s ON s.board_id=b.id ORDER BY b.id")?;
+    let rows = s
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let board_count: i64 = tx.query_row("SELECT count(*) FROM boards", [], |r| r.get(0))?;
+    if rows.len() as i64 != board_count {
+        return Err("Experimental board snapshots are incomplete; migration was rolled back to avoid data loss.".into());
+    }
+    rows.into_iter()
+        .map(|(id, name, payload)| {
+            let data = serde_json::from_str(&payload).map_err(|e| {
+                format!("Invalid snapshot for experimental board {id} ({name}): {e}")
+            })?;
+            Ok((id, name, data))
+        })
+        .collect()
+}
+
+fn legacy_metadata_parse<T: std::str::FromStr>(
+    tx: &Transaction<'_>,
+    key: &str,
+) -> StorageResult<Option<T>>
+where
+    T::Err: std::error::Error + 'static,
+{
+    let v: Option<String> = tx
+        .query_row("SELECT value FROM metadata WHERE key=?1", [key], |r| {
+            r.get(0)
+        })
+        .optional()?;
+    Ok(v.map(|v| v.parse()).transpose()?)
+}
+fn namespaced_metadata_value(c: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
+    c.query_row(
+        "SELECT value FROM cardbe_global_metadata WHERE key=?1",
+        [key],
+        |r| r.get(0),
+    )
+    .optional()
+}
+fn namespaced_metadata_parse<T: std::str::FromStr>(
+    c: &Connection,
+    key: &str,
+) -> StorageResult<Option<T>>
+where
+    T::Err: std::error::Error + 'static,
+{
+    Ok(namespaced_metadata_value(c, key)?
+        .map(|v| v.parse())
+        .transpose()?)
+}
+fn namespaced_metadata_json<T: serde::de::DeserializeOwned>(
+    c: &Connection,
+    key: &str,
+) -> StorageResult<Option<T>> {
+    Ok(namespaced_metadata_value(c, key)?
+        .map(|v| serde_json::from_str(&v))
+        .transpose()?)
+}
+fn board_metadata_value(c: &Connection, b: i64, key: &str) -> rusqlite::Result<Option<String>> {
+    c.query_row(
+        "SELECT value FROM cardbe_board_metadata WHERE board_id=?1 AND key=?2",
+        params![b, key],
+        |r| r.get(0),
+    )
+    .optional()
+}
+fn board_metadata_parse<T: std::str::FromStr>(
+    c: &Connection,
+    b: i64,
+    key: &str,
+) -> StorageResult<Option<T>>
+where
+    T::Err: std::error::Error + 'static,
+{
+    Ok(board_metadata_value(c, b, key)?
+        .map(|v| v.parse())
+        .transpose()?)
+}
+fn board_metadata_json<T: serde::de::DeserializeOwned>(
+    c: &Connection,
+    b: i64,
+    key: &str,
+) -> StorageResult<Option<T>> {
+    Ok(board_metadata_value(c, b, key)?
+        .map(|v| serde_json::from_str(&v))
+        .transpose()?)
+}
+
 fn task_locations(data: &StoredData) -> HashMap<i64, (i64, &Task)> {
     data.columns
         .iter()
@@ -590,19 +1304,6 @@ fn task_locations(data: &StoredData) -> HashMap<i64, (i64, &Task)> {
                 .map(move |task| (task.id, (column.id, task)))
         })
         .collect()
-}
-
-fn load_positions(
-    connection: &Connection,
-    table: &str,
-    id_column: &str,
-) -> StorageResult<HashMap<i64, i64>> {
-    let mut statement =
-        connection.prepare(&format!("SELECT {id_column}, position FROM {table}"))?;
-    let positions = statement
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .collect::<Result<HashMap<_, _>, _>>()?;
-    Ok(positions)
 }
 
 fn assign_sparse_positions(
@@ -1063,6 +1764,8 @@ mod tests {
 
         let loaded = load(&dir).unwrap();
         assert_eq!(loaded.stored, stored);
+        assert_eq!(loaded.database.boards().unwrap().len(), 1);
+        assert_eq!(loaded.database.boards().unwrap()[0].name, "My board");
         assert!(dir.join("data.sqlite3").exists());
         assert!(dir.join("data.migrated.json").exists());
         drop(loaded);
@@ -1243,6 +1946,34 @@ mod tests {
     }
 
     #[test]
+    fn conflicting_text_boards_table_is_preserved_and_ignored() {
+        let dir = test_dir("foreign-boards-table");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("data.sqlite3");
+        {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE boards(id TEXT PRIMARY KEY, name TEXT NOT NULL);
+                 INSERT INTO boards(id,name) VALUES ('foreign-id','Foreign board');",
+                )
+                .unwrap();
+        }
+        let loaded = load(&dir).unwrap();
+        assert_eq!(loaded.database.boards().unwrap().len(), 1);
+        let foreign: (String, String) = loaded
+            .database
+            .connection
+            .query_row("SELECT id,name FROM boards", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(foreign, ("foreign-id".into(), "Foreign board".into()));
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn archives_are_loaded_on_demand_after_initialization() {
         let dir = test_dir("lazy-archives");
         fs::create_dir_all(&dir).unwrap();
@@ -1294,7 +2025,7 @@ mod tests {
             .connection
             .execute_batch(
                 "CREATE TRIGGER reject_task_update
-                 BEFORE UPDATE OF payload ON tasks
+                 BEFORE UPDATE OF payload ON cardbe_tasks
                  BEGIN
                    SELECT RAISE(ABORT, 'simulated write failure');
                  END;",
@@ -1344,6 +2075,181 @@ mod tests {
 
         let loaded = load(&dir).unwrap();
         assert!(loaded.stored.columns.is_empty());
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn boards_isolate_same_ids_and_restore_active_board() {
+        let dir = test_dir("board-isolation");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let first_id = loaded.database.active_board_id();
+        let second = loaded.database.create_board("Second").unwrap();
+
+        let first = loaded.stored.clone();
+        let mut first_changed = first.clone();
+        first_changed.columns.push(Column {
+            id: 0,
+            name: "First".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![Task {
+                id: 0,
+                title: "Only first".into(),
+                ..Task::default()
+            }],
+        });
+        first_changed.next_column_id = 1;
+        first_changed.next_task_id = 1;
+        loaded
+            .database
+            .persist_diff(&first, &first_changed)
+            .unwrap();
+
+        let second_before = loaded.database.load_board(second.id).unwrap();
+        let mut second_changed = second_before.clone();
+        second_changed.columns.push(Column {
+            id: 0,
+            name: "Second".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![Task {
+                id: 0,
+                title: "Only second".into(),
+                ..Task::default()
+            }],
+        });
+        second_changed.next_column_id = 1;
+        second_changed.archives.push(Archive {
+            time: 456,
+            task: Task {
+                id: 1,
+                title: "Archived second".into(),
+                ..Task::default()
+            },
+        });
+        second_changed.next_task_id = 2;
+        loaded
+            .database
+            .persist_diff(&second_before, &second_changed)
+            .unwrap();
+
+        let summaries = loaded.database.boards().unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].task_count, 1);
+        assert_eq!(summaries[1].task_count, 1);
+
+        let first_again = loaded.database.load_board(first_id).unwrap();
+        assert_eq!(first_again.columns[0].name, "First");
+        assert_eq!(first_again.columns[0].tasks[0].title, "Only first");
+        drop(loaded);
+
+        let reopened = load(&dir).unwrap();
+        assert_eq!(reopened.database.active_board_id(), first_id);
+        assert_eq!(reopened.stored.columns[0].name, "First");
+        drop(reopened);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn replace_all_boards_round_trips_same_logical_ids_and_global_data() {
+        let dir = test_dir("all-board-round-trip");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+
+        let mut first = StoredData::default();
+        first.columns.push(Column {
+            id: 0,
+            name: "First column".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![Task {
+                id: 0,
+                title: "First task".into(),
+                ..Task::default()
+            }],
+        });
+        first.next_column_id = 1;
+        first.next_task_id = 1;
+        let mut second = first.clone();
+        second.columns[0].name = "Second column".into();
+        second.columns[0].tasks[0].title = "Second task".into();
+        let settings = crate::models::Settings {
+            notify_enabled: true,
+            global_shortcuts_enabled: false,
+        };
+        let notes = vec![Note {
+            id: 88,
+            title: "Global note".into(),
+            content: "Preserved across boards".into(),
+            pinned: true,
+            created_at: 1,
+            updated_at: 2,
+        }];
+
+        let (boards, active) = loaded
+            .database
+            .replace_all_boards(
+                &[("First".into(), first), ("Second".into(), second)],
+                1,
+                &notes,
+                &settings,
+            )
+            .unwrap();
+
+        assert_eq!(boards.len(), 2);
+        assert_eq!(active.columns[0].tasks[0].title, "Second task");
+        assert_eq!(loaded.database.active_board_id(), boards[1].id);
+        assert_eq!(loaded.database.get_notes().unwrap(), notes);
+        let restored_first = loaded.database.read_board(boards[0].id).unwrap();
+        let restored_second = loaded.database.read_board(boards[1].id).unwrap();
+        assert_eq!(restored_first.columns[0].id, restored_second.columns[0].id);
+        assert_eq!(
+            restored_first.columns[0].tasks[0].id,
+            restored_second.columns[0].tasks[0].id
+        );
+        assert_eq!(restored_first.columns[0].tasks[0].title, "First task");
+        assert_eq!(restored_second.columns[0].tasks[0].title, "Second task");
+        assert_eq!(restored_first.settings, settings);
+
+        drop(loaded);
+        let reopened = load(&dir).unwrap();
+        assert_eq!(reopened.database.active_board_id(), boards[1].id);
+        assert_eq!(reopened.stored.columns[0].tasks[0].title, "Second task");
+        assert_eq!(reopened.database.get_notes().unwrap(), notes);
+        drop(reopened);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn replace_all_boards_rolls_back_everything_when_notes_violate_a_constraint() {
+        let dir = test_dir("all-board-rollback");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let original_id = loaded.database.active_board_id();
+        let original = loaded.database.read_board(original_id).unwrap();
+        let original_note = loaded
+            .database
+            .create_note_with_content(1, "Original".into(), "Keep me".into())
+            .unwrap();
+        let invalid_notes = vec![original_note.clone(), original_note.clone()];
+
+        let result = loaded.database.replace_all_boards(
+            &[("Replacement".into(), StoredData::default())],
+            0,
+            &invalid_notes,
+            &crate::models::Settings {
+                notify_enabled: true,
+                global_shortcuts_enabled: false,
+            },
+        );
+
+        assert!(result.is_err());
+        assert_eq!(loaded.database.active_board_id(), original_id);
+        assert_eq!(loaded.database.boards().unwrap().len(), 1);
+        assert_eq!(loaded.database.read_board(original_id).unwrap(), original);
+        assert_eq!(loaded.database.get_notes().unwrap(), vec![original_note]);
         drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }

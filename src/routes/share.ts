@@ -34,6 +34,8 @@ export interface ManagedShare {
     selected_labels?: string[];
     /** Disabled links stay configured locally but are not served on the LAN. */
     enabled?: boolean;
+    /** Missing only on legacy links; such links must not be automatically served. */
+    board_id?: number;
 }
 
 export interface ShareSelection {
@@ -191,8 +193,17 @@ export function load_managed_shares(): ManagedShare[] {
     return managed_share_state.shares;
 }
 
+export function group_enabled_shares_by_board(shares: ManagedShare[]): Map<number, ManagedShare[]> {
+    const grouped = new Map<number, ManagedShare[]>();
+    for (const share of shares) {
+        if (!is_managed_share_enabled(share) || share.board_id === undefined) continue;
+        grouped.set(share.board_id, [...(grouped.get(share.board_id) ?? []), share]);
+    }
+    return grouped;
+}
+
 export function is_managed_share_enabled(share: ManagedShare): boolean {
-    return share.enabled !== false;
+    return share.enabled !== false && Number.isInteger(share.board_id);
 }
 
 export function save_managed_share(share: ManagedShare, signature: string): void {
@@ -201,6 +212,10 @@ export function save_managed_share(share: ManagedShare, signature: string): void
 
 export function forget_managed_share(share_id: string): void {
     managed_share_state.forget(share_id);
+}
+
+export function rebind_managed_share(share_id: string, board_id: number): void {
+    managed_share_state.rebind(share_id, board_id);
 }
 
 export async function publish_share(
@@ -239,9 +254,20 @@ export async function publish_share(
         selected_task_ids,
         selected_labels,
         enabled: true,
+        board_id: existing?.board_id,
     };
 }
 
 export async function revoke_share(share: ManagedShare): Promise<void> {
     await invoke("revoke_lan_share", { shareId: share.id });
+}
+
+export async function revoke_managed_shares(
+    predicate: (share: ManagedShare) => boolean,
+): Promise<void> {
+    const targets = [...managed_share_state.shares].filter(predicate);
+    for (const share of targets) {
+        await revoke_share(share);
+        managed_share_state.forget(share.id);
+    }
 }

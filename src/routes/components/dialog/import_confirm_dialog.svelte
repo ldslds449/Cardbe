@@ -22,9 +22,9 @@
 <AlertDialog.Root bind:open>
   <AlertDialog.Content class="sm:max-w-md">
     <AlertDialog.Header>
-      <AlertDialog.Title>Replace current data?</AlertDialog.Title>
+      <AlertDialog.Title>Import board as new?</AlertDialog.Title>
       <AlertDialog.Description>
-        Importing will replace the current board, archives, and task templates.
+        A new board named “{candidate?.board_name ?? "Imported board"}” will be created. Your existing boards will not be changed.
       </AlertDialog.Description>
     </AlertDialog.Header>
 
@@ -56,15 +56,12 @@
         </div>
       </div>
 
-      <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-        A backup of your current data will be created before anything is replaced.
-      </div>
     {/if}
 
     <AlertDialog.Footer>
       <AlertDialog.Cancel disabled={importing}>Cancel</AlertDialog.Cancel>
       <Button disabled={importing} onclick={() => void onConfirm()}>
-        {show_importing ? "Importing..." : "Import data"}
+        {show_importing ? "Importing..." : "Import as new board"}
       </Button>
     </AlertDialog.Footer>
   </AlertDialog.Content>

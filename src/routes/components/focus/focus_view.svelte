@@ -6,7 +6,6 @@
   import * as Empty from "$lib/components/ui/empty/index.js";
 
   import ArchiveIcon from "@lucide/svelte/icons/archive";
-  import CalendarPlusIcon from "@lucide/svelte/icons/calendar-plus";
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import ClockIcon from "@lucide/svelte/icons/clock";
@@ -267,7 +266,7 @@
   <header class="overflow-hidden rounded-2xl border bg-background p-5 shadow-sm">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="flex items-start gap-3">
-        <div class="rounded-xl bg-primary p-2.5 text-primary-foreground shadow-sm">
+        <div class="rounded-xl bg-primary/10 p-2.5 text-primary">
           <SparklesIcon class="size-5" />
         </div>
         <div>
@@ -290,10 +289,6 @@
           </p>
         </div>
       </div>
-      <Button onclick={() => onAddTask(new Date(now))}>
-        <CalendarPlusIcon />
-        Add for today
-      </Button>
     </div>
 
     <div class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">

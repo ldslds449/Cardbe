@@ -6,8 +6,8 @@
   import { ModeWatcher } from "mode-watcher";
   import { toast } from "svelte-sonner";
   import { Button } from "$lib/components/ui/button/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Spinner } from "$lib/components/ui/spinner/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
 
   import BugIcon from "@lucide/svelte/icons/bug";
@@ -21,6 +21,7 @@
     task_from_template,
     type Task,
   } from "./type/task.svelte";
+  import { deserialize_column, type ColumnSerialized } from "./type/column.svelte";
   import BoardView from "./components/board/board_view.svelte";
   import ArchivePanel from "./components/archive/archive_panel.svelte";
   import ExpiredPanel from "./components/expire/expire_panel.svelte";
@@ -39,6 +40,7 @@
   import NotePanel from "./components/note/note_panel.svelte";
   import CardReferencePreview from "./components/card_reference_preview.svelte";
   import AppToolbar from "./components/workspace/app_toolbar.svelte";
+  import BoardSidebar from "./components/workspace/board_sidebar.svelte";
   import WorkspaceTabs from "./components/workspace/workspace_tabs.svelte";
   import type { WorkspaceView } from "./components/workspace/workspace";
   import {
@@ -50,14 +52,17 @@
   import { parse_portable_task, serialize_portable_task } from "./utils/task-transfer";
   import {
     build_share_snapshot,
+    group_enabled_shares_by_board,
     is_managed_share_enabled,
     publish_share,
+    revoke_managed_shares,
     revoke_share,
     resolve_share_selection,
     save_managed_share,
     share_content_signature,
   } from "./share";
   import { managed_share_state, restore_managed_share_state } from "./share-state.svelte";
+  import { LatestShareSyncQueue } from "./share-sync-queue";
 
   import { board, type ImportCandidate } from "./board.svelte";
 
@@ -75,6 +80,9 @@
   let app_name_promise: Promise<string> | undefined;
   let update_check_in_progress = $state(false);
   let startup_screen_dismissed = false;
+  let board_panel_open = $state(typeof localStorage !== "undefined" ? localStorage.getItem("cardbe-board-panel-open") === "true" : false);
+  $effect(() => { if (typeof localStorage !== "undefined") localStorage.setItem("cardbe-board-panel-open", String(board_panel_open)); });
+
 
   $effect(() => {
     if (startup_screen_dismissed || !board.column_fetch_finish) return;
@@ -210,8 +218,37 @@
     };
   });
 
+  // Publishing is asynchronous and the reactive content effect can run again
+  // while a previous publish is still in flight. Keep that work per-link so a
+  // second timer cannot leave the visible state at "Updating" forever.
+  type ShareSyncRequest = {
+    share: (typeof managed_share_state.shares)[number];
+    signature: string;
+    columns: typeof board.columns;
+  };
+  const SHARE_SYNC_TIMEOUT_MS = 15_000;
+
+  function with_share_sync_timeout<T>(operation: Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(
+        () => reject(new Error("Sharing took too long. Please try again.")),
+        SHARE_SYNC_TIMEOUT_MS,
+      );
+      void operation.then(
+        (result) => {
+          window.clearTimeout(timeout);
+          resolve(result);
+        },
+        (error) => {
+          window.clearTimeout(timeout);
+          reject(error);
+        },
+      );
+    });
+  }
+
   $effect(() => {
-    const shares = managed_share_state.shares.filter(is_managed_share_enabled);
+    const shares = managed_share_state.shares.filter((share) => is_managed_share_enabled(share) && share.board_id === board.active_board_id);
     if (shares.length === 0 || !board.column_fetch_finish) return;
 
     const pending: Array<{ share: (typeof shares)[number]; signature: string }> = [];
@@ -230,9 +267,6 @@
           share.title,
         );
         if (signature !== managed_share_state.published_signatures[share.id]) {
-          // Keep this effect independent from `sync_states`. Tracking the
-          // state update would re-run it and reset the debounce timer.
-          untrack(() => managed_share_state.set_sync_state(share.id, "pending"));
           pending.push({ share, signature });
         }
       } catch (error) {
@@ -247,57 +281,91 @@
     if (pending.length === 0) return;
 
     const timeout = window.setTimeout(() => {
-      for (const item of pending) void sync_managed_share(item.share, item.signature);
+      // Do not mark the link pending before this callback starts. Svelte may
+      // cancel this debounce when the user switches boards; marking it earlier
+      // was the source of links stranded at "Updating".
+      for (const item of pending) void sync_managed_share(item.share, item.signature).catch(() => undefined);
     }, 700);
     return () => window.clearTimeout(timeout);
   });
 
-  async function sync_managed_share(
-    share: (typeof managed_share_state.shares)[number],
-    signature: string,
-  ) {
-    if (!managed_share_state.shares.some((candidate) => candidate.id === share.id)) return;
-    managed_share_state.set_sync_state(share.id, "syncing");
-    try {
+  const share_sync_queue = new LatestShareSyncQueue<ShareSyncRequest>(
+    async (share_id, next, is_current) => {
+      if (!managed_share_state.shares.some((candidate) => candidate.id === share_id)) return;
+      if (managed_share_state.published_signatures[share_id] === next.signature) {
+        managed_share_state.set_sync_state(share_id, "synced");
+        return;
+      }
       const selection = resolve_share_selection(
-        board.columns,
-        share.selected_column_ids,
-        share.selected_task_ids,
-        share.selected_labels,
+        next.columns, next.share.selected_column_ids, next.share.selected_task_ids, next.share.selected_labels,
       );
       const snapshot = build_share_snapshot(
-        board.columns,
-        selection.selected_column_ids,
-        selection.selected_task_ids,
-        share.title,
+        next.columns, selection.selected_column_ids, selection.selected_task_ids, next.share.title,
       );
-      const refreshed = await publish_share(
-        snapshot,
-        share.selected_column_ids,
-        share.selected_task_ids,
-        share.expires_at ? new Date(share.expires_at) : null,
-        share,
-        share.selected_labels,
-      );
-      if (managed_share_state.shares.some((candidate) => candidate.id === share.id)) {
-        save_managed_share(refreshed, signature);
+      const refreshed = await with_share_sync_timeout(publish_share(
+        snapshot, next.share.selected_column_ids, next.share.selected_task_ids,
+        next.share.expires_at ? new Date(next.share.expires_at) : null,
+        next.share, next.share.selected_labels,
+      ));
+      refreshed.board_id = next.share.board_id;
+      if (is_current() && managed_share_state.shares.some((candidate) => candidate.id === share_id)) {
+        save_managed_share(refreshed, next.signature);
       }
-    } catch (error) {
-      if (!managed_share_state.shares.some((candidate) => candidate.id === share.id)) return;
+    },
+    (share_id) => {
+      if (managed_share_state.shares.some((candidate) => candidate.id === share_id)) {
+        managed_share_state.set_sync_state(share_id, "syncing");
+      }
+    },
+    (share_id, error) => {
+      if (!managed_share_state.shares.some((candidate) => candidate.id === share_id)) return;
       console.error("Couldn't update a board share", error);
       managed_share_state.set_sync_state(
-        share.id,
-        "error",
-        error instanceof Error ? error.message : "Couldn't update the shared board",
+        share_id, "error", error instanceof Error ? error.message : "Couldn't update the shared board",
       );
-      // Keep the durable share metadata on transient failures (for example,
-      // when its previous port is temporarily occupied). The user can retry
-      // from the share dialog without losing the URL they already distributed.
-    }
+    },
+  );
+
+  function sync_managed_share(
+    share: (typeof managed_share_state.shares)[number],
+    signature: string,
+    columns = board.columns,
+  ): Promise<void> {
+    if (!managed_share_state.shares.some((candidate) => candidate.id === share.id)) return Promise.resolve();
+    // The returned promise resolves only after this snapshot (or a later
+    // snapshot that superseded it) reaches a terminal state. Board switching
+    // therefore cannot outrun a publish already in flight.
+    return share_sync_queue.request(share.id, { share, signature, columns });
+  }
+
+  async function sync_shares_for_board(board_id: number, columns: typeof board.columns) {
+    const shares = managed_share_state.shares.filter((share) => is_managed_share_enabled(share) && share.board_id === board_id);
+    await Promise.all(shares.map(async (share) => {
+      const selection = resolve_share_selection(columns, share.selected_column_ids, share.selected_task_ids, share.selected_labels);
+      const signature = share_content_signature(columns, selection.selected_column_ids, selection.selected_task_ids, share.title);
+      if (signature !== managed_share_state.published_signatures[share.id]) {
+        await sync_managed_share(share, signature, columns);
+      }
+    }));
+  }
+
+  async function restore_all_managed_shares() {
+    const grouped = group_enabled_shares_by_board(managed_share_state.shares);
+    await Promise.all([...grouped.entries()].map(async ([board_id, shares]) => {
+      try {
+        const serialized = await invoke<ColumnSerialized[]>("get_board_columns", { boardId: board_id });
+        await sync_shares_for_board(board_id, serialized.map(deserialize_column));
+      } catch (error) {
+        console.error(`Couldn't restore shares for board ${board_id}`, error);
+        for (const share of shares) await disable_stale_share(share);
+        toast.error("Sharing was stopped for a link whose board no longer exists.");
+      }
+    }));
   }
 
   async function disable_stale_share(share: (typeof managed_share_state.shares)[number]) {
     try {
+      share_sync_queue.retire(share.id);
       await revoke_share(share);
       if (managed_share_state.shares.some((candidate) => candidate.id === share.id)) {
         managed_share_state.forget(share.id);
@@ -314,9 +382,97 @@
     }
   }
 
+  async function flush_active_board_shares() {
+    const shares = managed_share_state.shares.filter((share) => is_managed_share_enabled(share) && share.board_id === board.active_board_id);
+    await Promise.all(shares.map(async (share) => {
+      const selection = resolve_share_selection(board.columns, share.selected_column_ids, share.selected_task_ids, share.selected_labels);
+      const signature = share_content_signature(board.columns, selection.selected_column_ids, selection.selected_task_ids, share.title);
+      if (signature !== managed_share_state.published_signatures[share.id]) await sync_managed_share(share, signature);
+    }));
+    const failed = shares.map((share) => managed_share_state.sync_state(share.id)).find((state) => state.status === "error");
+    if (failed) throw new Error(`Couldn't update a share before switching boards: ${failed.error}`);
+  }
+
+  function reset_board_scoped_ui() {
+    search_text = "";
+    archive_open = false; expired_open = false; recurring_open = false;
+    task_dialog_open = false; view_task_dialog_open = false; column_dialog_open = false;
+    templates_dialog_open = false; save_template_dialog_open = false; template_preview_open = false;
+    import_confirm_open = false; task_column_dialog_open = false; board_share_dialog_open = false;
+    card_reference_preview = null; view_task = null; template_preview_task = null;
+    selected_template_id = ""; template_column_id = ""; task_column_id = "";
+    pending_import_task = null; pending_task_due_time = undefined; import_candidate = null;
+    editing_template_id = null; task_import_target_column_id = null;
+  }
+
+  async function switch_board(id: number) {
+    if (id === board.active_board_id) { board_panel_open = false; return; }
+    try {
+      await flush_active_board_shares();
+      if (await board.switch_board(id)) reset_board_scoped_ui();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Couldn't switch board");
+    }
+  }
+
+  async function delete_board(id: number): Promise<boolean> {
+    try {
+      for (const share of managed_share_state.shares) {
+        if (share.board_id === id) share_sync_queue.retire(share.id);
+      }
+      await revoke_managed_shares((share) => share.board_id === id);
+      const deleted = await board.delete_board(id);
+      if (deleted) reset_board_scoped_ui();
+      return deleted;
+    } catch (error) {
+      // `revoke_managed_shares` forgets each link only after its own revoke
+      // succeeds. The remaining links are still live, but their queues were
+      // retired above, so make their terminal failure visible and retryable.
+      for (const share of managed_share_state.shares) {
+        if (share.board_id === id) {
+          managed_share_state.set_sync_state(
+            share.id,
+            "error",
+            "Couldn't revoke this share link. Try again before deleting this board.",
+          );
+        }
+      }
+      toast.error(error instanceof Error ? error.message : "Couldn't revoke this board's share links");
+      return false;
+    }
+  }
+
+  async function create_board(name: string): Promise<boolean> {
+    const created = await board.create_board(name);
+    if (created) reset_board_scoped_ui();
+    return created;
+  }
+
+  async function restore_everything() {
+    try {
+      if (await board.import_all_boards_from_file(true, async () => {
+        for (const share of managed_share_state.shares) share_sync_queue.retire(share.id);
+        await revoke_managed_shares(() => true);
+      })) reset_board_scoped_ui();
+    } catch (error) {
+      // Successfully revoked links have already been forgotten. Only links
+      // still present failed to revoke and must not be left as Updating.
+      for (const share of managed_share_state.shares) {
+        managed_share_state.set_sync_state(
+          share.id,
+          "error",
+          "Couldn't revoke this share link. Try again before restoring everything.",
+        );
+      }
+      toast.error(error instanceof Error ? error.message : "Restore stopped because share links could not be revoked");
+    }
+  }
+
   onMount(() => {
-    restore_managed_share_state();
-    board.init();
+    void board.init().then(async () => {
+      restore_managed_share_state(board.boards.length === 1 ? board.boards[0].id : undefined);
+      await restore_all_managed_shares();
+    });
     void load_app_name();
 
     const update_check_timeout = window.setTimeout(() => {
@@ -405,10 +561,18 @@
     window.addEventListener("cardbe:open-card", handle_open_card);
     window.addEventListener("cardbe:show-card-preview", handle_show_card_preview);
     window.addEventListener("cardbe:hide-card-preview", handle_hide_card_preview);
-    const data_changed_listener = listen<{ kind?: string }>(
+    const data_changed_listener = listen<{ kind?: string; boardId?: number }>(
       "cardbe:data-changed",
       (event) => {
-        if (event.payload.kind === "task") board.get_columns();
+        if (event.payload.kind !== "task" || !Number.isInteger(event.payload.boardId)) return;
+        const changed_board_id = event.payload.boardId!;
+        if (changed_board_id === board.active_board_id) {
+          board.get_columns();
+          return;
+        }
+        void invoke<ColumnSerialized[]>("get_board_columns", { boardId: changed_board_id })
+          .then((columns) => sync_shares_for_board(changed_board_id, columns.map(deserialize_column)))
+          .catch((error) => console.error("Couldn't sync Quick Add board shares", error));
       },
     );
     return () => {
@@ -682,7 +846,8 @@
       show_importing = true;
     }, 300);
     try {
-      if (await board.import_data(import_candidate.json_data)) {
+      if (await board.import_board_as_new(import_candidate)) {
+        reset_board_scoped_ui();
         import_confirm_open = false;
         import_candidate = null;
       }
@@ -870,8 +1035,13 @@
       </Empty.Header>
     </Empty.Root>
   {:else}
+    <BoardSidebar bind:open={board_panel_open} boards={board.boards} active_board_id={board.active_board_id} onSwitch={(id) => void switch_board(id)} onCreate={create_board} onRename={(id, name) => board.rename_board(id, name)} onDelete={delete_board} />
+    <!-- `min-h-0` is essential here: without it this flex item grows to its
+         contents and the inner viewport never becomes a vertical scroll
+         container. -->
+    <main class="flex min-h-0 min-w-0 flex-1 flex-col">
     <AppToolbar
-      {app_name}
+      bind:board_panel_open
       bind:search_text
       bind:archive_open
       bind:expired_open
@@ -881,6 +1051,8 @@
       {selected_view}
       {update_check_in_progress}
       onPrepareImport={prepare_import}
+      onExportAllBoards={() => { void board.export_all_boards_to_file(); }}
+      onImportAllBoards={() => { void restore_everything(); }}
       onPrepareTaskImport={prepare_task_import}
       onOpenBoardShare={() => {
         board_share_dialog_open = true;
@@ -891,7 +1063,11 @@
       onCheckForUpdates={check_for_updates}
     />
 
-    <WorkspaceTabs {selected_view} onSwitchView={switch_view} />
+    <WorkspaceTabs
+      {selected_view}
+      active_board_name={board.boards.find((item) => item.id === board.active_board_id)?.name ?? "Board"}
+      onSwitchView={switch_view}
+    />
 
     {#if share_sync_summary.active_count > 0}
       <button
@@ -960,6 +1136,17 @@
       bind:open={board_share_dialog_open}
       columns={board.columns}
       default_title={app_name}
+      active_board_id={board.active_board_id}
+      boards={board.boards}
+      onRetireShare={(share_id) => share_sync_queue.retire(share_id)}
+      onShareRevokeError={(share_id, error) => {
+        if (!managed_share_state.shares.some((share) => share.id === share_id)) return;
+        managed_share_state.set_sync_state(
+          share_id,
+          "error",
+          error instanceof Error ? error.message : "Couldn't revoke this share link. Try again.",
+        );
+      }}
     />
 
     <TaskColumnDialog
@@ -1046,13 +1233,8 @@
       onConfirm={confirm_import}
     />
 
-    <div class="flex-grow min-h-0">
-      <ScrollArea
-        orientation="both"
-        class="h-full rounded-md p-5"
-        scrollbarXClasses="h-4"
-        scrollbarYClasses="w-4"
-      >
+    <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="both">
+      <div class="min-h-full p-5">
         {#if active_view === "focus"}
           <FocusView
             columns={board.columns}
@@ -1102,8 +1284,8 @@
             onExportTask={share_task}
           />
         {/if}
-      </ScrollArea>
-    </div>
+      </div>
+    </ScrollArea>
 
     {#if card_reference_preview}
       <CardReferencePreview
@@ -1114,5 +1296,6 @@
         show_below={card_reference_preview.show_below}
       />
     {/if}
+    </main>
   {/if}
 </div>

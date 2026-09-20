@@ -2,17 +2,36 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     build_share_snapshot,
+    group_enabled_shares_by_board,
     parse_requested_share_link,
     publish_share,
     share_content_signature,
     type ManagedShare,
 } from "./share";
+
 import { create_column } from "./type/column.svelte";
 import { create_task } from "./type/task.svelte";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 describe("board sharing", () => {
+    it("groups enabled shares so each board needs only one column fetch", () => {
+        const base = {
+            url: "http://192.168.1.20:12345/share/j3V_BXrcsGwtsXv6XAD1jA",
+            updated_at: "2026-09-01T12:00:00Z", expires_at: null, title: "Board",
+            selected_column_ids: [], selected_task_ids: [], enabled: true,
+        } satisfies Omit<ManagedShare, "id" | "board_id">;
+        const grouped = group_enabled_shares_by_board([
+            { ...base, id: "share_a_abcdefghijklmn", board_id: 1 },
+            { ...base, id: "share_b_abcdefghijklmn", board_id: 1 },
+            { ...base, id: "share_c_abcdefghijklmn", board_id: 2 },
+            { ...base, id: "share_d_abcdefghijklmn", board_id: 3, enabled: false },
+            { ...base, id: "share_e_abcdefghijklmn" },
+        ]);
+        expect([...grouped.keys()]).toEqual([1, 2]);
+        expect(grouped.get(1)).toHaveLength(2);
+        expect(grouped.get(2)).toHaveLength(1);
+    });
     beforeEach(() => vi.mocked(invoke).mockReset());
 
     it("publishes only selected active columns", () => {

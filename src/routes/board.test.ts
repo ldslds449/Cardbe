@@ -36,6 +36,8 @@ function deferred<T>() {
 
 function create_store(column_count = 1) {
     const store = new BoardStore();
+    store.boards = [{ id: 7, name: "Test board", task_count: 0 }];
+    store.active_board_id = 7;
     store.columns = Array.from({ length: column_count }, (_, index) => ({
         id: `column_${index + 1}`,
         name: `Column ${index + 1}`,
@@ -58,12 +60,12 @@ describe("initial board loading", () => {
             if (command === "get_columns") return Promise.resolve([]);
             return Promise.resolve();
         });
-        const store = new BoardStore();
+        const store = create_store();
 
         store.update_labels();
         store.get_columns();
 
-        expect(invoke_mock).toHaveBeenCalledWith("get_columns");
+        expect(invoke_mock).toHaveBeenCalledWith("get_columns", { expectedBoardId: 7 });
         await Promise.resolve();
         await Promise.resolve();
         expect(store.column_fetch_finish).toBe(true);
@@ -80,7 +82,7 @@ describe("initial board loading", () => {
                 if (command === "get_columns") return columns.promise;
                 return Promise.resolve();
             });
-            const store = new BoardStore();
+            const store = create_store();
 
             store.get_columns();
             await vi.advanceTimersByTimeAsync(15_000);
@@ -117,7 +119,7 @@ describe("pending task operations", () => {
 
         await expect(creation).resolves.toBe(true);
         await expect(deletion).resolves.toBe(true);
-        expect(invoke_mock).toHaveBeenCalledWith("delete_task", { taskId: 42 });
+        expect(invoke_mock).toHaveBeenCalledWith("delete_task", { taskId: 42, expectedBoardId: 7 });
     });
 
     it("does not restore a pending task when its creation fails", async () => {
@@ -192,6 +194,7 @@ describe("pending task operations", () => {
         expect(invoke_mock).toHaveBeenCalledWith("update_task", {
             taskId: 42,
             task: expect.objectContaining({ id: 42, title: "Edited task" }),
+            expectedBoardId: 7,
         });
     });
 
@@ -230,6 +233,7 @@ describe("pending task operations", () => {
         expect(invoke_mock).toHaveBeenCalledWith("save_task_template", {
             taskId: 42,
             name: "Template",
+            expectedBoardId: 7,
         });
     });
 
@@ -248,7 +252,7 @@ describe("pending task operations", () => {
 
         await expect(store.delete_task(retained_pending_id)).resolves.toBe(true);
         expect(store.columns[0].tasks).toHaveLength(0);
-        expect(invoke_mock).toHaveBeenCalledWith("delete_task", { taskId: 42 });
+        expect(invoke_mock).toHaveBeenCalledWith("delete_task", { taskId: 42, expectedBoardId: 7 });
     });
 
     it("persists a drag made before creation finishes", async () => {
@@ -271,7 +275,71 @@ describe("pending task operations", () => {
             taskId: 42,
             toColumnId: 2,
             beforeTaskId: null,
+            expectedBoardId: 7,
         });
+    });
+
+    it("keeps a queued pending-task deletion bound to the board where it began", async () => {
+        const add_task = deferred<number>();
+        invoke_mock.mockImplementation((command) => {
+            if (command === "add_task") return add_task.promise;
+            if (command === "delete_task" || command === "switch_board") return Promise.resolve();
+            if (command === "get_columns") return Promise.resolve([]);
+            if (command === "get_labels" || command === "get_task_templates" || command === "get_expired_tasks") return Promise.resolve([]);
+            return Promise.resolve();
+        });
+        const store = create_store();
+        store.boards = [
+            { id: 7, name: "First", task_count: 0 },
+            { id: 9, name: "Second", task_count: 0 },
+        ];
+
+        const creation = store.add_new_task("column_1", create_task("", "New task"));
+        const deletion = store.delete_task(store.columns[0].tasks[0].id);
+        await store.switch_board(9);
+        add_task.resolve(42);
+
+        await expect(creation).resolves.toBe(true);
+        await expect(deletion).resolves.toBe(false);
+        expect(invoke_mock).toHaveBeenCalledWith("delete_task", { taskId: 42, expectedBoardId: 7 });
+    });
+
+    it("keeps a debounced task move bound to the board where it began", async () => {
+        vi.useFakeTimers();
+        try {
+            const add_task = deferred<number>();
+            invoke_mock.mockImplementation((command) => {
+                if (command === "add_task") return add_task.promise;
+                if (command === "move_task" || command === "switch_board") return Promise.resolve();
+                if (command === "get_columns") return Promise.resolve([]);
+                if (command === "get_labels" || command === "get_task_templates" || command === "get_expired_tasks") return Promise.resolve([]);
+                return Promise.resolve();
+            });
+            const store = create_store(2);
+            store.boards = [
+                { id: 7, name: "First", task_count: 0 },
+                { id: 9, name: "Second", task_count: 0 },
+            ];
+            const creation = store.add_new_task("column_1", create_task("", "Task"));
+
+            expect(store.move_task(0, 0, 1, null)).toBe(true);
+            // The timer has fired and is now waiting for the temporary card to
+            // receive its database ID. Switching must not retarget that IPC.
+            await vi.advanceTimersByTimeAsync(300);
+            await store.switch_board(9);
+            add_task.resolve(42);
+            await expect(creation).resolves.toBe(true);
+            await Promise.resolve();
+
+            expect(invoke_mock).toHaveBeenCalledWith("move_task", {
+                taskId: 42,
+                toColumnId: 2,
+                beforeTaskId: null,
+                expectedBoardId: 7,
+            });
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
 

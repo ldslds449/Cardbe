@@ -1,6 +1,6 @@
 use crate::{
     models::{Archive, RecurrenceFrequency, StoredData, Task},
-    state::{load_archives, update_stored_with_archives, SharedAppData},
+    state::{load_archives_for_board, update_stored_with_archives_for_board, SharedAppData},
 };
 use chrono::{DateTime, Duration, Months, Utc};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -85,14 +85,21 @@ fn next_recurring_task(task: &Task, now: u128, id: i64) -> Result<Option<Task>, 
 }
 
 #[tauri::command]
-pub fn get_archives(state: State<'_, SharedAppData>) -> Result<Vec<Archive>, String> {
-    load_archives(&state)
+pub fn get_archives(
+    state: State<'_, SharedAppData>,
+    expected_board_id: i64,
+) -> Result<Vec<Archive>, String> {
+    load_archives_for_board(&state, expected_board_id)
 }
 
 #[tauri::command]
-pub fn archive_task(state: State<'_, SharedAppData>, task_id: i64) -> Result<(), String> {
+pub fn archive_task(
+    state: State<'_, SharedAppData>,
+    task_id: i64,
+    expected_board_id: i64,
+) -> Result<(), String> {
     let time = current_time_millis()?;
-    update_stored_with_archives(&state, |data| {
+    update_stored_with_archives_for_board(&state, expected_board_id, |data| {
         let (column, task_index) = task_position(data, task_id)?;
         let task = data.columns[column].tasks.remove(task_index);
         if task.recurrence.is_some() && task.due_time.is_some() {
@@ -107,9 +114,13 @@ pub fn archive_task(state: State<'_, SharedAppData>, task_id: i64) -> Result<(),
 }
 
 #[tauri::command]
-pub fn archive_all_tasks(state: State<'_, SharedAppData>, column_id: i64) -> Result<(), String> {
+pub fn archive_all_tasks(
+    state: State<'_, SharedAppData>,
+    column_id: i64,
+    expected_board_id: i64,
+) -> Result<(), String> {
     let time = current_time_millis()?;
-    update_stored_with_archives(&state, |data| {
+    update_stored_with_archives_for_board(&state, expected_board_id, |data| {
         let column = column_index(data, column_id)?;
         let tasks = data.columns[column].tasks.drain(..).collect::<Vec<_>>();
         let mut next_tasks = Vec::new();
@@ -182,8 +193,9 @@ pub fn unarchive_task(
     state: State<'_, SharedAppData>,
     column_id: i64,
     task_id: i64,
+    expected_board_id: i64,
 ) -> Result<(), String> {
-    update_stored_with_archives(&state, |data| {
+    update_stored_with_archives_for_board(&state, expected_board_id, |data| {
         let column = column_index(data, column_id)?;
         let archive = data
             .archives

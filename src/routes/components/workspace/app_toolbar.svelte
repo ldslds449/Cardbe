@@ -4,9 +4,11 @@
   import ArchiveIcon from "@lucide/svelte/icons/archive";
   import BellIcon from "@lucide/svelte/icons/bell";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ClockIcon from "@lucide/svelte/icons/clock";
   import EyeIcon from "@lucide/svelte/icons/eye";
   import EyeClosedIcon from "@lucide/svelte/icons/eye-closed";
+  import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import MoonIcon from "@lucide/svelte/icons/moon";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
@@ -25,7 +27,7 @@
   import type { WorkspaceView } from "./workspace";
 
   let {
-    app_name,
+    board_panel_open = $bindable(),
     search_text = $bindable(),
     archive_open = $bindable(),
     expired_open = $bindable(),
@@ -35,6 +37,8 @@
     selected_view,
     update_check_in_progress,
     onPrepareImport,
+    onExportAllBoards,
+    onImportAllBoards,
     onPrepareTaskImport,
     onOpenBoardShare,
     onOpenTaskTemplates,
@@ -42,7 +46,7 @@
     onAddColumn,
     onCheckForUpdates,
   }: {
-    app_name: string;
+    board_panel_open: boolean;
     search_text: string;
     archive_open: boolean;
     expired_open: boolean;
@@ -52,6 +56,8 @@
     selected_view: WorkspaceView;
     update_check_in_progress: boolean;
     onPrepareImport: () => void | Promise<void>;
+    onExportAllBoards: () => void | Promise<void>;
+    onImportAllBoards: () => void | Promise<void>;
     onPrepareTaskImport: () => void | Promise<void>;
     onOpenBoardShare: () => void;
     onOpenTaskTemplates: () => void;
@@ -64,16 +70,34 @@
 
 <Menubar.Root class="h-12 shrink-0 rounded-none border-x-0 border-t-0 px-4">
   <div class="flex h-full w-full flex-row items-center gap-2">
-    <h3 class="flex-none text-2xl font-semibold leading-none tracking-tight">{app_name}</h3>
+    <Button
+      variant={board_panel_open ? "secondary" : "ghost"}
+      size="sm"
+      class="h-8 shrink-0 gap-1.5 px-2.5 text-sm font-semibold"
+      onclick={() => (board_panel_open = !board_panel_open)}
+      aria-label={board_panel_open ? "Close boards" : "Open boards"}
+      aria-expanded={board_panel_open}
+      aria-controls="board-drawer"
+      title={board_panel_open ? "Close boards" : "Open boards"}
+    >
+      <LayoutDashboardIcon class="size-4" />
+      <span>Cardbe</span>
+      <ChevronDownIcon
+        class={cn("size-3.5 transition-transform", board_panel_open && "rotate-180")}
+      />
+    </Button>
 
-    <div class="flex min-w-0 flex-1 items-center px-2">
+    <div class="flex min-w-0 flex-1 items-center pl-1 pr-2">
       <div class="flex flex-row items-center gap-1">
         <Menubar.Menu>
           <Menubar.Trigger>File</Menubar.Trigger>
           <Menubar.Content>
             <Menubar.Item onclick={() => void onPrepareTaskImport()}>Import Task</Menubar.Item>
-            <Menubar.Item onclick={() => void onPrepareImport()}>Import Data</Menubar.Item>
-            <Menubar.Item onclick={() => void board.export_to_file()}>Export Data</Menubar.Item>
+            <Menubar.Item onclick={() => void board.export_to_file()}>Export This Board…</Menubar.Item>
+            <Menubar.Item onclick={() => void onPrepareImport()}>Import Board as New…</Menubar.Item>
+            <Menubar.Separator />
+            <Menubar.Item onclick={() => void onExportAllBoards()}>Back Up Everything…</Menubar.Item>
+            <Menubar.Item onclick={() => void onImportAllBoards()}>Restore Everything…</Menubar.Item>
           </Menubar.Content>
         </Menubar.Menu>
         <Menubar.Menu>

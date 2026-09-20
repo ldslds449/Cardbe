@@ -1,5 +1,5 @@
 use crate::{
-    models::StoredData,
+    models::{Board, StoredData},
     storage::{self, Database},
 };
 use std::{
@@ -11,11 +11,13 @@ use tauri::State;
 
 pub struct AppData {
     pub stored: StoredData,
+    pub boards: Vec<Board>,
+    pub active_board_id: i64,
     pub undo_history: Vec<StoredData>,
     pub labels: BTreeSet<String>,
     pub database: Database,
     pub recovery_messages: Vec<String>,
-    pub notified_tasks: HashSet<(i64, u128)>,
+    pub notified_tasks: HashSet<(i64, i64, u128)>,
     pub archives_loaded: bool,
 }
 
@@ -28,8 +30,12 @@ impl AppData {
         recovery_messages: Vec<String>,
         archives_loaded: bool,
     ) -> Self {
+        let boards = database.boards().unwrap_or_default();
+        let active_board_id = database.active_board_id();
         let mut data = Self {
             stored,
+            boards,
+            active_board_id,
             undo_history: Vec::new(),
             labels: BTreeSet::new(),
             database,
@@ -80,34 +86,81 @@ pub fn update_stored<R>(
     update_locked(&mut guard, change)
 }
 
-pub fn update_stored_with_archives<R>(
+/// Apply a board-owned mutation only when the caller's board context is still
+/// current.  This prevents delayed UI requests from being written to a board
+/// selected after the request was created.
+pub fn update_stored_for_board<R>(
     state: &State<'_, SharedAppData>,
+    expected_board_id: i64,
     change: impl FnOnce(&mut StoredData) -> Result<R, String>,
 ) -> Result<R, String> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err(format!(
+            "Stale board request: expected board {expected_board_id}, active board is {}",
+            guard.active_board_id
+        ));
+    }
+    update_locked(&mut guard, change)
+}
+
+pub fn update_stored_with_archives_for_board<R>(
+    state: &State<'_, SharedAppData>,
+    expected_board_id: i64,
+    change: impl FnOnce(&mut StoredData) -> Result<R, String>,
+) -> Result<R, String> {
+    let mut guard = state
+        .lock()
+        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err("Stale board request".into());
+    }
     ensure_archives_loaded_locked(&mut guard)?;
     update_locked(&mut guard, change)
 }
 
-pub fn load_archives(
+pub fn load_archives_for_board(
     state: &State<'_, SharedAppData>,
+    expected_board_id: i64,
 ) -> Result<Vec<crate::models::Archive>, String> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err("Stale board request".into());
+    }
     ensure_archives_loaded_locked(&mut guard)?;
     Ok(guard.stored.archives.clone())
 }
 
-pub fn update_stored_with_pre_import_snapshot<R>(
+pub fn read_with_archives_for_board<R>(
     state: &State<'_, SharedAppData>,
+    expected_board_id: i64,
+    read: impl FnOnce(&AppData) -> R,
+) -> Result<R, String> {
+    let mut guard = state
+        .lock()
+        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err("Stale board request".into());
+    }
+    ensure_archives_loaded_locked(&mut guard)?;
+    Ok(read(&guard))
+}
+
+pub fn update_stored_with_pre_import_snapshot_for_board<R>(
+    state: &State<'_, SharedAppData>,
+    expected_board_id: i64,
     change: impl FnOnce(&mut StoredData) -> Result<R, String>,
 ) -> Result<(R, PathBuf), String> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err("Stale board request".into());
+    }
     ensure_archives_loaded_locked(&mut guard)?;
     let snapshot_path = write_pre_import_snapshot(&guard)?;
     let result = update_locked(&mut guard, change)?;
@@ -168,10 +221,16 @@ fn ensure_archives_loaded_locked(guard: &mut AppData) -> Result<(), String> {
     Ok(())
 }
 
-pub fn undo_last_change(state: &State<'_, SharedAppData>) -> Result<bool, String> {
+pub fn undo_last_change_for_board(
+    state: &State<'_, SharedAppData>,
+    expected_board_id: i64,
+) -> Result<bool, String> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err("Stale board request".into());
+    }
     let previous = guard
         .undo_history
         .last()
@@ -208,9 +267,7 @@ mod tests {
 
     fn app_data(dir: &std::path::Path, stored: StoredData) -> AppData {
         let mut database = Database::open(dir.join("data.sqlite3")).unwrap();
-        database
-            .persist_diff(&StoredData::default(), &stored)
-            .unwrap();
+        database.initialize_boards(&stored).unwrap();
         AppData::new(stored, database, Vec::new(), true)
     }
 
@@ -339,9 +396,7 @@ mod tests {
         persisted.archives.push(archive.clone());
         persisted.next_task_id = 8;
         let mut database = Database::open(dir.join("data.sqlite3")).unwrap();
-        database
-            .persist_diff(&StoredData::default(), &persisted)
-            .unwrap();
+        database.initialize_boards(&persisted).unwrap();
 
         let mut unloaded = persisted;
         unloaded.archives.clear();

@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 7;
+pub const CURRENT_SCHEMA_VERSION: u32 = 8;
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct Board {
+    pub id: i64,
+    pub name: String,
+    pub task_count: i64,
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Note {
@@ -515,4 +522,21 @@ pub struct ExportData {
     pub labels: Vec<String>,
     #[serde(default)]
     pub label_recency: Vec<String>,
+}
+
+/// Complete, portable backup. Unlike `ExportData`, this contains every board
+/// plus global data and is deliberately versioned for future migrations.
+#[derive(Serialize, Deserialize)]
+pub struct AllBoardsExport {
+    pub schema_version: u32,
+    pub boards: Vec<AllBoardsExportBoard>,
+    pub active_board_index: usize,
+    pub settings: Settings,
+    pub notes: Vec<Note>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AllBoardsExportBoard {
+    pub name: String,
+    pub data: ExportData,
 }

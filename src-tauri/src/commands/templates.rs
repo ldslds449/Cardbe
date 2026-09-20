@@ -1,6 +1,6 @@
 use crate::{
     models::{StoredData, TaskTemplate},
-    state::{update_stored, SharedAppData},
+    state::{update_stored_for_board, SharedAppData},
 };
 use tauri::State;
 
@@ -25,10 +25,16 @@ fn normalize_template_task(mut task: crate::models::Task) -> crate::models::Task
 }
 
 #[tauri::command]
-pub fn get_task_templates(state: State<'_, SharedAppData>) -> Result<Vec<TaskTemplate>, String> {
+pub fn get_task_templates(
+    state: State<'_, SharedAppData>,
+    expected_board_id: i64,
+) -> Result<Vec<TaskTemplate>, String> {
     let guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err("Stale board request".into());
+    }
     Ok(guard.stored.templates.clone())
 }
 
@@ -37,13 +43,14 @@ pub fn save_task_template(
     state: State<'_, SharedAppData>,
     task_id: i64,
     name: String,
+    expected_board_id: i64,
 ) -> Result<TaskTemplate, String> {
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("Template name cannot be empty".to_string());
     }
 
-    update_stored(&state, |data| {
+    update_stored_for_board(&state, expected_board_id, |data| {
         let task = normalize_template_task(find_task(data, task_id)?);
 
         let template = TaskTemplate {
@@ -62,6 +69,7 @@ pub fn update_task_template(
     template_id: i64,
     name: String,
     task: crate::models::Task,
+    expected_board_id: i64,
 ) -> Result<TaskTemplate, String> {
     let name = name.trim().to_string();
     if name.is_empty() {
@@ -71,7 +79,7 @@ pub fn update_task_template(
         return Err("Template task title cannot be empty".to_string());
     }
 
-    update_stored(&state, |data| {
+    update_stored_for_board(&state, expected_board_id, |data| {
         let index = data
             .templates
             .iter()
@@ -91,8 +99,9 @@ pub fn update_task_template(
 pub fn delete_task_template(
     state: State<'_, SharedAppData>,
     template_id: i64,
+    expected_board_id: i64,
 ) -> Result<(), String> {
-    update_stored(&state, |data| {
+    update_stored_for_board(&state, expected_board_id, |data| {
         let index = data
             .templates
             .iter()

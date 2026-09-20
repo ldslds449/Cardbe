@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import PencilIcon from "@lucide/svelte/icons/pencil";
@@ -20,13 +21,14 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { TagInput } from "$lib/components/ui/tag-input/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
-  import type { Column } from "../../type/column.svelte";
+  import { deserialize_column, type Column, type ColumnSerialized } from "../../type/column.svelte";
   import {
     build_share_snapshot,
     forget_managed_share,
     is_managed_share_enabled,
     load_managed_shares,
     publish_share,
+    rebind_managed_share,
     revoke_share,
     resolve_share_selection,
     save_managed_share,
@@ -38,10 +40,18 @@
     open = $bindable(),
     columns,
     default_title,
+    active_board_id,
+    boards,
+    onRetireShare,
+    onShareRevokeError,
   }: {
     open: boolean;
     columns: Column[];
     default_title: string;
+    active_board_id: number | null;
+    boards: Array<{ id: number; name: string }>;
+    onRetireShare?: (share_id: string) => void;
+    onShareRevokeError?: (share_id: string, error: unknown) => void;
   } = $props();
 
   let share = $state<ManagedShare | null>(null);
@@ -60,8 +70,23 @@
   let revoking = $state(false);
   let delete_confirm_open = $state(false);
   let editing = $state(false);
+  // A share can belong to any board, even while another board is open in the
+  // workspace. Keep its content loaded locally so managing a link never
+  // changes the user's current board.
+  let selected_board_id = $state<number | null>(null);
+  let loaded_board_id = $state<number | null>(null);
+  let loaded_columns = $state<Column[]>([]);
+  let loading_board_content = $state(false);
+  let board_content_generation = 0;
+  const share_columns = $derived(loaded_board_id === active_board_id ? columns : loaded_columns);
   let initialized_for_open = false;
-  const managed_shares = $derived(load_managed_shares());
+  const all_managed_shares = $derived(load_managed_shares().filter((candidate) => Number.isInteger(candidate.board_id)));
+  const managed_shares = $derived(all_managed_shares.filter((candidate) => candidate.board_id === active_board_id));
+  const legacy_share_count = $derived(load_managed_shares().filter((candidate) => !Number.isInteger(candidate.board_id)).length);
+  const legacy_shares = $derived(load_managed_shares().filter((candidate) => !Number.isInteger(candidate.board_id)));
+  function board_name(board_id: number | undefined): string {
+    return boards.find((board) => board.id === board_id)?.name ?? "Unknown board";
+  }
   const share_date_formatter = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "short",
@@ -75,11 +100,38 @@
     minute: "2-digit",
   });
 
+  async function load_board_content(board_id: number | null): Promise<boolean> {
+    if (board_id === null) return false;
+    const generation = ++board_content_generation;
+    selected_board_id = board_id;
+    if (board_id === active_board_id) {
+      loaded_board_id = board_id;
+      loaded_columns = columns;
+      loading_board_content = false;
+      return true;
+    }
+    loading_board_content = true;
+    try {
+      const serialized = await invoke<ColumnSerialized[]>("get_board_columns", { boardId: board_id });
+      if (generation !== board_content_generation) return false;
+      loaded_columns = serialized.map(deserialize_column);
+      loaded_board_id = board_id;
+      return true;
+    } catch (error) {
+      if (generation !== board_content_generation) return false;
+      console.error("Couldn't load shared board content", error);
+      toast.error("Couldn't load this board's share settings");
+      return false;
+    } finally {
+      if (generation === board_content_generation) loading_board_content = false;
+    }
+  }
+
   function load_share(candidate: ManagedShare | null, editing_state = candidate === null) {
     share = candidate;
     editing = editing_state;
     title = candidate?.title || `${default_title || "Cardbe"} board`;
-    const available_ids = new Set(columns.map((column) => column.id));
+    const available_ids = new Set(share_columns.map((column) => column.id));
     const candidate_column_ids = Array.isArray(candidate?.selected_column_ids)
       ? candidate.selected_column_ids
       : [];
@@ -87,7 +139,7 @@
       ? candidate_column_ids.filter((id) => available_ids.has(id))
       : [];
     const available_task_ids = new Set(
-      columns.flatMap((column) => column.tasks.map((task) => task.id)),
+      share_columns.flatMap((column) => column.tasks.map((task) => task.id)),
     );
     const candidate_task_ids = Array.isArray(candidate?.selected_task_ids)
       ? candidate.selected_task_ids
@@ -112,6 +164,22 @@
     context_menu_share_id = null;
   }
 
+  async function select_share(candidate: ManagedShare | null, editing_state = candidate === null): Promise<boolean> {
+    const target_board_id = candidate?.board_id ?? active_board_id;
+    if (!(await load_board_content(target_board_id))) return false;
+    load_share(candidate, editing_state);
+    return true;
+  }
+
+  async function select_new_share_board(board_id: number) {
+    if (!(await load_board_content(board_id))) return;
+    selected_column_ids = [];
+    selected_task_ids = [];
+    selected_labels = [];
+    task_search = "";
+    title = `${board_name(board_id)} board`;
+  }
+
   function cancel_editing() {
     if (!share) return;
     load_share(share);
@@ -119,7 +187,7 @@
 
   $effect(() => {
     if (open && !initialized_for_open) {
-      load_share(managed_shares[0] ?? null);
+      void select_share(managed_shares[0] ?? null);
       initialized_for_open = true;
     } else if (!open) {
       initialized_for_open = false;
@@ -127,7 +195,7 @@
   });
 
   function set_column_selected(column_id: string, checked: boolean) {
-    const task_ids = columns.find((column) => column.id === column_id)?.tasks.map((task) => task.id) ?? [];
+    const task_ids = share_columns.find((column) => column.id === column_id)?.tasks.map((task) => task.id) ?? [];
     selected_column_ids = checked
       ? Array.from(new Set([...selected_column_ids, column_id]))
       : selected_column_ids.filter((id) => id !== column_id);
@@ -160,8 +228,8 @@
 
   const visible_columns = $derived.by(() => {
     const needle = task_search.trim().toLocaleLowerCase();
-    if (!needle) return columns;
-    return columns
+    if (!needle) return share_columns;
+    return share_columns
       .map((column) => {
         if (column.name.toLocaleLowerCase().includes(needle)) return column;
         return {
@@ -176,10 +244,10 @@
       .filter((column) => column.tasks.length > 0);
   });
   const available_labels = $derived(
-    Array.from(new Set(columns.flatMap((column) => column.tasks.flatMap((task) => task.labels)))).sort(),
+    Array.from(new Set(share_columns.flatMap((column) => column.tasks.flatMap((task) => task.labels)))).sort(),
   );
   const effective_selection = $derived(
-    resolve_share_selection(columns, selected_column_ids, selected_task_ids, selected_labels),
+    resolve_share_selection(share_columns, selected_column_ids, selected_task_ids, selected_labels),
   );
   const visible_task_ids = $derived(
     visible_columns.flatMap((column) => column.tasks.map((task) => task.id)),
@@ -207,7 +275,7 @@
     selected_task_ids = selected_task_ids.filter((id) => !task_ids.has(id));
     selected_column_ids = selected_column_ids.filter((column_id) => {
       if (!column_ids.has(column_id)) return true;
-      return columns
+      return share_columns
         .find((column) => column.id === column_id)
         ?.tasks.some((task) => selected_task_ids.includes(task.id)) ?? false;
     });
@@ -220,7 +288,7 @@
       const was_update = share !== null;
       const was_reused = !was_update && requested_link.trim() !== "";
       const snapshot = build_share_snapshot(
-        columns,
+        share_columns,
         effective_selection.selected_column_ids,
         effective_selection.selected_task_ids,
         title,
@@ -239,12 +307,13 @@
         // an ID that was retired by a previous disable or an in-flight revoke.
         was_update,
       );
+      updated_share.board_id = selected_board_id ?? undefined;
       share = updated_share;
       requested_link = "";
       save_managed_share(
         updated_share,
         share_content_signature(
-          columns,
+          share_columns,
           effective_selection.selected_column_ids,
           effective_selection.selected_task_ids,
           title,
@@ -280,27 +349,18 @@
     if (!target || revoking) return;
     revoking = true;
     try {
+      onRetireShare?.(target.id);
       await revoke_share(target);
       const disabled_share = { ...target, enabled: false };
-      const selection = resolve_share_selection(
-        columns,
-        target.selected_column_ids,
-        target.selected_task_ids,
-        target.selected_labels,
-      );
       save_managed_share(
         disabled_share,
-        share_content_signature(
-          columns,
-          selection.selected_column_ids,
-          selection.selected_task_ids,
-          target.title,
-        ),
+        "",
       );
       if (share?.id === target.id) load_share(disabled_share);
       toast.success("Share link disabled. You can enable it again later.");
     } catch (error) {
       console.error("Couldn't disable board share", error);
+      onShareRevokeError?.(target.id, error);
       toast.error(error instanceof Error ? error.message : "Couldn't disable the share link");
     } finally {
       revoking = false;
@@ -311,14 +371,18 @@
     if (!target || publishing || is_managed_share_enabled(target)) return;
     publishing = true;
     try {
+      // Context-menu actions can enable a link from another board without
+      // selecting its row first. Always load that board before constructing a
+      // snapshot so it cannot accidentally publish the current board's cards.
+      if (!(await load_board_content(target.board_id ?? null))) return;
       const selection = resolve_share_selection(
-        columns,
+        share_columns,
         target.selected_column_ids,
         target.selected_task_ids,
         target.selected_labels,
       );
       const snapshot = build_share_snapshot(
-        columns,
+        share_columns,
         selection.selected_column_ids,
         selection.selected_task_ids,
         target.title,
@@ -336,7 +400,7 @@
       save_managed_share(
         enabled_share,
         share_content_signature(
-          columns,
+          share_columns,
           selection.selected_column_ids,
           selection.selected_task_ids,
           target.title,
@@ -357,14 +421,17 @@
     revoking = true;
     const deleted_id = share.id;
     try {
+      onRetireShare?.(deleted_id);
       await revoke_share(share);
       forget_managed_share(deleted_id);
       const remaining = load_managed_shares().filter((candidate) => candidate.id !== deleted_id);
-      load_share(remaining[0] ?? null);
+      share = null;
+      await select_share(remaining[0] ?? null);
       delete_confirm_open = false;
       toast.success("Share link deleted");
     } catch (error) {
       console.error("Couldn't delete board share", error);
+      onShareRevokeError?.(deleted_id, error);
       toast.error(error instanceof Error ? error.message : "Couldn't delete the share link");
     } finally {
       revoking = false;
@@ -375,9 +442,9 @@
 <Dialog.Root bind:open>
   <Dialog.Content class="flex h-[min(90vh,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
     <Dialog.Header class="shrink-0 px-6 pb-4 pt-6">
-      <Dialog.Title>Share board</Dialog.Title>
+      <Dialog.Title>Share links</Dialog.Title>
       <Dialog.Description>
-        Create and manage read-only links for this board. Links resume at the same address when Cardbe starts again.
+        Create a link for this board, or review links serving any board. Links resume at the same address when Cardbe starts again.
       </Dialog.Description>
     </Dialog.Header>
 
@@ -385,14 +452,26 @@
       <aside class="flex max-h-52 min-h-0 flex-col gap-3 overflow-y-auto border-b bg-muted/20 p-4 md:max-h-none md:border-b-0 md:border-r" aria-label="Shared board links">
         <section class="grid gap-2.5" aria-labelledby="existing-shares-heading">
           <div class="flex items-center gap-2">
-            <h3 id="existing-shares-heading" class="text-sm font-semibold">Your share links</h3>
+            <h3 id="existing-shares-heading" class="text-sm font-semibold">All share links</h3>
             <span class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              {managed_shares.length}
+              {all_managed_shares.length}
             </span>
           </div>
-          {#if managed_shares.length > 0}
+          {#if legacy_share_count > 0}
+            <div class="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs" role="status">
+              <p>{legacy_share_count} older share link{legacy_share_count === 1 ? " has" : "s have"} no board assigned.</p>
+              {#each legacy_shares as legacy (legacy.id)}
+                <div class="flex min-w-0 items-center justify-between gap-2">
+                  <span class="min-w-0 flex-1 truncate">{legacy.title}</span>
+                  <Button class="shrink-0 whitespace-nowrap" size="sm" variant="outline" disabled={active_board_id === null} onclick={() => active_board_id !== null && rebind_managed_share(legacy.id, active_board_id)}>Assign to this board</Button>
+                </div>
+              {/each}
+              <p class="text-muted-foreground">Review and enable it after assigning.</p>
+            </div>
+          {/if}
+          {#if all_managed_shares.length > 0}
             <div class="grid gap-1">
-              {#each managed_shares as candidate (candidate.id)}
+              {#each all_managed_shares as candidate (candidate.id)}
                 {@const candidate_enabled = is_managed_share_enabled(candidate)}
                 <ContextMenu.Root
                   open={context_menu_share_id === candidate.id}
@@ -418,7 +497,7 @@
                         onpointerdown={(event) => event.stopPropagation()}
                         onclick={(event) => {
                           event.stopPropagation();
-                          load_share(candidate);
+                          void select_share(candidate);
                         }}
                         aria-pressed={share?.id === candidate.id}
                         title={`${candidate.title} — Right-click for actions`}
@@ -434,6 +513,8 @@
                           <span class={candidate_enabled ? "text-success" : undefined}>
                             {candidate_enabled ? "Active" : "Disabled"}
                           </span>
+                          <span aria-hidden="true">·</span>
+                          <span class="truncate">{board_name(candidate.board_id)}</span>
                           {" · "}
                           {candidate.expires_at ? `Expires ${share_date_formatter.format(new Date(candidate.expires_at))}` : "No expiration"}
                         </span>
@@ -444,7 +525,7 @@
                     <ContextMenu.Item
                       class="h-9 gap-2.5 rounded-md px-2.5"
                       disabled={publishing || revoking}
-                      onclick={() => load_share(candidate, true)}
+                      onclick={() => void select_share(candidate, true)}
                     >
                       <PencilIcon class="size-4 text-muted-foreground" />
                       Edit settings
@@ -473,8 +554,9 @@
                       class="h-9 gap-2.5 rounded-md px-2.5"
                       disabled={publishing || revoking}
                       onclick={() => {
-                        load_share(candidate);
-                        delete_confirm_open = true;
+                        void select_share(candidate).then((selected) => {
+                          if (selected) delete_confirm_open = true;
+                        });
                       }}
                     >
                       <Trash2Icon />
@@ -496,7 +578,7 @@
             class={`w-full justify-start ${!share ? "ring-2 ring-primary/30" : ""}`}
             variant={share ? "outline" : "default"}
             disabled={publishing || revoking || !share}
-            onclick={() => load_share(null)}
+            onclick={() => void select_share(null)}
             aria-current={!share ? "page" : undefined}
           >
             <PlusIcon />
@@ -599,6 +681,24 @@
         {/if}
 
         {#if !share || editing}
+        {#if !share}
+          <label class="grid gap-1.5 text-sm font-medium">
+            Board to share
+            <select
+              value={selected_board_id === null ? "" : String(selected_board_id)}
+              disabled={publishing || loading_board_content}
+              onchange={(event) => void select_new_share_board(Number(event.currentTarget.value))}
+              class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-10 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-[3px] disabled:opacity-50"
+            >
+              {#each boards as target (target.id)}
+                <option value={String(target.id)}>{target.name}</option>
+              {/each}
+            </select>
+            <span class="text-xs font-normal text-muted-foreground">The new link will publish content from this board.</span>
+          </label>
+        {:else}
+          <p class="text-sm text-muted-foreground">Sharing from <span class="font-medium text-foreground">{board_name(selected_board_id ?? undefined)}</span></p>
+        {/if}
         <label class="grid gap-1.5 text-sm font-medium">
         Shared board name
         <Input bind:value={title} maxlength={120} placeholder="Team roadmap" />
@@ -746,7 +846,7 @@
         </div>
         <div class="max-h-72 space-y-2 overflow-y-auto rounded-md border p-2">
           {#each visible_columns as column (column.id)}
-            {@const all_column_task_ids = columns.find((candidate) => candidate.id === column.id)?.tasks.map((task) => task.id) ?? []}
+            {@const all_column_task_ids = share_columns.find((candidate) => candidate.id === column.id)?.tasks.map((task) => task.id) ?? []}
             {@const selected_in_column = all_column_task_ids.filter((id) => selected_task_ids.includes(id)).length}
             <div class="rounded-md border bg-muted/20">
               <label class="flex cursor-pointer items-center gap-3 rounded-t-md px-3 py-2 hover:bg-muted/60">

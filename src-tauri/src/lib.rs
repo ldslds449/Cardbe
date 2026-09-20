@@ -6,7 +6,7 @@ mod state;
 mod storage;
 
 use commands::{
-    archive, board, calendar_export, import_export, notes, notifications, settings, share,
+    archive, board, boards, calendar_export, import_export, notes, notifications, settings, share,
     templates, update,
 };
 use state::AppData;
@@ -53,7 +53,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             board::get_columns,
+            board::get_board_columns,
             board::get_labels,
+            boards::get_boards,
+            boards::create_board,
+            boards::rename_board,
+            boards::switch_board,
+            boards::delete_board,
             board::undo,
             board::add_column,
             board::update_column,
@@ -61,6 +67,7 @@ pub fn run() {
             board::delete_column,
             board::move_task,
             board::add_task,
+            board::add_task_to_board,
             board::delete_task,
             board::update_task,
             archive::get_archives,
@@ -70,6 +77,9 @@ pub fn run() {
             calendar_export::get_calendar_pdf_font,
             import_export::export_data,
             import_export::import_data,
+            import_export::import_board_as_new,
+            import_export::export_all_boards,
+            import_export::import_all_boards,
             notifications::check_expired_tasks,
             notifications::get_expired_tasks,
             notes::get_notes,

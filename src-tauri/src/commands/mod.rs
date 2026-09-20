@@ -1,5 +1,6 @@
 pub mod archive;
 pub mod board;
+pub mod boards;
 pub mod calendar_export;
 pub mod import_export;
 pub mod notes;

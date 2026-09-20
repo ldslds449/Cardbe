@@ -918,9 +918,7 @@ mod tests {
         };
         state.replace_share(id.clone(), original, false).unwrap();
 
-        state
-            .replace_share(id.clone(), replacement, true)
-            .unwrap();
+        state.replace_share(id.clone(), replacement, true).unwrap();
 
         let shares = state.shares.read().unwrap();
         assert_eq!(shares.len(), 1);

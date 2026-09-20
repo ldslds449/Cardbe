@@ -31,7 +31,7 @@ export class ManagedShareState {
     published_signatures = $state<Record<string, string>>({});
     sync_states = $state<Record<string, ShareSyncState>>({});
 
-    restore() {
+    restore(single_board_id?: number) {
         const storage = managed_share_storage();
         if (!storage) return;
 
@@ -45,7 +45,13 @@ export class ManagedShareState {
                 : persisted.share ? [persisted.share] : [];
             const unique = new Map<string, ManagedShare>();
             for (const share of candidates) {
-                if (share?.id && is_unexpired(share)) unique.set(share.id, share);
+                if (share?.id && is_unexpired(share)) unique.set(share.id, {
+                    ...share,
+                    board_id: Number.isInteger(share.board_id) ? share.board_id : single_board_id,
+                    // With multiple boards the owner is ambiguous, so keep the
+                    // link disabled until the user explicitly rebinds it.
+                    enabled: Number.isInteger(share.board_id) || single_board_id !== undefined ? share.enabled : false,
+                });
             }
 
             this.shares = [...unique.values()];
@@ -57,6 +63,13 @@ export class ManagedShareState {
         } catch {
             storage.removeItem(MANAGED_SHARE_STORAGE_KEY);
         }
+    }
+
+    rebind(share_id: string, board_id: number) {
+        this.shares = this.shares.map((share) => share.id === share_id
+            ? { ...share, board_id, enabled: false }
+            : share);
+        this.persist();
     }
 
     save(share: ManagedShare, signature: string) {
@@ -104,6 +117,6 @@ export class ManagedShareState {
 
 export const managed_share_state = new ManagedShareState();
 
-export function restore_managed_share_state(): void {
-    managed_share_state.restore();
+export function restore_managed_share_state(single_board_id?: number): void {
+    managed_share_state.restore(single_board_id);
 }

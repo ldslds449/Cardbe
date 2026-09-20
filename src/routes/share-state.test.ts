@@ -31,6 +31,7 @@ describe("managed share restoration", () => {
             title: "Roadmap",
             selected_column_ids: ["column_1"],
             selected_task_ids: ["task_1"],
+            board_id: 1,
         };
         local_storage.setItem(STORAGE_KEY, JSON.stringify({ shares: [share] }));
         vi.stubGlobal("window", { localStorage: local_storage });
@@ -64,9 +65,40 @@ describe("managed share restoration", () => {
         const state = new ManagedShareState();
         state.restore();
 
-        expect(state.shares).toEqual([share]);
-        expect(JSON.parse(local_storage.getItem(STORAGE_KEY)!)).toEqual({ shares: [share] });
+        expect(state.shares).toEqual([{ ...share, enabled: false }]);
+        expect(JSON.parse(local_storage.getItem(STORAGE_KEY)!)).toEqual({ shares: [{ ...share, enabled: false }] });
         expect(state.sync_state(share.id).status).toBe("pending");
+    });
+
+    it("automatically binds a legacy share when there is only one board", () => {
+        const local_storage = memory_storage();
+        const share = {
+            id: "j3V_BXrcsGwtsXv6XAD1jA", url: "http://192.168.1.20:12345/share/j3V_BXrcsGwtsXv6XAD1jA",
+            updated_at: "2026-09-01T12:00:00Z", expires_at: null, title: "Roadmap",
+            selected_column_ids: [], selected_task_ids: [],
+        } as ManagedShare;
+        local_storage.setItem(STORAGE_KEY, JSON.stringify({ shares: [share] }));
+        vi.stubGlobal("window", { localStorage: local_storage });
+        const state = new ManagedShareState();
+        state.restore(42);
+        expect(state.shares[0].board_id).toBe(42);
+        expect(state.shares[0].enabled).not.toBe(false);
+    });
+
+    it("lets a user explicitly assign an ambiguous legacy share", () => {
+        const local_storage = memory_storage();
+        const share = {
+            id: "j3V_BXrcsGwtsuYw7YBE2kB", url: "http://192.168.1.20:12345/share/j3V_BXrcsGwtsuYw7YBE2kB",
+            updated_at: "2026-09-01T12:00:00Z", expires_at: null, title: "Legacy",
+            selected_column_ids: [], selected_task_ids: [],
+        } as ManagedShare;
+        local_storage.setItem(STORAGE_KEY, JSON.stringify({ shares: [share] }));
+        vi.stubGlobal("window", { localStorage: local_storage });
+        const state = new ManagedShareState();
+        state.restore();
+        state.rebind(share.id, 9);
+        expect(state.shares[0]).toMatchObject({ board_id: 9, enabled: false });
+        expect(local_storage.getItem(STORAGE_KEY)).toContain('"board_id":9');
     });
 
     it("does not restore an expired durable share", () => {
@@ -102,6 +134,7 @@ describe("managed share restoration", () => {
             title: "Roadmap",
             selected_column_ids: ["column_1"],
             selected_task_ids: ["task_1"],
+            board_id: 1,
         };
         const second = {
             ...first,
