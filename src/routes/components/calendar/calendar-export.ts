@@ -2,9 +2,15 @@ import { join } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { exists, writeFile } from "@tauri-apps/plugin-fs";
 import { invoke } from "@tauri-apps/api/core";
-import fontkit from "@pdf-lib/fontkit";
-import { PDFDocument, StandardFonts, rgb, type Color, type PDFFont, type PDFPage } from "pdf-lib";
+import type { Color, PDFFont, PDFPage } from "pdf-lib";
 import type { CalendarDay, CalendarTask, CalendarViewMode } from "./calendar";
+
+type FontkitModule = typeof import("@pdf-lib/fontkit");
+type FontkitFont = ReturnType<FontkitModule["create"]>;
+type FontkitCollection = { fonts: FontkitFont[] };
+type PdfRgb = typeof import("pdf-lib").rgb;
+
+let pdf_rgb: PdfRgb | undefined;
 
 export type CalendarExportTheme = "light" | "dark";
 export type CalendarExportFormat = "png" | "pdf";
@@ -617,15 +623,17 @@ function pdf_color(value: string): Color {
     const expanded = hex[1].length === 3
       ? hex[1].split("").map((part) => `${part}${part}`).join("")
       : hex[1];
-    return rgb(
+    if (!pdf_rgb) throw new Error("PDF color support is not initialized");
+    return pdf_rgb(
       Number.parseInt(expanded.slice(0, 2), 16) / 255,
       Number.parseInt(expanded.slice(2, 4), 16) / 255,
       Number.parseInt(expanded.slice(4, 6), 16) / 255,
     );
   }
   const channels = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(value);
-  if (channels) return rgb(Number(channels[1]) / 255, Number(channels[2]) / 255, Number(channels[3]) / 255);
-  return rgb(0.39, 0.45, 0.55);
+  if (!pdf_rgb) throw new Error("PDF color support is not initialized");
+  if (channels) return pdf_rgb(Number(channels[1]) / 255, Number(channels[2]) / 255, Number(channels[3]) / 255);
+  return pdf_rgb(0.39, 0.45, 0.55);
 }
 
 interface CalendarPdfFonts {
@@ -984,6 +992,8 @@ export async function build_vector_calendar_pdf(
   outline_font?: CalendarPdfOutlineFont,
 ): Promise<Uint8Array> {
   if (pages.length === 0) throw new Error("A PDF needs at least one page");
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+  pdf_rgb = rgb;
   const document = await PDFDocument.create();
   // PDF has no CSS-like system font fallback. These standard fonts are supplied
   // by the viewer and add no font files to the exported document.
@@ -1007,10 +1017,9 @@ export async function build_vector_calendar_pdf(
   return document.save({ useObjectStreams: false });
 }
 
-type FontkitFont = ReturnType<typeof fontkit.create>;
-type FontkitCollection = { fonts: FontkitFont[] };
-
-function create_calendar_outline_font(font_data: ArrayBuffer | Uint8Array): CalendarPdfOutlineFont {
+async function create_calendar_outline_font(font_data: ArrayBuffer | Uint8Array): Promise<CalendarPdfOutlineFont> {
+  // The package's ESM build exports a default object, but its declarations only list named members.
+  const { default: fontkit } = await import("@pdf-lib/fontkit") as unknown as { default: FontkitModule };
   const bytes = font_data instanceof Uint8Array ? font_data : new Uint8Array(font_data);
   const loaded = fontkit.create(bytes) as FontkitFont | FontkitCollection;
   if (!("fonts" in loaded)) return loaded as unknown as CalendarPdfOutlineFont;
@@ -1048,7 +1057,7 @@ export async function render_calendar_export(
   if (prepared.length === 0) throw new Error("Select at least one month to export");
   if (format === "pdf") {
     const outline_font = calendar_pdf_needs_outlines(prepared)
-      ? create_calendar_outline_font(await load_calendar_pdf_font())
+      ? await create_calendar_outline_font(await load_calendar_pdf_font())
       : undefined;
     const pdf = await build_vector_calendar_pdf(prepared, options.pdf_paper, outline_font);
     return new Blob([pdf], { type: "application/pdf" });

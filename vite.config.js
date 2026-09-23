@@ -28,4 +28,9 @@ export default defineConfig(async () => ({
       $lib: path.resolve("./src/lib"),
     },
   },
+  build: {
+    // Some on-demand Shiki grammars and PDF fontkit are single modules above
+    // Vite's default 500 kB advisory threshold.
+    chunkSizeWarningLimit: 800,
+  },
 }));
