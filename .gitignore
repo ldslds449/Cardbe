@@ -3,6 +3,7 @@ node_modules/
 .pnpm-store/
 /build/
 /.svelte-kit/
+/.svelte-kit-dev-*/
 /package/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
@@ -33,6 +34,7 @@ vite.config.ts.timestamp-*
 *.backup
 *.bak
 *.log
+/.cardbe-debug/
 
 # Editor and operating-system files
 .vscode/

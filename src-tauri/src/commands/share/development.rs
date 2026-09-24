@@ -44,7 +44,7 @@ pub(super) fn share_port() -> Result<u16, String> {
             .ok()
             .filter(|port| *port != 0)
             .ok_or_else(|| "CARDBE_SHARE_DEV_PORT must be a port between 1 and 65535".into()),
-        Err(std::env::VarError::NotPresent) => Ok(1422),
+        Err(std::env::VarError::NotPresent) => Ok(0),
         Err(error) => Err(format!("Invalid CARDBE_SHARE_DEV_PORT: {error}")),
     }
 }
@@ -55,7 +55,23 @@ pub(super) fn vite_origin(protocol: &str) -> String {
         .filter(|host| !host.is_empty())
         .unwrap_or_else(|| "localhost".into());
     let host = host.parse().map(format_host).unwrap_or(host);
-    format!("{protocol}://{host}:1420")
+    let port = vite_port();
+    format!("{protocol}://{host}:{port}")
+}
+
+fn vite_port() -> u16 {
+    std::env::var("CARDBE_DEV_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|port| *port != 0)
+        .unwrap_or(1420)
+}
+
+fn generated_dir() -> String {
+    match vite_port() {
+        1420 => ".svelte-kit".into(),
+        port => format!(".svelte-kit-dev-{port}"),
+    }
 }
 
 pub(super) fn client() -> Result<reqwest::Client, String> {
@@ -69,6 +85,7 @@ pub(super) fn client() -> Result<reqwest::Client, String> {
 }
 pub(super) fn development_target_allowed(target: &str) -> bool {
     let path = target.split('?').next().unwrap_or_default();
+    let generated_dir = generated_dir();
     if super::production_asset_allowed(path) {
         return true;
     }
@@ -83,7 +100,7 @@ pub(super) fn development_target_allowed(target: &str) -> bool {
         && !path.contains('%')
         && (path.starts_with("@vite/")
             || path.starts_with("src/")
-            || path.starts_with(".svelte-kit/generated/")
+            || path.starts_with(&format!("{generated_dir}/generated/"))
             || path.starts_with("node_modules/"));
     if safe_share_page || safe_virtual_module || safe_root_module {
         return true;
@@ -108,7 +125,7 @@ pub(super) fn development_target_allowed(target: &str) -> bool {
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("src-tauri must have a parent directory");
-    ["src", ".svelte-kit", "node_modules"]
+    ["src", generated_dir.as_str(), "node_modules"]
         .iter()
         .filter_map(|directory| workspace.join(directory).canonicalize().ok())
         .any(|allowed_root| candidate.starts_with(allowed_root))

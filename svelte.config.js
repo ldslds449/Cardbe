@@ -5,10 +5,13 @@
 import adapter from "@sveltejs/adapter-static";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
+const devPort = process.env.CARDBE_DEV_PORT;
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: vitePreprocess(),
   kit: {
+    ...(devPort && devPort !== "1420" ? { outDir: `.svelte-kit-dev-${devPort}` } : {}),
     adapter: adapter({
       fallback: "index.html",
     }),
