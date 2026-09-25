@@ -21,6 +21,7 @@
     onEditTask?: (column_idx: number, task_idx: number) => void;
     onSaveAsTemplate?: (task: Task) => void;
     onExportTask?: (task: Task) => void;
+    read_only?: boolean;
   }
 
   let {
@@ -33,6 +34,7 @@
     onEditTask = () => {},
     onSaveAsTemplate = () => {},
     onExportTask = () => {},
+    read_only = false,
   }: BoardViewProps = $props();
 
   let dragged_task = $state<{ id: string; origin: TaskPosition } | null>(null);
@@ -47,6 +49,7 @@
   }
 
   function handle_drag_start(event: any) {
+    if (read_only) return;
     const source = event.operation?.source;
     const source_id = source?.id?.toString();
     if (!source_id) return;
@@ -63,6 +66,7 @@
   }
 
   function handle_drag_end(event: any) {
+    if (read_only) return;
     const { source, target } = event.operation;
     const target_id = target?.id?.toString();
 
@@ -113,6 +117,7 @@
   }
 
   function handle_drag_over(event: any) {
+    if (read_only) return;
     const { source, target } = event.operation;
     const source_id = source?.id?.toString();
     const target_id = target?.id?.toString();
@@ -179,7 +184,7 @@
       </Empty.Description>
     </Empty.Header>
     <Empty.Content>
-      <Button onclick={onAddColumn}>Add Column</Button>
+      {#if !read_only}<Button onclick={onAddColumn}>Add Column</Button>{/if}
     </Empty.Content>
   </Empty.Root>
 {:else}
@@ -200,6 +205,7 @@
           onAddTask={() => onAddTask(column_idx)}
           onImportTask={() => onImportTask(column.id)}
           onArchiveAllTasks={() => board.archive_all_tasks(column.id)}
+          {read_only}
         >
           {#each column.tasks as task, task_idx (task.id)}
             {#if task_matches_search(task)}
@@ -216,6 +222,7 @@
                 onExportTask={() => onExportTask(task)}
                 onDeleteTask={() => board.delete_task(task.id)}
                 onArchiveTask={() => board.archive_task(task.id)}
+                {read_only}
               />
             {/if}
           {/each}

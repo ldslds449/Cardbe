@@ -2,6 +2,7 @@ use crate::models::{
     Archive, Board, Column, ColumnSort, Note, StoredData, Task, TaskTemplate,
     CURRENT_SCHEMA_VERSION,
 };
+use base64::Engine;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use std::{
     collections::HashMap,
@@ -151,10 +152,10 @@ impl Database {
         Ok(self
             .connection
             .prepare(
-                "SELECT b.id, b.name, COUNT(t.id)
+                "SELECT b.id, b.name, COUNT(t.id), b.shared_role, b.sync_status, b.sync_revision
                  FROM cardbe_boards b
                  LEFT JOIN cardbe_tasks t ON t.board_id = b.id
-                 GROUP BY b.id, b.name
+                 GROUP BY b.id, b.name, b.shared_role, b.sync_status, b.sync_revision
                  ORDER BY b.id",
             )?
             .query_map([], |row| {
@@ -162,6 +163,9 @@ impl Database {
                     id: row.get(0)?,
                     name: row.get(1)?,
                     task_count: row.get(2)?,
+                    shared_role: row.get(3)?,
+                    sync_status: row.get(4)?,
+                    sync_revision: row.get(5)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?)
@@ -194,6 +198,9 @@ impl Database {
                     .iter()
                     .map(|column| column.tasks.len() as i64)
                     .sum(),
+                shared_role: "owner".into(),
+                sync_status: "local".into(),
+                sync_revision: 0,
             }],
             legacy.clone(),
         ))
@@ -214,6 +221,22 @@ impl Database {
     /// Read every board-owned collection without changing active state.
     pub fn read_board_complete(&self, id: i64) -> StorageResult<StoredData> {
         self.load_board_data(id, true)
+    }
+
+    pub fn read_board_share_snapshot(&self, id: i64) -> StorageResult<(Board, StoredData)> {
+        self.connection
+            .execute_batch("BEGIN DEFERRED TRANSACTION")?;
+        let result = (|| {
+            let board = self
+                .boards()?
+                .into_iter()
+                .find(|board| board.id == id)
+                .ok_or("Board was deleted")?;
+            let data = self.load_board_data(id, true)?;
+            Ok((board, data))
+        })();
+        self.connection.execute_batch("ROLLBACK")?;
+        result
     }
 
     pub fn load_board_archives_for_export(&self, id: i64) -> StorageResult<Vec<Archive>> {
@@ -246,6 +269,9 @@ impl Database {
                     .iter()
                     .map(|column| column.tasks.len() as i64)
                     .sum(),
+                shared_role: "owner".into(),
+                sync_status: "local".into(),
+                sync_revision: 0,
             });
         }
         for note in notes {
@@ -276,16 +302,409 @@ impl Database {
         )?)
     }
 
-    /// Replace one board without changing which board is active.
-    pub fn replace_board(&mut self, board_id: i64, data: &StoredData) -> StorageResult<()> {
-        if !self.board_exists(board_id)? {
+    pub fn board_role(&self, id: i64) -> StorageResult<String> {
+        Ok(self.connection.query_row(
+            "SELECT shared_role FROM cardbe_boards WHERE id=?1",
+            [id],
+            |row| row.get(0),
+        )?)
+    }
+
+    #[cfg(test)]
+    pub fn set_shared_board(
+        &mut self,
+        id: i64,
+        role: &str,
+        status: &str,
+        revision: i64,
+    ) -> StorageResult<()> {
+        if self.connection.execute(
+            "UPDATE cardbe_boards SET shared_role=?2,sync_status=?3,sync_revision=?4 WHERE id=?1",
+            params![id, role, status, revision],
+        )? == 0
+        {
             return Err("Board not found".into());
         }
-        self.write_board(board_id, data)?;
+        Ok(())
+    }
+
+    /// Iroh capabilities are deliberately database-only metadata.  The JSON
+    /// backup format remains portable and must never contain bearer secrets.
+    pub fn save_iroh_invite(
+        &mut self,
+        invite_id: &str,
+        board_id: i64,
+        secret: &str,
+        permission: &str,
+    ) -> StorageResult<()> {
+        self.connection.execute("INSERT INTO cardbe_iroh_invites(invite_id,board_id,secret,permission,enabled,created_at) VALUES(?1,?2,?3,?4,1,datetime('now')) ON CONFLICT(invite_id) DO UPDATE SET board_id=excluded.board_id,secret=excluded.secret,permission=excluded.permission", params![invite_id, board_id, secret, permission])?; // gitleaks:allow
+        Ok(())
+    }
+    pub fn iroh_remote(&self, board_id: i64) -> StorageResult<Option<String>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT ticket FROM cardbe_iroh_remotes WHERE board_id=?1",
+                [board_id],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+    pub fn iroh_loro_update(&self, board_id: i64) -> StorageResult<Option<Vec<u8>>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT payload FROM cardbe_loro_docs WHERE board_id=?1",
+                [board_id],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+    pub fn ensure_iroh_loro_doc(&mut self, board_id: i64) -> StorageResult<Vec<u8>> {
+        if let Some(update) = self.iroh_loro_update(board_id)? {
+            return Ok(update);
+        }
+        let data = self.read_board_complete(board_id)?;
+        let update = crate::loro_board::apply_local_delta(None, &StoredData::default(), &data)
+            .map_err(|e| format!("Could not seed shared-board CRDT: {e}"))?;
+        self.connection.execute(
+            "INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2)",
+            params![board_id, update],
+        )?;
+        self.iroh_loro_update(board_id)?
+            .ok_or_else(|| "Could not load seeded shared-board CRDT".into())
+    }
+    /// Applies an editor's Loro update atomically with the SQL projection.
+    /// The capability is checked inside this transaction so revocation wins
+    /// even when it races an already accepted Iroh connection.
+    pub fn apply_iroh_loro_update(
+        &mut self,
+        board_id: i64,
+        invite_id: &str,
+        secret: &str,
+        update: &[u8],
+    ) -> StorageResult<(bool, i64, StoredData)> {
+        let previous = self.read_board_complete(board_id)?;
+        let tx = self.connection.transaction()?;
+        let authorized: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM cardbe_iroh_invites WHERE invite_id=?1 AND board_id=?2 AND secret=?3 AND permission='editor' AND enabled=1)",
+            params![invite_id, board_id, secret], |row| row.get(0),
+        )?;
+        if !authorized {
+            return Err("Invitation no longer grants editing access".into());
+        }
+        let existing: Option<Vec<u8>> = tx
+            .query_row(
+                "SELECT payload FROM cardbe_loro_docs WHERE board_id=?1",
+                [board_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let existing = existing.ok_or("Editable board is missing its Loro document")?;
+        let merged = crate::loro_board::merge(Some(&existing), update)
+            .map_err(|e| format!("Invalid Loro update: {e}"))?;
+        let revision: i64 = tx.query_row(
+            "SELECT sync_revision FROM cardbe_boards WHERE id=?1 AND shared_role='owner'",
+            [board_id],
+            |row| row.get(0),
+        )?;
+        // Snapshot bytes can differ after re-export even when the Loro
+        // operation history is unchanged. Use its version vector for retries.
+        let unchanged = crate::loro_board::state_vector(Some(&existing))
+            .map_err(|e| format!("Invalid stored Loro document: {e}"))?
+            == crate::loro_board::state_vector(Some(&merged))
+                .map_err(|e| format!("Invalid merged Loro document: {e}"))?;
+        if unchanged {
+            tx.commit()?;
+            return Ok((false, revision, previous));
+        }
+        let projected = crate::loro_board::project(&merged)
+            .map_err(|e| format!("Invalid Loro projection: {e}"))?;
+        let mut data = previous;
+        data.columns = projected.columns;
+        data.archives = projected.archives;
+        data.templates = projected.templates;
+        write_board_transaction(&tx, board_id, &data)?;
+        tx.execute("INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2) ON CONFLICT(board_id) DO UPDATE SET payload=excluded.payload", params![board_id, merged])?;
+        tx.execute("UPDATE cardbe_boards SET sync_revision=sync_revision+1,sync_status='synced' WHERE id=?1", [board_id])?;
+        tx.commit()?;
+        Ok((true, revision + 1, data))
+    }
+    /// Client-side counterpart: merge an owner-approved diff into the local
+    /// document and atomically refresh only the CRDT-owned projection.
+    pub fn merge_iroh_loro_diff(
+        &mut self,
+        board_id: i64,
+        update: &[u8],
+        name: &str,
+        role: &str,
+        revision: i64,
+        sent: &[u8],
+    ) -> StorageResult<StoredData> {
+        let previous = self.read_board_complete(board_id)?;
+        let current = self
+            .iroh_loro_update(board_id)?
+            .ok_or("Editable board is missing its Loro document")?;
+        let changed_during_sync = current != sent;
+        let merged = crate::loro_board::merge(Some(&current), update)
+            .map_err(|e| format!("Invalid Loro update: {e}"))?;
+        let projected = crate::loro_board::project(&merged)
+            .map_err(|e| format!("Invalid Loro projection: {e}"))?;
+        let mut data = previous;
+        data.columns = projected.columns;
+        data.archives = projected.archives;
+        data.templates = projected.templates;
+        let tx = self.connection.transaction()?;
+        write_board_transaction(&tx, board_id, &data)?;
+        tx.execute("INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2) ON CONFLICT(board_id) DO UPDATE SET payload=excluded.payload", params![board_id, merged])?;
+        tx.execute("UPDATE cardbe_boards SET name=?2,shared_role=?3,sync_revision=?4,sync_status=?5 WHERE id=?1", params![board_id, name, role, revision, if changed_during_sync { "pending" } else { "synced" }])?;
+        tx.commit()?;
+        if self.active_board_id == board_id {
+            self.positions = self.load_board_positions(board_id)?;
+        }
+        Ok(data)
+    }
+
+    pub fn save_iroh_conflict(
+        &mut self,
+        board_id: i64,
+        revision: i64,
+        name: &str,
+        permission: &str,
+        data: &StoredData,
+    ) -> StorageResult<()> {
+        let tx = self.connection.transaction()?;
+        tx.execute("INSERT INTO cardbe_iroh_conflicts(board_id,revision,name,permission,payload) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(board_id) DO UPDATE SET revision=excluded.revision,name=excluded.name,permission=excluded.permission,payload=excluded.payload", params![board_id, revision, name, permission, serde_json::to_string(data)?])?;
+        tx.execute(
+            "UPDATE cardbe_boards SET sync_status='conflict',shared_role=?2 WHERE id=?1",
+            params![board_id, permission],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn iroh_conflict(
+        &self,
+        board_id: i64,
+    ) -> StorageResult<Option<(i64, String, String, StoredData)>> {
+        let raw: Option<(i64, String, String, String)> = self.connection.query_row(
+            "SELECT revision,name,permission,payload FROM cardbe_iroh_conflicts WHERE board_id=?1",
+            [board_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        ).optional()?;
+        raw.map(|(revision, name, permission, payload)| {
+            Ok((revision, name, permission, serde_json::from_str(&payload)?))
+        })
+        .transpose()
+    }
+
+    pub fn keep_iroh_conflict_local(&mut self, board_id: i64, revision: i64) -> StorageResult<()> {
+        let tx = self.connection.transaction()?;
+        tx.execute("UPDATE cardbe_boards SET shared_role='editor',sync_status='pending',sync_revision=?2 WHERE id=?1", params![board_id, revision])?;
+        tx.execute(
+            "DELETE FROM cardbe_iroh_conflicts WHERE board_id=?1",
+            [board_id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn board_sync_state(&self, id: i64) -> StorageResult<(i64, String)> {
+        Ok(self.connection.query_row(
+            "SELECT sync_revision,sync_status FROM cardbe_boards WHERE id=?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?)
+    }
+    pub fn iroh_remote_tickets(&self) -> StorageResult<Vec<String>> {
+        Ok(self
+            .connection
+            .prepare("SELECT ticket FROM cardbe_iroh_remotes")?
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+    pub fn iroh_invites(&self) -> StorageResult<Vec<(String, i64, String, String, bool)>> {
+        Ok(self
+            .connection
+            .prepare(
+                "SELECT invite_id,board_id,secret,permission,enabled FROM cardbe_iroh_invites",
+            )?
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get::<_, i64>(4)? != 0,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+    pub fn iroh_invite_summaries(
+        &self,
+    ) -> StorageResult<Vec<(String, i64, String, bool, String, String)>> {
+        Ok(self.connection.prepare("SELECT invite_id,board_id,permission,enabled,created_at,secret FROM cardbe_iroh_invites ORDER BY created_at DESC")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0, r.get(4)?, r.get(5)?)))?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+    pub fn update_iroh_invite(
+        &mut self,
+        invite_id: &str,
+        permission: Option<&str>,
+        enabled: Option<bool>,
+    ) -> StorageResult<()> {
+        if self.connection.execute(
+            "UPDATE cardbe_iroh_invites SET permission=COALESCE(?2,permission),enabled=COALESCE(?3,enabled) WHERE invite_id=?1",
+            params![invite_id, permission, enabled.map(i64::from)],
+        )? == 0 {
+            return Err("Invitation not found".into());
+        }
+        Ok(())
+    }
+    pub fn delete_iroh_invite(&mut self, invite_id: &str) -> StorageResult<()> {
+        if self.connection.execute(
+            "DELETE FROM cardbe_iroh_invites WHERE invite_id=?1",
+            [invite_id],
+        )? == 0
+        {
+            return Err("Invitation not found".into());
+        }
+        Ok(())
+    }
+    pub fn iroh_endpoint_seed(&mut self) -> StorageResult<String> {
+        if let Some(seed) = self
+            .connection
+            .query_row(
+                "SELECT value FROM cardbe_global_metadata WHERE key='iroh_endpoint_seed'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?
+        {
+            return Ok(seed);
+        }
+        let seed = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(iroh::SecretKey::generate().to_bytes());
+        self.connection.execute(
+            "INSERT INTO cardbe_global_metadata(key,value) VALUES('iroh_endpoint_seed',?1)",
+            [&seed],
+        )?;
+        Ok(seed)
+    }
+    pub fn apply_iroh_snapshot(
+        &mut self,
+        board_id: i64,
+        name: &str,
+        role: &str,
+        revision: i64,
+        data: &StoredData,
+        loro_update: Option<&[u8]>,
+    ) -> StorageResult<()> {
+        if role == "editor" {
+            let update = loro_update
+                .filter(|bytes| !bytes.is_empty())
+                .ok_or("Editable snapshot is missing its Loro document")?;
+            let projected = crate::loro_board::project(update)
+                .map_err(|error| format!("Invalid Loro document: {error}"))?;
+            if projected.columns != data.columns
+                || projected.archives != data.archives
+                || projected.templates != data.templates
+            {
+                return Err("Shared snapshot and Loro document disagree".into());
+            }
+        }
+        let tx = self.connection.transaction()?;
+        if tx
+            .query_row("SELECT 1 FROM cardbe_boards WHERE id=?1", [board_id], |r| {
+                r.get::<_, i64>(0)
+            })
+            .optional()?
+            .is_none()
+        {
+            return Err("Board not found".into());
+        }
+        write_board_transaction(&tx, board_id, data)?;
+        if let Some(update) = loro_update.filter(|bytes| !bytes.is_empty()) {
+            tx.execute("INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2) ON CONFLICT(board_id) DO UPDATE SET payload=excluded.payload", params![board_id, update])?;
+        } else {
+            tx.execute("DELETE FROM cardbe_loro_docs WHERE board_id=?1", [board_id])?;
+        }
+        tx.execute("UPDATE cardbe_boards SET name=?2,shared_role=?3,sync_status='synced',sync_revision=?4 WHERE id=?1", params![board_id, name, role, revision])?;
+        tx.execute(
+            "DELETE FROM cardbe_iroh_conflicts WHERE board_id=?1",
+            [board_id],
+        )?;
+        tx.commit()?;
         if self.active_board_id == board_id {
             self.positions = self.load_board_positions(board_id)?;
         }
         Ok(())
+    }
+
+    pub fn use_iroh_conflict_remote(
+        &mut self,
+        board_id: i64,
+        local_name: &str,
+        local: &StoredData,
+        remote_name: &str,
+        role: &str,
+        revision: i64,
+        remote: &StoredData,
+    ) -> StorageResult<Board> {
+        let tx = self.connection.transaction()?;
+        let copy_name = format!("{local_name} (conflict copy)");
+        tx.execute("INSERT INTO cardbe_boards(name) VALUES(?1)", [&copy_name])?;
+        let copy_id = tx.last_insert_rowid();
+        write_board_transaction(&tx, copy_id, local)?;
+        write_board_transaction(&tx, board_id, remote)?;
+        tx.execute("UPDATE cardbe_boards SET name=?2,shared_role=?3,sync_status='synced',sync_revision=?4 WHERE id=?1", params![board_id, remote_name, role, revision])?;
+        tx.execute(
+            "DELETE FROM cardbe_iroh_conflicts WHERE board_id=?1",
+            [board_id],
+        )?;
+        tx.commit()?;
+        if self.active_board_id == board_id {
+            self.positions = self.load_board_positions(board_id)?;
+        }
+        Ok(Board {
+            id: copy_id,
+            name: copy_name,
+            task_count: local
+                .columns
+                .iter()
+                .map(|column| column.tasks.len() as i64)
+                .sum(),
+            shared_role: "owner".into(),
+            sync_status: "local".into(),
+            sync_revision: 0,
+        })
+    }
+
+    pub fn replace_board_as_local_edit(
+        &mut self,
+        board_id: i64,
+        data: &StoredData,
+    ) -> StorageResult<(i64, String)> {
+        // The Loro delta must compare with the persisted board, not an empty
+        // value: otherwise removals are absent from the CRDT and reappear on
+        // the next editor sync.
+        let before = self.read_board_complete(board_id)?;
+        let tx = self.connection.transaction()?;
+        let role: String = tx.query_row(
+            "SELECT shared_role FROM cardbe_boards WHERE id=?1",
+            [board_id],
+            |r| r.get(0),
+        )?;
+        if role == "viewer" {
+            return Err("This shared board is read-only".into());
+        }
+        write_board_transaction(&tx, board_id, data)?;
+        mark_local_board_change(&tx, board_id, &role)?;
+        persist_loro_local_delta(&tx, board_id, &before, data)?;
+        tx.commit()?;
+        if self.active_board_id == board_id {
+            self.positions = self.load_board_positions(board_id)?;
+        }
+        self.board_sync_state(board_id)
     }
 
     /// Create and populate a board atomically.
@@ -298,6 +717,7 @@ impl Database {
         tx.execute("INSERT INTO cardbe_boards(name) VALUES (?1)", [name])?;
         let id = tx.last_insert_rowid();
         write_board_transaction(&tx, id, data)?;
+        persist_loro_local_delta(&tx, id, &StoredData::default(), data)?;
         tx.commit()?;
         Ok(Board {
             id,
@@ -307,18 +727,80 @@ impl Database {
                 .iter()
                 .map(|column| column.tasks.len() as i64)
                 .sum(),
+            shared_role: "owner".into(),
+            sync_status: "local".into(),
+            sync_revision: 0,
         })
     }
 
     pub fn rename_board(&mut self, id: i64, name: &str) -> StorageResult<()> {
-        if self.connection.execute(
-            "UPDATE cardbe_boards SET name = ?2 WHERE id = ?1",
-            params![id, name],
-        )? == 0
-        {
-            return Err("Board not found".into());
+        let tx = self.connection.transaction()?;
+        let role: String = tx.query_row(
+            "SELECT shared_role FROM cardbe_boards WHERE id=?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        if role != "owner" {
+            return Err("Only the owner can rename a shared board".into());
         }
+        tx.execute(
+            "UPDATE cardbe_boards SET name=?2 WHERE id=?1",
+            params![id, name],
+        )?;
+        mark_local_board_change(&tx, id, &role)?;
+        tx.commit()?;
         Ok(())
+    }
+
+    pub fn create_received_board(
+        &mut self,
+        name: &str,
+        data: &StoredData,
+        role: &str,
+        revision: i64,
+        ticket: &str,
+        loro_update: Option<&[u8]>,
+    ) -> StorageResult<Board> {
+        if role == "editor" {
+            let update = loro_update
+                .filter(|bytes| !bytes.is_empty())
+                .ok_or("Editable invitation is missing its Loro document")?;
+            let projected = crate::loro_board::project(update)
+                .map_err(|error| format!("Invalid Loro document: {error}"))?;
+            if projected.columns != data.columns
+                || projected.archives != data.archives
+                || projected.templates != data.templates
+            {
+                return Err("Shared snapshot and Loro document disagree".into());
+            }
+        }
+        let tx = self.connection.transaction()?;
+        tx.execute("INSERT INTO cardbe_boards(name,shared_role,sync_status,sync_revision) VALUES(?1,?2,'synced',?3)", params![name, role, revision])?;
+        let id = tx.last_insert_rowid();
+        write_board_transaction(&tx, id, data)?;
+        if let Some(update) = loro_update.filter(|update| !update.is_empty()) {
+            tx.execute(
+                "INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2)",
+                params![id, update],
+            )?;
+        }
+        tx.execute(
+            "INSERT INTO cardbe_iroh_remotes(board_id,ticket) VALUES(?1,?2)",
+            params![id, ticket],
+        )?;
+        tx.commit()?;
+        Ok(Board {
+            id,
+            name: name.into(),
+            task_count: data
+                .columns
+                .iter()
+                .map(|column| column.tasks.len() as i64)
+                .sum(),
+            shared_role: role.into(),
+            sync_status: "synced".into(),
+            sync_revision: revision,
+        })
     }
 
     pub fn delete_board(&mut self, id: i64) -> StorageResult<()> {
@@ -418,6 +900,22 @@ impl Database {
         if self.active_board_id == 0 {
             return Err("No active board is selected".into());
         }
+        let board_changed = before.columns != after.columns
+            || before.archives != after.archives
+            || before.templates != after.templates
+            || before.label_recency != after.label_recency
+            || before.next_column_id != after.next_column_id
+            || before.next_task_id != after.next_task_id
+            || before.next_template_id != after.next_template_id
+            || before.schema_version != after.schema_version;
+        let role: String = transaction.query_row(
+            "SELECT shared_role FROM cardbe_boards WHERE id=?1",
+            [self.active_board_id],
+            |r| r.get(0),
+        )?;
+        if board_changed && role == "viewer" {
+            return Err("This shared board is read-only".into());
+        }
         let stats = persist_board_diff_transaction(
             &transaction,
             self.active_board_id,
@@ -432,6 +930,12 @@ impl Database {
              ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             [serde_json::to_string(&after.settings)?],
         )?;
+        if board_changed {
+            mark_local_board_change(&transaction, self.active_board_id, &role)?;
+            if matches!(role.as_str(), "owner" | "editor") {
+                persist_loro_local_delta(&transaction, self.active_board_id, before, after)?;
+            }
+        }
         transaction.commit()?;
         self.positions = positions;
         Ok(stats)
@@ -610,7 +1114,7 @@ impl Database {
         let tx = self.connection.transaction()?;
         tx.execute_batch(
             "CREATE TABLE IF NOT EXISTS cardbe_global_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS cardbe_boards(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS cardbe_boards(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,shared_role TEXT NOT NULL DEFAULT 'owner',sync_status TEXT NOT NULL DEFAULT 'local',sync_revision INTEGER NOT NULL DEFAULT 0);
              CREATE TABLE IF NOT EXISTS cardbe_columns(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,id INTEGER NOT NULL,name TEXT NOT NULL,color TEXT NOT NULL,sort_order TEXT NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(board_id,id));
              CREATE TABLE IF NOT EXISTS cardbe_tasks(board_id INTEGER NOT NULL,id INTEGER NOT NULL,column_id INTEGER NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,id),FOREIGN KEY(board_id,column_id) REFERENCES cardbe_columns(board_id,id) ON DELETE CASCADE);
              CREATE INDEX IF NOT EXISTS cardbe_tasks_by_board_column_position ON cardbe_tasks(board_id,column_id,position);
@@ -618,6 +1122,19 @@ impl Database {
              CREATE TABLE IF NOT EXISTS cardbe_templates(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,id INTEGER NOT NULL,name TEXT NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,id));
              CREATE TABLE IF NOT EXISTS cardbe_board_metadata(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(board_id,key));"
         )?;
+        tx.execute_batch("CREATE TABLE IF NOT EXISTS cardbe_iroh_invites(invite_id TEXT PRIMARY KEY,board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,secret TEXT NOT NULL,permission TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT (datetime('now')));
+            CREATE TABLE IF NOT EXISTS cardbe_iroh_remotes(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,ticket TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS cardbe_iroh_conflicts(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,revision INTEGER NOT NULL,name TEXT NOT NULL,permission TEXT NOT NULL,payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS cardbe_loro_docs(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,payload BLOB NOT NULL);")?;
+        for sql in [
+            "ALTER TABLE cardbe_boards ADD COLUMN shared_role TEXT NOT NULL DEFAULT 'owner'",
+            "ALTER TABLE cardbe_boards ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'local'",
+            "ALTER TABLE cardbe_boards ADD COLUMN sync_revision INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE cardbe_iroh_invites ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE cardbe_iroh_invites ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+        ] {
+            let _ = tx.execute(sql, []);
+        }
         validate_cardbe_schema(&tx)?;
         let migrated: Option<String> = tx
             .query_row(
@@ -1109,8 +1626,66 @@ fn write_board_transaction(
     board_id: i64,
     data: &StoredData,
 ) -> StorageResult<()> {
+    // A snapshot is authoritative. Diffing against an empty value alone cannot
+    // remove rows that are absent from the incoming snapshot.
+    tx.execute("DELETE FROM cardbe_tasks WHERE board_id=?1", [board_id])?;
+    tx.execute("DELETE FROM cardbe_columns WHERE board_id=?1", [board_id])?;
+    tx.execute("DELETE FROM cardbe_archives WHERE board_id=?1", [board_id])?;
+    tx.execute("DELETE FROM cardbe_templates WHERE board_id=?1", [board_id])?;
+    tx.execute(
+        "DELETE FROM cardbe_board_metadata WHERE board_id=?1",
+        [board_id],
+    )?;
     let mut p = DatabasePositions::default();
     persist_board_diff_transaction(tx, board_id, &StoredData::default(), data, &mut p, true)?;
+    Ok(())
+}
+
+fn mark_local_board_change(tx: &Transaction<'_>, board_id: i64, role: &str) -> StorageResult<()> {
+    match role {
+        "owner" => {
+            tx.execute(
+                "UPDATE cardbe_boards SET sync_revision=sync_revision+1 WHERE id=?1",
+                [board_id],
+            )?;
+        }
+        "editor" => {
+            tx.execute(
+                "UPDATE cardbe_boards SET sync_status=CASE WHEN sync_status='conflict' THEN 'conflict' ELSE 'pending' END WHERE id=?1",
+                [board_id],
+            )?;
+        }
+        _ => return Err("This shared board is read-only".into()),
+    }
+    Ok(())
+}
+
+fn persist_loro_local_delta(
+    tx: &Transaction<'_>,
+    board_id: i64,
+    before: &StoredData,
+    after: &StoredData,
+) -> StorageResult<()> {
+    let existing = tx
+        .query_row(
+            "SELECT payload FROM cardbe_loro_docs WHERE board_id=?1",
+            [board_id],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .optional()?;
+    // Legacy boards have no document yet. Seed it from the complete current
+    // projection, then subsequent writes are deltas.
+    let update = if existing.is_some() {
+        crate::loro_board::apply_local_delta(existing.as_deref(), before, after)
+    } else {
+        crate::loro_board::apply_local_delta(None, &StoredData::default(), after)
+    }
+    .map_err(|error| format!("Could not update shared-board CRDT: {error}"))?;
+    tx.execute(
+        "INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2)
+         ON CONFLICT(board_id) DO UPDATE SET payload=excluded.payload",
+        params![board_id, update],
+    )?;
     Ok(())
 }
 
@@ -1702,6 +2277,364 @@ fn quarantine_file(path: &Path, name: &str, error: &dyn std::fmt::Display) -> St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loro_push_is_atomic_idempotent_and_checks_current_permission() {
+        let dir = test_dir("loro-capability");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let mut base = StoredData::default();
+        base.columns.push(Column {
+            id: 1,
+            name: "Todo".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![Task {
+                id: 2,
+                title: "Before".into(),
+                ..Task::default()
+            }],
+        });
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &base)
+            .unwrap();
+        loaded
+            .database
+            .save_iroh_invite("editor", board_id, "secret", "editor")
+            .unwrap();
+        let original = loaded.database.iroh_loro_update(board_id).unwrap().unwrap();
+        let mut edited = base.clone();
+        edited.columns[0].tasks[0].title = "After".into();
+        let update = crate::loro_board::apply_local_delta(Some(&original), &base, &edited).unwrap();
+        let (changed, revision, data) = loaded
+            .database
+            .apply_iroh_loro_update(board_id, "editor", "secret", &update)
+            .unwrap();
+        assert!(changed);
+        assert_eq!(data.columns[0].tasks[0].title, "After");
+        assert_eq!(
+            loaded
+                .database
+                .apply_iroh_loro_update(board_id, "editor", "secret", &update)
+                .unwrap()
+                .0,
+            false
+        );
+        assert!(
+            !loaded
+                .database
+                .apply_iroh_loro_update(board_id, "editor", "secret", &[])
+                .unwrap()
+                .0
+        );
+        assert_eq!(
+            loaded.database.board_sync_state(board_id).unwrap().0,
+            revision
+        );
+        loaded
+            .database
+            .update_iroh_invite("editor", None, Some(false))
+            .unwrap();
+        assert!(loaded
+            .database
+            .apply_iroh_loro_update(board_id, "editor", "secret", &update)
+            .is_err());
+        assert_eq!(
+            loaded.database.board_sync_state(board_id).unwrap().0,
+            revision
+        );
+        loaded
+            .database
+            .update_iroh_invite("editor", None, Some(true))
+            .unwrap();
+        loaded
+            .database
+            .connection
+            .execute("DELETE FROM cardbe_loro_docs WHERE board_id=?1", [board_id])
+            .unwrap();
+        assert!(loaded
+            .database
+            .apply_iroh_loro_update(board_id, "editor", "secret", &[])
+            .is_err());
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(board_id)
+                .unwrap()
+                .columns[0]
+                .tasks[0]
+                .title,
+            "After"
+        );
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn offline_owner_and_editor_edits_converge_after_exchange() {
+        let owner_dir = test_dir("loro-owner");
+        let editor_dir = test_dir("loro-editor");
+        fs::create_dir_all(&owner_dir).unwrap();
+        fs::create_dir_all(&editor_dir).unwrap();
+        let mut owner = load(&owner_dir).unwrap();
+        let mut editor = load(&editor_dir).unwrap();
+        let owner_id = owner.database.active_board_id();
+        let mut base = StoredData::default();
+        base.columns.push(Column {
+            id: 1,
+            name: "Todo".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![
+                Task {
+                    id: 2,
+                    title: "A".into(),
+                    ..Task::default()
+                },
+                Task {
+                    id: 3,
+                    title: "B".into(),
+                    ..Task::default()
+                },
+            ],
+        });
+        owner
+            .database
+            .replace_board_as_local_edit(owner_id, &base)
+            .unwrap();
+        owner
+            .database
+            .save_iroh_invite("invite", owner_id, "secret", "editor")
+            .unwrap();
+        let initial = owner.database.iroh_loro_update(owner_id).unwrap().unwrap();
+        let editor_id = editor
+            .database
+            .create_received_board("Shared", &base, "editor", 1, "ticket", Some(&initial))
+            .unwrap()
+            .id;
+        let mut owner_edit = base.clone();
+        owner_edit.columns[0].tasks[0].title = "Owner changed A".into();
+        owner
+            .database
+            .replace_board_as_local_edit(owner_id, &owner_edit)
+            .unwrap();
+        let mut editor_edit = base.clone();
+        editor_edit.columns[0].tasks[1].title = "Editor changed B".into();
+        editor
+            .database
+            .replace_board_as_local_edit(editor_id, &editor_edit)
+            .unwrap();
+        let sent = editor
+            .database
+            .iroh_loro_update(editor_id)
+            .unwrap()
+            .unwrap();
+        let vector = crate::loro_board::state_vector(Some(&sent)).unwrap();
+        owner
+            .database
+            .apply_iroh_loro_update(owner_id, "invite", "secret", &sent)
+            .unwrap();
+        let owner_doc = owner.database.iroh_loro_update(owner_id).unwrap().unwrap();
+        let diff = crate::loro_board::diff(Some(&owner_doc), &vector).unwrap();
+        let revision = owner.database.board_sync_state(owner_id).unwrap().0;
+        editor
+            .database
+            .merge_iroh_loro_diff(editor_id, &diff, "Shared", "editor", revision, &sent)
+            .unwrap();
+        let owner_data = owner.database.read_board_complete(owner_id).unwrap();
+        let editor_data = editor.database.read_board_complete(editor_id).unwrap();
+        assert_eq!(owner_data.columns, editor_data.columns);
+        assert_eq!(owner_data.columns[0].tasks[0].title, "Owner changed A");
+        assert_eq!(owner_data.columns[0].tasks[1].title, "Editor changed B");
+        assert_eq!(
+            editor.database.board_sync_state(editor_id).unwrap(),
+            (revision, "synced".into())
+        );
+        drop(editor);
+        let reopened = load(&editor_dir).unwrap();
+        assert_eq!(
+            reopened
+                .database
+                .read_board_complete(editor_id)
+                .unwrap()
+                .columns,
+            owner_data.columns
+        );
+        assert!(reopened
+            .database
+            .iroh_loro_update(editor_id)
+            .unwrap()
+            .is_some());
+        drop(reopened);
+        drop(owner);
+        fs::remove_dir_all(editor_dir).unwrap();
+        fs::remove_dir_all(owner_dir).unwrap();
+    }
+
+    #[test]
+    fn shared_snapshot_replaces_deleted_rows_and_preserves_global_settings() {
+        let dir = test_dir("shared-snapshot-replace");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let mut first = StoredData::default();
+        first.columns.push(Column {
+            id: 1,
+            name: "Old".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![Task {
+                id: 1,
+                title: "Remove me".into(),
+                ..Task::default()
+            }],
+        });
+        first.next_column_id = 2;
+        first.next_task_id = 2;
+        loaded
+            .database
+            .apply_iroh_snapshot(board_id, "Shared", "viewer", 1, &first, None)
+            .unwrap();
+        let empty = StoredData::default();
+        loaded
+            .database
+            .apply_iroh_snapshot(board_id, "Shared", "viewer", 2, &empty, None)
+            .unwrap();
+        assert!(loaded
+            .database
+            .read_board_complete(board_id)
+            .unwrap()
+            .columns
+            .is_empty());
+        assert_eq!(loaded.database.boards().unwrap()[0].task_count, 0);
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn local_edit_revision_is_atomic_and_viewer_cannot_write() {
+        let dir = test_dir("shared-local-revision");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let before = loaded.database.read_board_complete(board_id).unwrap();
+        let mut after = before.clone();
+        after.columns.push(Column {
+            id: 1,
+            name: "Added".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![],
+        });
+        after.next_column_id = 2;
+        loaded.database.persist_diff(&before, &after).unwrap();
+        assert_eq!(loaded.database.board_sync_state(board_id).unwrap().0, 1);
+        loaded
+            .database
+            .set_shared_board(board_id, "viewer", "synced", 1)
+            .unwrap();
+        let mut blocked = after.clone();
+        blocked.columns.clear();
+        assert!(loaded.database.persist_diff(&after, &blocked).is_err());
+        assert_eq!(loaded.database.board_sync_state(board_id).unwrap().0, 1);
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(board_id)
+                .unwrap()
+                .columns
+                .len(),
+            1
+        );
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn conflict_keeps_local_board_and_using_remote_creates_a_copy() {
+        let dir = test_dir("shared-conflict-copy");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let mut local = StoredData::default();
+        local.columns.push(Column {
+            id: 1,
+            name: "Local".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![],
+        });
+        let mut remote = StoredData::default();
+        remote.columns.push(Column {
+            id: 2,
+            name: "Owner".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![],
+        });
+        let local_doc =
+            crate::loro_board::apply_local_delta(None, &StoredData::default(), &local).unwrap();
+        loaded
+            .database
+            .apply_iroh_snapshot(board_id, "Shared", "editor", 3, &local, Some(&local_doc))
+            .unwrap();
+        loaded
+            .database
+            .save_iroh_conflict(board_id, 4, "Shared", "editor", &remote)
+            .unwrap();
+        let mut newer_local = local.clone();
+        newer_local.columns[0].name = "Local edited after conflict".into();
+        loaded.database.persist_diff(&local, &newer_local).unwrap();
+        assert_eq!(
+            loaded.database.board_sync_state(board_id).unwrap().1,
+            "conflict"
+        );
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(board_id)
+                .unwrap()
+                .columns[0]
+                .name,
+            "Local edited after conflict"
+        );
+        let saved = loaded.database.iroh_conflict(board_id).unwrap().unwrap();
+        let copy = loaded
+            .database
+            .use_iroh_conflict_remote(
+                board_id,
+                "Shared",
+                &newer_local,
+                &saved.1,
+                &saved.2,
+                saved.0,
+                &saved.3,
+            )
+            .unwrap();
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(copy.id)
+                .unwrap()
+                .columns[0]
+                .name,
+            "Local edited after conflict"
+        );
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(board_id)
+                .unwrap()
+                .columns[0]
+                .name,
+            "Owner"
+        );
+        assert!(loaded.database.iroh_conflict(board_id).unwrap().is_none());
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     fn test_dir(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

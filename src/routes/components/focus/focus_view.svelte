@@ -36,6 +36,7 @@
     onAddTask?: (date: Date) => void;
     onArchiveTask?: (task: Task) => void;
     onDeleteTask?: (task: Task) => void;
+    read_only?: boolean;
   }
 
   let {
@@ -49,6 +50,7 @@
     onAddTask = () => {},
     onArchiveTask = () => {},
     onDeleteTask = () => {},
+    read_only = false,
   }: FocusViewProps = $props();
 
   let now = $state(new Date());
@@ -324,7 +326,7 @@
       </Empty.Header>
       {#if !search_text}
         <Empty.Content>
-          <Button onclick={() => onAddTask(new Date(now))}>Add today's first task</Button>
+          {#if !read_only}<Button onclick={() => onAddTask(new Date(now))}>Add today's first task</Button>{/if}
         </Empty.Content>
       {/if}
     </Empty.Root>

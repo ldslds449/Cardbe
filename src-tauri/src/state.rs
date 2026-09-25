@@ -29,8 +29,8 @@ impl AppData {
         database: Database,
         recovery_messages: Vec<String>,
         archives_loaded: bool,
-    ) -> Self {
-        let boards = database.boards().unwrap_or_default();
+    ) -> Result<Self, String> {
+        let boards = database.boards().map_err(|error| error.to_string())?;
         let active_board_id = database.active_board_id();
         let mut data = Self {
             stored,
@@ -44,7 +44,7 @@ impl AppData {
             archives_loaded,
         };
         data.refresh_labels();
-        data
+        Ok(data)
     }
 
     pub fn refresh_labels(&mut self) {
@@ -103,6 +103,7 @@ pub fn update_stored_for_board<R>(
             guard.active_board_id
         ));
     }
+    ensure_board_can_edit(&guard)?;
     update_locked(&mut guard, change)
 }
 
@@ -117,6 +118,7 @@ pub fn update_stored_with_archives_for_board<R>(
     if guard.active_board_id != expected_board_id {
         return Err("Stale board request".into());
     }
+    ensure_board_can_edit(&guard)?;
     ensure_archives_loaded_locked(&mut guard)?;
     update_locked(&mut guard, change)
 }
@@ -161,6 +163,7 @@ pub fn update_stored_with_pre_import_snapshot_for_board<R>(
     if guard.active_board_id != expected_board_id {
         return Err("Stale board request".into());
     }
+    ensure_board_can_edit(&guard)?;
     ensure_archives_loaded_locked(&mut guard)?;
     let snapshot_path = write_pre_import_snapshot(&guard)?;
     let result = update_locked(&mut guard, change)?;
@@ -195,6 +198,7 @@ fn update_locked<R>(
     }
 
     let previous = std::mem::replace(&mut guard.stored, candidate);
+    refresh_active_board_summary(guard)?;
     guard.undo_history.push(previous);
     // Keep memory usage bounded while still allowing a useful sequence of
     // edits to be recovered.
@@ -203,6 +207,43 @@ fn update_locked<R>(
     }
     guard.refresh_labels();
     Ok(result)
+}
+
+fn refresh_active_board_summary(guard: &mut AppData) -> Result<(), String> {
+    let (revision, status) = guard
+        .database
+        .board_sync_state(guard.active_board_id)
+        .map_err(|e| e.to_string())?;
+    if let Some(board) = guard
+        .boards
+        .iter_mut()
+        .find(|board| board.id == guard.active_board_id)
+    {
+        board.sync_revision = revision;
+        board.sync_status = status;
+        board.task_count = guard
+            .stored
+            .columns
+            .iter()
+            .map(|column| column.tasks.len() as i64)
+            .sum();
+    }
+    Ok(())
+}
+
+// Backend enforcement matters: a client must not bypass the disabled UI by
+// directly invoking a mutation command for a received read-only board.
+fn ensure_board_can_edit(guard: &AppData) -> Result<(), String> {
+    if guard
+        .database
+        .board_role(guard.active_board_id)
+        .map_err(|e| e.to_string())?
+        == "viewer"
+    {
+        Err("This shared board is read-only".into())
+    } else {
+        Ok(())
+    }
 }
 
 fn ensure_archives_loaded_locked(guard: &mut AppData) -> Result<(), String> {
@@ -231,6 +272,7 @@ pub fn undo_last_change_for_board(
     if guard.active_board_id != expected_board_id {
         return Err("Stale board request".into());
     }
+    ensure_board_can_edit(&guard)?;
     let previous = guard
         .undo_history
         .last()
@@ -252,6 +294,7 @@ pub fn undo_last_change_for_board(
     }
     guard.undo_history.pop();
     guard.stored = previous;
+    refresh_active_board_summary(&mut guard)?;
     guard.refresh_labels();
     Ok(!guard.undo_history.is_empty())
 }
@@ -268,7 +311,7 @@ mod tests {
     fn app_data(dir: &std::path::Path, stored: StoredData) -> AppData {
         let mut database = Database::open(dir.join("data.sqlite3")).unwrap();
         database.initialize_boards(&stored).unwrap();
-        AppData::new(stored, database, Vec::new(), true)
+        AppData::new(stored, database, Vec::new(), true).unwrap()
     }
 
     #[test]
@@ -400,7 +443,7 @@ mod tests {
 
         let mut unloaded = persisted;
         unloaded.archives.clear();
-        let mut app = AppData::new(unloaded, database, Vec::new(), false);
+        let mut app = AppData::new(unloaded, database, Vec::new(), false).unwrap();
         update_locked(&mut app, |data| {
             data.columns.push(Column {
                 id: 0,

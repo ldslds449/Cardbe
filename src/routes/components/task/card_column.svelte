@@ -31,6 +31,7 @@
         onImportTask: () => void;
         onArchiveAllTasks: () => void;
         onUpdateSort: (sort: ColumnSort) => void;
+        read_only?: boolean;
     }
 
     let {
@@ -44,6 +45,7 @@
         onImportTask = () => {},
         onArchiveAllTasks = () => {},
         onUpdateSort = () => {},
+        read_only = false,
     }: CardColumnProps = $props();
 
     const { ref, isDragging } = useSortable({
@@ -52,6 +54,7 @@
         type: "column",
         accept: ["column"],
         collisionPriority: CollisionPriority.Low,
+        disabled: () => read_only,
     });
 
     const droppable = useDroppable({
@@ -63,6 +66,7 @@
     let delete_confirm_open = $state(false);
 
     function handle_column_double_click(event: MouseEvent) {
+        if (read_only) return;
         if (event.button !== 0) return;
 
         const target = event.target;
@@ -93,6 +97,7 @@
                             <EditableLabel
                                 value={column.name}
                                 placeholder="Name"
+                                disabled={read_only}
                                 onupdate={(new_value: string) => {
                                     onUpdateColumnName?.(new_value);
                                 }}
@@ -115,7 +120,7 @@
                                 Due {column.sort_order === "due_date_asc" ? "↑" : "↓"}
                             </button>
                         {/if}
-                        <Button
+                        {#if !read_only}<Button
                             variant="ghost"
                             size="icon-sm"
                             class="mx-0 size-8"
@@ -124,7 +129,7 @@
                             title={`Add task to ${column.name}`}
                         >
                             <CirclePlus />
-                        </Button>
+                        </Button>{/if}
                     </Card.Title>
                 </Card.Header>
                 <Card.Content
@@ -138,7 +143,7 @@
                 </Card.Content>
             </Card.Root>
         </ContextMenu.Trigger>
-        <ContextMenu.Content>
+        {#if !read_only}<ContextMenu.Content>
             <ContextMenu.Item onclick={onAddTask}>
                 <CirclePlus />
                 Add Task
@@ -182,7 +187,7 @@
                 <TrashIcon />
                 Delete Column</ContextMenu.Item
             >
-        </ContextMenu.Content>
+        </ContextMenu.Content>{/if}
     </ContextMenu.Root>
 
     <AlertDialog.Root bind:open={delete_confirm_open}>

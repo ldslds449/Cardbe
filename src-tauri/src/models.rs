@@ -7,6 +7,19 @@ pub struct Board {
     pub id: i64,
     pub name: String,
     pub task_count: i64,
+    #[serde(default = "default_board_role")]
+    pub shared_role: String,
+    #[serde(default = "default_sync_status")]
+    pub sync_status: String,
+    #[serde(default)]
+    pub sync_revision: i64,
+}
+
+fn default_board_role() -> String {
+    "owner".into()
+}
+fn default_sync_status() -> String {
+    "local".into()
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
@@ -21,6 +34,17 @@ pub struct Note {
 
 fn default_id() -> i64 {
     -1
+}
+
+// Numeric IDs cross the Svelte boundary, so stay within JavaScript's exact integer range.
+fn fresh_id(exists: impl Fn(i64) -> bool) -> i64 {
+    loop {
+        let bytes = iroh::SecretKey::generate().to_bytes();
+        let id = (u64::from_le_bytes(bytes[..8].try_into().unwrap()) & ((1_u64 << 53) - 1)) as i64;
+        if id != 0 && !exists(id) {
+            return id;
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
@@ -361,21 +385,19 @@ impl StoredData {
     }
 
     pub fn allocate_task_id(&mut self) -> Result<i64, String> {
-        let id = self.next_task_id;
-        self.next_task_id = self
-            .next_task_id
-            .checked_add(1)
-            .ok_or_else(|| "Task ID range exhausted".to_string())?;
-        Ok(id)
+        Ok(fresh_id(|id| {
+            self.columns
+                .iter()
+                .flat_map(|column| &column.tasks)
+                .any(|task| task.id == id)
+                || self.archives.iter().any(|archive| archive.task.id == id)
+        }))
     }
 
     pub fn allocate_column_id(&mut self) -> Result<i64, String> {
-        let id = self.next_column_id;
-        self.next_column_id = self
-            .next_column_id
-            .checked_add(1)
-            .ok_or_else(|| "Column ID range exhausted".to_string())?;
-        Ok(id)
+        Ok(fresh_id(|id| {
+            self.columns.iter().any(|column| column.id == id)
+        }))
     }
 
     pub fn repair_template_ids(&mut self) -> bool {
@@ -415,18 +437,24 @@ impl StoredData {
     }
 
     pub fn allocate_template_id(&mut self) -> Result<i64, String> {
-        let id = self.next_template_id;
-        self.next_template_id = self
-            .next_template_id
-            .checked_add(1)
-            .ok_or_else(|| "Template ID range exhausted".to_string())?;
-        Ok(id)
+        Ok(fresh_id(|id| {
+            self.templates.iter().any(|template| template.id == id)
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_ids_do_not_reuse_a_local_id_or_exceed_js_safe_integer() {
+        let first = fresh_id(|_| false);
+        let second = fresh_id(|id| id == first);
+        assert_ne!(first, second);
+        assert!((1..=9_007_199_254_740_991).contains(&first));
+        assert!((1..=9_007_199_254_740_991).contains(&second));
+    }
 
     #[test]
     fn old_settings_keep_global_shortcuts_enabled() {

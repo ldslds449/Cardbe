@@ -132,7 +132,7 @@ pub fn delete_column(
 }
 
 #[tauri::command]
-pub async fn move_column(
+pub fn move_column(
     state: State<'_, SharedAppData>,
     column_id: i64,
     before_column_id: Option<i64>,
@@ -154,7 +154,7 @@ pub async fn move_column(
 }
 
 #[tauri::command]
-pub async fn move_task(
+pub fn move_task(
     state: State<'_, SharedAppData>,
     task_id: i64,
     to_column_id: i64,
@@ -242,9 +242,9 @@ pub fn add_task_to_board(
         data.touch_label(label.clone());
     }
     data.columns[column].tasks.push(task);
-    guard
+    let (revision, status) = guard
         .database
-        .replace_board(board_id, &data)
+        .replace_board_as_local_edit(board_id, &data)
         .map_err(|e| e.to_string())?;
     if board_id == guard.active_board_id {
         // Preserve the lazily-loaded archive contract for the active in-memory
@@ -257,6 +257,8 @@ pub fn add_task_to_board(
     }
     if let Some(board) = guard.boards.iter_mut().find(|board| board.id == board_id) {
         board.task_count += 1;
+        board.sync_revision = revision;
+        board.sync_status = status;
     }
     Ok(id)
 }

@@ -326,12 +326,27 @@ impl LanShareState {
 pub fn publish_lan_share(
     app: AppHandle,
     state: State<'_, LanShareState>,
+    board_state: State<'_, crate::state::SharedAppData>,
+    board_id: Option<i64>,
     snapshot: Value,
     expires_at: Option<String>,
     share_id: String,
     allow_reactivate: bool,
     preferred_port: Option<u16>,
 ) -> Result<LanShareResponse, String> {
+    let board_id = board_id.ok_or("Choose a board you own before publishing")?;
+    let guard = board_state
+        .lock()
+        .map_err(|_| "Application state lock is poisoned")?;
+    if guard
+        .database
+        .board_role(board_id)
+        .map_err(|e| e.to_string())?
+        != "owner"
+    {
+        return Err("Only boards you own can be published".into());
+    }
+    drop(guard);
     if !valid_share_id(&share_id) {
         return Err("Invalid share ID".into());
     }

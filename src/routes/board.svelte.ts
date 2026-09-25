@@ -31,6 +31,8 @@ import { addMission } from "./utils/mission.svelte";
 // short sequence of moves before persisting it to disk.
 const DRAG_PERSIST_DEBOUNCE_MS = 300;
 const COLUMN_FETCH_TIMEOUT_MS = 15_000;
+const IROH_BACKGROUND_SYNC_MS = 30_000;
+const IROH_VIEWER_SYNC_MS = 180_000;
 
 function with_timeout<T>(request: Promise<T>, timeout_ms: number, message: string): Promise<T> {
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -53,7 +55,8 @@ interface CapturedTaskId {
     id: Promise<number>;
 }
 
-export interface BoardSummary { id: number; name: string; task_count: number; }
+export type BoardRole = "owner" | "editor" | "viewer";
+export interface BoardSummary { id: number; name: string; task_count: number; shared_role: BoardRole; sync_status: string; sync_revision: number; }
 interface BoardsState { boards: BoardSummary[]; active_board_id: number; }
 
 // ============ Board Store (class-based for Svelte 5 rune compatibility) ============
@@ -84,6 +87,126 @@ export class BoardStore {
     // has completed, so keep a session-scoped alias to its persisted ID.
     private resolved_task_ids = new Map<string, string>();
     private archives_request: Promise<void> | undefined;
+    private iroh_sync_timer: number | undefined;
+    private iroh_syncing = new Set<number>();
+    private iroh_failures = new Map<number, number>();
+    private iroh_retry_after = new Map<number, number>();
+    private iroh_host_checking = false;
+    iroh_last_error = $state("");
+    iroh_last_synced_at = $state<Record<number, number>>({});
+
+    async create_iroh_invite(board_id: number, permission: "viewer" | "editor"): Promise<string> {
+        return invoke<string>("create_iroh_invite", { boardId: board_id, permission });
+    }
+
+    async join_iroh_invite(ticket: string): Promise<boolean> {
+        this.iroh_last_error = "";
+        try {
+            const joined = await invoke<BoardSummary>("join_iroh_invite", { ticket });
+            this.boards = [...this.boards, joined];
+            this.iroh_last_synced_at = { ...this.iroh_last_synced_at, [joined.id]: Date.now() };
+            await this.switch_board(joined.id);
+            return true;
+        } catch (error) {
+            this.iroh_last_error = error instanceof Error
+                ? error.message
+                : typeof error === "string" ? error : "Couldn't join shared board";
+            toast.error(this.iroh_last_error);
+            return false;
+        }
+    }
+
+    async sync_iroh_board(board_id = this.active_board_id, silent = false): Promise<boolean> {
+        if (board_id === null) return false;
+        if (this.iroh_syncing.has(board_id)) return false;
+        this.iroh_syncing.add(board_id);
+        this.update_iroh_summary(board_id, "syncing");
+        try {
+            const synced = await invoke<BoardSummary>("sync_iroh_board", { boardId: board_id });
+            this.iroh_failures.delete(board_id);
+            this.iroh_retry_after.delete(board_id);
+            this.boards = this.boards.map((board) => board.id === synced.id ? synced : board);
+            this.iroh_last_synced_at = { ...this.iroh_last_synced_at, [synced.id]: Date.now() };
+            if (board_id === this.active_board_id) { this.can_undo = false; this.reload_active_board_data(); }
+            if (!silent) toast.success("Shared board synced");
+            return true;
+        } catch (error) {
+            const failures = Math.min(5, (this.iroh_failures.get(board_id) ?? 0) + 1);
+            this.iroh_failures.set(board_id, failures);
+            this.iroh_retry_after.set(board_id, Date.now() + Math.min(300_000, IROH_BACKGROUND_SYNC_MS * 2 ** failures));
+            await this.get_boards();
+            if (this.boards.find((board) => board.id === board_id)?.sync_status !== "conflict") {
+                this.update_iroh_summary(board_id, "error");
+            }
+            if (!silent) toast.error(error instanceof Error ? error.message : typeof error === "string" ? error : "Couldn't sync shared board");
+            return false;
+        } finally {
+            this.iroh_syncing.delete(board_id);
+        }
+    }
+
+    async resolve_iroh_conflict(board_id: number, keep_local: boolean): Promise<boolean> {
+        try {
+            await invoke("resolve_iroh_conflict", { boardId: board_id, keepLocal: keep_local });
+            await this.get_boards();
+            this.iroh_failures.delete(board_id);
+            this.iroh_retry_after.delete(board_id);
+            if (board_id === this.active_board_id && !keep_local) { this.can_undo = false; this.reload_active_board_data(); }
+            toast.success(keep_local ? "Local version ready to sync" : "Owner version restored; local copy saved");
+            if (keep_local) this.trigger_iroh_background_sync();
+            return true;
+        } catch (error) {
+            toast.error(typeof error === "string" ? error : "Couldn't resolve sync conflict");
+            return false;
+        }
+    }
+
+    /** Called when an owner has accepted an editor's push from another peer. */
+    async handle_iroh_remote_push(board_id: number, _revision: number) {
+        await this.get_boards();
+        if (this.active_board_id === board_id) {
+            this.can_undo = false;
+            this.reload_active_board_data();
+        }
+    }
+
+    trigger_iroh_background_sync() {
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+        if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+        if (!this.iroh_host_checking) {
+            this.iroh_host_checking = true;
+            void invoke("ensure_iroh_host").catch(() => undefined).finally(() => { this.iroh_host_checking = false; });
+        }
+        for (const item of this.boards) {
+            if (item.shared_role !== "owner" && item.sync_status !== "conflict" && !this.iroh_syncing.has(item.id)
+                && (item.shared_role !== "viewer" || Date.now() - (this.iroh_last_synced_at[item.id] ?? 0) >= IROH_VIEWER_SYNC_MS)
+                && this.iroh_syncing.size < 2 && Date.now() >= (this.iroh_retry_after.get(item.id) ?? 0)) {
+                void this.sync_iroh_board(item.id, true);
+            }
+        }
+    }
+
+    private update_iroh_summary(board_id: number, sync_status: string) {
+        this.boards = this.boards.map((item) => item.id === board_id ? { ...item, sync_status } : item);
+    }
+
+    private reload_active_board_data() {
+        this.get_columns();
+        this.update_labels();
+        this.get_task_templates();
+        this.get_expired_tasks();
+        if (this.archives_loaded) void this.get_archives();
+    }
+
+    private start_iroh_background_sync() {
+        if (this.iroh_sync_timer || typeof window === "undefined") return;
+        this.iroh_sync_timer = window.setInterval(() => this.trigger_iroh_background_sync(), IROH_BACKGROUND_SYNC_MS);
+        window.addEventListener("online", () => this.trigger_iroh_background_sync());
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") this.trigger_iroh_background_sync();
+        });
+        this.trigger_iroh_background_sync();
+    }
 
     // ============ Data Fetching ============
 
@@ -275,6 +398,7 @@ export class BoardStore {
         // Load settings
         await this.load_settings();
         await this.show_recovery_messages();
+        this.start_iroh_background_sync();
 
         // Check notification permission and start expired task checker (only if enabled)
         if (this.notify_enabled) {

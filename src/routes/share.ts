@@ -227,6 +227,7 @@ export async function publish_share(
     selected_labels: string[] = [],
     requested_link: string | null = null,
     reactivate = false,
+    board_id?: number,
 ): Promise<ManagedShare> {
     const requested = !existing && requested_link?.trim()
         ? parse_requested_share_link(requested_link)
@@ -237,6 +238,7 @@ export async function publish_share(
         updated_at: string;
         expires_at: string | null;
     }>("publish_lan_share", {
+        boardId: board_id ?? existing?.board_id ?? null,
         snapshot,
         expiresAt: expires_at?.toISOString() ?? null,
         shareId: existing?.id ?? requested?.id ?? create_share_id(),
@@ -254,7 +256,7 @@ export async function publish_share(
         selected_task_ids,
         selected_labels,
         enabled: true,
-        board_id: existing?.board_id,
+        board_id: board_id ?? existing?.board_id,
     };
 }
 

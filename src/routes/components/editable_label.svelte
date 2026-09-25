@@ -7,6 +7,7 @@
     onupdate = null,
     placeholder = "",
     class: className = "",
+    disabled = false,
   } = $props();
 
   let editable = $state(false);
@@ -61,6 +62,7 @@
     role="form"
     class={cn("flex items-center h-full w-full select-none", className)}
     ondblclick={() => {
+      if (disabled) return;
       old_value = value;
       editable = true;
     }}

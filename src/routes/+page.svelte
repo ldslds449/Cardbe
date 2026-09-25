@@ -11,8 +11,6 @@
   import * as Empty from "$lib/components/ui/empty/index.js";
 
   import BugIcon from "@lucide/svelte/icons/bug";
-  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import WifiIcon from "@lucide/svelte/icons/wifi";
 
   import {
     create_task,
@@ -33,6 +31,7 @@
   import TaskTemplateDialogs from "./components/dialog/task_template_dialogs.svelte";
   import ViewTaskDialog from "./components/dialog/view_task_dialog.svelte";
   import BoardShareDialog from "./components/dialog/board_share_dialog.svelte";
+  import IrohShareDialog from "./components/dialog/iroh_share_dialog.svelte";
   import CalendarView from "./components/calendar/calendar_view.svelte";
   import type { CalendarViewMode } from "./components/calendar/calendar";
   import FocusView from "./components/focus/focus_view.svelte";
@@ -80,8 +79,9 @@
   let app_name_promise: Promise<string> | undefined;
   let update_check_in_progress = $state(false);
   let startup_screen_dismissed = false;
-  let board_panel_open = $state(typeof localStorage !== "undefined" ? localStorage.getItem("cardbe-board-panel-open") === "true" : false);
-  $effect(() => { if (typeof localStorage !== "undefined") localStorage.setItem("cardbe-board-panel-open", String(board_panel_open)); });
+  let board_panel_open = $state(false);
+  const active_board_summary = $derived(board.boards.find((item) => item.id === board.active_board_id));
+  const active_board_read_only = $derived(active_board_summary?.shared_role === "viewer");
 
 
   $effect(() => {
@@ -198,6 +198,7 @@
 
   // read-only board sharing
   let board_share_dialog_open = $state(false);
+  let iroh_share_dialog_open = $state(false);
   const share_time_formatter = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -575,9 +576,19 @@
           .catch((error) => console.error("Couldn't sync Quick Add board shares", error));
       },
     );
+    const iroh_remote_push_listener = listen<{ board_id: number; revision: number }>(
+      "cardbe:iroh-remote-push",
+      (event) => {
+        const { board_id, revision } = event.payload;
+        if (Number.isInteger(board_id) && Number.isInteger(revision)) {
+          board.handle_iroh_remote_push(board_id, revision);
+        }
+      },
+    );
     return () => {
       window.clearTimeout(update_check_timeout);
       void data_changed_listener.then((unlisten) => unlisten());
+      void iroh_remote_push_listener.then((unlisten) => unlisten());
       document.removeEventListener("keydown", handle_shortcut);
       window.removeEventListener("cardbe:open-card", handle_open_card);
       window.removeEventListener("cardbe:show-card-preview", handle_show_card_preview);
@@ -652,6 +663,7 @@
   // ============ Dialog Handlers ============
 
   function open_add_column_dialog() {
+    if (active_board_read_only) return;
     column_dialog_open = true;
     column_dialog_title_error = false;
     dialog_column_name = "";
@@ -665,6 +677,7 @@
   }
 
   function edit_task_routine(col_idx: number, t_idx: number) {
+    if (active_board_read_only) return;
     editing_template_id = null;
     creating_task = false;
     dialog_template_id = "none";
@@ -677,6 +690,7 @@
   }
 
   function add_task_routine(col_idx: number, due_time?: Date) {
+    if (active_board_read_only) return;
     editing_template_id = null;
     creating_task = true;
     dialog_template_id = "none";
@@ -690,6 +704,7 @@
   }
 
   function open_add_task_shortcut() {
+    if (active_board_read_only) return;
     pending_import_task = null;
     pending_task_due_time = undefined;
     if (board.columns.length === 0) {
@@ -702,6 +717,7 @@
   }
 
   function open_add_task_for_date(date: Date) {
+    if (active_board_read_only) return;
     pending_import_task = null;
     if (board.columns.length === 0) {
       open_add_column_dialog();
@@ -1050,13 +1066,20 @@
       bind:task_expand_mode
       {selected_view}
       {update_check_in_progress}
+      read_only={active_board_read_only}
+      web_publish_count={share_sync_summary.active_count}
+      web_publish_status={share_sync_summary.failed ? "error" : share_sync_summary.updating ? "updating" : "idle"}
+      web_publish_detail={share_sync_summary.failed
+        ? `Web publish failed: ${share_sync_summary.failed.error}`
+        : share_sync_summary.updating
+          ? "Updating published views"
+          : `${share_sync_summary.active_count} ${share_sync_summary.active_count === 1 ? "web view" : "web views"} published · Last published ${share_time_formatter.format(new Date(share_sync_summary.latest_update))}`}
       onPrepareImport={prepare_import}
       onExportAllBoards={() => { void board.export_all_boards_to_file(); }}
       onImportAllBoards={() => { void restore_everything(); }}
       onPrepareTaskImport={prepare_task_import}
-      onOpenBoardShare={() => {
-        board_share_dialog_open = true;
-      }}
+      onOpenBoardShare={() => { board_share_dialog_open = true; }}
+      onOpenIrohShare={() => { iroh_share_dialog_open = true; }}
       onOpenTaskTemplates={open_templates_dialog}
       onAddTask={open_add_task_shortcut}
       onAddColumn={open_add_column_dialog}
@@ -1066,41 +1089,12 @@
     <WorkspaceTabs
       {selected_view}
       active_board_name={board.boards.find((item) => item.id === board.active_board_id)?.name ?? "Board"}
+      shared_role={active_board_summary?.shared_role}
+      sync_status={active_board_summary?.sync_status}
+      last_synced_at={active_board_summary ? board.iroh_last_synced_at[active_board_summary.id] : undefined}
+      onSync={active_board_summary && active_board_summary.shared_role !== "owner" ? () => void board.sync_iroh_board(active_board_summary.id) : undefined}
       onSwitchView={switch_view}
     />
-
-    {#if share_sync_summary.active_count > 0}
-      <button
-        type="button"
-        class={`flex h-8 shrink-0 items-center justify-between gap-3 border-b px-5 text-left text-xs transition-colors ${
-          share_sync_summary.failed
-            ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-            : "bg-muted/40 text-muted-foreground hover:bg-muted/70"
-        }`}
-        onclick={() => {
-          board_share_dialog_open = true;
-        }}
-        aria-label="Open active board share"
-      >
-        <span class="flex min-w-0 items-center gap-2 font-medium">
-          {#if share_sync_summary.failed}
-            <WifiIcon class="size-3.5 shrink-0" />
-            Share sync needs attention
-          {:else if share_sync_summary.updating}
-            <RefreshCwIcon class="size-3.5 shrink-0 animate-spin" />
-            Updating shared boards…
-          {:else}
-            <WifiIcon class="size-3.5 shrink-0" />
-            Sharing {share_sync_summary.active_count} {share_sync_summary.active_count === 1 ? "board" : "boards"} on LAN
-          {/if}
-        </span>
-        <span class="truncate opacity-80">
-          {share_sync_summary.failed
-            ? `Sync failed: ${share_sync_summary.failed.error}`
-            : `Last synced ${share_time_formatter.format(new Date(share_sync_summary.latest_update))}`}
-        </span>
-      </button>
-    {/if}
 
     <ArchivePanel
       bind:open={archive_open}
@@ -1148,6 +1142,7 @@
         );
       }}
     />
+    <IrohShareDialog bind:open={iroh_share_dialog_open} {board} />
 
     <TaskColumnDialog
       bind:open={task_column_dialog_open}
@@ -1217,7 +1212,7 @@
     <ViewTaskDialog
       bind:open={view_task_dialog_open}
       task={view_task}
-      onEdit={view_task_edit_callback}
+      onEdit={active_board_read_only ? undefined : view_task_edit_callback}
     />
 
     <ViewTaskDialog
@@ -1234,7 +1229,7 @@
     />
 
     <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="both">
-      <div class="min-h-full p-5">
+      <div class={active_view === "board" ? "min-h-full px-5 pb-5 pt-7" : "min-h-full p-5"}>
         {#if active_view === "focus"}
           <FocusView
             columns={board.columns}
@@ -1247,6 +1242,7 @@
             onAddTask={open_add_task_for_date}
             onArchiveTask={(task) => board.archive_task(task.id)}
             onDeleteTask={(task) => board.delete_task(task.id)}
+            read_only={active_board_read_only}
           />
         {:else if active_view === "calendar"}
           <CalendarView
@@ -1269,6 +1265,7 @@
               board.unarchive_task(column_id, task_id)}
             onDeleteTask={(task) => board.delete_task(task.id)}
             onRescheduleTask={reschedule_task}
+            read_only={active_board_read_only}
           />
         {:else}
           <BoardView
@@ -1282,6 +1279,7 @@
             onEditTask={edit_task_routine}
             onSaveAsTemplate={open_save_template_dialog}
             onExportTask={share_task}
+            read_only={active_board_read_only}
           />
         {/if}
       </div>

@@ -36,7 +36,7 @@ function deferred<T>() {
 
 function create_store(column_count = 1) {
     const store = new BoardStore();
-    store.boards = [{ id: 7, name: "Test board", task_count: 0 }];
+    store.boards = [{ id: 7, name: "Test board", task_count: 0, shared_role: "owner", sync_status: "synced", sync_revision: 0 }];
     store.active_board_id = 7;
     store.columns = Array.from({ length: column_count }, (_, index) => ({
         id: `column_${index + 1}`,
@@ -290,8 +290,8 @@ describe("pending task operations", () => {
         });
         const store = create_store();
         store.boards = [
-            { id: 7, name: "First", task_count: 0 },
-            { id: 9, name: "Second", task_count: 0 },
+            { id: 7, name: "First", task_count: 0, shared_role: "owner", sync_status: "synced", sync_revision: 0 },
+            { id: 9, name: "Second", task_count: 0, shared_role: "owner", sync_status: "synced", sync_revision: 0 },
         ];
 
         const creation = store.add_new_task("column_1", create_task("", "New task"));
@@ -317,8 +317,8 @@ describe("pending task operations", () => {
             });
             const store = create_store(2);
             store.boards = [
-                { id: 7, name: "First", task_count: 0 },
-                { id: 9, name: "Second", task_count: 0 },
+                { id: 7, name: "First", task_count: 0, shared_role: "owner", sync_status: "synced", sync_revision: 0 },
+                { id: 9, name: "Second", task_count: 0, shared_role: "owner", sync_status: "synced", sync_revision: 0 },
             ];
             const creation = store.add_new_task("column_1", create_task("", "Task"));
 

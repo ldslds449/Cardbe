@@ -13,6 +13,7 @@
   import MoonIcon from "@lucide/svelte/icons/moon";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
+  import RadioTowerIcon from "@lucide/svelte/icons/radio-tower";
   import SearchIcon from "@lucide/svelte/icons/search";
   import SunIcon from "@lucide/svelte/icons/sun";
   import XIcon from "@lucide/svelte/icons/x";
@@ -36,11 +37,16 @@
     task_expand_mode = $bindable(),
     selected_view,
     update_check_in_progress,
+    read_only = false,
+    web_publish_count = 0,
+    web_publish_status = "idle",
+    web_publish_detail = "",
     onPrepareImport,
     onExportAllBoards,
     onImportAllBoards,
     onPrepareTaskImport,
     onOpenBoardShare,
+    onOpenIrohShare,
     onOpenTaskTemplates,
     onAddTask,
     onAddColumn,
@@ -55,11 +61,16 @@
     task_expand_mode: boolean;
     selected_view: WorkspaceView;
     update_check_in_progress: boolean;
+    read_only?: boolean;
+    web_publish_count?: number;
+    web_publish_status?: "idle" | "updating" | "error";
+    web_publish_detail?: string;
     onPrepareImport: () => void | Promise<void>;
     onExportAllBoards: () => void | Promise<void>;
     onImportAllBoards: () => void | Promise<void>;
     onPrepareTaskImport: () => void | Promise<void>;
     onOpenBoardShare: () => void;
+    onOpenIrohShare: () => void;
     onOpenTaskTemplates: () => void;
     onAddTask: () => void;
     onAddColumn: () => void;
@@ -120,7 +131,7 @@
         <Menubar.Menu>
           <Menubar.Trigger>Board</Menubar.Trigger>
           <Menubar.Content>
-            <Menubar.Item onclick={onAddTask}>
+            {#if !read_only}<Menubar.Item onclick={onAddTask}>
               New Card
               <Menubar.Shortcut>
                 <Kbd.Group>
@@ -140,8 +151,9 @@
                 </Kbd.Group>
               </Menubar.Shortcut>
             </Menubar.Item>
-            <Menubar.Separator />
-            <Menubar.Item onclick={onOpenBoardShare}>Share Board...</Menubar.Item>
+            <Menubar.Separator />{/if}
+            <Menubar.Item onclick={onOpenIrohShare}>Board sharing...</Menubar.Item>
+            <Menubar.Item onclick={onOpenBoardShare}>Web publish...</Menubar.Item>
           </Menubar.Content>
         </Menubar.Menu>
         <Menubar.Menu>
@@ -157,6 +169,30 @@
         </Menubar.Menu>
       </div>
     </div>
+
+    {#if web_publish_count > 0}
+      <Button
+        variant="outline"
+        size="sm"
+        class={cn(
+          "shrink-0 gap-1.5",
+          web_publish_status === "error" && "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive",
+        )}
+        onclick={onOpenBoardShare}
+        aria-label={`Open Web publish. ${web_publish_detail}`}
+        title={web_publish_detail}
+      >
+        <span class="relative">
+          <RadioTowerIcon class="size-4" />
+          <span class={cn(
+            "absolute -right-1 -top-1 size-2 rounded-full border border-background",
+            web_publish_status === "error" ? "bg-destructive" : web_publish_status === "updating" ? "animate-pulse bg-amber-500" : "bg-emerald-500",
+          )}></span>
+        </span>
+        <span class="hidden xl:inline">Web publish</span>
+        <span class="text-xs tabular-nums text-muted-foreground">{web_publish_count}</span>
+      </Button>
+    {/if}
 
     <InputGroup.Root class="ml-auto w-40 shrink-0 sm:w-48 lg:w-64">
       <InputGroup.Input aria-label="Search tasks" placeholder="Search" bind:value={search_text} />

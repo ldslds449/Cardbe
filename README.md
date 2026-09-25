@@ -10,6 +10,7 @@ Cardbe is a local-first desktop task manager built around a flexible Kanban boar
 - Use global shortcuts and the system tray for quick task or note capture.
 - Import and export board data as JSON; export calendar data when needed.
 - Share selected columns and tasks as a temporary, read-only link on your local network.
+- Share an entire board with a read-only or editor invitation link and a locally generated QR code.
 
 ## Privacy and LAN sharing
 
@@ -22,6 +23,16 @@ To develop with two data sets from the same checkout, run `pnpm tauri dev` in on
 LAN sharing is opt-in: publishing a board starts a local HTTP server reachable by devices on the same network and exposes the selected task content to anyone who has the unguessable share link. Treat the link as sensitive, share only content suitable for that audience, set an expiry where appropriate, and revoke it when finished. Do not use the feature on an untrusted network.
 
 The update checker contacts the GitHub Releases API to check for a newer version. Cardbe does not require an account, cloud sync, or an API key.
+
+When a shared-board invitation is active, Cardbe connects to Iroh relay services for peer discovery and transport. Disabling or deleting every invitation stops the owner sharing endpoint.
+
+## Shared boards
+
+Board invitations are bearer capabilities: anyone who receives an active link can use its current permission. A received board is stored separately and marked `read only` or `shared` in the sidebar. Shared boards sync automatically while Cardbe is active and online; **Sync now** remains available for an immediate refresh. Read-only boards receive the owner's current snapshot when its revision or permission changes; unchanged polls receive an empty result. Editors exchange Loro document updates over Iroh with the board owner, so offline changes to different cards or fields merge when they reconnect to the owner. Editors cannot exchange updates directly while the owner is offline. SQLite remains the local queryable copy; Loro is the mergeable source for shared board content. Its Tree stores column order, card order, and card moves; Map stores individual fields; Text stores descriptions for a future Loro rich-text editor in Svelte. Concurrent changes to the same scalar field use Loro's deterministic map conflict rule.
+
+Invitation secrets, device identity, and received-board connection metadata stay in the local SQLite database and are intentionally excluded from JSON backups. This avoids exporting access to another person's board by accident. Each installation has a stable device identity; invitations use that identity with relay-based discovery rather than persisting peer IP addresses, so reconnecting after an IP or NAT change can use a fresh route. The sharing endpoint starts only while an invitation is active. Global app settings are excluded from shared-board snapshots. Restoring a JSON backup on another device intentionally creates a new identity and requires a new invitation.
+
+Revoking an invitation stops future sync, but cannot erase board data already downloaded by a recipient. Loro documents can retain deleted text in their edit history, including invitation snapshots; do not treat deleting a card as secure erasure from shared copies.
 
 ## Prerequisites
 

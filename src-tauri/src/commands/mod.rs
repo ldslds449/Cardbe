@@ -3,6 +3,7 @@ pub mod board;
 pub mod boards;
 pub mod calendar_export;
 pub mod import_export;
+pub mod iroh_share;
 pub mod notes;
 pub mod notifications;
 pub mod settings;

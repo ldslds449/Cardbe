@@ -11,6 +11,7 @@
   import PowerIcon from "@lucide/svelte/icons/power";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
+  import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
   import { Button } from "$lib/components/ui/button/index.js";
   import Calendar from "$lib/components/ui/calendar/calendar.svelte";
@@ -22,6 +23,7 @@
   import { TagInput } from "$lib/components/ui/tag-input/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
   import { deserialize_column, type Column, type ColumnSerialized } from "../../type/column.svelte";
+  import type { BoardRole } from "../../board.svelte";
   import {
     build_share_snapshot,
     forget_managed_share,
@@ -49,7 +51,7 @@
     columns: Column[];
     default_title: string;
     active_board_id: number | null;
-    boards: Array<{ id: number; name: string }>;
+    boards: Array<{ id: number; name: string; shared_role?: BoardRole }>;
     onRetireShare?: (share_id: string) => void;
     onShareRevokeError?: (share_id: string, error: unknown) => void;
   } = $props();
@@ -75,6 +77,7 @@
   // changes the user's current board.
   let selected_board_id = $state<number | null>(null);
   let loaded_board_id = $state<number | null>(null);
+  const owned_boards = $derived(boards.filter((board) => !board.shared_role || board.shared_role === "owner"));
   let loaded_columns = $state<Column[]>([]);
   let loading_board_content = $state(false);
   let board_content_generation = 0;
@@ -165,13 +168,14 @@
   }
 
   async function select_share(candidate: ManagedShare | null, editing_state = candidate === null): Promise<boolean> {
-    const target_board_id = candidate?.board_id ?? active_board_id;
+    const target_board_id = candidate?.board_id ?? (owned_boards.some((board) => board.id === active_board_id) ? active_board_id : owned_boards[0]?.id ?? null);
     if (!(await load_board_content(target_board_id))) return false;
     load_share(candidate, editing_state);
     return true;
   }
 
   async function select_new_share_board(board_id: number) {
+    if (!owned_boards.some((board) => board.id === board_id)) return;
     if (!(await load_board_content(board_id))) return;
     selected_column_ids = [];
     selected_task_ids = [];
@@ -283,6 +287,7 @@
 
   async function publish() {
     if (publishing) return;
+    if (!owned_boards.some((board) => board.id === selected_board_id)) { toast.error("Only boards you own can be published"); return; }
     publishing = true;
     try {
       const was_update = share !== null;
@@ -306,6 +311,7 @@
         // Saving from this dialog is an explicit user action, so it may recover
         // an ID that was retired by a previous disable or an in-flight revoke.
         was_update,
+        selected_board_id ?? undefined,
       );
       updated_share.board_id = selected_board_id ?? undefined;
       share = updated_share;
@@ -322,14 +328,14 @@
       load_share(updated_share, false);
       toast.success(
         was_update
-          ? "Share link updated"
+          ? "Published view updated"
           : was_reused
-            ? "Previous share link reused"
-            : "Share link published",
+            ? "Previous web address reused"
+            : "Web view published",
       );
     } catch (error) {
       console.error("Couldn't publish board share", error);
-      toast.error(error instanceof Error ? error.message : "Couldn't publish the share link");
+      toast.error(error instanceof Error ? error.message : "Couldn't publish the web view");
     } finally {
       publishing = false;
     }
@@ -339,7 +345,7 @@
     if (!target) return;
     try {
       await navigator.clipboard.writeText(target.url);
-      toast.success("Share link copied");
+      toast.success("Web address copied");
     } catch {
       toast.error("Couldn't copy the link");
     }
@@ -357,11 +363,11 @@
         "",
       );
       if (share?.id === target.id) load_share(disabled_share);
-      toast.success("Share link disabled. You can enable it again later.");
+      toast.success("Published view disabled. You can enable it again later.");
     } catch (error) {
       console.error("Couldn't disable board share", error);
       onShareRevokeError?.(target.id, error);
-      toast.error(error instanceof Error ? error.message : "Couldn't disable the share link");
+      toast.error(error instanceof Error ? error.message : "Couldn't disable the published view");
     } finally {
       revoking = false;
     }
@@ -396,6 +402,7 @@
         target.selected_labels,
         null,
         true,
+        target.board_id ?? selected_board_id ?? undefined,
       );
       save_managed_share(
         enabled_share,
@@ -407,10 +414,10 @@
         ),
       );
       if (share?.id === target.id) load_share(enabled_share);
-      toast.success("Share link enabled");
+      toast.success("Published view enabled");
     } catch (error) {
       console.error("Couldn't enable board share", error);
-      toast.error(error instanceof Error ? error.message : "Couldn't enable the share link");
+      toast.error(error instanceof Error ? error.message : "Couldn't enable the published view");
     } finally {
       publishing = false;
     }
@@ -428,11 +435,11 @@
       share = null;
       await select_share(remaining[0] ?? null);
       delete_confirm_open = false;
-      toast.success("Share link deleted");
+      toast.success("Published view deleted");
     } catch (error) {
       console.error("Couldn't delete board share", error);
       onShareRevokeError?.(deleted_id, error);
-      toast.error(error instanceof Error ? error.message : "Couldn't delete the share link");
+      toast.error(error instanceof Error ? error.message : "Couldn't delete the published view");
     } finally {
       revoking = false;
     }
@@ -442,24 +449,24 @@
 <Dialog.Root bind:open>
   <Dialog.Content class="flex h-[min(90vh,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
     <Dialog.Header class="shrink-0 px-6 pb-4 pt-6">
-      <Dialog.Title>Share links</Dialog.Title>
+      <Dialog.Title>Web publish</Dialog.Title>
       <Dialog.Description>
-        Create a link for this board, or review links serving any board. Links resume at the same address when Cardbe starts again.
+        Publish a read-only web view of a board, or manage existing published views. Addresses resume when Cardbe starts again.
       </Dialog.Description>
     </Dialog.Header>
 
     <div class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:grid-cols-[16rem_minmax(0,1fr)] md:grid-rows-1">
-      <aside class="flex max-h-52 min-h-0 flex-col gap-3 overflow-y-auto border-b bg-muted/20 p-4 md:max-h-none md:border-b-0 md:border-r" aria-label="Shared board links">
+      <aside class="flex max-h-52 min-h-0 flex-col gap-3 overflow-y-auto border-b bg-muted/20 p-4 md:max-h-none md:border-b-0 md:border-r" aria-label="Published web views">
         <section class="grid gap-2.5" aria-labelledby="existing-shares-heading">
           <div class="flex items-center gap-2">
-            <h3 id="existing-shares-heading" class="text-sm font-semibold">All share links</h3>
+            <h3 id="existing-shares-heading" class="text-sm font-semibold">Published views</h3>
             <span class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
               {all_managed_shares.length}
             </span>
           </div>
           {#if legacy_share_count > 0}
             <div class="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs" role="status">
-              <p>{legacy_share_count} older share link{legacy_share_count === 1 ? " has" : "s have"} no board assigned.</p>
+              <p>{legacy_share_count} older published view{legacy_share_count === 1 ? " has" : "s have"} no board assigned.</p>
               {#each legacy_shares as legacy (legacy.id)}
                 <div class="flex min-w-0 items-center justify-between gap-2">
                   <span class="min-w-0 flex-1 truncate">{legacy.title}</span>
@@ -546,7 +553,7 @@
                       <PowerIcon
                         class={candidate_enabled ? "size-4 text-success" : "size-4 text-muted-foreground"}
                       />
-                      {candidate_enabled ? "Disable link" : "Enable link"}
+                      {candidate_enabled ? "Disable view" : "Enable view"}
                     </ContextMenu.Item>
                     <ContextMenu.Separator class="my-1" />
                     <ContextMenu.Item
@@ -560,7 +567,7 @@
                       }}
                     >
                       <Trash2Icon />
-                      Delete link
+                      Delete view
                     </ContextMenu.Item>
                   </ContextMenu.Content>
                 </ContextMenu.Root>
@@ -568,7 +575,7 @@
             </div>
           {:else}
             <div class="px-2 py-3 text-center">
-              <p class="text-xs text-muted-foreground">No links yet. Create one to share this board.</p>
+              <p class="text-xs text-muted-foreground">No published views yet.</p>
             </div>
           {/if}
         </section>
@@ -582,7 +589,7 @@
             aria-current={!share ? "page" : undefined}
           >
             <PlusIcon />
-            <span id="new-share-heading">{share ? "New share link" : "Creating new link"}</span>
+            <span id="new-share-heading">{share ? "New published view" : "Creating published view"}</span>
           </Button>
         </section>
       </aside>
@@ -597,11 +604,16 @@
                 </div>
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
-                    <h3 class="font-semibold">{editing ? "Edit share link" : share.title}</h3>
+                    <h3 class="font-semibold">{editing ? "Edit published view" : share.title}</h3>
                     <span class={`inline-flex min-w-16 justify-center rounded-full px-2 py-0.5 text-xs font-medium ${is_managed_share_enabled(share) ? "bg-success/15 text-success" : "border border-border bg-muted text-muted-foreground"}`}>
                       {is_managed_share_enabled(share) ? "Active" : "Disabled"}
                     </span>
                   </div>
+                  <p class="mt-1 flex items-center gap-1.5 text-sm text-foreground">
+                    <LayoutDashboardIcon class="size-3.5 text-muted-foreground" aria-hidden="true" />
+                    <span class="text-muted-foreground">Source board:</span>
+                    <span class="font-medium">{board_name(share.board_id)}</span>
+                  </p>
                   <p class="mt-1 min-h-10 text-sm text-muted-foreground">
                     {is_managed_share_enabled(share)
                       ? "Anyone on this local network with the link can view the selected content."
@@ -630,10 +642,10 @@
               {/if}
             </div>
             <div class="grid gap-2">
-              <span class="text-sm font-medium">Share address</span>
+              <span class="text-sm font-medium">Web address</span>
               <div class="flex gap-2">
-                <Input value={share.url} readonly aria-label="Share address" class={!is_managed_share_enabled(share) ? "text-muted-foreground" : ""} />
-                <Button variant="outline" size="icon" onclick={() => void copy_link()} aria-label="Copy share address" title="Copy share address">
+                <Input value={share.url} readonly aria-label="Web address" class={!is_managed_share_enabled(share) ? "text-muted-foreground" : ""} />
+                <Button variant="outline" size="icon" onclick={() => void copy_link()} aria-label="Copy web address" title="Copy web address">
                   <CopyIcon />
                 </Button>
               </div>
@@ -653,8 +665,8 @@
             </div>
             <div class="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
               <div>
-                <div class="text-xs font-medium text-muted-foreground">Board name</div>
-                <p class="mt-1 text-sm font-medium">{share.title}</p>
+                <div class="text-xs font-medium text-muted-foreground">Source board</div>
+                <p class="mt-1 text-sm font-medium">{board_name(share.board_id)}</p>
               </div>
               <div>
                 <div class="text-xs font-medium text-muted-foreground">Expiration</div>
@@ -690,7 +702,7 @@
               onchange={(event) => void select_new_share_board(Number(event.currentTarget.value))}
               class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-10 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-[3px] disabled:opacity-50"
             >
-              {#each boards as target (target.id)}
+              {#each owned_boards as target (target.id)}
                 <option value={String(target.id)}>{target.name}</option>
               {/each}
             </select>
@@ -700,14 +712,14 @@
           <p class="text-sm text-muted-foreground">Sharing from <span class="font-medium text-foreground">{board_name(selected_board_id ?? undefined)}</span></p>
         {/if}
         <label class="grid gap-1.5 text-sm font-medium">
-        Shared board name
+        Published view title
         <Input bind:value={title} maxlength={120} placeholder="Team roadmap" />
         </label>
 
       {#if !share}
         <div class="grid gap-2">
           <div>
-            <div class="text-sm font-medium">Share address</div>
+            <div class="text-sm font-medium">Web address</div>
             <p class="text-xs text-muted-foreground">Create a new address, or restore one you shared before.</p>
           </div>
           <div class="grid gap-2 sm:grid-cols-2">
@@ -764,7 +776,7 @@
               expiration_enabled = checked === true;
             }}
           />
-          <label for="share-expiration-enabled" class="text-sm font-medium">Set link expiration</label>
+          <label for="share-expiration-enabled" class="text-sm font-medium">Set web address expiration</label>
         </div>
         {#if expiration_enabled}
           <Popover.Root bind:open={expiration_open}>
@@ -792,7 +804,7 @@
             </Popover.Content>
           </Popover.Root>
         {:else}
-          <p class="text-xs text-muted-foreground">The link remains active until you disable it.</p>
+          <p class="text-xs text-muted-foreground">The web address remains active until you disable it.</p>
         {/if}
       </div>
 
@@ -901,7 +913,7 @@
             onclick={() => delete_confirm_open = true}
           >
             <Trash2Icon />
-            Delete link
+            Delete view
           </Button>
         {/if}
         {#if share && editing}
@@ -912,7 +924,7 @@
           </Button>
         {:else if !share}
           <Button disabled={publishing || revoking || effective_selection.selected_column_ids.length === 0} onclick={() => void publish()}>
-            {publishing ? "Publishing..." : requested_link.trim() ? "Reuse address" : "Create share link"}
+            {publishing ? "Publishing..." : requested_link.trim() ? "Reuse address" : "Publish web view"}
           </Button>
         {/if}
       </div>
@@ -923,16 +935,16 @@
 <AlertDialog.Root bind:open={delete_confirm_open}>
   <AlertDialog.Content class="sm:max-w-md">
     <AlertDialog.Header>
-      <AlertDialog.Title>Delete this share link?</AlertDialog.Title>
+      <AlertDialog.Title>Delete this published view?</AlertDialog.Title>
       <AlertDialog.Description>
-        This permanently removes the saved link and disables its address. This action cannot be undone. Use Disable instead if you may want to share it again.
+        This permanently removes the published view and disables its web address. This action cannot be undone. Use Disable instead if you may want to publish it again.
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>
-      <AlertDialog.Cancel disabled={revoking}>Keep link</AlertDialog.Cancel>
+      <AlertDialog.Cancel disabled={revoking}>Keep view</AlertDialog.Cancel>
       <Button variant="destructive" disabled={revoking} onclick={() => void delete_share()}>
         <Trash2Icon />
-        {revoking ? "Deleting..." : "Delete link"}
+        {revoking ? "Deleting..." : "Delete view"}
       </Button>
     </AlertDialog.Footer>
   </AlertDialog.Content>

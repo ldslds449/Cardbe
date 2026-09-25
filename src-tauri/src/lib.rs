@@ -1,13 +1,14 @@
 mod commands;
 #[cfg(desktop)]
 mod desktop;
+mod loro_board;
 mod models;
 mod state;
 mod storage;
 
 use commands::{
-    archive, board, boards, calendar_export, import_export, notes, notifications, settings, share,
-    templates, update,
+    archive, board, boards, calendar_export, import_export, iroh_share, notes, notifications,
+    settings, share, templates, update,
 };
 use state::AppData;
 #[cfg(all(debug_assertions, desktop))]
@@ -153,13 +154,23 @@ pub fn run() {
             let loaded = storage::load(&app_data_dir)?;
             #[cfg(all(debug_assertions, desktop))]
             app.manage(debug_data_lock);
-            app.manage(Mutex::new(AppData::new(
-                loaded.stored,
-                loaded.database,
-                loaded.recovery_messages,
-                loaded.archives_loaded,
-            )));
+            let iroh_database_path = loaded.database.path().to_path_buf();
+            app.manage(Mutex::new(
+                AppData::new(
+                    loaded.stored,
+                    loaded.database,
+                    loaded.recovery_messages,
+                    loaded.archives_loaded,
+                )
+                .map_err(std::io::Error::other)?,
+            ));
             app.manage(share::LanShareState::default());
+            app.manage(iroh_share::IrohShareState::default());
+            let iroh_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let network = iroh_app.state::<iroh_share::IrohShareState>();
+                iroh_share::restore_iroh_host(&network, iroh_database_path, iroh_app.clone()).await;
+            });
             #[cfg(desktop)]
             desktop::setup(app)?;
             #[cfg(all(debug_assertions, desktop))]
@@ -201,6 +212,17 @@ pub fn run() {
             import_export::import_board_as_new,
             import_export::export_all_boards,
             import_export::import_all_boards,
+            iroh_share::create_iroh_invite,
+            iroh_share::join_iroh_invite,
+            iroh_share::sync_iroh_board,
+            iroh_share::resolve_iroh_conflict,
+            iroh_share::iroh_invite_qr_svg,
+            iroh_share::list_iroh_invites,
+            iroh_share::iroh_host_error,
+            iroh_share::ensure_iroh_host,
+            iroh_share::get_iroh_invite_access,
+            iroh_share::update_iroh_invite,
+            iroh_share::delete_iroh_invite,
             notifications::check_expired_tasks,
             notifications::get_expired_tasks,
             notes::get_notes,

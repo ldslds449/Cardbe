@@ -1,0 +1,62 @@
+Cardbe
+Copyright 2026 ldslds449
+
+Cardbe is distributed under the Apache License, Version 2.0. See LICENSE.
+
+This product includes third-party software. The following notices identify
+the principal third-party components used by Cardbe. Their respective
+copyright and license terms remain applicable to those components.
+
+JavaScript / TypeScript dependencies
+------------------------------------
+
+@dnd-kit-svelte/core, @dnd-kit-svelte/modifiers,
+@dnd-kit-svelte/sortable, @dnd-kit-svelte/svelte, and
+@dnd-kit-svelte/utilities
+  MIT License
+  Copyright 2025 Haniel Ubogu
+  https://github.com/hanielu/dnd-kit-svelte
+
+@dnd-kit/abstract
+  MIT License
+  https://github.com/clauderic/dnd-kit
+
+@lucide/svelte
+  ISC License
+  https://github.com/lucide-icons/lucide
+
+@pdf-lib/fontkit, pdf-lib, mode-watcher, svelte-exmarkdown,
+@shikijs/rehype, bits-ui, clsx, shiki, svelte, svelte-check,
+svelte-sonner, tailwind-merge, tailwind-variants, tailwindcss,
+tw-animate-css, and vite
+  MIT License
+
+@tauri-apps/api, @tauri-apps/plugin-dialog,
+@tauri-apps/plugin-fs, and @tauri-apps/plugin-notification
+  Apache-2.0 OR MIT
+  https://github.com/tauri-apps/tauri
+
+@internationalized/date, @tauri-apps/cli, and typescript
+  Apache-2.0
+
+Rust dependencies
+-----------------
+
+The Rust application uses Tauri, its plugins, reqwest, serde, serde_json,
+chrono, rusqlite, local-ip-address, base64, sha2, axum, tokio,
+futures-util, tokio-tungstenite, iroh, qrcode, and their transitive
+dependencies. These crates are generally available under MIT, Apache-2.0,
+or dual MIT/Apache-2.0 terms. The exact versions are recorded in
+src-tauri/Cargo.lock.
+
+Notable transitive licenses include:
+
+* MPL-2.0: attohttpc, cssparser, cssparser-macros, dtoa-short,
+  option-ext, and selectors.
+* CDLA-Permissive-2.0: webpki-roots.
+* BSD, ISC, Unicode-3.0, Zlib, Unlicense, CC0, and Apache-2.0 WITH
+  LLVM-exception licensed components are also present in the Cargo graph.
+
+For the complete license text of every dependency, consult the dependency's
+source distribution or registry package corresponding to the locked version
+in package.json, pnpm-lock.yaml, src-tauri/Cargo.toml, and src-tauri/Cargo.lock.

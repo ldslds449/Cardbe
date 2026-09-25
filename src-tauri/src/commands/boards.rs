@@ -66,9 +66,21 @@ pub fn rename_board(
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
     let name = board_name(name)?;
+    if guard
+        .database
+        .board_role(board_id)
+        .map_err(|e| e.to_string())?
+        != "owner"
+    {
+        return Err("Only the owner can rename a shared board".into());
+    }
     guard
         .database
         .rename_board(board_id, &name)
+        .map_err(|e| e.to_string())?;
+    let (revision, status) = guard
+        .database
+        .board_sync_state(board_id)
         .map_err(|e| e.to_string())?;
     let board = guard
         .boards
@@ -76,6 +88,8 @@ pub fn rename_board(
         .find(|board| board.id == board_id)
         .ok_or("Board not found")?;
     board.name = name;
+    board.sync_revision = revision;
+    board.sync_status = status;
     Ok(())
 }
 
@@ -132,6 +146,9 @@ mod tests {
             id,
             name: format!("Board {id}"),
             task_count: 0,
+            shared_role: "owner".into(),
+            sync_status: "local".into(),
+            sync_revision: 0,
         }
     }
 

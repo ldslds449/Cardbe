@@ -3,14 +3,16 @@
   import PlusIcon from "@lucide/svelte/icons/plus";
   import SearchIcon from "@lucide/svelte/icons/search";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import UsersIcon from "@lucide/svelte/icons/users";
   import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import type { BoardRole } from "../../board.svelte";
 
-  export interface BoardItem { id: number; name: string; task_count: number; }
+  export interface BoardItem { id: number; name: string; task_count: number; shared_role: BoardRole; sync_status: string; sync_revision: number; }
   let { boards, active_board_id, open = $bindable(), onSwitch, onCreate, onRename, onDelete }: {
     boards: BoardItem[]; active_board_id: number | null; open: boolean;
     onSwitch: (id: number) => void; onCreate: (name: string) => Promise<boolean>;
@@ -53,11 +55,29 @@
             {#each filtered_boards as item (item.id)}
               <ContextMenu.Root>
                 <ContextMenu.Trigger>
-                  <button type="button" class={`relative flex h-9 w-full min-w-0 items-center gap-3 rounded-md px-3 text-left text-sm transition-colors ${item.id === active_board_id ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`} onclick={() => select_board(item.id)} aria-current={item.id === active_board_id ? "page" : undefined} title={item.name}><span class="min-w-0 flex-1 truncate">{item.name}</span><span class={`shrink-0 text-xs tabular-nums ${item.task_count === 0 ? "text-muted-foreground/60" : "text-muted-foreground"}`}>{item.task_count}</span></button>
+                  <button
+                    type="button"
+                    class={`relative flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${item.id === active_board_id ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+                    onclick={() => select_board(item.id)}
+                    aria-current={item.id === active_board_id ? "page" : undefined}
+                    title={item.shared_role === "owner" ? item.name : `${item.name} — Shared with me, ${item.shared_role === "viewer" ? "read only" : "can edit"}`}
+                  >
+                    {#if item.shared_role !== "owner"}
+                      <UsersIcon class="size-4 shrink-0 text-primary" aria-hidden="true" />
+                    {/if}
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate">{item.name}</span>
+                      {#if item.shared_role !== "owner"}
+                        <span class="block truncate text-[11px] font-normal leading-4 text-muted-foreground">
+                          Shared with me · {item.shared_role === "viewer" ? "Read only" : "Can edit"}
+                        </span>
+                      {/if}
+                    </span>
+                    <span class={`shrink-0 text-xs tabular-nums ${item.task_count === 0 ? "text-muted-foreground/60" : "text-muted-foreground"}`}>{item.task_count}</span>
+                  </button>
                 </ContextMenu.Trigger>
                 <ContextMenu.Content>
-                  <ContextMenu.Item onclick={() => open_rename_dialog(item)}><PencilIcon /> Rename</ContextMenu.Item>
-                  <ContextMenu.Separator />
+                  {#if item.shared_role === "owner"}<ContextMenu.Item onclick={() => open_rename_dialog(item)}><PencilIcon /> Rename</ContextMenu.Item><ContextMenu.Separator />{/if}
                   <ContextMenu.Item class="text-destructive focus:text-destructive" disabled={boards.length <= 1} onclick={() => open_delete_dialog(item)}><Trash2Icon /> Delete</ContextMenu.Item>
                 </ContextMenu.Content>
               </ContextMenu.Root>

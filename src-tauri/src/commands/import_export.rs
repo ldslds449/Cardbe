@@ -74,7 +74,11 @@ pub fn export_all_boards(state: State<'_, SharedAppData>) -> Result<String, Stri
 }
 
 #[tauri::command]
-pub fn import_all_boards(state: State<'_, SharedAppData>, json_data: String) -> Result<(), String> {
+pub fn import_all_boards(
+    state: State<'_, SharedAppData>,
+    app_handle: tauri::AppHandle,
+    json_data: String,
+) -> Result<(), String> {
     let backup: AllBoardsExport = serde_json::from_str(&json_data)
         .map_err(|error| format!("Invalid all-board backup: {error}"))?;
     if backup.schema_version != 1 {
@@ -118,6 +122,12 @@ pub fn import_all_boards(state: State<'_, SharedAppData>, json_data: String) -> 
     guard.undo_history.clear();
     guard.refresh_labels();
     guard.archives_loaded = true;
+    drop(guard);
+    tauri::async_runtime::spawn(async move {
+        use tauri::Manager;
+        let network = app_handle.state::<crate::commands::iroh_share::IrohShareState>();
+        let _ = crate::commands::iroh_share::stop_host_if_idle(&network).await;
+    });
     Ok(())
 }
 
