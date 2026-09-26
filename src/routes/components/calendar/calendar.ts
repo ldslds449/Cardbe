@@ -27,16 +27,13 @@ export function date_key(date: Date): string {
   ).padStart(2, "0")}`;
 }
 
-export function task_matches_search(task: Task, search_text: string): boolean {
-  const query = search_text.trim().toLowerCase();
-  if (!query) return true;
-
-  return (
-    task.title.toLowerCase().includes(query) ||
-    task.description.toLowerCase().includes(query) ||
-    task.labels.some((label) => label.toLowerCase().includes(query)) ||
-    task.items.some((item) => item.text.toLowerCase().includes(query))
-  );
+export function task_matches_search(
+  task: Task,
+  search_text: string,
+  search_task_ids?: ReadonlySet<string> | null,
+): boolean {
+  if (!search_text.trim() || !search_task_ids) return true;
+  return search_task_ids.has(task.id);
 }
 
 export function count_due_tasks(
@@ -44,13 +41,15 @@ export function count_due_tasks(
   search_text: string,
   archives: Archive[] = [],
   show_archived = false,
+  search_task_ids?: ReadonlySet<string> | null,
 ): number {
   const active_count = columns.reduce(
     (count, column) =>
       count +
       column.tasks.filter(
         (task) =>
-          task.due_time !== undefined && task_matches_search(task, search_text),
+          task.due_time !== undefined &&
+          task_matches_search(task, search_text, search_task_ids),
       ).length,
     0,
   );
@@ -60,7 +59,8 @@ export function count_due_tasks(
     active_count +
     archives.filter(
       ({ task }) =>
-        task.due_time !== undefined && task_matches_search(task, search_text),
+        task.due_time !== undefined &&
+        task_matches_search(task, search_text, search_task_ids),
     ).length
   );
 }
@@ -111,6 +111,7 @@ function add_recurring_previews(
   range_end: Date,
   preview_after: Date,
   search_text: string,
+  search_task_ids?: ReadonlySet<string> | null,
 ) {
   const first_preview_day = start_of_day(preview_after).getTime();
 
@@ -119,7 +120,7 @@ function add_recurring_previews(
       if (
         !task.due_time ||
         !task.recurrence ||
-        !task_matches_search(task, search_text)
+        !task_matches_search(task, search_text, search_task_ids)
       )
         continue;
 
@@ -165,6 +166,7 @@ export function build_calendar_days(
   show_archived = false,
   show_recurring_previews = true,
   view_mode: CalendarViewMode = "month",
+  search_task_ids?: ReadonlySet<string> | null,
 ): CalendarDay[] {
   const tasks_by_date = new Map<string, CalendarTask[]>();
   const first =
@@ -180,7 +182,11 @@ export function build_calendar_days(
 
   for (const column of columns) {
     for (const task of column.tasks) {
-      if (!task.due_time || !task_matches_search(task, search_text)) continue;
+      if (
+        !task.due_time ||
+        !task_matches_search(task, search_text, search_task_ids)
+      )
+        continue;
       const key = date_key(task.due_time);
       const tasks = tasks_by_date.get(key) ?? [];
       tasks.push({ task, column, archived: false, preview: false });
@@ -197,7 +203,11 @@ export function build_calendar_days(
       tasks: [],
     };
     for (const { task } of archives) {
-      if (!task.due_time || !task_matches_search(task, search_text)) continue;
+      if (
+        !task.due_time ||
+        !task_matches_search(task, search_text, search_task_ids)
+      )
+        continue;
       const key = date_key(task.due_time);
       const tasks = tasks_by_date.get(key) ?? [];
       tasks.push({
@@ -218,6 +228,7 @@ export function build_calendar_days(
       grid_end,
       today,
       search_text,
+      search_task_ids,
     );
   }
 

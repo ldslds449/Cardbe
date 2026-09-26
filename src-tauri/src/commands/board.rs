@@ -62,6 +62,24 @@ pub fn get_board_columns(
 }
 
 #[tauri::command]
+pub fn search_tasks(
+    state: State<'_, SharedAppData>,
+    query: String,
+    expected_board_id: i64,
+) -> Result<Vec<i64>, String> {
+    let guard = state
+        .lock()
+        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err("Stale board request".into());
+    }
+    guard
+        .database
+        .search_tasks(expected_board_id, &query)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn get_labels(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,

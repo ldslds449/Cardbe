@@ -46,6 +46,7 @@ interface CalendarViewProps {
   columns: Column[];
   archives?: Archive[];
   search_text?: string;
+  search_task_ids?: ReadonlySet<string> | null;
   visible_date?: Date;
   view_mode?: CalendarViewMode;
   show_archived?: boolean;
@@ -68,6 +69,7 @@ let {
   columns,
   archives = [],
   search_text = "",
+  search_task_ids = null,
   visible_date = $bindable(new Date(initial_today)),
   view_mode = $bindable("month"),
   show_archived = $bindable(false),
@@ -242,7 +244,13 @@ let visible_period_label = $derived(
 );
 
 let due_task_count = $derived(
-  count_due_tasks(columns, search_text, archives, show_archived),
+  count_due_tasks(
+    columns,
+    search_text,
+    archives,
+    show_archived,
+    search_task_ids,
+  ),
 );
 
 let calendar_days = $derived(
@@ -255,6 +263,7 @@ let calendar_days = $derived(
     show_archived,
     show_recurring_previews,
     view_mode,
+    search_task_ids,
   ),
 );
 

@@ -238,6 +238,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             board::get_columns,
             board::get_board_columns,
+            board::search_tasks,
             board::get_labels,
             boards::get_boards,
             boards::create_board,

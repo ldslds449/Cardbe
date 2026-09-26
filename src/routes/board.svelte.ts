@@ -94,6 +94,9 @@ export class BoardStore {
   notification_setting_updating = $state(false);
   can_undo = $state(false);
   undo_in_progress = $state(false);
+  search_task_ids = $state<Set<string> | null>(null);
+  search_pending = $state(false);
+  search_error = $state(false);
   boards = $state<BoardSummary[]>([]);
   active_board_id = $state<number | null>(null);
   private board_generation = 0;
@@ -105,6 +108,9 @@ export class BoardStore {
   // has completed, so keep a session-scoped alias to its persisted ID.
   private resolved_task_ids = new Map<string, string>();
   private archives_request: Promise<void> | undefined;
+  private search_query = "";
+  private search_request = 0;
+  private search_timer: ReturnType<typeof setTimeout> | undefined;
   private iroh_sync_timer: number | undefined;
   private iroh_syncing = new Set<number>();
   private iroh_failures = new Map<number, number>();
@@ -451,6 +457,70 @@ export class BoardStore {
           );
         }
       });
+  }
+
+  search_tasks(search_text: string) {
+    this.search_query = search_text.trim();
+    const request = ++this.search_request;
+    if (this.search_timer) clearTimeout(this.search_timer);
+    this.search_task_ids = null;
+    this.search_error = false;
+    this.search_pending = Boolean(this.search_query);
+    if (!this.search_query) return;
+
+    const query = this.search_query;
+    const query_length = [...query].length;
+    const expectedBoardId = this.active_board_id;
+    if (expectedBoardId === null) {
+      this.search_pending = false;
+      return;
+    }
+    const generation = this.board_generation;
+    this.search_timer = setTimeout(async () => {
+      if (
+        request !== this.search_request ||
+        generation !== this.board_generation
+      )
+        return;
+      this.search_timer = undefined;
+      const started_at = performance.now();
+      try {
+        const ids = await invoke<number[]>("search_tasks", {
+          query,
+          expectedBoardId,
+        });
+        if (
+          request !== this.search_request ||
+          generation !== this.board_generation
+        )
+          return;
+        this.search_task_ids = new Set(ids.map((id) => `task_${id}`));
+        logger.debug("board.search.completed", {
+          board_id: expectedBoardId,
+          query_length,
+          result_count: ids.length,
+          duration_ms: Math.round(performance.now() - started_at),
+        });
+      } catch (error) {
+        if (
+          request !== this.search_request ||
+          generation !== this.board_generation
+        )
+          return;
+        logger.error("board.search.failed", error, {
+          board_id: expectedBoardId,
+          query_length,
+          duration_ms: Math.round(performance.now() - started_at),
+        });
+        this.search_error = true;
+      } finally {
+        if (
+          request === this.search_request &&
+          generation === this.board_generation
+        )
+          this.search_pending = false;
+      }
+    }, 160);
   }
 
   get_archives() {
@@ -1087,6 +1157,7 @@ export class BoardStore {
     })
       .then(() => {
         if (generation !== this.board_generation) return false;
+        this.search_tasks(this.search_query);
         this.show_success_with_undo("Task deleted");
         return true;
       })
@@ -1307,6 +1378,7 @@ export class BoardStore {
       .then(() => {
         if (generation !== board.board_generation) return false;
         this.update_labels();
+        this.search_tasks(this.search_query);
         this.show_success_with_undo("Task updated");
         return true;
       })

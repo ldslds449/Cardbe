@@ -101,6 +101,11 @@ const active_board_read_only = $derived(
 );
 
 $effect(() => {
+  void board.columns;
+  board.search_tasks(search_text);
+});
+
+$effect(() => {
   if (startup_screen_dismissed || !board.column_fetch_finish) return;
   startup_screen_dismissed = true;
   // Let the workspace paint before the HTML-level startup card fades away.
@@ -1372,6 +1377,8 @@ function switch_view(view: WorkspaceView) {
       <AppToolbar
         bind:board_panel_open
         bind:search_text
+        search_pending={board.search_pending}
+        search_error={board.search_error}
         bind:archive_open
         bind:expired_open
         bind:recurring_open
@@ -1555,10 +1562,32 @@ function switch_view(view: WorkspaceView) {
         <div
           class={active_view === "board" ? "min-h-full px-5 pb-5 pt-7" : "min-h-full p-5"}
         >
-          {#if active_view === "focus"}
+          {#if search_text.trim() && board.search_pending}
+            <div
+              class="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground"
+              role="status"
+            >
+              Searching cards...
+            </div>
+          {:else if search_text.trim() && board.search_error}
+            <div
+              class="flex min-h-[50vh] flex-col items-center justify-center gap-2 text-sm text-destructive"
+              role="alert"
+            >
+              <span>Search unavailable.</span>
+              <Button
+                variant="link"
+                size="sm"
+                onclick={() => board.search_tasks(search_text)}
+              >
+                Retry search
+              </Button>
+            </div>
+          {:else if active_view === "focus"}
             <FocusView
               columns={board.columns}
               {search_text}
+              search_task_ids={board.search_task_ids}
               onViewTask={view_task_by_id}
               onEditTask={edit_task_by_id}
               onDuplicateTask={(task) => board.duplicate_task(task.id)}
@@ -1574,6 +1603,7 @@ function switch_view(view: WorkspaceView) {
               columns={board.columns}
               archives={board.archives}
               {search_text}
+              search_task_ids={board.search_task_ids}
               bind:visible_date={calendar_visible_date}
               bind:view_mode={calendar_view_mode}
               bind:show_archived={calendar_show_archived}
@@ -1595,6 +1625,7 @@ function switch_view(view: WorkspaceView) {
           {:else}
             <BoardView
               {search_text}
+              search_task_ids={board.search_task_ids}
               {task_expand_mode}
               onAddColumn={open_add_column_dialog}
               onAddTask={add_task_routine}

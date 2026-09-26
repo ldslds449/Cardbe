@@ -28,6 +28,7 @@ import { build_focus_groups, focus_task_count, type FocusTask } from "./focus";
 interface FocusViewProps {
   columns: Column[];
   search_text?: string;
+  search_task_ids?: ReadonlySet<string> | null;
   onViewTask?: (task: Task) => void;
   onEditTask?: (task: Task) => void;
   onDuplicateTask?: (task: Task) => void;
@@ -42,6 +43,7 @@ interface FocusViewProps {
 let {
   columns,
   search_text = "",
+  search_task_ids = null,
   onViewTask = () => {},
   onEditTask = () => {},
   onDuplicateTask = () => {},
@@ -57,7 +59,9 @@ let now = $state(new Date());
 let delete_confirm_open = $state(false);
 let delete_target = $state<Task | null>(null);
 let archive_focus_restore_target: string | null = null;
-let groups = $derived(build_focus_groups(columns, now, search_text));
+let groups = $derived(
+  build_focus_groups(columns, now, search_text, search_task_ids),
+);
 let total_count = $derived(focus_task_count(groups));
 let attention_count = $derived(groups.overdue.length + groups.today.length);
 
@@ -342,15 +346,15 @@ function confirm_delete() {
       <Empty.Header>
         <Empty.Media variant="icon"><CircleCheckIcon /></Empty.Media>
         <Empty.Title
-          >{search_text ? "No matching tasks" : "All clear"}</Empty.Title
+          >{search_text.trim() ? "No matching tasks" : "All clear"}</Empty.Title
         >
         <Empty.Description>
-          {search_text
+          {search_text.trim()
             ? "Try another search."
             : "There are no active tasks in your workspace."}
         </Empty.Description>
       </Empty.Header>
-      {#if !search_text}
+      {#if !search_text.trim()}
         <Empty.Content>
           {#if !read_only}
             <Button onclick={() => onAddTask(new Date(now))}

@@ -13,6 +13,7 @@ import EyeIcon from "@lucide/svelte/icons/eye";
 import EyeClosedIcon from "@lucide/svelte/icons/eye-closed";
 import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
 import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
+import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
 import LinkIcon from "@lucide/svelte/icons/link";
 import MoonIcon from "@lucide/svelte/icons/moon";
 import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
@@ -20,8 +21,8 @@ import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
 import RadioTowerIcon from "@lucide/svelte/icons/radio-tower";
 import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
 import SearchIcon from "@lucide/svelte/icons/search";
-import SunIcon from "@lucide/svelte/icons/sun";
 import XIcon from "@lucide/svelte/icons/x";
+import SunIcon from "@lucide/svelte/icons/sun";
 
 import { Button } from "$lib/components/ui/button/index.js";
 import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
@@ -37,6 +38,8 @@ import type { WorkspaceView } from "./workspace";
 let {
   board_panel_open = $bindable(),
   search_text = $bindable(),
+  search_pending = false,
+  search_error = false,
   archive_open = $bindable(),
   expired_open = $bindable(),
   recurring_open = $bindable(),
@@ -65,6 +68,8 @@ let {
 }: {
   board_panel_open: boolean;
   search_text: string;
+  search_pending?: boolean;
+  search_error?: boolean;
   archive_open: boolean;
   expired_open: boolean;
   recurring_open: boolean;
@@ -291,14 +296,22 @@ async function exportDebugLogs() {
       </Button>
     {/if}
 
-    <InputGroup.Root class="ml-auto w-40 shrink-0 sm:w-48 lg:w-64">
+    <InputGroup.Root
+      class="ml-auto w-40 shrink-0 bg-muted/40 transition-colors focus-within:bg-background sm:w-48 lg:w-64"
+      title={search_error ? "Search unavailable. Retry or clear the search." : undefined}
+    >
       <InputGroup.Input
         aria-label="Search tasks"
-        placeholder="Search"
+        aria-busy={search_pending}
+        placeholder="Search cards"
         bind:value={search_text}
       />
       <InputGroup.Addon>
-        <SearchIcon />
+        {#if search_pending}
+          <LoaderCircleIcon class="animate-spin" />
+        {:else}
+          <SearchIcon />
+        {/if}
       </InputGroup.Addon>
       {#if search_text.length > 0}
         <InputGroup.Addon align="inline-end">
@@ -306,14 +319,19 @@ async function exportDebugLogs() {
             aria-label="Clear search"
             title="Clear search"
             size="icon-xs"
-            onclick={() => {
-              search_text = "";
-            }}
+            onclick={() => (search_text = "")}
           >
             <XIcon />
           </InputGroup.Button>
         </InputGroup.Addon>
       {/if}
+      <span class="sr-only" aria-live="polite">
+        {#if search_pending}
+          Searching cards
+        {:else if search_error}
+          Search unavailable. Retry or clear the search.
+        {/if}
+      </span>
     </InputGroup.Root>
 
     <div class="flex shrink-0 items-center gap-1">

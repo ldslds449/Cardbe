@@ -24,6 +24,7 @@ export function build_focus_groups(
   columns: Column[],
   now: Date,
   search_text: string,
+  search_task_ids?: ReadonlySet<string> | null,
 ): FocusGroups {
   const groups: FocusGroups = {
     overdue: [],
@@ -40,7 +41,7 @@ export function build_focus_groups(
 
   for (const column of columns) {
     for (const task of column.tasks) {
-      if (!task_matches_search(task, search_text)) continue;
+      if (!task_matches_search(task, search_text, search_task_ids)) continue;
 
       const due_time = task.due_time?.getTime();
       const entry = { task, column };

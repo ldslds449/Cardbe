@@ -8,11 +8,13 @@ import { board } from "../../board.svelte";
 import type { Task } from "../../type/task.svelte";
 import CardColumn from "../task/card_column.svelte";
 import CardItem from "../task/card_item.svelte";
+import { task_matches_search } from "../calendar/calendar";
 
 type TaskPosition = { column_idx: number; task_idx: number };
 
 interface BoardViewProps {
   search_text?: string;
+  search_task_ids?: ReadonlySet<string> | null;
   task_expand_mode?: boolean;
   onAddColumn?: () => void;
   onAddTask?: (column_idx: number) => void;
@@ -26,6 +28,7 @@ interface BoardViewProps {
 
 let {
   search_text = "",
+  search_task_ids = null,
   task_expand_mode = true,
   onAddColumn = () => {},
   onAddTask = () => {},
@@ -177,16 +180,6 @@ function handle_drag_over(event: any) {
   }
 }
 
-function task_matches_search(task: Task): boolean {
-  if (!search_text) return true;
-  const search = search_text.toLowerCase();
-  return (
-    task.title.toLowerCase().includes(search) ||
-    task.description.toLowerCase().includes(search) ||
-    task.labels.some((label) => label.toLowerCase().includes(search)) ||
-    task.items.some((item) => item.text.toLowerCase().includes(search))
-  );
-}
 </script>
 
 {#if board.columns.length === 0}
@@ -213,6 +206,11 @@ function task_matches_search(task: Task): boolean {
     onDragEnd={handle_drag_end}
     onDragOver={handle_drag_over}
   >
+    {#if search_text.trim() && search_task_ids?.size === 0}
+      <p class="mb-4 text-sm text-muted-foreground" role="status">
+        No cards match “{search_text.trim()}”.
+      </p>
+    {/if}
     <div class="flex min-h-full flex-row space-x-4">
       {#each board.columns as column, column_idx (column.id)}
         <CardColumn
@@ -228,7 +226,7 @@ function task_matches_search(task: Task): boolean {
           {read_only}
         >
           {#each column.tasks as task, task_idx (task.id)}
-            {#if task_matches_search(task)}
+            {#if task_matches_search(task, search_text, search_task_ids)}
               <CardItem
                 index={task_idx}
                 {task}

@@ -209,6 +209,39 @@ impl Database {
         self.active_board_id
     }
 
+    pub fn search_tasks(&self, board_id: i64, query: &str) -> StorageResult<Vec<i64>> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let is_short_query = query.chars().count() < 3;
+        let mut statement = if is_short_query {
+            // ponytail: trigram FTS needs three characters, so short queries scan board text.
+            self.connection.prepare(
+                "SELECT task_id FROM cardbe_task_search
+                 WHERE board_id=?1 AND instr(lower(body),lower(?2))>0",
+            )?
+        } else {
+            self.connection.prepare(
+                "SELECT DISTINCT s.task_id
+                 FROM cardbe_task_fts JOIN cardbe_task_search s ON s.rowid=cardbe_task_fts.rowid
+                 WHERE cardbe_task_fts MATCH ?1 AND s.board_id=?2",
+            )?
+        };
+        let ids = if is_short_query {
+            statement
+                .query_map(params![board_id, query], |row| row.get(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            let phrase = format!("\"{}\"", query.replace('"', "\"\""));
+            statement
+                .query_map(params![phrase, board_id], |row| row.get(0))?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        Ok(ids)
+    }
+
     pub fn get_notes(&self) -> StorageResult<Vec<Note>> {
         let mut statement = self.connection.prepare(
             "SELECT id, title, content, pinned, created_at, updated_at
@@ -616,6 +649,87 @@ impl Database {
             params![board_id, SyncStatus::Conflict, BoardRole::from(permission)],
         )?;
         tx.commit()?;
+        Ok(())
+    }
+
+    fn initialize_task_search_index(&self) -> StorageResult<()> {
+        let index_exists = self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cardbe_task_search')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        self.connection.execute_batch(
+            "CREATE TABLE IF NOT EXISTS cardbe_task_search(
+                 rowid INTEGER PRIMARY KEY,
+                 board_id INTEGER NOT NULL,
+                 task_id INTEGER NOT NULL,
+                 archived INTEGER NOT NULL,
+                 body TEXT NOT NULL,
+                 UNIQUE(board_id,task_id,archived)
+             );
+             CREATE VIRTUAL TABLE IF NOT EXISTS cardbe_task_fts USING fts5(
+                 body,content='cardbe_task_search',content_rowid='rowid',tokenize='trigram'
+             );
+             CREATE TRIGGER IF NOT EXISTS cardbe_task_search_ai AFTER INSERT ON cardbe_task_search BEGIN
+                 INSERT INTO cardbe_task_fts(rowid,body) VALUES(new.rowid,new.body);
+             END;
+             CREATE TRIGGER IF NOT EXISTS cardbe_task_search_ad AFTER DELETE ON cardbe_task_search BEGIN
+                 INSERT INTO cardbe_task_fts(cardbe_task_fts,rowid,body) VALUES('delete',old.rowid,old.body);
+             END;
+             CREATE TRIGGER IF NOT EXISTS cardbe_task_search_au AFTER UPDATE ON cardbe_task_search BEGIN
+                 INSERT INTO cardbe_task_fts(cardbe_task_fts,rowid,body) VALUES('delete',old.rowid,old.body);
+                 INSERT INTO cardbe_task_fts(rowid,body) VALUES(new.rowid,new.body);
+             END;
+             CREATE VIEW IF NOT EXISTS cardbe_task_search_payloads AS
+                 SELECT board_id,id AS task_id,0 AS archived,payload FROM cardbe_tasks
+                 UNION ALL
+                 SELECT board_id,task_id,1 AS archived,payload FROM cardbe_archives;
+             CREATE VIEW IF NOT EXISTS cardbe_task_search_content AS
+                 SELECT board_id,task_id,archived,
+                     COALESCE(json_extract(payload,'$.title'),'') || ' ' ||
+                     COALESCE(json_extract(payload,'$.description'),'') || ' ' ||
+                     COALESCE((SELECT group_concat(value,' ') FROM json_each(payload,'$.labels')),'') || ' ' ||
+                     COALESCE((SELECT group_concat(json_extract(value,'$.text'),' ') FROM json_each(payload,'$.items')),'') AS body
+                 FROM cardbe_task_search_payloads;
+             CREATE TRIGGER IF NOT EXISTS cardbe_tasks_ai AFTER INSERT ON cardbe_tasks BEGIN
+                 INSERT INTO cardbe_task_search(board_id,task_id,archived,body)
+                 SELECT board_id,task_id,archived,body FROM cardbe_task_search_content
+                 WHERE board_id=new.board_id AND task_id=new.id AND archived=0
+                 ON CONFLICT(board_id,task_id,archived) DO UPDATE SET body=excluded.body;
+             END;
+             CREATE TRIGGER IF NOT EXISTS cardbe_tasks_ad AFTER DELETE ON cardbe_tasks BEGIN
+                 DELETE FROM cardbe_task_search WHERE board_id=old.board_id AND task_id=old.id AND archived=0;
+             END;
+             CREATE TRIGGER IF NOT EXISTS cardbe_tasks_au AFTER UPDATE OF board_id,id,payload ON cardbe_tasks BEGIN
+                 DELETE FROM cardbe_task_search WHERE board_id=old.board_id AND task_id=old.id AND archived=0;
+                 INSERT INTO cardbe_task_search(board_id,task_id,archived,body)
+                 SELECT board_id,task_id,archived,body FROM cardbe_task_search_content
+                 WHERE board_id=new.board_id AND task_id=new.id AND archived=0
+                 ON CONFLICT(board_id,task_id,archived) DO UPDATE SET body=excluded.body;
+             END;
+             CREATE TRIGGER IF NOT EXISTS cardbe_archives_ai AFTER INSERT ON cardbe_archives BEGIN
+                 INSERT INTO cardbe_task_search(board_id,task_id,archived,body)
+                 SELECT board_id,task_id,archived,body FROM cardbe_task_search_content
+                 WHERE board_id=new.board_id AND task_id=new.task_id AND archived=1
+                 ON CONFLICT(board_id,task_id,archived) DO UPDATE SET body=excluded.body;
+             END;
+             CREATE TRIGGER IF NOT EXISTS cardbe_archives_ad AFTER DELETE ON cardbe_archives BEGIN
+                 DELETE FROM cardbe_task_search WHERE board_id=old.board_id AND task_id=old.task_id AND archived=1;
+             END;
+             CREATE TRIGGER IF NOT EXISTS cardbe_archives_au AFTER UPDATE OF board_id,task_id,payload ON cardbe_archives BEGIN
+                 DELETE FROM cardbe_task_search WHERE board_id=old.board_id AND task_id=old.task_id AND archived=1;
+                 INSERT INTO cardbe_task_search(board_id,task_id,archived,body)
+                 SELECT board_id,task_id,archived,body FROM cardbe_task_search_content
+                 WHERE board_id=new.board_id AND task_id=new.task_id AND archived=1
+                 ON CONFLICT(board_id,task_id,archived) DO UPDATE SET body=excluded.body;
+             END;",
+        )?;
+        if !index_exists {
+            self.connection.execute_batch(
+                "INSERT INTO cardbe_task_search(board_id,task_id,archived,body)
+                 SELECT board_id,task_id,archived,body FROM cardbe_task_search_content WHERE 1;",
+            )?;
+        }
         Ok(())
     }
 
@@ -1323,6 +1437,7 @@ impl Database {
             tx.execute("INSERT INTO cardbe_global_metadata(key,value) VALUES ('multiboard_schema_version','1')", [])?;
         }
         tx.commit()?;
+        self.initialize_task_search_index()?;
         Ok(())
     }
 
@@ -1838,9 +1953,12 @@ fn load_board_positions(
     table: &str,
     board_id: i64,
 ) -> StorageResult<HashMap<i64, i64>> {
-    let mut s = connection.prepare(&format!(
-        "SELECT id,position FROM {table} WHERE board_id=?1"
-    ))?;
+    let sql = match table {
+        "cardbe_columns" => "SELECT id,position FROM cardbe_columns WHERE board_id=?1",
+        "cardbe_tasks" => "SELECT id,position FROM cardbe_tasks WHERE board_id=?1",
+        _ => return Err(format!("Unsupported position table: {table}").into()),
+    };
+    let mut s = connection.prepare(sql)?;
     let result = s
         .query_map([board_id], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_, _>>()?;
@@ -1848,7 +1966,15 @@ fn load_board_positions(
 }
 
 fn table_columns(tx: &Transaction<'_>, table: &str) -> StorageResult<Vec<(String, String)>> {
-    let mut s = tx.prepare(&format!("PRAGMA table_info({table})"))?;
+    let sql = match table {
+        "cardbe_boards" => "PRAGMA table_info(cardbe_boards)",
+        "cardbe_columns" => "PRAGMA table_info(cardbe_columns)",
+        "cardbe_tasks" => "PRAGMA table_info(cardbe_tasks)",
+        "boards" => "PRAGMA table_info(boards)",
+        "board_snapshots" => "PRAGMA table_info(board_snapshots)",
+        _ => return Err(format!("Unsupported schema table: {table}").into()),
+    };
+    let mut s = tx.prepare(sql)?;
     let result = s
         .query_map([], |r| Ok((r.get(1)?, r.get(2)?)))?
         .collect::<Result<_, _>>()?;
