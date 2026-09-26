@@ -93,16 +93,17 @@ export class BoardStore {
     private iroh_retry_after = new Map<number, number>();
     private iroh_host_checking = false;
     iroh_last_error = $state("");
+    iroh_access_removed = $state<Record<number, boolean>>({});
     iroh_last_synced_at = $state<Record<number, number>>({});
 
     async create_iroh_invite(board_id: number, permission: "viewer" | "editor"): Promise<string> {
         return invoke<string>("create_iroh_invite", { boardId: board_id, permission });
     }
 
-    async join_iroh_invite(ticket: string): Promise<boolean> {
+    async join_iroh_invite(ticket: string, silent = false): Promise<boolean> {
         this.iroh_last_error = "";
         try {
-            const joined = await invoke<BoardSummary>("join_iroh_invite", { ticket });
+            const joined = await invoke<BoardSummary>("join_iroh_invite", { ticket, requestApproval: !silent });
             this.boards = [...this.boards, joined];
             this.iroh_last_synced_at = { ...this.iroh_last_synced_at, [joined.id]: Date.now() };
             await this.switch_board(joined.id);
@@ -111,7 +112,7 @@ export class BoardStore {
             this.iroh_last_error = error instanceof Error
                 ? error.message
                 : typeof error === "string" ? error : "Couldn't join shared board";
-            toast.error(this.iroh_last_error);
+            if (!silent && !this.iroh_last_error.startsWith("APPROVAL_REQUIRED:")) toast.error(this.iroh_last_error);
             return false;
         }
     }
@@ -119,26 +120,30 @@ export class BoardStore {
     async sync_iroh_board(board_id = this.active_board_id, silent = false): Promise<boolean> {
         if (board_id === null) return false;
         if (this.iroh_syncing.has(board_id)) return false;
+        const previous_status = this.boards.find((item) => item.id === board_id)?.sync_status;
         this.iroh_syncing.add(board_id);
         this.update_iroh_summary(board_id, "syncing");
         try {
             const synced = await invoke<BoardSummary>("sync_iroh_board", { boardId: board_id });
             this.iroh_failures.delete(board_id);
             this.iroh_retry_after.delete(board_id);
+            this.iroh_access_removed = { ...this.iroh_access_removed, [board_id]: false };
             this.boards = this.boards.map((board) => board.id === synced.id ? synced : board);
             this.iroh_last_synced_at = { ...this.iroh_last_synced_at, [synced.id]: Date.now() };
             if (board_id === this.active_board_id) { this.can_undo = false; this.reload_active_board_data(); }
             if (!silent) toast.success("Shared board synced");
             return true;
         } catch (error) {
+            const message = error instanceof Error ? error.message : typeof error === "string" ? error : "Couldn't sync shared board";
+            if (message.startsWith("Access was declined or revoked")) this.iroh_access_removed = { ...this.iroh_access_removed, [board_id]: true };
             const failures = Math.min(5, (this.iroh_failures.get(board_id) ?? 0) + 1);
             this.iroh_failures.set(board_id, failures);
             this.iroh_retry_after.set(board_id, Date.now() + Math.min(300_000, IROH_BACKGROUND_SYNC_MS * 2 ** failures));
             await this.get_boards();
             if (this.boards.find((board) => board.id === board_id)?.sync_status !== "conflict") {
-                this.update_iroh_summary(board_id, "error");
+                this.update_iroh_summary(board_id, previous_status === "pending" ? "pending" : "error");
             }
-            if (!silent) toast.error(error instanceof Error ? error.message : typeof error === "string" ? error : "Couldn't sync shared board");
+            if (!silent) toast.error(message);
             return false;
         } finally {
             this.iroh_syncing.delete(board_id);

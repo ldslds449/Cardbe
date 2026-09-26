@@ -1,5 +1,5 @@
 use crate::{
-    models::{Board, StoredData},
+    models::{Board, BoardRole, StoredData},
     storage::{self, Database},
 };
 use std::{
@@ -238,7 +238,7 @@ fn ensure_board_can_edit(guard: &AppData) -> Result<(), String> {
         .database
         .board_role(guard.active_board_id)
         .map_err(|e| e.to_string())?
-        == "viewer"
+        == BoardRole::Viewer
     {
         Err("This shared board is read-only".into())
     } else {

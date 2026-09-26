@@ -2,24 +2,60 @@ use serde::{Deserialize, Serialize};
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 8;
 
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BoardRole {
+    #[default]
+    Owner,
+    Editor,
+    Viewer,
+}
+
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncStatus {
+    #[default]
+    Local,
+    Pending,
+    Synced,
+    Conflict,
+}
+
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum IrohPermission {
+    Viewer,
+    Editor,
+}
+
+impl From<IrohPermission> for BoardRole {
+    fn from(permission: IrohPermission) -> Self {
+        match permission {
+            IrohPermission::Viewer => Self::Viewer,
+            IrohPermission::Editor => Self::Editor,
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum IrohDeviceStatus {
+    Pending,
+    Approved,
+    Revoked,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Board {
     pub id: i64,
     pub name: String,
     pub task_count: i64,
-    #[serde(default = "default_board_role")]
-    pub shared_role: String,
-    #[serde(default = "default_sync_status")]
-    pub sync_status: String,
+    #[serde(default)]
+    pub shared_role: BoardRole,
+    #[serde(default)]
+    pub sync_status: SyncStatus,
     #[serde(default)]
     pub sync_revision: i64,
-}
-
-fn default_board_role() -> String {
-    "owner".into()
-}
-fn default_sync_status() -> String {
-    "local".into()
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
@@ -134,24 +170,6 @@ pub enum ColumnSort {
 impl Default for ColumnSort {
     fn default() -> Self {
         Self::Custom
-    }
-}
-
-impl ColumnSort {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Custom => "custom",
-            Self::DueDateAsc => "due_date_asc",
-            Self::DueDateDesc => "due_date_desc",
-        }
-    }
-
-    pub fn from_str(value: &str) -> Self {
-        match value {
-            "due_date_asc" => Self::DueDateAsc,
-            "due_date_desc" => Self::DueDateDesc,
-            _ => Self::Custom,
-        }
     }
 }
 

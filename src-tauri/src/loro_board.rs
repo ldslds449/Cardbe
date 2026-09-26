@@ -60,12 +60,35 @@ fn meta(tree: &LoroTree, id: TreeID) -> Result<serde_json::Value, String> {
     Ok(json(&tree.get_meta(id).map_err(|e| e.to_string())?))
 }
 
-fn node_kind(tree: &LoroTree, id: TreeID) -> Result<String, String> {
-    meta(tree, id)?
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LoroNodeKind {
+    Archives,
+    Column,
+    Task,
+}
+
+impl LoroNodeKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Archives => "archives",
+            Self::Column => "column",
+            Self::Task => "task",
+        }
+    }
+}
+
+fn node_kind(tree: &LoroTree, id: TreeID) -> Result<LoroNodeKind, String> {
+    let metadata = meta(tree, id)?;
+    let value = metadata
         .get("kind")
         .and_then(|v| v.as_str())
-        .map(str::to_owned)
-        .ok_or("Loro tree node has no kind".into())
+        .ok_or("Loro tree node has no kind")?;
+    match value {
+        "archives" => Ok(LoroNodeKind::Archives),
+        "column" => Ok(LoroNodeKind::Column),
+        "task" => Ok(LoroNodeKind::Task),
+        _ => Err("Invalid Loro tree node kind".into()),
+    }
 }
 
 fn node_id(tree: &LoroTree, id: TreeID) -> Result<i64, String> {
@@ -77,7 +100,7 @@ fn node_id(tree: &LoroTree, id: TreeID) -> Result<i64, String> {
         .map_err(|_| "Invalid Loro tree node ID".into())
 }
 
-fn active_nodes(tree: &LoroTree, kind: &str) -> Result<HashMap<i64, TreeID>, String> {
+fn active_nodes(tree: &LoroTree, kind: LoroNodeKind) -> Result<HashMap<i64, TreeID>, String> {
     // ponytail: Scan the board per save; add a persisted ID index if large boards make saves slow.
     let mut result = HashMap::new();
     for node in tree.get_nodes(false) {
@@ -93,12 +116,12 @@ fn active_nodes(tree: &LoroTree, kind: &str) -> Result<HashMap<i64, TreeID>, Str
 fn create_node(
     tree: &LoroTree,
     parent: Option<TreeID>,
-    kind: &str,
+    kind: LoroNodeKind,
     id: i64,
 ) -> Result<TreeID, String> {
     let node = tree.create(parent).map_err(|e| e.to_string())?;
     let meta = tree.get_meta(node).map_err(|e| e.to_string())?;
-    meta.insert("kind", kind).map_err(|e| e.to_string())?;
+    meta.insert("kind", kind.as_str()).map_err(|e| e.to_string())?;
     meta.insert("id", id.to_string())
         .map_err(|e| e.to_string())?;
     Ok(node)
@@ -154,20 +177,20 @@ pub fn apply_local_delta(
     let archive_root = match tree
         .roots()
         .into_iter()
-        .find(|id| node_kind(&tree, *id).ok().as_deref() == Some("archives"))
+        .find(|id| node_kind(&tree, *id).ok() == Some(LoroNodeKind::Archives))
     {
         Some(id) => id,
         None => {
             let id = tree.create(None).map_err(|e| e.to_string())?;
             tree.get_meta(id)
                 .map_err(|e| e.to_string())?
-                .insert("kind", "archives")
+                .insert("kind", LoroNodeKind::Archives.as_str())
                 .map_err(|e| e.to_string())?;
             id
         }
     };
-    let mut column_nodes = active_nodes(&tree, "column")?;
-    let mut task_nodes = active_nodes(&tree, "task")?;
+    let mut column_nodes = active_nodes(&tree, LoroNodeKind::Column)?;
+    let mut task_nodes = active_nodes(&tree, LoroNodeKind::Task)?;
     let wanted_columns = after.columns.iter().map(|c| c.id).collect::<HashSet<_>>();
     let wanted_tasks = after
         .columns
@@ -206,7 +229,7 @@ pub fn apply_local_delta(
     for column in &after.columns {
         let node = match column_nodes.get(&column.id) {
             Some(node) => *node,
-            None => create_node(&tree, None, "column", column.id)?,
+            None => create_node(&tree, None, LoroNodeKind::Column, column.id)?,
         };
         root_order.push(node);
         let map = columns
@@ -219,7 +242,7 @@ pub fn apply_local_delta(
         for task in &column.tasks {
             let task_node = match task_nodes.get(&task.id) {
                 Some(node) => *node,
-                None => create_node(&tree, Some(node), "task", task.id)?,
+                None => create_node(&tree, Some(node), LoroNodeKind::Task, task.id)?,
             };
             order.push(task_node);
             let map = tasks
@@ -234,7 +257,7 @@ pub fn apply_local_delta(
     for archive in &after.archives {
         let node = match task_nodes.get(&archive.task.id) {
             Some(node) => *node,
-            None => create_node(&tree, Some(archive_root), "task", archive.task.id)?,
+            None => create_node(&tree, Some(archive_root), LoroNodeKind::Task, archive.task.id)?,
         };
         archive_order.push(node);
         let map = tasks
@@ -305,10 +328,10 @@ pub fn project(update: &[u8]) -> Result<StoredData, String> {
     let mut result = StoredData::default();
     let mut seen = HashSet::new();
     for root in tree.roots() {
-        match node_kind(&tree, root)?.as_str() {
-            "archives" => {
+        match node_kind(&tree, root)? {
+            LoroNodeKind::Archives => {
                 for node in tree.children(root).unwrap_or_default() {
-                    if node_kind(&tree, node)? != "task" {
+                    if node_kind(&tree, node)? != LoroNodeKind::Task {
                         return Err("Invalid Loro archive child".into());
                     }
                     let id = node_id(&tree, node)?;
@@ -322,7 +345,7 @@ pub fn project(update: &[u8]) -> Result<StoredData, String> {
                     });
                 }
             }
-            "column" => {
+            LoroNodeKind::Column => {
                 let id = node_id(&tree, root)?;
                 let map = columns.get(id.to_string()).ok_or("Missing Loro column")?;
                 let mut column = Column {
@@ -333,7 +356,7 @@ pub fn project(update: &[u8]) -> Result<StoredData, String> {
                     tasks: Vec::new(),
                 };
                 for node in tree.children(root).unwrap_or_default() {
-                    if node_kind(&tree, node)? != "task" {
+                    if node_kind(&tree, node)? != LoroNodeKind::Task {
                         return Err("Invalid Loro column child".into());
                     }
                     let id = node_id(&tree, node)?;

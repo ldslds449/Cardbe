@@ -10,10 +10,12 @@
   import EyeClosedIcon from "@lucide/svelte/icons/eye-closed";
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
+  import LinkIcon from "@lucide/svelte/icons/link";
   import MoonIcon from "@lucide/svelte/icons/moon";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
   import RadioTowerIcon from "@lucide/svelte/icons/radio-tower";
+  import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
   import SearchIcon from "@lucide/svelte/icons/search";
   import SunIcon from "@lucide/svelte/icons/sun";
   import XIcon from "@lucide/svelte/icons/x";
@@ -41,6 +43,10 @@
     web_publish_count = 0,
     web_publish_status = "idle",
     web_publish_detail = "",
+    pending_device_count = 0,
+    removed_access_count = 0,
+    onOpenDeviceRequests,
+    onOpenRemovedAccess,
     onPrepareImport,
     onExportAllBoards,
     onImportAllBoards,
@@ -65,6 +71,10 @@
     web_publish_count?: number;
     web_publish_status?: "idle" | "updating" | "error";
     web_publish_detail?: string;
+    pending_device_count?: number;
+    removed_access_count?: number;
+    onOpenDeviceRequests: () => void;
+    onOpenRemovedAccess: () => void;
     onPrepareImport: () => void | Promise<void>;
     onExportAllBoards: () => void | Promise<void>;
     onImportAllBoards: () => void | Promise<void>;
@@ -170,6 +180,12 @@
       </div>
     </div>
 
+    {#if pending_device_count > 0}
+      <Button variant="outline" size="sm" class="shrink-0 gap-1.5 border-primary/40 bg-primary/5 text-primary" onclick={onOpenDeviceRequests} aria-label={`${pending_device_count} device approval requests`} title="Review device approval requests"><ShieldCheckIcon class="size-4" /><span class="hidden xl:inline">Device requests</span><span class="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{pending_device_count}</span></Button>
+    {/if}
+    {#if removed_access_count > 0}
+      <Button variant="outline" size="sm" class="shrink-0 gap-1.5 border-destructive/40 bg-destructive/5 text-destructive" onclick={onOpenRemovedAccess} aria-label={`${removed_access_count} shared boards need access`} title="Request access to shared boards again"><LinkIcon class="size-4" /><span class="hidden xl:inline">Access removed</span><span class="rounded-full bg-destructive px-1.5 text-xs text-white">{removed_access_count}</span></Button>
+    {/if}
     {#if web_publish_count > 0}
       <Button
         variant="outline"

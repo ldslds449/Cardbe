@@ -342,7 +342,7 @@ pub fn publish_lan_share(
         .database
         .board_role(board_id)
         .map_err(|e| e.to_string())?
-        != "owner"
+        != crate::models::BoardRole::Owner
     {
         return Err("Only boards you own can be published".into());
     }

@@ -20,6 +20,7 @@
     type Task,
   } from "./type/task.svelte";
   import { deserialize_column, type ColumnSerialized } from "./type/column.svelte";
+  import { IrohDeviceStatus, type IrohInvite } from "./type/iroh-share";
   import BoardView from "./components/board/board_view.svelte";
   import ArchivePanel from "./components/archive/archive_panel.svelte";
   import ExpiredPanel from "./components/expire/expire_panel.svelte";
@@ -199,6 +200,16 @@
   // read-only board sharing
   let board_share_dialog_open = $state(false);
   let iroh_share_dialog_open = $state(false);
+  let iroh_show_requests = $state(false);
+  let iroh_show_received = $state(false);
+  const removed_access_count = $derived(board.boards.filter((item) => item.shared_role !== "owner" && board.iroh_access_removed[item.id]).length);
+  let pending_device_count = $state(0);
+  async function refresh_device_requests() {
+    try {
+      const invites = await invoke<IrohInvite[]>("list_iroh_invites");
+      pending_device_count = invites.reduce((count, invite) => count + invite.devices.filter((device) => device.status === IrohDeviceStatus.Pending).length, 0);
+    } catch { pending_device_count = 0; }
+  }
   const share_time_formatter = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -470,6 +481,8 @@
   }
 
   onMount(() => {
+    void refresh_device_requests();
+    const device_request_timer = window.setInterval(() => void refresh_device_requests(), 5000);
     void board.init().then(async () => {
       restore_managed_share_state(board.boards.length === 1 ? board.boards[0].id : undefined);
       await restore_all_managed_shares();
@@ -586,6 +599,7 @@
       },
     );
     return () => {
+      window.clearInterval(device_request_timer);
       window.clearTimeout(update_check_timeout);
       void data_changed_listener.then((unlisten) => unlisten());
       void iroh_remote_push_listener.then((unlisten) => unlisten());
@@ -1068,6 +1082,10 @@
       {update_check_in_progress}
       read_only={active_board_read_only}
       web_publish_count={share_sync_summary.active_count}
+      {pending_device_count}
+      {removed_access_count}
+      onOpenDeviceRequests={() => { iroh_show_requests = true; iroh_show_received = false; iroh_share_dialog_open = true; }}
+      onOpenRemovedAccess={() => { iroh_show_requests = false; iroh_show_received = true; iroh_share_dialog_open = true; }}
       web_publish_status={share_sync_summary.failed ? "error" : share_sync_summary.updating ? "updating" : "idle"}
       web_publish_detail={share_sync_summary.failed
         ? `Web publish failed: ${share_sync_summary.failed.error}`
@@ -1079,7 +1097,7 @@
       onImportAllBoards={() => { void restore_everything(); }}
       onPrepareTaskImport={prepare_task_import}
       onOpenBoardShare={() => { board_share_dialog_open = true; }}
-      onOpenIrohShare={() => { iroh_share_dialog_open = true; }}
+      onOpenIrohShare={() => { iroh_show_requests = false; iroh_show_received = false; iroh_share_dialog_open = true; }}
       onOpenTaskTemplates={open_templates_dialog}
       onAddTask={open_add_task_shortcut}
       onAddColumn={open_add_column_dialog}
@@ -1142,7 +1160,7 @@
         );
       }}
     />
-    <IrohShareDialog bind:open={iroh_share_dialog_open} {board} />
+    <IrohShareDialog bind:open={iroh_share_dialog_open} show_requests={iroh_show_requests} show_received={iroh_show_received} onRequestsChanged={() => void refresh_device_requests()} {board} />
 
     <TaskColumnDialog
       bind:open={task_column_dialog_open}

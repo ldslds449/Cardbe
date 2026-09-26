@@ -1,12 +1,12 @@
 //! Owner-authoritative Iroh snapshot protocol.  The invitation secret is only
 //! present in the copied ticket; it is never placed in a normal backup.
 use crate::{
-    models::{Board, StoredData},
+    models::{Board, BoardRole, IrohDeviceStatus, IrohPermission, StoredData, SyncStatus},
     state::SharedAppData,
     storage::Database,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use iroh::{endpoint::presets, Endpoint, EndpointAddr, SecretKey, TransportAddr};
+use iroh::{endpoint::presets, Endpoint, EndpointAddr, EndpointId, SecretKey, TransportAddr};
 use qrcode::{render::svg, QrCode};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -25,17 +25,45 @@ const MAX_HOST_CONNECTIONS: usize = 16;
 #[derive(Clone, Serialize, Deserialize)]
 struct Ticket {
     version: u8,
-    endpoint: EndpointAddr,
+    node_id: String,
+    relay_urls: Vec<String>,
     invite_id: String,
     secret: String,
-    permission: String,
+    permission: IrohPermission,
+}
+#[derive(Serialize, Deserialize)]
+struct RemoteInvitation {
+    node_id: String,
+    relay_urls: Vec<String>,
+    invite_id: String,
+    secret: String,
+}
+impl From<&Ticket> for RemoteInvitation {
+    fn from(ticket: &Ticket) -> Self {
+        Self {
+            node_id: ticket.node_id.clone(),
+            relay_urls: ticket.relay_urls.clone(),
+            invite_id: ticket.invite_id.clone(),
+            secret: ticket.secret.clone(),
+        }
+    }
+}
+fn endpoint_address(node_id: &str, relay_urls: &[String]) -> Result<EndpointAddr, String> {
+    let key: [u8; 32] = URL_SAFE_NO_PAD.decode(node_id)
+        .map_err(|_| "Invalid invitation node ID")?
+        .try_into().map_err(|_| "Invalid invitation node ID")?;
+    let id = EndpointId::from_bytes(&key).map_err(|_| "Invalid invitation node ID")?;
+    let addresses = relay_urls.iter().map(|url| {
+        url.parse().map(TransportAddr::Relay).map_err(|_| "Invalid invitation relay URL")
+    }).collect::<Result<Vec<_>, _>>()?;
+    Ok(EndpointAddr::from_parts(id, addresses))
 }
 #[derive(Serialize, Deserialize)]
 struct Request {
     invite_id: String,
     secret: String,
-    #[serde(default = "default_pull")]
-    action: String,
+    #[serde(default)]
+    action: IrohAction,
     #[serde(default)]
     loro_state_vector: Vec<u8>,
     #[serde(default)]
@@ -43,25 +71,33 @@ struct Request {
     #[serde(default)]
     known_revision: Option<i64>,
     #[serde(default)]
-    known_permission: Option<String>,
-}
-fn default_pull() -> String {
-    "pull".into()
+    known_permission: Option<IrohPermission>,
 }
 
-fn local_edits_at_risk(status: &str, changed_during_sync: bool) -> bool {
-    changed_during_sync || status == "pending"
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum IrohAction {
+    #[default]
+    Pull,
+    Request,
+    LoroSync,
 }
 
-fn needs_editor_upload(role: &str, status: &str) -> bool {
-    role == "editor" && status == "pending"
+fn local_edits_at_risk(status: SyncStatus, changed_during_sync: bool) -> bool {
+    changed_during_sync || status == SyncStatus::Pending
+}
+
+fn needs_editor_upload(role: BoardRole, status: SyncStatus) -> bool {
+    role == BoardRole::Editor && status == SyncStatus::Pending
 }
 #[derive(Serialize, Deserialize)]
 struct Snapshot {
     ok: bool,
     error: Option<String>,
+    #[serde(default)]
+    error_code: Option<SnapshotErrorCode>,
     name: String,
-    permission: String,
+    permission: IrohPermission,
     revision: i64,
     data: StoredData,
     #[serde(default)]
@@ -69,6 +105,22 @@ struct Snapshot {
     #[serde(default)]
     unchanged: bool,
 }
+
+#[derive(Clone, Copy, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum SnapshotErrorCode {
+    ApprovalRequired,
+}
+
+fn snapshot_requires_approval(snapshot: &Snapshot) -> bool {
+    snapshot.error_code == Some(SnapshotErrorCode::ApprovalRequired)
+        // Accept the old wire format, which only sent the user-facing message.
+        || snapshot
+            .error
+            .as_deref()
+            .is_some_and(|error| error.starts_with("Waiting for owner approval"))
+}
+
 #[derive(Clone, Serialize)]
 struct RemotePushApplied {
     board_id: i64,
@@ -76,7 +128,7 @@ struct RemotePushApplied {
 }
 #[derive(Clone)]
 struct HostedInvite {
-    permission: String,
+    permission: IrohPermission,
     board_id: i64,
     enabled: bool,
 }
@@ -85,9 +137,15 @@ pub struct IrohInviteSummary {
     invite_id: String,
     board_id: i64,
     board_name: String,
-    permission: String,
+    permission: IrohPermission,
     enabled: bool,
     created_at: String,
+    devices: Vec<IrohDevice>,
+}
+#[derive(Clone, Serialize)]
+pub struct IrohDevice {
+    node_id: String,
+    status: IrohDeviceStatus,
 }
 
 #[derive(Clone, Serialize)]
@@ -109,6 +167,12 @@ pub struct IrohShareState {
 fn random_token() -> String {
     URL_SAFE_NO_PAD.encode(SecretKey::generate().to_bytes())
 }
+fn device_key(db: &mut Database) -> Result<SecretKey, String> {
+    use sha2::{Digest, Sha256};
+    let seed = db.iroh_endpoint_seed().map_err(|e| e.to_string())?;
+    let bytes: [u8; 32] = Sha256::digest(seed.as_bytes()).into();
+    Ok(SecretKey::from_bytes(&bytes))
+}
 
 fn parse_ticket(ticket: &str) -> Result<Ticket, String> {
     let encoded = ticket_payload(ticket).ok_or("Not a shared-board invitation")?;
@@ -119,12 +183,12 @@ fn parse_ticket(ticket: &str) -> Result<Ticket, String> {
     )
     .map_err(|_| "Invalid invitation")?;
     if ticket.version != 1
-        || !matches!(ticket.permission.as_str(), "viewer" | "editor")
         || ticket.invite_id.is_empty()
         || ticket.secret.is_empty()
     {
         return Err("Unsupported shared-board invitation".into());
     }
+    endpoint_address(&ticket.node_id, &ticket.relay_urls)?;
     Ok(ticket)
 }
 
@@ -133,9 +197,9 @@ fn ensure_invite_not_joined(db: &Database, ticket: &Ticket) -> Result<(), String
         .iroh_remote_tickets()
         .map_err(|e| e.to_string())?
         .iter()
-        .filter_map(|saved| parse_ticket(saved).ok())
+        .filter_map(|saved| serde_json::from_str::<RemoteInvitation>(saved).ok())
         .any(|saved| {
-            saved.endpoint.id == ticket.endpoint.id && saved.invite_id == ticket.invite_id
+            saved.node_id == ticket.node_id && saved.invite_id == ticket.invite_id
         });
     if already_joined {
         return Err("This invitation has already been joined".into());
@@ -156,7 +220,7 @@ fn ticket_payload(ticket: &str) -> Option<&str> {
 mod tests {
     use super::{
         ensure_board_owned, local_edits_at_risk, needs_editor_upload, ticket_payload,
-        viewer_is_current, Request,
+        viewer_is_current, BoardRole, IrohAction, IrohPermission, Request, SyncStatus,
     };
     use crate::models::Board;
 
@@ -173,8 +237,8 @@ mod tests {
             id: 7,
             name: "Received".into(),
             task_count: 0,
-            shared_role: "viewer".into(),
-            sync_status: "synced".into(),
+            shared_role: BoardRole::Viewer,
+            sync_status: SyncStatus::Synced,
             sync_revision: 1,
         };
         assert_eq!(ensure_board_owned(None), Err("Board not found".into()));
@@ -186,16 +250,16 @@ mod tests {
 
     #[test]
     fn permission_downgrade_only_conflicts_with_unsent_edits() {
-        assert!(!local_edits_at_risk("synced", false));
-        assert!(local_edits_at_risk("pending", false));
-        assert!(local_edits_at_risk("synced", true));
+        assert!(!local_edits_at_risk(SyncStatus::Synced, false));
+        assert!(local_edits_at_risk(SyncStatus::Pending, false));
+        assert!(local_edits_at_risk(SyncStatus::Synced, true));
     }
 
     #[test]
     fn clean_editor_only_sends_its_version_vector() {
-        assert!(!needs_editor_upload("editor", "synced"));
-        assert!(needs_editor_upload("editor", "pending"));
-        assert!(!needs_editor_upload("viewer", "pending"));
+        assert!(!needs_editor_upload(BoardRole::Editor, SyncStatus::Synced));
+        assert!(needs_editor_upload(BoardRole::Editor, SyncStatus::Pending));
+        assert!(!needs_editor_upload(BoardRole::Viewer, SyncStatus::Pending));
     }
 
     #[test]
@@ -203,43 +267,40 @@ mod tests {
         let mut request = Request {
             invite_id: "invite".into(),
             secret: "secret".into(),
-            action: "pull".into(),
+            action: IrohAction::Pull,
             loro_state_vector: vec![],
             loro_update: vec![],
             known_revision: Some(4),
-            known_permission: Some("viewer".into()),
+            known_permission: Some(IrohPermission::Viewer),
         };
-        assert!(viewer_is_current(&request, "viewer", 4));
-        assert!(!viewer_is_current(&request, "viewer", 5));
-        assert!(!viewer_is_current(&request, "editor", 4));
-        request.known_permission = Some("editor".into());
-        assert!(!viewer_is_current(&request, "viewer", 4));
-        request.known_permission = Some("viewer".into());
+        assert!(viewer_is_current(&request, IrohPermission::Viewer, 4));
+        assert!(!viewer_is_current(&request, IrohPermission::Viewer, 5));
+        assert!(!viewer_is_current(&request, IrohPermission::Editor, 4));
+        request.known_permission = Some(IrohPermission::Editor);
+        assert!(!viewer_is_current(&request, IrohPermission::Viewer, 4));
+        request.known_permission = Some(IrohPermission::Viewer);
         request.known_revision = None;
-        assert!(!viewer_is_current(&request, "viewer", 4));
+        assert!(!viewer_is_current(&request, IrohPermission::Viewer, 4));
     }
 }
 
-fn viewer_is_current(request: &Request, permission: &str, revision: i64) -> bool {
-    permission == "viewer"
-        && request.known_permission.as_deref() == Some("viewer")
+fn viewer_is_current(request: &Request, permission: IrohPermission, revision: i64) -> bool {
+    permission == IrohPermission::Viewer
+        && request.known_permission == Some(IrohPermission::Viewer)
         && request.known_revision == Some(revision)
 }
 
 // Persist and transmit an endpoint identity plus relay route, never a peer's
 // observed LAN/WAN IP address. The stable endpoint key is stored locally by
 // Database::iroh_endpoint_seed; Iroh/N0 resolves fresh paths after restarts.
-fn share_address(endpoint: &Endpoint) -> EndpointAddr {
+fn share_address(endpoint: &Endpoint) -> (String, Vec<String>) {
     let address = endpoint.addr();
-    EndpointAddr::from_parts(
-        address.id,
-        address.relay_urls().cloned().map(TransportAddr::Relay),
-    )
+    (URL_SAFE_NO_PAD.encode(address.id.as_bytes()), address.relay_urls().map(ToString::to_string).collect())
 }
 
 fn ensure_board_owned(board: Option<&Board>) -> Result<(), String> {
     let board = board.ok_or("Board not found")?;
-    if board.shared_role != "owner" {
+    if board.shared_role != BoardRole::Owner {
         return Err("Only boards you own can be shared".into());
     }
     Ok(())
@@ -251,12 +312,17 @@ fn snapshot_from_db(
     board_id: i64,
     error: Option<String>,
     request: &Request,
+    peer_id: &str,
 ) -> Result<Snapshot, String> {
     let app_state = app_handle.state::<SharedAppData>();
     let _state = app_state
         .lock()
         .map_err(|_| "Application state lock is poisoned")?;
     let mut db = Database::open(path.to_path_buf()).map_err(|e| e.to_string())?;
+    if db.iroh_device_access(&request.invite_id, &request.secret, peer_id, false)
+        .map_err(|e| e.to_string())? != Some(IrohDeviceStatus::Approved) {
+        return Err("Access was declined or revoked. You can request access again.".into());
+    }
     // Recheck after taking the app lock: the owner may revoke or change this
     // invitation while a request is waiting for the board snapshot.
     let permission = db
@@ -275,12 +341,13 @@ fn snapshot_from_db(
         .boards()
         .map_err(|e| e.to_string())?
         .into_iter()
-        .find(|board| board.id == board_id && board.shared_role == "owner")
+        .find(|board| board.id == board_id && board.shared_role == BoardRole::Owner)
         .ok_or("Board was deleted")?;
-    if error.is_none() && viewer_is_current(request, &permission, board.sync_revision) {
+    if error.is_none() && viewer_is_current(request, permission, board.sync_revision) {
         return Ok(Snapshot {
             ok: true,
             error: None,
+            error_code: None,
             name: board.name,
             permission,
             revision: board.sync_revision,
@@ -289,10 +356,11 @@ fn snapshot_from_db(
             unchanged: true,
         });
     }
-    if request.action == "loro_sync" && error.is_none() {
+    if request.action == IrohAction::LoroSync && error.is_none() {
         return Ok(Snapshot {
             ok: true,
             error: None,
+            error_code: None,
             name: board.name,
             permission,
             revision: board.sync_revision,
@@ -301,7 +369,7 @@ fn snapshot_from_db(
             unchanged: false,
         });
     }
-    let loro_update = if permission == "editor" {
+    let loro_update = if permission == IrohPermission::Editor {
         let loro_update = db
             .ensure_iroh_loro_doc(board_id)
             .map_err(|e| e.to_string())?;
@@ -317,6 +385,7 @@ fn snapshot_from_db(
     Ok(Snapshot {
         ok: error.is_none(),
         error,
+        error_code: None,
         name: board.name,
         permission,
         revision: board.sync_revision,
@@ -340,14 +409,12 @@ async fn ensure_host(
     {
         return Ok(hosted.endpoint.clone());
     }
-    let seed = {
+    let key = {
         let mut db = Database::open(path.clone()).map_err(|e| e.to_string())?;
-        db.iroh_endpoint_seed().map_err(|e| e.to_string())?
+        device_key(&mut db)?
     };
-    use sha2::{Digest, Sha256};
-    let key_bytes: [u8; 32] = Sha256::digest(seed.as_bytes()).into();
     let endpoint = Endpoint::builder(presets::N0)
-        .secret_key(SecretKey::from_bytes(&key_bytes))
+        .secret_key(key)
         .alpns(vec![ALPN.to_vec()])
         .bind()
         .await
@@ -372,6 +439,7 @@ async fn ensure_host(
             let Ok(Ok(connection)) = tokio::time::timeout(CONNECT_TIMEOUT, connecting).await else {
                 continue;
             };
+            let peer_id = URL_SAFE_NO_PAD.encode(connection.remote_id().as_bytes());
             let path = path.clone();
             let app_handle = app_handle.clone();
             tauri::async_runtime::spawn(async move {
@@ -387,12 +455,12 @@ async fn ensure_host(
                     return;
                 };
                 let mut applied_push = None;
+                let mut error_code = None;
                 let response = match serde_json::from_slice::<Request>(&bytes) {
                     Ok(request) => match Database::open(path.clone())
-                        .and_then(|db| db.iroh_invites())
                         .map_err(|e| e.to_string())
-                        .and_then(|saved| {
-                            saved
+                        .and_then(|mut db| {
+                            let invite = db.iroh_invites().map_err(|e| e.to_string())?
                                 .into_iter()
                                 .find(|(id, _, secret, _, _)| {
                                     id == &request.invite_id && secret == &request.secret
@@ -402,15 +470,28 @@ async fn ensure_host(
                                     board_id,
                                     enabled,
                                 })
-                                .ok_or_else(|| "Invitation was revoked".to_string())
+                                .ok_or_else(|| "Invitation was revoked".to_string())?;
+                            if !invite.enabled { return Err("Invitation is disabled".into()); }
+                            match db.iroh_device_access(&request.invite_id, &request.secret, &peer_id, request.action == IrohAction::Request)
+                                .map_err(|e| e.to_string())? {
+                                Some(IrohDeviceStatus::Approved) => Ok(invite),
+                                Some(IrohDeviceStatus::Pending) => {
+                                    error_code = Some(SnapshotErrorCode::ApprovalRequired);
+                                    Err(
+                                        "Waiting for owner approval. Ask the owner to approve this device, then try again."
+                                            .into(),
+                                    )
+                                }
+                                Some(IrohDeviceStatus::Revoked) => Err("Access was declined or revoked. You can request access again.".into()),
+                                None => Err("Invitation was revoked".into()),
+                            }
                         }) {
                         Err(error) => Err(error),
-                        Ok(invite) if !invite.enabled => Err("Invitation is disabled".into()),
-                        Ok(invite) if request.action == "pull" => {
-                            snapshot_from_db(&app_handle, &path, invite.board_id, None, &request)
+                        Ok(invite) if matches!(request.action, IrohAction::Pull | IrohAction::Request) => {
+                            snapshot_from_db(&app_handle, &path, invite.board_id, None, &request, &peer_id)
                         }
                         Ok(invite)
-                            if request.action == "loro_sync" && invite.permission == "editor" =>
+                            if request.action == IrohAction::LoroSync && invite.permission == IrohPermission::Editor =>
                         {
                             (|| -> Result<Snapshot, String> {
                                 let app_state = app_handle.state::<SharedAppData>();
@@ -424,6 +505,7 @@ async fn ensure_host(
                                         invite.board_id,
                                         &request.invite_id,
                                         &request.secret,
+                                        &peer_id,
                                         &request.loro_update,
                                     )
                                     .map_err(|e| e.to_string())?;
@@ -465,6 +547,7 @@ async fn ensure_host(
                                     invite.board_id,
                                     None,
                                     &request,
+                                    &peer_id,
                                 )?;
                                 snapshot.loro_update = response_update;
                                 Ok(snapshot)
@@ -476,6 +559,7 @@ async fn ensure_host(
                             invite.board_id,
                             Some("This invitation is read-only".into()),
                             &request,
+                            &peer_id,
                         ),
                     },
                     Err(_) => Err("Invalid request".into()),
@@ -483,13 +567,16 @@ async fn ensure_host(
                 .unwrap_or_else(|error| Snapshot {
                     ok: false,
                     error: Some(error),
+                    error_code: None,
                     name: String::new(),
-                    permission: String::new(),
+                    permission: IrohPermission::Viewer,
                     revision: 0,
                     data: StoredData::default(),
                     loro_update: Vec::new(),
                     unchanged: false,
                 });
+                let mut response = response;
+                response.error_code = error_code;
                 if let Some((board_id, revision)) = applied_push {
                     let _ = app_handle.emit(
                         "cardbe:iroh-remote-push",
@@ -501,8 +588,9 @@ async fn ensure_host(
                     _ => serde_json::to_vec(&Snapshot {
                         ok: false,
                         error: Some("Shared board exceeds the 16 MiB transfer limit".into()),
+                        error_code: None,
                         name: String::new(),
-                        permission: String::new(),
+                        permission: IrohPermission::Viewer,
                         revision: 0,
                         data: StoredData::default(),
                         loro_update: Vec::new(),
@@ -651,11 +739,8 @@ pub async fn create_iroh_invite(
     network: State<'_, IrohShareState>,
     app_handle: AppHandle,
     board_id: i64,
-    permission: String,
+    permission: IrohPermission,
 ) -> Result<String, String> {
-    if permission != "viewer" && permission != "editor" {
-        return Err("Permission must be viewer or editor".into());
-    }
     let path = {
         let guard = app
             .lock()
@@ -673,12 +758,14 @@ pub async fn create_iroh_invite(
         ensure_board_owned(guard.boards.iter().find(|board| board.id == board_id))?;
         guard
             .database
-            .save_iroh_invite(&invite_id, board_id, &secret, &permission)
+            .save_iroh_invite(&invite_id, board_id, &secret, permission)
             .map_err(|e| e.to_string())?;
     }
+    let (node_id, relay_urls) = share_address(&endpoint);
     let ticket = Ticket {
         version: 1,
-        endpoint: share_address(&endpoint),
+        node_id,
+        relay_urls,
         invite_id,
         secret,
         permission,
@@ -699,6 +786,7 @@ pub fn list_iroh_invites(app: State<'_, SharedAppData>) -> Result<Vec<IrohInvite
         .iter()
         .map(|b| (b.id, b.name.clone()))
         .collect();
+    let devices = guard.database.iroh_devices().map_err(|e| e.to_string())?;
     guard
         .database
         .iroh_invite_summaries()
@@ -708,6 +796,12 @@ pub fn list_iroh_invites(app: State<'_, SharedAppData>) -> Result<Vec<IrohInvite
                 .into_iter()
                 .map(
                     |(invite_id, board_id, permission, enabled, created_at, _)| IrohInviteSummary {
+                        devices: devices.iter().filter(|(id, _, _)| id == &invite_id)
+                            .map(|(_, node_id, status)| IrohDevice {
+                                node_id: node_id.clone(),
+                                status: *status,
+                            })
+                            .collect(),
                         invite_id,
                         board_id,
                         board_name: names
@@ -721,6 +815,13 @@ pub fn list_iroh_invites(app: State<'_, SharedAppData>) -> Result<Vec<IrohInvite
                 )
                 .collect()
         })
+}
+
+#[tauri::command]
+pub fn set_iroh_device_approved(app: State<'_, SharedAppData>, invite_id: String, node_id: String, approved: bool) -> Result<(), String> {
+    app.lock().map_err(|_| "Application state lock is poisoned")?
+        .database.set_iroh_device_approved(&invite_id, &node_id, approved)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -747,9 +848,11 @@ pub async fn get_iroh_invite_access(
         (guard.database.path().to_path_buf(), secret, permission)
     };
     let endpoint = ensure_host(&network, path, app_handle).await?;
+    let (node_id, relay_urls) = share_address(&endpoint);
     let ticket = Ticket {
         version: 1,
-        endpoint: share_address(&endpoint),
+        node_id,
+        relay_urls,
         invite_id,
         secret,
         permission,
@@ -768,21 +871,16 @@ pub async fn update_iroh_invite(
     network: State<'_, IrohShareState>,
     app_handle: AppHandle,
     invite_id: String,
-    permission: Option<String>,
+    permission: Option<IrohPermission>,
     enabled: Option<bool>,
 ) -> Result<(), String> {
-    if let Some(ref permission) = permission {
-        if permission != "viewer" && permission != "editor" {
-            return Err("Permission must be viewer or editor".into());
-        }
-    }
     let path = {
         let mut guard = app
             .lock()
             .map_err(|_| "Application state lock is poisoned")?;
         guard
             .database
-            .update_iroh_invite(&invite_id, permission.as_deref(), enabled)
+            .update_iroh_invite(&invite_id, permission, enabled)
             .map_err(|e| e.to_string())?;
         guard.database.path().to_path_buf()
     };
@@ -828,21 +926,24 @@ pub fn iroh_invite_qr_svg(ticket: String) -> Result<String, String> {
 pub async fn join_iroh_invite(
     app: State<'_, SharedAppData>,
     ticket: String,
+    request_approval: bool,
 ) -> Result<Board, String> {
-    let ticket_string = ticket.clone();
     let ticket = parse_ticket(&ticket)?;
-    {
-        let guard = app
+    let address = endpoint_address(&ticket.node_id, &ticket.relay_urls)?;
+    let key = {
+        let mut guard = app
             .lock()
             .map_err(|_| "Application state lock is poisoned")?;
         ensure_invite_not_joined(&guard.database, &ticket)?;
-    }
-    let endpoint = Endpoint::bind(presets::N0)
+        device_key(&mut guard.database)?
+    };
+    let device_id = URL_SAFE_NO_PAD.encode(key.public().as_bytes());
+    let endpoint = Endpoint::builder(presets::N0).secret_key(key).bind()
         .await
         .map_err(|e| e.to_string())?;
     let connection = tokio::time::timeout(
         CONNECT_TIMEOUT,
-        endpoint.connect(ticket.endpoint.clone(), ALPN),
+        endpoint.connect(address, ALPN),
     )
     .await
     .map_err(|_| "The board owner could not be reached within 20 seconds. Make sure their Cardbe is open and both computers have internet access.".to_string())?
@@ -859,7 +960,7 @@ pub async fn join_iroh_invite(
             &serde_json::to_vec(&Request {
                 invite_id: ticket.invite_id.clone(),
                 secret: ticket.secret.clone(),
-                action: "pull".into(),
+                action: if request_approval { IrohAction::Request } else { IrohAction::Pull },
                 loro_state_vector: Vec::new(),
                 loro_update: Vec::new(),
                 known_revision: None,
@@ -883,25 +984,26 @@ pub async fn join_iroh_invite(
     let snapshot: Snapshot = serde_json::from_slice(&bytes)
         .map_err(|_| "Invitation was revoked or the owner sent an invalid snapshot")?;
     if !snapshot.ok {
-        return Err(snapshot
+        let approval_required = snapshot_requires_approval(&snapshot);
+        let error = snapshot
             .error
-            .unwrap_or_else(|| "Invitation was revoked".into()));
+            .unwrap_or_else(|| "Invitation was revoked".into());
+        return Err(if approval_required {
+            format!("APPROVAL_REQUIRED:{device_id}")
+        } else { error });
     }
     let mut guard = app
         .lock()
         .map_err(|_| "Application state lock is poisoned")?;
     ensure_invite_not_joined(&guard.database, &ticket)?;
-    if !matches!(snapshot.permission.as_str(), "viewer" | "editor") {
-        return Err("Owner sent an invalid permission".into());
-    }
     let board = guard
         .database
         .create_received_board(
             &snapshot.name,
             &snapshot.data,
-            &snapshot.permission,
+            snapshot.permission,
             snapshot.revision,
-            &ticket_string,
+            &serde_json::to_string(&RemoteInvitation::from(&ticket)).map_err(|e| e.to_string())?,
             Some(&snapshot.loro_update),
         )
         .map_err(|e| e.to_string())?;
@@ -910,12 +1012,52 @@ pub async fn join_iroh_invite(
 }
 
 #[tauri::command]
+pub async fn request_iroh_board_access(
+    app: State<'_, SharedAppData>,
+    board_id: i64,
+    request_approval: bool,
+) -> Result<(bool, String), String> {
+    let (remote, key) = {
+        let mut guard = app.lock().map_err(|_| "Application state lock is poisoned")?;
+        let remote = guard.database.iroh_remote(board_id).map_err(|e| e.to_string())?
+            .ok_or("This is not a received shared board")?;
+        (serde_json::from_str::<RemoteInvitation>(&remote).map_err(|_| "Stored invitation is invalid")?, device_key(&mut guard.database)?)
+    };
+    let device_id = URL_SAFE_NO_PAD.encode(key.public().as_bytes());
+    let address = endpoint_address(&remote.node_id, &remote.relay_urls)?;
+    let endpoint = Endpoint::builder(presets::N0).secret_key(key).bind().await.map_err(|e| e.to_string())?;
+    let response = tokio::time::timeout(TRANSFER_TIMEOUT, async {
+        let connection = endpoint.connect(address, ALPN).await.map_err(|e| e.to_string())?;
+        let (mut send, mut recv) = connection.open_bi().await.map_err(|e| e.to_string())?;
+        let request = Request {
+            invite_id: remote.invite_id,
+            secret: remote.secret,
+            action: if request_approval { IrohAction::Request } else { IrohAction::Pull },
+            loro_state_vector: Vec::new(),
+            loro_update: Vec::new(),
+            known_revision: None,
+            known_permission: None,
+        };
+        send.write_all(&serde_json::to_vec(&request).map_err(|e| e.to_string())?).await.map_err(|e| e.to_string())?;
+        send.finish().map_err(|e| e.to_string())?;
+        recv.read_to_end(MAX_MESSAGE).await.map_err(|e| e.to_string())
+    }).await.map_err(|_| "Access request timed out".to_string())??;
+    endpoint.close().await;
+    let snapshot: Snapshot = serde_json::from_slice(&response).map_err(|_| "Owner sent an invalid response")?;
+    if snapshot.ok { return Ok((true, device_id)); }
+    if snapshot_requires_approval(&snapshot) {
+        return Ok((false, device_id));
+    }
+    Err(snapshot.error.unwrap_or_else(|| "Access request failed".into()))
+}
+
+#[tauri::command]
 pub async fn sync_iroh_board(
     app: State<'_, SharedAppData>,
     board_id: i64,
 ) -> Result<Board, String> {
-    let (ticket_text, role, revision, status, data) = {
-        let guard = app
+    let (ticket_text, role, revision, status, data, key) = {
+        let mut guard = app
             .lock()
             .map_err(|_| "Application state lock is poisoned")?;
         (
@@ -938,18 +1080,21 @@ pub async fn sync_iroh_board(
                 .boards
                 .iter()
                 .find(|b| b.id == board_id)
-                .map(|b| b.sync_status.clone())
-                .unwrap_or_else(|| "synced".into()),
+                .map(|b| b.sync_status)
+                .unwrap_or(SyncStatus::Synced),
             guard
                 .database
                 .read_board_complete(board_id)
                 .map_err(|e| e.to_string())?,
+            device_key(&mut guard.database)?,
         )
     };
-    if status == "conflict" {
+    if status == SyncStatus::Conflict {
         return Err("Resolve the saved sync conflict before syncing again".into());
     }
-    let ticket = parse_ticket(&ticket_text).map_err(|_| "Stored invitation is invalid")?;
+    let ticket: RemoteInvitation = serde_json::from_str(&ticket_text).map_err(|_| "Stored invitation is invalid")?;
+    let address = endpoint_address(&ticket.node_id, &ticket.relay_urls)
+        .map_err(|_| "Stored invitation is invalid")?;
     let (loro_update, loro_state_vector) = {
         let guard = app
             .lock()
@@ -962,38 +1107,43 @@ pub async fn sync_iroh_board(
         let vector = crate::loro_board::state_vector(Some(&update)).map_err(|e| e.to_string())?;
         (update, vector)
     };
-    if role == "editor" && loro_update.is_empty() {
+    if role == BoardRole::Editor && loro_update.is_empty() {
         return Err("Editable board is missing its Loro document. Rejoin the invitation.".into());
     }
-    let endpoint = Endpoint::bind(presets::N0)
+    let endpoint = Endpoint::builder(presets::N0).secret_key(key).bind()
         .await
         .map_err(|e| e.to_string())?;
     // Editors always exchange their Loro state when a document exists. A clean
     // editor still needs remote changes merged into its local CRDT history.
-    let pushing = role == "editor";
+    let pushing = role == BoardRole::Editor;
+    let permission = match role {
+        BoardRole::Viewer => IrohPermission::Viewer,
+        BoardRole::Editor => IrohPermission::Editor,
+        BoardRole::Owner => return Err("This is not a received shared board".into()),
+    };
     let request = Request {
         invite_id: ticket.invite_id,
         secret: ticket.secret,
         action: if pushing {
-            "loro_sync".into()
+            IrohAction::LoroSync
         } else {
-            "pull".into()
+            IrohAction::Pull
         },
         loro_state_vector,
         // A clean editor only needs to tell the owner what it has seen.
         // Pending edits send the full document until the owner acknowledges them.
-        loro_update: if needs_editor_upload(&role, &status) {
+        loro_update: if needs_editor_upload(role, status) {
             loro_update.clone()
         } else {
             Vec::new()
         },
         known_revision: Some(revision),
-        known_permission: Some(role.clone()),
+        known_permission: Some(permission),
     };
-    let used_loro_sync = request.action == "loro_sync";
+    let used_loro_sync = request.action == IrohAction::LoroSync;
     let bytes = tokio::time::timeout(TRANSFER_TIMEOUT, async {
         let connection = endpoint
-            .connect(ticket.endpoint, ALPN)
+            .connect(address, ALPN)
             .await
             .map_err(|e| e.to_string())?;
         let (mut send, mut recv) = connection.open_bi().await.map_err(|e| e.to_string())?;
@@ -1012,11 +1162,6 @@ pub async fn sync_iroh_board(
     endpoint.close().await;
     let snapshot: Snapshot =
         serde_json::from_slice(&bytes).map_err(|_| "Owner sent an invalid response")?;
-    if !matches!(snapshot.permission.as_str(), "viewer" | "editor") {
-        return Err(snapshot
-            .error
-            .unwrap_or_else(|| "Owner sent an invalid permission".into()));
-    }
     let mut guard = app
         .lock()
         .map_err(|_| "Application state lock is poisoned")?;
@@ -1026,8 +1171,8 @@ pub async fn sync_iroh_board(
             .board_sync_state(board_id)
             .map_err(|e| e.to_string())?;
         if !snapshot.ok
-            || role != "viewer"
-            || snapshot.permission != "viewer"
+            || role != BoardRole::Viewer
+            || snapshot.permission != IrohPermission::Viewer
             || snapshot.revision != revision
             || state.0 != revision
             || state.1 != status
@@ -1035,7 +1180,7 @@ pub async fn sync_iroh_board(
                 .database
                 .board_role(board_id)
                 .map_err(|e| e.to_string())?
-                != "viewer"
+                != BoardRole::Viewer
         {
             return Err("Owner sent an invalid unchanged response".into());
         }
@@ -1053,7 +1198,7 @@ pub async fn sync_iroh_board(
                 board_id,
                 &snapshot.loro_update,
                 &snapshot.name,
-                &snapshot.permission,
+                snapshot.permission,
                 snapshot.revision,
                 &loro_update,
             )
@@ -1093,7 +1238,7 @@ pub async fn sync_iroh_board(
         current != sent_data || current_state.0 != revision || current_state.1 != status;
     // A permission downgrade does not create a conflict for a clean editor.
     // Only unsent local edits need a copy before accepting the owner snapshot.
-    let local_edits_at_risk = local_edits_at_risk(&status, changed_during_sync);
+    let local_edits_at_risk = local_edits_at_risk(status, changed_during_sync);
     let already_applied = !snapshot.ok && !local_edits_at_risk && current == snapshot.data;
     if already_applied {
         guard
@@ -1101,7 +1246,7 @@ pub async fn sync_iroh_board(
             .apply_iroh_snapshot(
                 board_id,
                 &snapshot.name,
-                &snapshot.permission,
+                snapshot.permission,
                 snapshot.revision,
                 &snapshot.data,
                 Some(&snapshot.loro_update),
@@ -1115,13 +1260,13 @@ pub async fn sync_iroh_board(
                 board_id,
                 snapshot.revision,
                 &snapshot.name,
-                &snapshot.permission,
+                snapshot.permission,
                 &snapshot.data,
             )
             .map_err(|e| e.to_string())?;
         if let Some(board) = guard.boards.iter_mut().find(|board| board.id == board_id) {
-            board.sync_status = "conflict".into();
-            board.shared_role = snapshot.permission;
+            board.sync_status = SyncStatus::Conflict;
+            board.shared_role = snapshot.permission.into();
         }
         return Err(if changed_during_sync {
             "Local changes arrived during sync. Both versions were saved for review".into()
@@ -1137,7 +1282,7 @@ pub async fn sync_iroh_board(
             .apply_iroh_snapshot(
                 board_id,
                 &snapshot.name,
-                &snapshot.permission,
+                snapshot.permission,
                 snapshot.revision,
                 &snapshot.data,
                 Some(&snapshot.loro_update),
@@ -1150,7 +1295,7 @@ pub async fn sync_iroh_board(
         .position(|b| b.id == board_id)
         .ok_or("Board not found")?;
     guard.boards[index].sync_revision = snapshot.revision;
-    guard.boards[index].shared_role = snapshot.permission;
+    guard.boards[index].shared_role = snapshot.permission.into();
     guard.boards[index].name = snapshot.name.clone();
     guard.boards[index].task_count = snapshot
         .data
@@ -1158,7 +1303,7 @@ pub async fn sync_iroh_board(
         .iter()
         .map(|column| column.tasks.len() as i64)
         .sum();
-    guard.boards[index].sync_status = "synced".into();
+    guard.boards[index].sync_status = SyncStatus::Synced;
     if guard.active_board_id == board_id {
         guard.stored = guard
             .database
@@ -1192,7 +1337,7 @@ pub fn resolve_iroh_conflict(
         .read_board_complete(board_id)
         .map_err(|e| e.to_string())?;
     if keep_local {
-        if permission != "editor" {
+        if permission != IrohPermission::Editor {
             return Err("The invitation is read-only; save your changes as a copy instead".into());
         }
         guard
@@ -1213,7 +1358,7 @@ pub fn resolve_iroh_conflict(
                 &local_name,
                 &local,
                 &name,
-                &permission,
+                permission,
                 revision,
                 &remote,
             )
@@ -1230,9 +1375,9 @@ pub fn resolve_iroh_conflict(
         }
     }
     if let Some(board) = guard.boards.iter_mut().find(|board| board.id == board_id) {
-        board.shared_role = permission;
+        board.shared_role = permission.into();
         board.sync_revision = revision;
-        board.sync_status = if keep_local { "pending" } else { "synced" }.into();
+        board.sync_status = if keep_local { SyncStatus::Pending } else { SyncStatus::Synced };
         if !keep_local {
             board.name = name;
             board.task_count = remote

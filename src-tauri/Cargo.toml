@@ -36,8 +36,7 @@ axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "io-util", "time", "macros"] }
 futures-util = "0.3"
 tokio-tungstenite = "0.29"
-# Pinned because invitation tickets are part of our on-disk protocol.
-iroh = "=1.2.0"
+iroh = "1.2"
 qrcode = { version = "=0.14.1", default-features = false, features = ["svg"] }
 loro = "1.16"
 

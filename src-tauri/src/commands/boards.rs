@@ -1,4 +1,7 @@
-use crate::{models::Board, state::SharedAppData};
+use crate::{
+    models::{Board, BoardRole},
+    state::SharedAppData,
+};
 use serde::Serialize;
 use tauri::State;
 
@@ -70,7 +73,7 @@ pub fn rename_board(
         .database
         .board_role(board_id)
         .map_err(|e| e.to_string())?
-        != "owner"
+        != BoardRole::Owner
     {
         return Err("Only the owner can rename a shared board".into());
     }
@@ -140,14 +143,15 @@ pub fn delete_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<i6
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::SyncStatus;
 
     fn board(id: i64) -> Board {
         Board {
             id,
             name: format!("Board {id}"),
             task_count: 0,
-            shared_role: "owner".into(),
-            sync_status: "local".into(),
+            shared_role: BoardRole::Owner,
+            sync_status: SyncStatus::Local,
             sync_revision: 0,
         }
     }

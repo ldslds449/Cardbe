@@ -1,9 +1,13 @@
 use crate::models::{
-    Archive, Board, Column, ColumnSort, Note, StoredData, Task, TaskTemplate,
-    CURRENT_SCHEMA_VERSION,
+    Archive, Board, BoardRole, Column, ColumnSort, IrohDeviceStatus, IrohPermission, Note,
+    StoredData, SyncStatus, Task, TaskTemplate, CURRENT_SCHEMA_VERSION,
 };
 use base64::Engine;
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{
+    params,
+    types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef},
+    Connection, OptionalExtension, Transaction,
+};
 use std::{
     collections::HashMap,
     fs::{self, File},
@@ -13,6 +17,87 @@ use std::{
 };
 
 type StorageResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+macro_rules! impl_text_enum {
+    ($type:ty { $($value:literal => $variant:path),+ $(,)? }) => {
+        impl FromSql for $type {
+            fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+                match value.as_str()? {
+                    $($value => Ok($variant),)+
+                    _ => Err(FromSqlError::InvalidType),
+                }
+            }
+        }
+
+        impl ToSql for $type {
+            fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+                let value = match self {
+                    $($variant => $value,)+
+                };
+                Ok(ToSqlOutput::from(value))
+            }
+        }
+    };
+}
+
+impl_text_enum!(BoardRole {
+    "owner" => BoardRole::Owner,
+    "editor" => BoardRole::Editor,
+    "viewer" => BoardRole::Viewer,
+});
+impl_text_enum!(SyncStatus {
+    "local" => SyncStatus::Local,
+    "pending" => SyncStatus::Pending,
+    "synced" => SyncStatus::Synced,
+    "conflict" => SyncStatus::Conflict,
+});
+impl_text_enum!(IrohPermission {
+    "viewer" => IrohPermission::Viewer,
+    "editor" => IrohPermission::Editor,
+});
+
+impl FromSql for ColumnSort {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        Ok(match value.as_str()? {
+            "due_date_asc" => Self::DueDateAsc,
+            "due_date_desc" => Self::DueDateDesc,
+            _ => Self::Custom,
+        })
+    }
+}
+
+impl ToSql for ColumnSort {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        let value = match self {
+            Self::Custom => "custom",
+            Self::DueDateAsc => "due_date_asc",
+            Self::DueDateDesc => "due_date_desc",
+        };
+        Ok(ToSqlOutput::from(value))
+    }
+}
+
+impl FromSql for IrohDeviceStatus {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value.as_i64()? {
+            0 => Ok(Self::Pending),
+            1 => Ok(Self::Approved),
+            2 => Ok(Self::Revoked),
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+impl ToSql for IrohDeviceStatus {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        let value: i64 = match self {
+            Self::Pending => 0,
+            Self::Approved => 1,
+            Self::Revoked => 2,
+        };
+        Ok(ToSqlOutput::from(value))
+    }
+}
 
 pub struct LoadedData {
     pub stored: StoredData,
@@ -198,8 +283,8 @@ impl Database {
                     .iter()
                     .map(|column| column.tasks.len() as i64)
                     .sum(),
-                shared_role: "owner".into(),
-                sync_status: "local".into(),
+                shared_role: BoardRole::Owner,
+                sync_status: SyncStatus::Local,
                 sync_revision: 0,
             }],
             legacy.clone(),
@@ -269,8 +354,8 @@ impl Database {
                     .iter()
                     .map(|column| column.tasks.len() as i64)
                     .sum(),
-                shared_role: "owner".into(),
-                sync_status: "local".into(),
+                shared_role: BoardRole::Owner,
+                sync_status: SyncStatus::Local,
                 sync_revision: 0,
             });
         }
@@ -302,7 +387,7 @@ impl Database {
         )?)
     }
 
-    pub fn board_role(&self, id: i64) -> StorageResult<String> {
+    pub fn board_role(&self, id: i64) -> StorageResult<BoardRole> {
         Ok(self.connection.query_row(
             "SELECT shared_role FROM cardbe_boards WHERE id=?1",
             [id],
@@ -314,8 +399,8 @@ impl Database {
     pub fn set_shared_board(
         &mut self,
         id: i64,
-        role: &str,
-        status: &str,
+        role: BoardRole,
+        status: SyncStatus,
         revision: i64,
     ) -> StorageResult<()> {
         if self.connection.execute(
@@ -335,16 +420,44 @@ impl Database {
         invite_id: &str,
         board_id: i64,
         secret: &str,
-        permission: &str,
+        permission: IrohPermission,
     ) -> StorageResult<()> {
         self.connection.execute("INSERT INTO cardbe_iroh_invites(invite_id,board_id,secret,permission,enabled,created_at) VALUES(?1,?2,?3,?4,1,datetime('now')) ON CONFLICT(invite_id) DO UPDATE SET board_id=excluded.board_id,secret=excluded.secret,permission=excluded.permission", params![invite_id, board_id, secret, permission])?; // gitleaks:allow
+        Ok(())
+    }
+    pub fn iroh_device_access(&mut self, invite_id: &str, secret: &str, node_id: &str, request_approval: bool) -> StorageResult<Option<IrohDeviceStatus>> {
+        self.connection.execute(
+            "INSERT INTO cardbe_iroh_devices(invite_id,node_id,status) SELECT invite_id,?3,0 FROM cardbe_iroh_invites WHERE invite_id=?1 AND secret=?2 AND enabled=1 ON CONFLICT(invite_id,node_id) DO NOTHING",
+            params![invite_id, secret, node_id],
+        )?;
+        if request_approval {
+            self.connection.execute(
+                "UPDATE cardbe_iroh_devices SET status=?3 WHERE invite_id=?1 AND node_id=?2 AND status=?4 AND EXISTS(SELECT 1 FROM cardbe_iroh_invites WHERE invite_id=?1 AND secret=?5 AND enabled=1)",
+                params![invite_id, node_id, IrohDeviceStatus::Pending, IrohDeviceStatus::Revoked, secret],
+            )?;
+        }
+        Ok(self.connection.query_row(
+            "SELECT d.status FROM cardbe_iroh_devices d JOIN cardbe_iroh_invites i ON i.invite_id=d.invite_id WHERE d.invite_id=?1 AND d.node_id=?2 AND i.enabled=1 AND i.secret=?3",
+            params![invite_id, node_id, secret], |r| r.get::<_, IrohDeviceStatus>(0),
+        ).optional()?)
+    }
+    pub fn iroh_devices(&self) -> StorageResult<Vec<(String, String, IrohDeviceStatus)>> {
+        Ok(self.connection.prepare("SELECT invite_id,node_id,status FROM cardbe_iroh_devices WHERE status!=?1 ORDER BY status,invite_id,node_id")?
+            .query_map([IrohDeviceStatus::Revoked], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+    pub fn set_iroh_device_approved(&mut self, invite_id: &str, node_id: &str, approved: bool) -> StorageResult<()> {
+        let status = if approved { IrohDeviceStatus::Approved } else { IrohDeviceStatus::Revoked };
+        if self.connection.execute("UPDATE cardbe_iroh_devices SET status=?3 WHERE invite_id=?1 AND node_id=?2", params![invite_id, node_id, status])? == 0 {
+            return Err("Device request not found".into());
+        }
         Ok(())
     }
     pub fn iroh_remote(&self, board_id: i64) -> StorageResult<Option<String>> {
         Ok(self
             .connection
             .query_row(
-                "SELECT ticket FROM cardbe_iroh_remotes WHERE board_id=?1",
+                "SELECT invitation FROM cardbe_iroh_remotes WHERE board_id=?1",
                 [board_id],
                 |r| r.get(0),
             )
@@ -382,13 +495,14 @@ impl Database {
         board_id: i64,
         invite_id: &str,
         secret: &str,
+        node_id: &str,
         update: &[u8],
     ) -> StorageResult<(bool, i64, StoredData)> {
         let previous = self.read_board_complete(board_id)?;
         let tx = self.connection.transaction()?;
         let authorized: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM cardbe_iroh_invites WHERE invite_id=?1 AND board_id=?2 AND secret=?3 AND permission='editor' AND enabled=1)",
-            params![invite_id, board_id, secret], |row| row.get(0),
+            "SELECT EXISTS(SELECT 1 FROM cardbe_iroh_invites i JOIN cardbe_iroh_devices d ON d.invite_id=i.invite_id WHERE i.invite_id=?1 AND i.board_id=?2 AND i.secret=?3 AND d.node_id=?4 AND d.status=?5 AND i.permission=?6 AND i.enabled=1)",
+            params![invite_id, board_id, secret, node_id, IrohDeviceStatus::Approved, IrohPermission::Editor], |row| row.get(0),
         )?;
         if !authorized {
             return Err("Invitation no longer grants editing access".into());
@@ -404,8 +518,8 @@ impl Database {
         let merged = crate::loro_board::merge(Some(&existing), update)
             .map_err(|e| format!("Invalid Loro update: {e}"))?;
         let revision: i64 = tx.query_row(
-            "SELECT sync_revision FROM cardbe_boards WHERE id=?1 AND shared_role='owner'",
-            [board_id],
+            "SELECT sync_revision FROM cardbe_boards WHERE id=?1 AND shared_role=?2",
+            params![board_id, BoardRole::Owner],
             |row| row.get(0),
         )?;
         // Snapshot bytes can differ after re-export even when the Loro
@@ -426,7 +540,7 @@ impl Database {
         data.templates = projected.templates;
         write_board_transaction(&tx, board_id, &data)?;
         tx.execute("INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2) ON CONFLICT(board_id) DO UPDATE SET payload=excluded.payload", params![board_id, merged])?;
-        tx.execute("UPDATE cardbe_boards SET sync_revision=sync_revision+1,sync_status='synced' WHERE id=?1", [board_id])?;
+        tx.execute("UPDATE cardbe_boards SET sync_revision=sync_revision+1,sync_status=?2 WHERE id=?1", params![board_id, SyncStatus::Synced])?;
         tx.commit()?;
         Ok((true, revision + 1, data))
     }
@@ -437,7 +551,7 @@ impl Database {
         board_id: i64,
         update: &[u8],
         name: &str,
-        role: &str,
+        role: IrohPermission,
         revision: i64,
         sent: &[u8],
     ) -> StorageResult<StoredData> {
@@ -457,7 +571,7 @@ impl Database {
         let tx = self.connection.transaction()?;
         write_board_transaction(&tx, board_id, &data)?;
         tx.execute("INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2) ON CONFLICT(board_id) DO UPDATE SET payload=excluded.payload", params![board_id, merged])?;
-        tx.execute("UPDATE cardbe_boards SET name=?2,shared_role=?3,sync_revision=?4,sync_status=?5 WHERE id=?1", params![board_id, name, role, revision, if changed_during_sync { "pending" } else { "synced" }])?;
+        tx.execute("UPDATE cardbe_boards SET name=?2,shared_role=?3,sync_revision=?4,sync_status=?5 WHERE id=?1", params![board_id, name, role, revision, if changed_during_sync { SyncStatus::Pending } else { SyncStatus::Synced }])?;
         tx.commit()?;
         if self.active_board_id == board_id {
             self.positions = self.load_board_positions(board_id)?;
@@ -470,14 +584,14 @@ impl Database {
         board_id: i64,
         revision: i64,
         name: &str,
-        permission: &str,
+        permission: IrohPermission,
         data: &StoredData,
     ) -> StorageResult<()> {
         let tx = self.connection.transaction()?;
         tx.execute("INSERT INTO cardbe_iroh_conflicts(board_id,revision,name,permission,payload) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(board_id) DO UPDATE SET revision=excluded.revision,name=excluded.name,permission=excluded.permission,payload=excluded.payload", params![board_id, revision, name, permission, serde_json::to_string(data)?])?;
         tx.execute(
-            "UPDATE cardbe_boards SET sync_status='conflict',shared_role=?2 WHERE id=?1",
-            params![board_id, permission],
+            "UPDATE cardbe_boards SET sync_status=?2,shared_role=?3 WHERE id=?1",
+            params![board_id, SyncStatus::Conflict, BoardRole::from(permission)],
         )?;
         tx.commit()?;
         Ok(())
@@ -486,8 +600,8 @@ impl Database {
     pub fn iroh_conflict(
         &self,
         board_id: i64,
-    ) -> StorageResult<Option<(i64, String, String, StoredData)>> {
-        let raw: Option<(i64, String, String, String)> = self.connection.query_row(
+    ) -> StorageResult<Option<(i64, String, IrohPermission, StoredData)>> {
+        let raw: Option<(i64, String, IrohPermission, String)> = self.connection.query_row(
             "SELECT revision,name,permission,payload FROM cardbe_iroh_conflicts WHERE board_id=?1",
             [board_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         ).optional()?;
@@ -499,7 +613,7 @@ impl Database {
 
     pub fn keep_iroh_conflict_local(&mut self, board_id: i64, revision: i64) -> StorageResult<()> {
         let tx = self.connection.transaction()?;
-        tx.execute("UPDATE cardbe_boards SET shared_role='editor',sync_status='pending',sync_revision=?2 WHERE id=?1", params![board_id, revision])?;
+        tx.execute("UPDATE cardbe_boards SET shared_role=?2,sync_status=?3,sync_revision=?4 WHERE id=?1", params![board_id, BoardRole::Editor, SyncStatus::Pending, revision])?;
         tx.execute(
             "DELETE FROM cardbe_iroh_conflicts WHERE board_id=?1",
             [board_id],
@@ -508,7 +622,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn board_sync_state(&self, id: i64) -> StorageResult<(i64, String)> {
+    pub fn board_sync_state(&self, id: i64) -> StorageResult<(i64, SyncStatus)> {
         Ok(self.connection.query_row(
             "SELECT sync_revision,sync_status FROM cardbe_boards WHERE id=?1",
             [id],
@@ -518,11 +632,11 @@ impl Database {
     pub fn iroh_remote_tickets(&self) -> StorageResult<Vec<String>> {
         Ok(self
             .connection
-            .prepare("SELECT ticket FROM cardbe_iroh_remotes")?
+            .prepare("SELECT invitation FROM cardbe_iroh_remotes")?
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?)
     }
-    pub fn iroh_invites(&self) -> StorageResult<Vec<(String, i64, String, String, bool)>> {
+    pub fn iroh_invites(&self) -> StorageResult<Vec<(String, i64, String, IrohPermission, bool)>> {
         Ok(self
             .connection
             .prepare(
@@ -541,7 +655,7 @@ impl Database {
     }
     pub fn iroh_invite_summaries(
         &self,
-    ) -> StorageResult<Vec<(String, i64, String, bool, String, String)>> {
+    ) -> StorageResult<Vec<(String, i64, IrohPermission, bool, String, String)>> {
         Ok(self.connection.prepare("SELECT invite_id,board_id,permission,enabled,created_at,secret FROM cardbe_iroh_invites ORDER BY created_at DESC")?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0, r.get(4)?, r.get(5)?)))?
             .collect::<Result<Vec<_>, _>>()?)
@@ -549,7 +663,7 @@ impl Database {
     pub fn update_iroh_invite(
         &mut self,
         invite_id: &str,
-        permission: Option<&str>,
+        permission: Option<IrohPermission>,
         enabled: Option<bool>,
     ) -> StorageResult<()> {
         if self.connection.execute(
@@ -594,12 +708,12 @@ impl Database {
         &mut self,
         board_id: i64,
         name: &str,
-        role: &str,
+        role: IrohPermission,
         revision: i64,
         data: &StoredData,
         loro_update: Option<&[u8]>,
     ) -> StorageResult<()> {
-        if role == "editor" {
+        if role == IrohPermission::Editor {
             let update = loro_update
                 .filter(|bytes| !bytes.is_empty())
                 .ok_or("Editable snapshot is missing its Loro document")?;
@@ -628,7 +742,7 @@ impl Database {
         } else {
             tx.execute("DELETE FROM cardbe_loro_docs WHERE board_id=?1", [board_id])?;
         }
-        tx.execute("UPDATE cardbe_boards SET name=?2,shared_role=?3,sync_status='synced',sync_revision=?4 WHERE id=?1", params![board_id, name, role, revision])?;
+        tx.execute("UPDATE cardbe_boards SET name=?2,shared_role=?3,sync_status=?4,sync_revision=?5 WHERE id=?1", params![board_id, name, role, SyncStatus::Synced, revision])?;
         tx.execute(
             "DELETE FROM cardbe_iroh_conflicts WHERE board_id=?1",
             [board_id],
@@ -646,7 +760,7 @@ impl Database {
         local_name: &str,
         local: &StoredData,
         remote_name: &str,
-        role: &str,
+        role: IrohPermission,
         revision: i64,
         remote: &StoredData,
     ) -> StorageResult<Board> {
@@ -656,7 +770,7 @@ impl Database {
         let copy_id = tx.last_insert_rowid();
         write_board_transaction(&tx, copy_id, local)?;
         write_board_transaction(&tx, board_id, remote)?;
-        tx.execute("UPDATE cardbe_boards SET name=?2,shared_role=?3,sync_status='synced',sync_revision=?4 WHERE id=?1", params![board_id, remote_name, role, revision])?;
+        tx.execute("UPDATE cardbe_boards SET name=?2,shared_role=?3,sync_status=?4,sync_revision=?5 WHERE id=?1", params![board_id, remote_name, role, SyncStatus::Synced, revision])?;
         tx.execute(
             "DELETE FROM cardbe_iroh_conflicts WHERE board_id=?1",
             [board_id],
@@ -673,8 +787,8 @@ impl Database {
                 .iter()
                 .map(|column| column.tasks.len() as i64)
                 .sum(),
-            shared_role: "owner".into(),
-            sync_status: "local".into(),
+            shared_role: BoardRole::Owner,
+            sync_status: SyncStatus::Local,
             sync_revision: 0,
         })
     }
@@ -683,22 +797,22 @@ impl Database {
         &mut self,
         board_id: i64,
         data: &StoredData,
-    ) -> StorageResult<(i64, String)> {
+    ) -> StorageResult<(i64, SyncStatus)> {
         // The Loro delta must compare with the persisted board, not an empty
         // value: otherwise removals are absent from the CRDT and reappear on
         // the next editor sync.
         let before = self.read_board_complete(board_id)?;
         let tx = self.connection.transaction()?;
-        let role: String = tx.query_row(
+        let role: BoardRole = tx.query_row(
             "SELECT shared_role FROM cardbe_boards WHERE id=?1",
             [board_id],
             |r| r.get(0),
         )?;
-        if role == "viewer" {
+        if role == BoardRole::Viewer {
             return Err("This shared board is read-only".into());
         }
         write_board_transaction(&tx, board_id, data)?;
-        mark_local_board_change(&tx, board_id, &role)?;
+        mark_local_board_change(&tx, board_id, role)?;
         persist_loro_local_delta(&tx, board_id, &before, data)?;
         tx.commit()?;
         if self.active_board_id == board_id {
@@ -727,27 +841,27 @@ impl Database {
                 .iter()
                 .map(|column| column.tasks.len() as i64)
                 .sum(),
-            shared_role: "owner".into(),
-            sync_status: "local".into(),
+            shared_role: BoardRole::Owner,
+            sync_status: SyncStatus::Local,
             sync_revision: 0,
         })
     }
 
     pub fn rename_board(&mut self, id: i64, name: &str) -> StorageResult<()> {
         let tx = self.connection.transaction()?;
-        let role: String = tx.query_row(
+        let role: BoardRole = tx.query_row(
             "SELECT shared_role FROM cardbe_boards WHERE id=?1",
             [id],
             |r| r.get(0),
         )?;
-        if role != "owner" {
+        if role != BoardRole::Owner {
             return Err("Only the owner can rename a shared board".into());
         }
         tx.execute(
             "UPDATE cardbe_boards SET name=?2 WHERE id=?1",
             params![id, name],
         )?;
-        mark_local_board_change(&tx, id, &role)?;
+        mark_local_board_change(&tx, id, role)?;
         tx.commit()?;
         Ok(())
     }
@@ -756,12 +870,12 @@ impl Database {
         &mut self,
         name: &str,
         data: &StoredData,
-        role: &str,
+        role: IrohPermission,
         revision: i64,
-        ticket: &str,
+        invitation: &str,
         loro_update: Option<&[u8]>,
     ) -> StorageResult<Board> {
-        if role == "editor" {
+        if role == IrohPermission::Editor {
             let update = loro_update
                 .filter(|bytes| !bytes.is_empty())
                 .ok_or("Editable invitation is missing its Loro document")?;
@@ -775,7 +889,7 @@ impl Database {
             }
         }
         let tx = self.connection.transaction()?;
-        tx.execute("INSERT INTO cardbe_boards(name,shared_role,sync_status,sync_revision) VALUES(?1,?2,'synced',?3)", params![name, role, revision])?;
+        tx.execute("INSERT INTO cardbe_boards(name,shared_role,sync_status,sync_revision) VALUES(?1,?2,?3,?4)", params![name, role, SyncStatus::Synced, revision])?;
         let id = tx.last_insert_rowid();
         write_board_transaction(&tx, id, data)?;
         if let Some(update) = loro_update.filter(|update| !update.is_empty()) {
@@ -785,8 +899,8 @@ impl Database {
             )?;
         }
         tx.execute(
-            "INSERT INTO cardbe_iroh_remotes(board_id,ticket) VALUES(?1,?2)",
-            params![id, ticket],
+            "INSERT INTO cardbe_iroh_remotes(board_id,invitation) VALUES(?1,?2)",
+            params![id, invitation],
         )?;
         tx.commit()?;
         Ok(Board {
@@ -798,7 +912,7 @@ impl Database {
                 .map(|column| column.tasks.len() as i64)
                 .sum(),
             shared_role: role.into(),
-            sync_status: "synced".into(),
+            sync_status: SyncStatus::Synced,
             sync_revision: revision,
         })
     }
@@ -908,12 +1022,12 @@ impl Database {
             || before.next_task_id != after.next_task_id
             || before.next_template_id != after.next_template_id
             || before.schema_version != after.schema_version;
-        let role: String = transaction.query_row(
+        let role: BoardRole = transaction.query_row(
             "SELECT shared_role FROM cardbe_boards WHERE id=?1",
             [self.active_board_id],
             |r| r.get(0),
         )?;
-        if board_changed && role == "viewer" {
+        if board_changed && role == BoardRole::Viewer {
             return Err("This shared board is read-only".into());
         }
         let stats = persist_board_diff_transaction(
@@ -931,8 +1045,8 @@ impl Database {
             [serde_json::to_string(&after.settings)?],
         )?;
         if board_changed {
-            mark_local_board_change(&transaction, self.active_board_id, &role)?;
-            if matches!(role.as_str(), "owner" | "editor") {
+            mark_local_board_change(&transaction, self.active_board_id, role)?;
+            if matches!(role, BoardRole::Owner | BoardRole::Editor) {
                 persist_loro_local_delta(&transaction, self.active_board_id, before, after)?;
             }
         }
@@ -1006,7 +1120,7 @@ impl Database {
                     id: row.get(0)?,
                     name: row.get(1)?,
                     color: row.get(2)?,
-                    sort_order: ColumnSort::from_str(&row.get::<_, String>(3)?),
+                    sort_order: row.get(3)?,
                     tasks: Vec::new(),
                 })
             })?
@@ -1123,7 +1237,8 @@ impl Database {
              CREATE TABLE IF NOT EXISTS cardbe_board_metadata(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(board_id,key));"
         )?;
         tx.execute_batch("CREATE TABLE IF NOT EXISTS cardbe_iroh_invites(invite_id TEXT PRIMARY KEY,board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,secret TEXT NOT NULL,permission TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT (datetime('now')));
-            CREATE TABLE IF NOT EXISTS cardbe_iroh_remotes(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,ticket TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS cardbe_iroh_devices(invite_id TEXT NOT NULL REFERENCES cardbe_iroh_invites(invite_id) ON DELETE CASCADE,node_id TEXT NOT NULL,status INTEGER NOT NULL DEFAULT 0 CHECK(status IN (0,1,2)),PRIMARY KEY(invite_id,node_id));
+            CREATE TABLE IF NOT EXISTS cardbe_iroh_remotes(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,invitation TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS cardbe_iroh_conflicts(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,revision INTEGER NOT NULL,name TEXT NOT NULL,permission TEXT NOT NULL,payload TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS cardbe_loro_docs(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,payload BLOB NOT NULL);")?;
         for sql in [
@@ -1209,7 +1324,7 @@ impl Database {
                     id: r.get(0)?,
                     name: r.get(1)?,
                     color: r.get(2)?,
-                    sort_order: ColumnSort::from_str(&r.get::<_, String>(3)?),
+                    sort_order: r.get(3)?,
                     tasks: vec![],
                 })
             })?
@@ -1432,7 +1547,7 @@ fn persist_diff_transaction(
                  ON CONFLICT(id) DO UPDATE SET
                    name = excluded.name, color = excluded.color,
                    sort_order = excluded.sort_order, position = excluded.position",
-                params![id, column.name, column.color, column.sort_order.as_str(), position],
+                params![id, column.name, column.color, column.sort_order, position],
             )?;
             stats.columns_changed += 1;
         }
@@ -1566,7 +1681,7 @@ fn persist_board_diff_transaction(
                 || o.color != c.color
                 || o.sort_order != c.sort_order
         }) {
-            tx.execute("INSERT INTO cardbe_columns(board_id,id,name,color,sort_order,position) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(board_id,id) DO UPDATE SET name=excluded.name,color=excluded.color,sort_order=excluded.sort_order,position=excluded.position",params![board_id,id,c.name,c.color,c.sort_order.as_str(),pos])?;
+            tx.execute("INSERT INTO cardbe_columns(board_id,id,name,color,sort_order,position) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(board_id,id) DO UPDATE SET name=excluded.name,color=excluded.color,sort_order=excluded.sort_order,position=excluded.position",params![board_id,id,c.name,c.color,c.sort_order,pos])?;
             stats.columns_changed += 1;
         }
     }
@@ -1641,18 +1756,18 @@ fn write_board_transaction(
     Ok(())
 }
 
-fn mark_local_board_change(tx: &Transaction<'_>, board_id: i64, role: &str) -> StorageResult<()> {
+fn mark_local_board_change(tx: &Transaction<'_>, board_id: i64, role: BoardRole) -> StorageResult<()> {
     match role {
-        "owner" => {
+        BoardRole::Owner => {
             tx.execute(
                 "UPDATE cardbe_boards SET sync_revision=sync_revision+1 WHERE id=?1",
                 [board_id],
             )?;
         }
-        "editor" => {
+        BoardRole::Editor => {
             tx.execute(
-                "UPDATE cardbe_boards SET sync_status=CASE WHEN sync_status='conflict' THEN 'conflict' ELSE 'pending' END WHERE id=?1",
-                [board_id],
+                "UPDATE cardbe_boards SET sync_status=CASE WHEN sync_status=?2 THEN ?2 ELSE ?3 END WHERE id=?1",
+                params![board_id, SyncStatus::Conflict, SyncStatus::Pending],
             )?;
         }
         _ => return Err("This shared board is read-only".into()),
@@ -2302,22 +2417,24 @@ mod tests {
             .unwrap();
         loaded
             .database
-            .save_iroh_invite("editor", board_id, "secret", "editor")
+            .save_iroh_invite("editor", board_id, "secret", IrohPermission::Editor)
             .unwrap();
+        loaded.database.iroh_device_access("editor", "secret", "device", true).unwrap();
+        loaded.database.set_iroh_device_approved("editor", "device", true).unwrap();
         let original = loaded.database.iroh_loro_update(board_id).unwrap().unwrap();
         let mut edited = base.clone();
         edited.columns[0].tasks[0].title = "After".into();
         let update = crate::loro_board::apply_local_delta(Some(&original), &base, &edited).unwrap();
         let (changed, revision, data) = loaded
             .database
-            .apply_iroh_loro_update(board_id, "editor", "secret", &update)
+            .apply_iroh_loro_update(board_id, "editor", "secret", "device", &update)
             .unwrap();
         assert!(changed);
         assert_eq!(data.columns[0].tasks[0].title, "After");
         assert_eq!(
             loaded
                 .database
-                .apply_iroh_loro_update(board_id, "editor", "secret", &update)
+                .apply_iroh_loro_update(board_id, "editor", "secret", "device", &update)
                 .unwrap()
                 .0,
             false
@@ -2325,7 +2442,7 @@ mod tests {
         assert!(
             !loaded
                 .database
-                .apply_iroh_loro_update(board_id, "editor", "secret", &[])
+                .apply_iroh_loro_update(board_id, "editor", "secret", "device", &[])
                 .unwrap()
                 .0
         );
@@ -2339,7 +2456,7 @@ mod tests {
             .unwrap();
         assert!(loaded
             .database
-            .apply_iroh_loro_update(board_id, "editor", "secret", &update)
+            .apply_iroh_loro_update(board_id, "editor", "secret", "device", &update)
             .is_err());
         assert_eq!(
             loaded.database.board_sync_state(board_id).unwrap().0,
@@ -2356,7 +2473,7 @@ mod tests {
             .unwrap();
         assert!(loaded
             .database
-            .apply_iroh_loro_update(board_id, "editor", "secret", &[])
+            .apply_iroh_loro_update(board_id, "editor", "secret", "device", &[])
             .is_err());
         assert_eq!(
             loaded
@@ -2406,12 +2523,14 @@ mod tests {
             .unwrap();
         owner
             .database
-            .save_iroh_invite("invite", owner_id, "secret", "editor")
+            .save_iroh_invite("invite", owner_id, "secret", IrohPermission::Editor)
             .unwrap();
+        owner.database.iroh_device_access("invite", "secret", "device", true).unwrap();
+        owner.database.set_iroh_device_approved("invite", "device", true).unwrap();
         let initial = owner.database.iroh_loro_update(owner_id).unwrap().unwrap();
         let editor_id = editor
             .database
-            .create_received_board("Shared", &base, "editor", 1, "ticket", Some(&initial))
+            .create_received_board("Shared", &base, IrohPermission::Editor, 1, "ticket", Some(&initial))
             .unwrap()
             .id;
         let mut owner_edit = base.clone();
@@ -2434,14 +2553,14 @@ mod tests {
         let vector = crate::loro_board::state_vector(Some(&sent)).unwrap();
         owner
             .database
-            .apply_iroh_loro_update(owner_id, "invite", "secret", &sent)
+            .apply_iroh_loro_update(owner_id, "invite", "secret", "device", &sent)
             .unwrap();
         let owner_doc = owner.database.iroh_loro_update(owner_id).unwrap().unwrap();
         let diff = crate::loro_board::diff(Some(&owner_doc), &vector).unwrap();
         let revision = owner.database.board_sync_state(owner_id).unwrap().0;
         editor
             .database
-            .merge_iroh_loro_diff(editor_id, &diff, "Shared", "editor", revision, &sent)
+            .merge_iroh_loro_diff(editor_id, &diff, "Shared", IrohPermission::Editor, revision, &sent)
             .unwrap();
         let owner_data = owner.database.read_board_complete(owner_id).unwrap();
         let editor_data = editor.database.read_board_complete(editor_id).unwrap();
@@ -2450,7 +2569,7 @@ mod tests {
         assert_eq!(owner_data.columns[0].tasks[1].title, "Editor changed B");
         assert_eq!(
             editor.database.board_sync_state(editor_id).unwrap(),
-            (revision, "synced".into())
+            (revision, SyncStatus::Synced)
         );
         drop(editor);
         let reopened = load(&editor_dir).unwrap();
@@ -2495,12 +2614,12 @@ mod tests {
         first.next_task_id = 2;
         loaded
             .database
-            .apply_iroh_snapshot(board_id, "Shared", "viewer", 1, &first, None)
+            .apply_iroh_snapshot(board_id, "Shared", IrohPermission::Viewer, 1, &first, None)
             .unwrap();
         let empty = StoredData::default();
         loaded
             .database
-            .apply_iroh_snapshot(board_id, "Shared", "viewer", 2, &empty, None)
+            .apply_iroh_snapshot(board_id, "Shared", IrohPermission::Viewer, 2, &empty, None)
             .unwrap();
         assert!(loaded
             .database
@@ -2533,7 +2652,7 @@ mod tests {
         assert_eq!(loaded.database.board_sync_state(board_id).unwrap().0, 1);
         loaded
             .database
-            .set_shared_board(board_id, "viewer", "synced", 1)
+            .set_shared_board(board_id, BoardRole::Viewer, SyncStatus::Synced, 1)
             .unwrap();
         let mut blocked = after.clone();
         blocked.columns.clear();
@@ -2578,18 +2697,18 @@ mod tests {
             crate::loro_board::apply_local_delta(None, &StoredData::default(), &local).unwrap();
         loaded
             .database
-            .apply_iroh_snapshot(board_id, "Shared", "editor", 3, &local, Some(&local_doc))
+            .apply_iroh_snapshot(board_id, "Shared", IrohPermission::Editor, 3, &local, Some(&local_doc))
             .unwrap();
         loaded
             .database
-            .save_iroh_conflict(board_id, 4, "Shared", "editor", &remote)
+            .save_iroh_conflict(board_id, 4, "Shared", IrohPermission::Editor, &remote)
             .unwrap();
         let mut newer_local = local.clone();
         newer_local.columns[0].name = "Local edited after conflict".into();
         loaded.database.persist_diff(&local, &newer_local).unwrap();
         assert_eq!(
             loaded.database.board_sync_state(board_id).unwrap().1,
-            "conflict"
+            SyncStatus::Conflict
         );
         assert_eq!(
             loaded
@@ -2608,7 +2727,7 @@ mod tests {
                 "Shared",
                 &newer_local,
                 &saved.1,
-                &saved.2,
+                saved.2,
                 saved.0,
                 &saved.3,
             )
