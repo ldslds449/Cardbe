@@ -126,7 +126,9 @@ pub fn import_all_boards(
     tauri::async_runtime::spawn(async move {
         use tauri::Manager;
         let network = app_handle.state::<crate::commands::iroh_share::IrohShareState>();
-        let _ = crate::commands::iroh_share::stop_host_if_idle(&network).await;
+        if let Err(error) = crate::commands::iroh_share::stop_host_if_idle(&network).await {
+            log::warn!(target: "iroh", "Could not stop board sharing after importing data: {error}");
+        }
     });
     Ok(())
 }

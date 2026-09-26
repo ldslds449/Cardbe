@@ -1,4 +1,5 @@
 <script lang="ts">
+import { logger } from "$lib/logger";
 import { onMount } from "svelte";
 import type { Component } from "svelte";
 import { render_card_references } from "../utils/card-reference";
@@ -23,6 +24,7 @@ onMount(() => {
       if (active) Renderer = module.default;
     })
     .catch((error) => {
+      logger.warn("markdown.renderer_load.failed", error);
       console.error("Couldn't load the Markdown renderer", error);
     });
   return () => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+import { logger } from "$lib/logger";
 import { onMount, untrack } from "svelte";
 import { getName, getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
@@ -235,7 +236,8 @@ async function refresh_device_requests() {
         ).length,
       0,
     );
-  } catch {
+  } catch (error) {
+    logger.warn("iroh.device_requests_refresh.failed", error);
     pending_device_count = 0;
   }
 }
@@ -322,6 +324,7 @@ $effect(() => {
         pending.push({ share, signature });
       }
     } catch (error) {
+      logger.error("share.selection_refresh.failed", error);
       untrack(() =>
         managed_share_state.set_sync_state(
           share.id,
@@ -401,6 +404,7 @@ const share_sync_queue = new LatestShareSyncQueue<ShareSyncRequest>(
     )
       return;
     console.error("Couldn't update a board share", error);
+    logger.error("share.sync.failed", error);
     managed_share_state.set_sync_state(
       share_id,
       "error",
@@ -468,6 +472,7 @@ async function restore_all_managed_shares() {
           serialized.map(deserialize_column),
         );
       } catch (error) {
+        logger.error("share.restore.failed", error);
         console.error(`Couldn't restore shares for board ${board_id}`, error);
         for (const share of shares) await disable_stale_share(share);
         toast.error(
@@ -492,7 +497,8 @@ async function disable_stale_share(
         `Sharing stopped for “${share.title}” because its content could not be updated.`,
       );
     }
-  } catch {
+  } catch (error) {
+    logger.error("share.stale_revoke.failed", error);
     if (
       managed_share_state.shares.some((candidate) => candidate.id === share.id)
     ) {
@@ -574,6 +580,7 @@ async function switch_board(id: number) {
     await flush_active_board_shares();
     if (await board.switch_board(id)) reset_board_scoped_ui();
   } catch (error) {
+    logger.error("board.switch_share_sync.failed", error);
     toast.error(
       error instanceof Error ? error.message : "Couldn't switch board",
     );
@@ -590,6 +597,7 @@ async function delete_board(id: number): Promise<boolean> {
     if (deleted) reset_board_scoped_ui();
     return deleted;
   } catch (error) {
+    logger.error("board.delete_share_revoke.failed", error);
     // `revoke_managed_shares` forgets each link only after its own revoke
     // succeeds. The remaining links are still live, but their queues were
     // retired above, so make their terminal failure visible and retryable.
@@ -628,6 +636,7 @@ async function restore_everything() {
     )
       reset_board_scoped_ui();
   } catch (error) {
+    logger.error("backup.restore_share_revoke.failed", error);
     // Successfully revoked links have already been forgotten. Only links
     // still present failed to revoke and must not be left as Updating.
     for (const share of managed_share_state.shares) {
@@ -773,9 +782,10 @@ onMount(() => {
             columns.map(deserialize_column),
           ),
         )
-        .catch((error) =>
-          console.error("Couldn't sync Quick Add board shares", error),
-        );
+        .catch((error) => {
+          console.error("Couldn't sync Quick Add board shares", error);
+          logger.error("share.quick_add_sync.failed", error);
+        });
     },
   );
   const iroh_remote_push_listener = listen<{
@@ -846,6 +856,7 @@ async function check_for_updates(manual = false) {
         onClick: () => {
           void invoke("open_external_url", { url: update.url }).catch(
             (error) => {
+              logger.warn("update.open_release.failed", error);
               console.error("Couldn't open the GitHub release:", error);
               toast.error("Couldn't open GitHub Releases");
             },
@@ -858,6 +869,7 @@ async function check_for_updates(manual = false) {
       },
     });
   } catch (error) {
+    logger.warn("update.manual_check.failed", error);
     // Automatic update checks should never interrupt normal app usage.
     console.info("Couldn't check for app updates:", error);
     if (manual) {
@@ -1139,6 +1151,7 @@ async function import_shared_task() {
   try {
     task = await parse_portable_task(task_import_text);
   } catch (error) {
+    logger.warn("task.share_text_import.failed", error);
     task_import_error =
       error instanceof Error ? error.message : "Invalid task sharing text";
     return;
@@ -1171,6 +1184,7 @@ async function share_task(task: Task) {
     task_share_text = await serialize_portable_task(task);
     task_share_dialog_open = true;
   } catch (error) {
+    logger.warn("task.share_text_prepare.failed", error);
     console.log(error);
     toast.error("Couldn't prepare task sharing text");
   }
@@ -1193,6 +1207,7 @@ async function copy_task_share_text() {
     }
     toast.success("Task sharing text copied");
   } catch (error) {
+    logger.warn("task.share_text_copy.failed", error);
     console.log(error);
     toast.error("Couldn't copy text. Select it and copy manually.");
   }

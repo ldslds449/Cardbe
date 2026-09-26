@@ -39,6 +39,9 @@ tokio-tungstenite = "0.29"
 iroh = "1.2"
 qrcode = { version = "=0.14.1", default-features = false, features = ["svg"] }
 loro = "1.16"
+tauri-plugin-log = "2.9.2"
+log = "0.4.34"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

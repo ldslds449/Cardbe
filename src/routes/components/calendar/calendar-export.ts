@@ -1396,6 +1396,7 @@ function load_calendar_pdf_font(): Promise<ArrayBuffer> {
         typeof error === "string"
           ? error
           : "Couldn't load a system font for PDF export",
+        { cause: error },
       );
     },
   );

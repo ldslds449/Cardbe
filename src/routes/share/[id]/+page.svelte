@@ -1,4 +1,5 @@
 <script lang="ts">
+import { logger } from "$lib/logger";
 import { onMount } from "svelte";
 import { ModeWatcher, toggleMode } from "mode-watcher";
 import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
@@ -99,6 +100,7 @@ onMount(() => {
       last_checked_at = new Date();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      logger.warn("share.public_refresh.failed", error);
       response = null;
       columns = [];
       selected_task = null;

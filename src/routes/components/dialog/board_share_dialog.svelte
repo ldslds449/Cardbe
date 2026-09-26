@@ -1,4 +1,5 @@
 <script lang="ts">
+import { logger } from "$lib/logger";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 import PlusIcon from "@lucide/svelte/icons/plus";
@@ -147,6 +148,7 @@ async function load_board_content(board_id: number | null): Promise<boolean> {
     loaded_board_id = board_id;
     return true;
   } catch (error) {
+    logger.error("share.content_load.failed", error);
     if (generation !== board_content_generation) return false;
     console.error("Couldn't load shared board content", error);
     toast.error("Couldn't load this board's share settings");
@@ -405,6 +407,7 @@ async function publish() {
           : "Web view published",
     );
   } catch (error) {
+    logger.error("share.publish.failed", error);
     console.error("Couldn't publish board share", error);
     toast.error(
       error instanceof Error ? error.message : "Couldn't publish the web view",
@@ -419,7 +422,8 @@ async function copy_link(target: ManagedShare | null = share) {
   try {
     await navigator.clipboard.writeText(target.url);
     toast.success("Web address copied");
-  } catch {
+  } catch (error) {
+    logger.warn("share.link_copy.failed", error);
     toast.error("Couldn't copy the link");
   }
 }
@@ -435,6 +439,7 @@ async function disable(target: ManagedShare | null = share) {
     if (share?.id === target.id) load_share(disabled_share);
     toast.success("Published view disabled. You can enable it again later.");
   } catch (error) {
+    logger.error("share.disable.failed", error);
     console.error("Couldn't disable board share", error);
     onShareRevokeError?.(target.id, error);
     toast.error(
@@ -490,6 +495,7 @@ async function enable(target: ManagedShare | null = share) {
     if (share?.id === target.id) load_share(enabled_share);
     toast.success("Published view enabled");
   } catch (error) {
+    logger.error("share.enable.failed", error);
     console.error("Couldn't enable board share", error);
     toast.error(
       error instanceof Error
@@ -517,6 +523,7 @@ async function delete_share() {
     delete_confirm_open = false;
     toast.success("Published view deleted");
   } catch (error) {
+    logger.error("share.delete.failed", error);
     console.error("Couldn't delete board share", error);
     onShareRevokeError?.(deleted_id, error);
     toast.error(

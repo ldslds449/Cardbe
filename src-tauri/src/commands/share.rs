@@ -306,11 +306,19 @@ impl LanShareState {
             .name("cardbe-lan-share".into())
             .spawn(move || {
                 runtime.block_on(async move {
-                    let Ok(listener) = tokio::net::TcpListener::from_std(listener) else {
-                        return;
+                    let listener = match tokio::net::TcpListener::from_std(listener) {
+                        Ok(listener) => listener,
+                        Err(error) => {
+                            log::error!(target: "share", "Could not start the LAN sharing listener: {error}");
+                            return;
+                        }
                     };
                     let router = lan_router(http_state);
-                    let _ = axum::serve(transport::BoundedListener::new(listener), router).await;
+                    if let Err(error) =
+                        axum::serve(transport::BoundedListener::new(listener), router).await
+                    {
+                        log::error!(target: "share", "LAN sharing server stopped unexpectedly: {error}");
+                    }
                 });
             })
             .map_err(|error| format!("Could not start LAN sharing: {error}"))?;
@@ -494,7 +502,10 @@ async fn lan_request(AxumState(state): AxumState<LanHttpState>, request: Request
                 expires_at: share.expires_at.map(|value| value.to_rfc3339()),
                 snapshot: share.snapshot,
             })
-            .unwrap_or_else(|_| br#"{"error":"Could not encode share"}"#.to_vec());
+            .unwrap_or_else(|error| {
+                log::error!(target: "share", "Could not encode public share response: {error}");
+                br#"{"error":"Could not encode share"}"#.to_vec()
+            });
             return secured_response(
                 StatusCode::OK,
                 "application/json; charset=utf-8",
@@ -553,12 +564,25 @@ async fn viewer_asset_response(assets: &ViewerAssets, target: &str) -> Response 
                             .and_then(|value| value.to_str().ok())
                             .unwrap_or("application/octet-stream")
                             .to_string();
-                        response.bytes().await.ok().map(|bytes| ViewerAsset {
-                            bytes: bytes.to_vec(),
-                            mime_type,
-                        })
+                        match response.bytes().await {
+                            Ok(bytes) => Some(ViewerAsset {
+                                bytes: bytes.to_vec(),
+                                mime_type,
+                            }),
+                            Err(error) => {
+                                log::warn!(target: "share", "Could not read a Vite share asset: {error}");
+                                None
+                            }
+                        }
                     }
-                    _ => None,
+                    Ok(response) => {
+                        log::warn!(target: "share", "Vite share asset request returned HTTP {}", response.status());
+                        None
+                    }
+                    Err(error) => {
+                        log::warn!(target: "share", "Could not fetch a Vite share asset: {error}");
+                        None
+                    }
                 }
             }
         }
@@ -651,7 +675,13 @@ fn inline_script_hashes(body: &[u8]) -> Vec<String> {
 }
 
 fn active_share(shares: &Arc<RwLock<HashMap<String, LanShare>>>, id: &str) -> Option<LanShare> {
-    let mut guard = shares.write().ok()?;
+    let mut guard = match shares.write() {
+        Ok(guard) => guard,
+        Err(error) => {
+            log::error!(target: "share", "LAN share state lock is poisoned: {error}");
+            return None;
+        }
+    };
     let share = guard.get(id)?;
     if share
         .expires_at

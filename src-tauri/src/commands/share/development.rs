@@ -147,27 +147,47 @@ pub(super) fn vite_websocket_protocol(headers: &axum::http::HeaderMap) -> Option
 }
 
 pub(super) async fn proxy_vite_websocket(mut browser: WebSocket, target: String, protocol: String) {
-    let Ok(mut upstream_request) = target.into_client_request() else {
-        return;
+    let mut upstream_request = match target.into_client_request() {
+        Ok(request) => request,
+        Err(error) => {
+            log::warn!(target: "share", "Could not create the Vite WebSocket request: {error}");
+            return;
+        }
     };
-    let Ok(protocol_header) = HeaderValue::from_str(&protocol) else {
-        return;
+    let protocol_header = match HeaderValue::from_str(&protocol) {
+        Ok(header) => header,
+        Err(error) => {
+            log::warn!(target: "share", "Invalid Vite WebSocket protocol header: {error}");
+            return;
+        }
     };
     upstream_request
         .headers_mut()
         .insert(header::SEC_WEBSOCKET_PROTOCOL, protocol_header);
 
-    let Ok(Ok((mut vite, _))) =
-        tokio::time::timeout(Duration::from_secs(5), connect_async(upstream_request)).await
-    else {
-        return;
-    };
+    let (mut vite, _) =
+        match tokio::time::timeout(Duration::from_secs(5), connect_async(upstream_request)).await {
+            Ok(Ok(connection)) => connection,
+            Ok(Err(error)) => {
+                log::warn!(target: "share", "Could not connect to the Vite WebSocket: {error}");
+                return;
+            }
+            Err(error) => {
+                log::warn!(target: "share", "Connecting to the Vite WebSocket timed out: {error}");
+                return;
+            }
+        };
 
     loop {
         tokio::select! {
             browser_message = browser.recv() => {
-                let Some(Ok(message)) = browser_message else {
-                    break;
+                let message = match browser_message {
+                    Some(Ok(message)) => message,
+                    Some(Err(error)) => {
+                        log::warn!(target: "share", "Could not read the viewer WebSocket message: {error}");
+                        break;
+                    }
+                    None => break,
                 };
                 let message = match message {
                     AxumMessage::Text(value) => TungsteniteMessage::Text(value.to_string().into()),
@@ -176,13 +196,26 @@ pub(super) async fn proxy_vite_websocket(mut browser: WebSocket, target: String,
                     AxumMessage::Pong(value) => TungsteniteMessage::Pong(value.to_vec().into()),
                     AxumMessage::Close(_) => TungsteniteMessage::Close(None),
                 };
-                if !matches!(tokio::time::timeout(Duration::from_secs(5), vite.send(message)).await, Ok(Ok(()))) {
-                    break;
+                match tokio::time::timeout(Duration::from_secs(5), vite.send(message)).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        log::warn!(target: "share", "Could not forward a viewer message to Vite: {error}");
+                        break;
+                    }
+                    Err(error) => {
+                        log::warn!(target: "share", "Forwarding a viewer message to Vite timed out: {error}");
+                        break;
+                    }
                 }
             }
             vite_message = vite.next() => {
-                let Some(Ok(message)) = vite_message else {
-                    break;
+                let message = match vite_message {
+                    Some(Ok(message)) => message,
+                    Some(Err(error)) => {
+                        log::warn!(target: "share", "Could not read the Vite WebSocket message: {error}");
+                        break;
+                    }
+                    None => break,
                 };
                 let message = match message {
                     TungsteniteMessage::Text(value) => AxumMessage::Text(value.to_string().into()),
@@ -192,8 +225,16 @@ pub(super) async fn proxy_vite_websocket(mut browser: WebSocket, target: String,
                     TungsteniteMessage::Close(_) => AxumMessage::Close(None),
                     TungsteniteMessage::Frame(_) => continue,
                 };
-                if !matches!(tokio::time::timeout(Duration::from_secs(5), browser.send(message)).await, Ok(Ok(()))) {
-                    break;
+                match tokio::time::timeout(Duration::from_secs(5), browser.send(message)).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        log::warn!(target: "share", "Could not forward a Vite message to the viewer: {error}");
+                        break;
+                    }
+                    Err(error) => {
+                        log::warn!(target: "share", "Forwarding a Vite message to the viewer timed out: {error}");
+                        break;
+                    }
                 }
             }
         }

@@ -1,4 +1,5 @@
 <script lang="ts">
+import { logger } from "$lib/logger";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "svelte-sonner";
@@ -93,6 +94,7 @@ async function load_notes() {
     selected_id = notes[0]?.id ?? null;
     loaded = true;
   } catch (error) {
+    logger.error("note.load.failed", error);
     console.error(error);
     toast.error("Couldn't load notes");
   } finally {
@@ -115,6 +117,7 @@ async function create_note() {
     search_text = "";
     preview_mode = false;
   } catch (error) {
+    logger.error("note.create.failed", error);
     console.error(error);
     toast.error("Couldn't create note");
   } finally {
@@ -152,6 +155,7 @@ async function save_note(note: Note, version: number) {
       notes[index].updated_at = saved.updated_at;
     }
   } catch (error) {
+    logger.error("note.save.failed", error);
     console.error(error);
     toast.error("Couldn't save note");
   }
@@ -187,6 +191,7 @@ async function delete_note(note: Note) {
     }
     toast.success("Note deleted");
   } catch (error) {
+    logger.error("note.delete.failed", error);
     console.error(error);
     toast.error("Couldn't delete note");
   } finally {

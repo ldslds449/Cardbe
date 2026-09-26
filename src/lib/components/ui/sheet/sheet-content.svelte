@@ -35,6 +35,7 @@ import XIcon from "@lucide/svelte/icons/x";
 import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
 import { onMount } from "svelte";
 import type { Snippet } from "svelte";
+import { logger } from "$lib/logger";
 import SheetPortal from "./sheet-portal.svelte";
 import SheetOverlay from "./sheet-overlay.svelte";
 import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
@@ -71,6 +72,7 @@ let resizeStartWidth = 0;
 let contentElement = $state<HTMLElement | null>(null);
 let activeContentElement: HTMLElement | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let widthStorageFailureLogged = false;
 
 const canResize = $derived(resizable && (side === "left" || side === "right"));
 const currentWidth = $derived(panelWidth || defaultWidth);
@@ -97,11 +99,18 @@ function clampDragWidth(width: number) {
   return Math.min(effectiveMaximum, Math.max(minWidth, width));
 }
 
+function logWidthStorageFailure(operation: "load" | "save", error: unknown) {
+  if (widthStorageFailureLogged) return;
+  widthStorageFailureLogged = true;
+  logger.debug(`sheet.width_storage.${operation}.failed`, { error });
+}
+
 function persistWidth(width: number) {
   if (!widthStorageKey) return;
   try {
     window.localStorage.setItem(widthStorageKey, String(width));
-  } catch {
+  } catch (error) {
+    logWidthStorageFailure("save", error);
     // Resizing should still work when storage is unavailable.
   }
 }
@@ -131,7 +140,8 @@ onMount(() => {
       if (Number.isFinite(storedWidth) && storedWidth > 0) {
         panelWidth = clampConfiguredWidth(storedWidth);
       }
-    } catch {
+    } catch (error) {
+      logWidthStorageFailure("load", error);
       // Keep the default width when storage is unavailable.
     }
   }

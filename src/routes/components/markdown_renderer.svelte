@@ -1,4 +1,5 @@
 <script lang="ts">
+import { logger } from "$lib/logger";
 import { mode } from "mode-watcher";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
@@ -52,8 +53,10 @@ function load_code_languages(): (tree: HastNode) => void {
         if (results.some((result) => result.status === "fulfilled"))
           highlight_revision += 1;
         for (const result of results) {
-          if (result.status === "rejected")
+          if (result.status === "rejected") {
             console.error("Couldn't load code highlighting", result.reason);
+            logger.warn("markdown.highlight_load.failed", result.reason);
+          }
         }
       });
     }
@@ -146,6 +149,7 @@ async function open_external_link(event: MouseEvent, href: unknown) {
   try {
     await invoke("open_external_url", { url: safe_href });
   } catch (error) {
+    logger.warn("markdown.open_link.failed", error);
     console.error("Couldn't open external link", error);
     toast.error("Couldn't open link");
   }

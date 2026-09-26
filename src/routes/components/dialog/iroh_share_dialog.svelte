@@ -1,4 +1,5 @@
 <script lang="ts">
+import { logger } from "$lib/logger";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
@@ -180,12 +181,14 @@ async function create() {
     try {
       await navigator.clipboard.writeText(created);
       copied = true;
-    } catch {
+    } catch (e) {
+      logger.warn("iroh.invite_create_copy.failed", e);
       /* The visible link can still be copied later. */
     }
     await load();
     toast.success(copied ? "Invitation copied" : "Invitation created");
   } catch (e) {
+    logger.error("iroh.invite_create.failed", e);
     toast.error(e instanceof Error ? e.message : "Couldn't create invitation");
   } finally {
     creating = false;
@@ -196,7 +199,8 @@ async function copy() {
   try {
     await navigator.clipboard.writeText(generated.ticket);
     toast.success("Invitation copied");
-  } catch {
+  } catch (e) {
+    logger.warn("iroh.invite_copy.failed", e);
     toast.error("Couldn't copy invitation");
   }
 }
@@ -242,6 +246,7 @@ async function load(silent = false) {
     host_error = await invoke<string | null>("iroh_host_error");
     onRequestsChanged();
   } catch (e) {
+    logger.error("iroh.invite_list_load.failed", e);
     if (!silent)
       toast.error(e instanceof Error ? e.message : "Couldn't load invitations");
   }
@@ -269,6 +274,7 @@ async function approve_device(
     );
     return true;
   } catch (e) {
+    logger.error("iroh.device_approval.failed", e);
     toast.error(e instanceof Error ? e.message : "Couldn't update device");
     return false;
   }
@@ -319,6 +325,7 @@ async function request_received_access(
       if (request_approval) toast.success("Access request sent");
     }
   } catch (e) {
+    logger.error("iroh.access_request.failed", e);
     if (
       !request_approval &&
       (e instanceof Error ? e.message : String(e)).startsWith(
@@ -343,7 +350,8 @@ async function copy_device_id(id: string) {
   try {
     await navigator.clipboard.writeText(id);
     toast.success("Device ID copied");
-  } catch {
+  } catch (e) {
+    logger.warn("iroh.device_id_copy.failed", e);
     toast.error("Couldn't copy Device ID");
   }
 }
@@ -365,6 +373,7 @@ async function update(
       toast.error("Invitation saved, but sharing is offline");
     else toast.success("Invitation updated");
   } catch (e) {
+    logger.error("iroh.invite_update.failed", e);
     await load();
     toast.error(e instanceof Error ? e.message : "Couldn't update invitation");
   }
@@ -376,6 +385,7 @@ async function remove() {
     await load();
     toast.success("Invitation deleted");
   } catch (e) {
+    logger.error("iroh.invite_delete.failed", e);
     toast.error(e instanceof Error ? e.message : "Couldn't delete invitation");
   } finally {
     pending_delete = null;
@@ -392,6 +402,7 @@ async function access(invite: Invite): Promise<InviteAccess | null> {
     invite_access = { ...invite_access, [invite.invite_id]: value };
     return value;
   } catch (e) {
+    logger.error("iroh.invite_access_load.failed", e);
     toast.error(e instanceof Error ? e.message : "Couldn't load invitation");
     return null;
   } finally {
@@ -404,7 +415,8 @@ async function copy_invite(invite: Invite) {
   try {
     await navigator.clipboard.writeText(value.ticket);
     toast.success("Invitation copied");
-  } catch {
+  } catch (e) {
+    logger.warn("iroh.invite_copy.failed", e);
     toast.error("Couldn't copy invitation");
   }
 }

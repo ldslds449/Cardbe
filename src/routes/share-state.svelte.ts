@@ -1,3 +1,4 @@
+import { logger } from "$lib/logger";
 import type { ManagedShare } from "./share";
 
 const MANAGED_SHARE_STORAGE_KEY = "cardbe.active-share";
@@ -71,7 +72,8 @@ export class ManagedShareState {
         ]),
       );
       this.persist();
-    } catch {
+    } catch (error) {
+      logger.warn("share.local_state_restore.failed", error);
       storage.removeItem(MANAGED_SHARE_STORAGE_KEY);
     }
   }

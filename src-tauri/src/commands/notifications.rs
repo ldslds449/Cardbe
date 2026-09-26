@@ -58,12 +58,12 @@ pub fn check_expired_tasks(
     let expired = guard
         .boards
         .iter()
-        .filter_map(|board| {
-            guard
-                .database
-                .read_board(board.id)
-                .ok()
-                .map(|data| (board.id, board.name.clone(), data))
+        .filter_map(|board| match guard.database.read_board(board.id) {
+            Ok(data) => Some((board.id, board.name.clone(), data)),
+            Err(error) => {
+                log::warn!(target: "notifications", "Could not read board {} while checking expired tasks: {error}", board.id);
+                None
+            }
         })
         .flat_map(|(board_id, board_name, data)| {
             data.columns.into_iter().flat_map(move |column| {
@@ -89,7 +89,9 @@ pub fn check_expired_tasks(
 
     for (board_name, task_title) in titles {
         let (title, body) = expired_notification(&board_name, &task_title);
-        let _ = app.notification().builder().title(title).body(body).show();
+        if let Err(error) = app.notification().builder().title(title).body(body).show() {
+            log::warn!(target: "notifications", "Could not show an expired-task notification: {error}");
+        }
     }
     Ok(())
 }

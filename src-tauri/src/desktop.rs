@@ -49,7 +49,7 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
     let shortcuts_enabled = global_shortcuts_enabled(app.app_handle()).unwrap_or(true);
     if shortcuts_enabled {
         if let Err(error) = set_global_shortcuts_enabled(app.app_handle(), true) {
-            eprintln!("Could not enable Cardbe global shortcuts: {error}");
+            log::error!(target: "desktop", "Could not enable Cardbe global shortcuts: {error}");
         }
     }
 
@@ -116,11 +116,16 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
             "quick-task" => show_quick_add_window(app, "quick-task"),
             "quick-note" => show_quick_add_window(app, "quick-note"),
             "toggle-shortcuts" => {
-                let was_enabled = global_shortcuts_enabled(app).unwrap_or(true);
+                let was_enabled = match global_shortcuts_enabled(app) {
+                    Ok(enabled) => enabled,
+                    Err(_) => return,
+                };
                 let enabled = !was_enabled;
                 if let Err(error) = set_global_shortcuts_enabled(app, enabled) {
-                    eprintln!("Could not change Cardbe global shortcuts: {error}");
-                    let _ = shortcut_toggle_for_menu.set_checked(was_enabled);
+                    log::error!(target: "desktop", "Could not change Cardbe global shortcuts: {error}");
+                    if let Err(error) = shortcut_toggle_for_menu.set_checked(was_enabled) {
+                        log::warn!(target: "desktop", "Could not restore the global shortcut menu state: {error}");
+                    }
                     return;
                 }
 
@@ -129,12 +134,18 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
                     data.settings.global_shortcuts_enabled = enabled;
                     Ok(())
                 }) {
-                    eprintln!("Could not save the global shortcut setting: {error}");
-                    let _ = set_global_shortcuts_enabled(app, was_enabled);
-                    let _ = shortcut_toggle_for_menu.set_checked(was_enabled);
+                    log::error!(target: "desktop", "Could not save the global shortcut setting: {error}");
+                    if let Err(error) = set_global_shortcuts_enabled(app, was_enabled) {
+                        log::error!(target: "desktop", "Could not roll back global shortcut changes: {error}");
+                    }
+                    if let Err(error) = shortcut_toggle_for_menu.set_checked(was_enabled) {
+                        log::warn!(target: "desktop", "Could not restore the global shortcut menu state: {error}");
+                    }
                     return;
                 }
-                let _ = shortcut_toggle_for_menu.set_checked(enabled);
+                if let Err(error) = shortcut_toggle_for_menu.set_checked(enabled) {
+                    log::warn!(target: "desktop", "Could not update the global shortcut menu state: {error}");
+                }
             }
             "show" => show_main_window(app),
             "quit" => app.exit(0),
@@ -152,7 +163,10 @@ fn global_shortcuts_enabled<R: Runtime>(app: &AppHandle<R>) -> Result<bool, Stri
     let state = app.state::<SharedAppData>();
     let guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|error| {
+            log::error!(target: "desktop", "Could not read the global shortcut setting: {error}");
+            "Application state lock is poisoned".to_string()
+        })?;
     Ok(guard.stored.settings.global_shortcuts_enabled)
 }
 
@@ -195,9 +209,13 @@ fn set_global_shortcuts_enabled<R: Runtime>(
             .zip(previous_registration.into_iter())
         {
             if was_registered {
-                let _ = manager.register(shortcut);
+                if let Err(error) = manager.register(shortcut) {
+                    log::error!(target: "desktop", "Could not restore a global shortcut after a failed update: {error}");
+                }
             } else {
-                let _ = manager.unregister(shortcut);
+                if let Err(error) = manager.unregister(shortcut) {
+                    log::error!(target: "desktop", "Could not remove a global shortcut after a failed update: {error}");
+                }
             }
         }
     }
@@ -208,17 +226,29 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     // Tauri creates this window from `app.windows` in tauri.conf.json before
     // setup runs. It is the default visible window because `visible` is true.
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        if let Err(error) = window.unminimize() {
+            log::warn!(target: "desktop", "Could not unminimize the main window: {error}");
+        }
+        if let Err(error) = window.show() {
+            log::warn!(target: "desktop", "Could not show the main window: {error}");
+        }
+        if let Err(error) = window.set_focus() {
+            log::warn!(target: "desktop", "Could not focus the main window: {error}");
+        }
     }
 }
 
 fn show_quick_add_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
     if let Some(window) = app.get_webview_window(label) {
-        let _ = window.center();
-        let _ = window.show();
-        let _ = window.set_focus();
+        if let Err(error) = window.center() {
+            log::warn!(target: "desktop", "Could not center the quick-add window: {error}");
+        }
+        if let Err(error) = window.show() {
+            log::warn!(target: "desktop", "Could not show the quick-add window: {error}");
+        }
+        if let Err(error) = window.set_focus() {
+            log::warn!(target: "desktop", "Could not focus the quick-add window: {error}");
+        }
     }
 }
 
@@ -226,10 +256,14 @@ pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) 
     match event {
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
-            let _ = window.hide();
+            if let Err(error) = window.hide() {
+                log::warn!(target: "desktop", "Could not hide the main window: {error}");
+            }
         }
         WindowEvent::Focused(false) if window.label().starts_with("quick-") => {
-            let _ = window.hide();
+            if let Err(error) = window.hide() {
+                log::warn!(target: "desktop", "Could not hide the quick-add window: {error}");
+            }
         }
         _ => {}
     }

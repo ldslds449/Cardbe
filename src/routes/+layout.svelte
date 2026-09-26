@@ -3,10 +3,13 @@ import { dev } from "$app/environment";
 import "../app.css";
 import Sonner from "$lib/components/ui/sonner/sonner.svelte";
 import { onMount } from "svelte";
+import { installGlobalErrorLogging, logger } from "$lib/logger";
 
 let { children } = $props();
 
 onMount(() => {
+  const uninstallErrorLogging = installGlobalErrorLogging();
+  logger.info("app.mounted");
   const dismiss_startup = () =>
     document.getElementById("app-startup")?.classList.add("is-ready");
   const waits_for_workspace = window.location.pathname === "/";
@@ -19,8 +22,10 @@ onMount(() => {
   }
 
   if (dev) {
-    return () =>
+    return () => {
+      uninstallErrorLogging();
       window.removeEventListener("cardbe:workspace-ready", dismiss_startup);
+    };
   }
 
   const preventBrowserContextMenu = (event: MouseEvent) =>
@@ -28,6 +33,7 @@ onMount(() => {
   document.addEventListener("contextmenu", preventBrowserContextMenu);
 
   return () => {
+    uninstallErrorLogging();
     window.removeEventListener("cardbe:workspace-ready", dismiss_startup);
     document.removeEventListener("contextmenu", preventBrowserContextMenu);
   };

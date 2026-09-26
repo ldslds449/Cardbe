@@ -2,6 +2,7 @@ pub mod archive;
 pub mod board;
 pub mod boards;
 pub mod calendar_export;
+pub mod diagnostics;
 pub mod import_export;
 pub mod iroh_share;
 pub mod notes;

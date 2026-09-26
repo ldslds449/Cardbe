@@ -1,3 +1,4 @@
+import { logger } from "$lib/logger";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
@@ -138,6 +139,7 @@ export class BoardStore {
       await this.switch_board(joined.id);
       return true;
     } catch (error) {
+      logger.error("iroh.invite_join.failed", error);
       this.iroh_last_error =
         error instanceof Error
           ? error.message
@@ -185,6 +187,7 @@ export class BoardStore {
       if (!silent) toast.success("Shared board synced");
       return true;
     } catch (error) {
+      logger.error("iroh.board_sync.failed", error);
       const message =
         error instanceof Error
           ? error.message
@@ -243,6 +246,7 @@ export class BoardStore {
       if (keep_local) this.trigger_iroh_background_sync();
       return true;
     } catch (error) {
+      logger.error("iroh.conflict_resolve.failed", error);
       toast.error(
         typeof error === "string" ? error : "Couldn't resolve sync conflict",
       );
@@ -269,7 +273,9 @@ export class BoardStore {
     if (!this.iroh_host_checking) {
       this.iroh_host_checking = true;
       void invoke("ensure_iroh_host")
-        .catch(() => undefined)
+        .catch((error) => {
+          logger.warn("iroh.host_start.failed", error);
+        })
         .finally(() => {
           this.iroh_host_checking = false;
         });
@@ -362,6 +368,7 @@ export class BoardStore {
       toast.success("Last action undone");
       return true;
     } catch (e: unknown) {
+      logger.error("board.undo.failed", e);
       console.log(e);
       toast.error("Couldn't undo the last action");
       return false;
@@ -394,6 +401,7 @@ export class BoardStore {
         board.labels = data;
       })
       .catch((e) => {
+        logger.error("board.labels_load.failed", e);
         console.log(e);
         board.show_data_fetch_error("Couldn't load labels", () =>
           board.update_labels(),
@@ -432,6 +440,7 @@ export class BoardStore {
         board.column_fetch_finish = true;
       })
       .catch((e) => {
+        logger.error("board.columns_load.failed", e);
         console.log(e);
         if (replaces_workspace) {
           board.column_fetch_error = true;
@@ -468,6 +477,7 @@ export class BoardStore {
         board.archives_loaded = true;
       })
       .catch((e) => {
+        logger.error("board.archives_load.failed", e);
         console.log(e);
         if (generation === board.board_generation) {
           board.show_data_fetch_error("Couldn't load archives", () =>
@@ -507,6 +517,7 @@ export class BoardStore {
         board.expired_tasks = data.map((t) => deserialize_task(t));
       })
       .catch((e) => {
+        logger.error("board.expired_tasks_load.failed", e);
         console.log(e);
         if (generation === board.board_generation) {
           board.show_data_fetch_error("Couldn't load expired tasks", () =>
@@ -559,6 +570,7 @@ export class BoardStore {
       this.boards = state.boards;
       this.active_board_id = state.active_board_id;
     } catch (e) {
+      logger.error("board.list_load.failed", e);
       console.log("Couldn't load boards:", e);
     }
   }
@@ -574,6 +586,7 @@ export class BoardStore {
       await this.switch_board(created.id);
       return true;
     } catch (e) {
+      logger.error("board.create.failed", e);
       console.log(e);
       toast.error("Couldn't create board");
       return false;
@@ -590,6 +603,7 @@ export class BoardStore {
       );
       return true;
     } catch (e) {
+      logger.error("board.rename.failed", e);
       console.log(e);
       toast.error("Couldn't rename board");
       return false;
@@ -620,6 +634,7 @@ export class BoardStore {
       this.get_expired_tasks();
       return true;
     } catch (e) {
+      logger.error("board.switch.failed", e);
       console.log(e);
       toast.error("Couldn't switch board");
       return false;
@@ -636,6 +651,7 @@ export class BoardStore {
       }
       return true;
     } catch (e) {
+      logger.error("board.delete.failed", e);
       console.log(e);
       toast.error("Couldn't delete board");
       return false;
@@ -649,6 +665,7 @@ export class BoardStore {
       );
       this.notify_enabled = settings.notify_enabled;
     } catch (e) {
+      logger.warn("settings.load.failed", e);
       console.log("Couldn't load settings:", e);
     }
   }
@@ -668,6 +685,7 @@ export class BoardStore {
           await invoke<void>("set_notify_enabled", { enabled });
           return true;
         } catch (e: unknown) {
+          logger.error("settings.notification_save.failed", e);
           console.log("Couldn't save notification settings:", e);
           return false;
         }
@@ -698,6 +716,7 @@ export class BoardStore {
       }
       return permission_granted;
     } catch (e: unknown) {
+      logger.warn("notifications.permission_request.failed", e);
       console.log("Couldn't request notification permission:", e);
       return false;
     }
@@ -719,6 +738,7 @@ export class BoardStore {
       try {
         await invoke("check_expired_tasks");
       } catch (e: unknown) {
+        logger.warn("notifications.expired_task_check.failed", e);
         console.log("Couldn't check expired tasks:", e);
       }
     };
@@ -766,6 +786,7 @@ export class BoardStore {
         });
       })
       .catch((e: unknown) => {
+        logger.error("template.load.failed", e);
         console.log(e);
         if (generation === this.board_generation)
           toast.error("Couldn't load task templates");
@@ -796,6 +817,7 @@ export class BoardStore {
         return true;
       })
       .catch((e: unknown) => {
+        logger.error("template.create.failed", e);
         console.log(e);
         if (generation === this.board_generation)
           toast.error("Couldn't save template");
@@ -832,6 +854,7 @@ export class BoardStore {
         return true;
       })
       .catch((e: unknown) => {
+        logger.error("template.update.failed", e);
         console.log(e);
         if (generation === this.board_generation)
           toast.error("Couldn't update template");
@@ -858,6 +881,7 @@ export class BoardStore {
         return true;
       })
       .catch((e: unknown) => {
+        logger.error("template.delete.failed", e);
         console.log(e);
         if (generation === this.board_generation)
           toast.error("Couldn't delete template");
@@ -999,6 +1023,7 @@ export class BoardStore {
         return persisted_task_id;
       })
       .catch((e: unknown) => {
+        logger.error("task.create.failed", e);
         console.log(e);
         if (generation !== board.board_generation) throw e;
         const position = this.find_task_position(pending_task_id);
@@ -1066,6 +1091,7 @@ export class BoardStore {
         return true;
       })
       .catch((e: unknown) => {
+        logger.error("task.delete.failed", e);
         console.log(e);
         if (generation !== this.board_generation) return false;
         if (task_was_created) {
@@ -1122,6 +1148,7 @@ export class BoardStore {
         return true;
       })
       .catch((e: unknown) => {
+        logger.error("task.archive.failed", e);
         console.log(e);
         if (generation !== board.board_generation) return false;
         if (task_was_created) {
@@ -1168,6 +1195,7 @@ export class BoardStore {
           this.show_success_with_undo("Tasks archived");
         })
         .catch((e: string) => {
+          logger.error("task.archive_all.failed", e);
           console.log(e);
           if (generation !== board.board_generation) return;
           const current_column = board.columns.find(
@@ -1219,6 +1247,7 @@ export class BoardStore {
           this.show_success_with_undo("Task restored");
         })
         .catch((e: string) => {
+          logger.error("task.unarchive.failed", e);
           console.log(e);
           if (generation !== board.board_generation) return;
           const current_column = board.columns.find(
@@ -1282,6 +1311,7 @@ export class BoardStore {
         return true;
       })
       .catch((e: unknown) => {
+        logger.error("task.update.failed", e);
         console.log(e);
         if (generation !== board.board_generation) return false;
         const current_position = this.find_task_position(current_task_id);
@@ -1313,12 +1343,14 @@ export class BoardStore {
     const to_column = this.columns[to_column_idx];
     const data = from_column?.tasks[from_task_idx];
     if (!from_column || !to_column || !data) {
-      console.warn("Ignoring move with an invalid task position", {
+      const context = {
         from_column_idx,
         from_task_idx,
         to_column_idx,
         to_task_idx,
-      });
+      };
+      logger.warn("board.task_move.invalid_position", undefined, context);
+      console.warn("Ignoring move with an invalid task position", context);
       return false;
     }
 
@@ -1353,6 +1385,7 @@ export class BoardStore {
         });
       }
     } catch (e) {
+      logger.warn("storage.recovery_messages_load.failed", e);
       console.log("Couldn't load recovery messages:", e);
     }
   }
@@ -1394,6 +1427,7 @@ export class BoardStore {
             this.can_undo = true;
         })
         .catch((e: unknown) => {
+          logger.error("task.move.failed", e);
           console.log(e);
           if (generation !== this.board_generation) return;
           toast.error("Couldn't move task");
@@ -1433,6 +1467,7 @@ export class BoardStore {
           board.columns = [...board.columns];
         })
         .catch((e: string) => {
+          logger.error("column.create.failed", e);
           console.log(e);
           if (generation !== board.board_generation) return;
           toast.error("Couldn't add column");
@@ -1471,6 +1506,7 @@ export class BoardStore {
           }
         })
         .catch((e: string) => {
+          logger.error("column.update.failed", e);
           console.log(e);
           if (generation !== board.board_generation) return;
           toast.error("Couldn't update column");
@@ -1489,10 +1525,12 @@ export class BoardStore {
 
     const data = this.columns[from_column_idx];
     if (!data || !this.columns[to_column_idx]) {
-      console.warn("Ignoring move with an invalid column position", {
+      const context = {
         from_column_idx,
         to_column_idx,
-      });
+      };
+      logger.warn("board.column_move.invalid_position", undefined, context);
+      console.warn("Ignoring move with an invalid column position", context);
       return false;
     }
 
@@ -1530,6 +1568,7 @@ export class BoardStore {
             if (generation === this.board_generation) this.can_undo = true;
           })
           .catch((e: string) => {
+            logger.error("column.move.failed", e);
             console.log(e);
             if (generation !== this.board_generation) return;
             toast.error("Couldn't move column");
@@ -1560,6 +1599,7 @@ export class BoardStore {
           this.show_success_with_undo("Column deleted");
         })
         .catch((e: string) => {
+          logger.error("column.delete.failed", e);
           console.log(e);
           if (generation !== this.board_generation) return;
           toast.error("Couldn't delete column");
@@ -1590,6 +1630,7 @@ export class BoardStore {
       await writeTextFile(file_path, data);
       toast.success("Board exported");
     } catch (e) {
+      logger.error("board.export.failed", e);
       console.log(e);
       toast.error("Couldn't export data");
     }
@@ -1605,6 +1646,7 @@ export class BoardStore {
       await writeTextFile(file_path, await invoke<string>("export_all_boards"));
       toast.success("Everything backed up");
     } catch (e) {
+      logger.error("backup.export.failed", e);
       console.log(e);
       toast.error("Couldn't back up everything");
     }
@@ -1655,6 +1697,7 @@ export class BoardStore {
       toast.success("Everything restored");
       return true;
     } catch (e) {
+      logger.error("backup.restore.failed", e);
       console.log(e);
       toast.error(
         share_links_revoked
@@ -1685,6 +1728,7 @@ export class BoardStore {
         board_name,
       };
     } catch (e) {
+      logger.error("board.import_file_read.failed", e);
       console.log(e);
       toast.error("Couldn't read import file");
       return null;
@@ -1709,6 +1753,7 @@ export class BoardStore {
       toast.success(`Imported as “${created.name}”`);
       return true;
     } catch (e) {
+      logger.error("board.import_as_new.failed", e);
       console.log(e);
       toast.error("Couldn't import board");
       return false;
@@ -1742,6 +1787,7 @@ export class BoardStore {
         return true;
       })
       .catch((e: unknown) => {
+        logger.error("board.import_data.failed", e);
         console.log(e);
         if (generation === this.board_generation)
           toast.error("Couldn't import data");

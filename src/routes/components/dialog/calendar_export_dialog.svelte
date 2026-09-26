@@ -1,4 +1,5 @@
 <script lang="ts">
+import { logger } from "$lib/logger";
 import { tick } from "svelte";
 import { toast } from "svelte-sonner";
 import DownloadIcon from "@lucide/svelte/icons/download";
@@ -113,7 +114,8 @@ function load_preferences(): Partial<CalendarExportOptions> & {
 } {
   try {
     return JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? "{}");
-  } catch {
+  } catch (error) {
+    logger.debug("calendar.preferences_load.failed", { error });
     return {};
   }
 }
@@ -124,7 +126,8 @@ function save_preferences() {
       PREFERENCES_KEY,
       JSON.stringify({ format, month_count, ...current_options() }),
     );
-  } catch {
+  } catch (error) {
+    logger.debug("calendar.preferences_save.failed", { error });
     // Exporting still works when storage is unavailable.
   }
 }
@@ -344,6 +347,7 @@ $effect(() => {
         if (generation === estimate_generation && open) estimate = result;
       })
       .catch((error) => {
+        logger.warn("calendar.export_estimate.failed", error);
         console.error("Couldn't estimate calendar export", error);
       })
       .finally(() => {
@@ -489,6 +493,7 @@ async function export_calendar() {
       open = false;
     }
   } catch (error) {
+    logger.error("calendar.export.failed", error);
     console.error("Couldn't export calendar", error);
     toast.error(
       error instanceof Error ? error.message : "Couldn't export the calendar",

@@ -171,6 +171,15 @@ pub struct IrohShareState {
     last_error: Mutex<Option<String>>,
 }
 
+fn set_last_error(state: &IrohShareState, value: Option<String>) {
+    match state.last_error.lock() {
+        Ok(mut last_error) => *last_error = value,
+        Err(error) => {
+            log::error!(target: "iroh", "Could not update the board-sharing service error state: {error}");
+        }
+    }
+}
+
 fn random_token() -> String {
     URL_SAFE_NO_PAD.encode(SecretKey::generate().to_bytes())
 }
@@ -183,12 +192,14 @@ fn device_key(db: &mut Database) -> Result<SecretKey, String> {
 
 fn parse_ticket(ticket: &str) -> Result<Ticket, String> {
     let encoded = ticket_payload(ticket).ok_or("Not a shared-board invitation")?;
-    let ticket: Ticket = serde_json::from_slice(
-        &URL_SAFE_NO_PAD
-            .decode(encoded)
-            .map_err(|_| "Invalid invitation")?,
-    )
-    .map_err(|_| "Invalid invitation")?;
+    let decoded = URL_SAFE_NO_PAD.decode(encoded).map_err(|error| {
+        log::warn!(target: "iroh", "Could not decode shared-board invitation: {error}");
+        "Invalid invitation"
+    })?;
+    let ticket: Ticket = serde_json::from_slice(&decoded).map_err(|error| {
+        log::warn!(target: "iroh", "Could not parse shared-board invitation: {error}");
+        "Invalid invitation"
+    })?;
     if ticket.version != 1 || ticket.invite_id.is_empty() || ticket.secret.is_empty() {
         return Err("Unsupported shared-board invitation".into());
     }
@@ -201,8 +212,16 @@ fn ensure_invite_not_joined(db: &Database, ticket: &Ticket) -> Result<(), String
         .iroh_remote_tickets()
         .map_err(|e| e.to_string())?
         .iter()
-        .filter_map(|saved| serde_json::from_str::<RemoteInvitation>(saved).ok())
-        .any(|saved| saved.node_id == ticket.node_id && saved.invite_id == ticket.invite_id);
+        .filter_map(|saved| match serde_json::from_str::<RemoteInvitation>(saved) {
+            Ok(saved) => Some(saved),
+            Err(error) => {
+                log::warn!(target: "iroh", "Could not parse a stored shared-board invitation while checking for duplicates: {error}");
+                None
+            }
+        })
+        .any(|saved| {
+            saved.node_id == ticket.node_id && saved.invite_id == ticket.invite_id
+        });
     if already_joined {
         return Err("This invitation has already been joined".into());
     }
@@ -438,29 +457,67 @@ async fn ensure_host(
     let connection_slots = Arc::new(tokio::sync::Semaphore::new(MAX_HOST_CONNECTIONS));
     tauri::async_runtime::spawn(async move {
         while let Some(incoming) = accept_endpoint.accept().await {
-            let Ok(slot) = connection_slots.clone().try_acquire_owned() else {
-                continue;
+            let slot = match connection_slots.clone().try_acquire_owned() {
+                Ok(slot) => slot,
+                Err(error) => {
+                    log::warn!(target: "iroh", "Rejected shared-board connection: {error}");
+                    continue;
+                }
             };
-            let Ok(connecting) = incoming.accept() else {
-                continue;
+            let connecting = match incoming.accept() {
+                Ok(connecting) => connecting,
+                Err(error) => {
+                    log::warn!(target: "iroh", "Could not accept shared-board connection: {error}");
+                    continue;
+                }
             };
-            let Ok(Ok(connection)) = tokio::time::timeout(CONNECT_TIMEOUT, connecting).await else {
-                continue;
+            let connection = match tokio::time::timeout(CONNECT_TIMEOUT, connecting).await {
+                Ok(Ok(connection)) => connection,
+                Ok(Err(error)) => {
+                    log::warn!(target: "iroh", "Shared-board connection failed: {error}");
+                    continue;
+                }
+                Err(error) => {
+                    log::warn!(target: "iroh", "Shared-board connection timed out: {error}");
+                    continue;
+                }
             };
             let peer_id = URL_SAFE_NO_PAD.encode(connection.remote_id().as_bytes());
             let path = path.clone();
             let app_handle = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 let _slot = slot;
-                let Ok(Ok((mut send, mut recv))) =
-                    tokio::time::timeout(CONNECT_TIMEOUT, connection.accept_bi()).await
-                else {
-                    return;
+                let (mut send, mut recv) = match tokio::time::timeout(
+                    CONNECT_TIMEOUT,
+                    connection.accept_bi(),
+                )
+                .await
+                {
+                    Ok(Ok(streams)) => streams,
+                    Ok(Err(error)) => {
+                        log::warn!(target: "iroh", "Could not open shared-board stream: {error}");
+                        return;
+                    }
+                    Err(error) => {
+                        log::warn!(target: "iroh", "Opening shared-board stream timed out: {error}");
+                        return;
+                    }
                 };
-                let Ok(Ok(bytes)) =
-                    tokio::time::timeout(TRANSFER_TIMEOUT, recv.read_to_end(MAX_MESSAGE)).await
-                else {
-                    return;
+                let bytes = match tokio::time::timeout(
+                    TRANSFER_TIMEOUT,
+                    recv.read_to_end(MAX_MESSAGE),
+                )
+                .await
+                {
+                    Ok(Ok(bytes)) => bytes,
+                    Ok(Err(error)) => {
+                        log::warn!(target: "iroh", "Could not read shared-board request: {error}");
+                        return;
+                    }
+                    Err(error) => {
+                        log::warn!(target: "iroh", "Reading shared-board request timed out: {error}");
+                        return;
+                    }
                 };
                 let mut applied_push = None;
                 let mut error_code = None;
@@ -570,32 +627,16 @@ async fn ensure_host(
                             &peer_id,
                         ),
                     },
-                    Err(_) => Err("Invalid request".into()),
+                    Err(error) => {
+                        log::warn!(target: "iroh", "Could not parse shared-board request: {error}");
+                        Err("Invalid request".into())
+                    }
                 }
-                .unwrap_or_else(|error| Snapshot {
-                    ok: false,
-                    error: Some(error),
-                    error_code: None,
-                    name: String::new(),
-                    permission: IrohPermission::Viewer,
-                    revision: 0,
-                    data: StoredData::default(),
-                    loro_update: Vec::new(),
-                    unchanged: false,
-                });
-                let mut response = response;
-                response.error_code = error_code;
-                if let Some((board_id, revision)) = applied_push {
-                    let _ = app_handle.emit(
-                        "cardbe:iroh-remote-push",
-                        RemotePushApplied { board_id, revision },
-                    );
-                }
-                let bytes = match serde_json::to_vec(&response) {
-                    Ok(bytes) if bytes.len() <= MAX_MESSAGE => bytes,
-                    _ => serde_json::to_vec(&Snapshot {
+                .unwrap_or_else(|error| {
+                    log::warn!(target: "iroh", "Shared-board request failed: {error}");
+                    Snapshot {
                         ok: false,
-                        error: Some("Shared board exceeds the 16 MiB transfer limit".into()),
+                        error: Some(error),
                         error_code: None,
                         name: String::new(),
                         permission: IrohPermission::Viewer,
@@ -603,35 +644,72 @@ async fn ensure_host(
                         data: StoredData::default(),
                         loro_update: Vec::new(),
                         unchanged: false,
-                    })
-                    .unwrap_or_default(),
+                    }
+                });
+                let mut response = response;
+                response.error_code = error_code;
+                if let Some((board_id, revision)) = applied_push {
+                    if let Err(error) = app_handle.emit(
+                        "cardbe:iroh-remote-push",
+                        RemotePushApplied { board_id, revision },
+                    ) {
+                        log::warn!(target: "iroh", "Could not notify the app about a remote board update: {error}");
+                    }
+                }
+                let bytes = match serde_json::to_vec(&response) {
+                    Ok(bytes) if bytes.len() <= MAX_MESSAGE => bytes,
+                    Ok(bytes) => {
+                        log::warn!(target: "iroh", "Shared-board response exceeded the transfer limit: {} bytes", bytes.len());
+                        serde_json::to_vec(&Snapshot {
+                            ok: false,
+                            error: Some("Shared board exceeds the 16 MiB transfer limit".into()),
+                            error_code: None,
+                            name: String::new(),
+                            permission: IrohPermission::Viewer,
+                            revision: 0,
+                            data: StoredData::default(),
+                            loro_update: Vec::new(),
+                            unchanged: false,
+                        })
+                        .unwrap_or_else(|error| {
+                            log::error!(target: "iroh", "Could not serialize the oversized-response fallback: {error}");
+                            Vec::new()
+                        })
+                    }
+                    Err(error) => {
+                        log::error!(target: "iroh", "Could not serialize shared-board response: {error}");
+                        Vec::new()
+                    }
                 };
                 if !bytes.is_empty() {
                     match tokio::time::timeout(TRANSFER_TIMEOUT, send.write_all(&bytes)).await {
                         Ok(Ok(())) => {}
                         Ok(Err(error)) => {
-                            eprintln!("Shared-board response write failed: {error}");
+                            log::error!(target: "iroh", "Shared-board response write failed: {error}");
                             return;
                         }
                         Err(_) => {
-                            eprintln!("Shared-board response write timed out");
+                            log::error!(target: "iroh", "Shared-board response write timed out");
                             return;
                         }
                     }
                 }
                 if let Err(error) = send.finish() {
-                    eprintln!("Shared-board response finish failed: {error}");
+                    log::error!(target: "iroh", "Shared-board response finish failed: {error}");
                     return;
                 }
                 // Keep the connection alive until the peer acknowledges the
                 // complete response. Dropping the final connection handle
                 // immediately after `finish` can otherwise surface as
                 // `connection lost` on slower relay paths.
-                if tokio::time::timeout(CONNECT_TIMEOUT, send.stopped())
-                    .await
-                    .is_err()
-                {
-                    eprintln!("Shared-board response acknowledgement timed out");
+                match tokio::time::timeout(CONNECT_TIMEOUT, send.stopped()).await {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(error)) => {
+                        log::warn!(target: "iroh", "Shared-board response acknowledgement failed: {error}");
+                    }
+                    Err(error) => {
+                        log::warn!(target: "iroh", "Shared-board response acknowledgement timed out: {error}");
+                    }
                 }
             });
         }
@@ -643,9 +721,7 @@ async fn ensure_host(
         endpoint: endpoint.clone(),
         path: hosted_path,
     });
-    if let Ok(mut error) = state.last_error.lock() {
-        *error = None;
-    }
+    set_last_error(state, None);
     Ok(endpoint)
 }
 
@@ -656,25 +732,30 @@ pub async fn restore_iroh_host(
     path: std::path::PathBuf,
     app_handle: AppHandle,
 ) {
-    let has_invites = Database::open(path.clone())
-        .and_then(|db| db.iroh_invites())
-        .is_ok_and(|invites| invites.iter().any(|invite| invite.4));
+    let has_invites = match Database::open(path.clone()).and_then(|db| db.iroh_invites()) {
+        Ok(invites) => invites.iter().any(|invite| invite.4),
+        Err(error) => {
+            log::error!(target: "iroh", "Could not inspect saved invitations while restoring the board-sharing service: {error}");
+            return;
+        }
+    };
     if has_invites {
         if let Err(error) = ensure_host(network, path, app_handle).await {
-            if let Ok(mut last_error) = network.last_error.lock() {
-                *last_error = Some(error);
-            }
+            log::error!(target: "iroh", "Could not restore the board-sharing service: {error}");
+            set_last_error(network, Some(error));
         }
     }
 }
 
 #[tauri::command]
 pub fn iroh_host_error(network: State<'_, IrohShareState>) -> Option<String> {
-    network
-        .last_error
-        .lock()
-        .ok()
-        .and_then(|error| error.clone())
+    match network.last_error.lock() {
+        Ok(error) => error.clone(),
+        Err(error) => {
+            log::error!(target: "iroh", "Could not read the board-sharing service error state: {error}");
+            None
+        }
+    }
 }
 
 #[tauri::command]
@@ -699,9 +780,7 @@ pub async fn ensure_iroh_host(
     };
     if active {
         if let Err(error) = ensure_host(&network, path, app_handle).await {
-            if let Ok(mut last_error) = network.last_error.lock() {
-                *last_error = Some(error.clone());
-            }
+            set_last_error(&network, Some(error.clone()));
             return Err(error);
         }
     } else {
@@ -733,9 +812,7 @@ pub(crate) async fn stop_host_if_idle(network: &IrohShareState) -> Result<(), St
             if let Some(hosted) = hosted {
                 hosted.endpoint.close().await;
             }
-            if let Ok(mut error) = network.last_error.lock() {
-                *error = None;
-            }
+            set_last_error(network, None);
         }
     }
     Ok(())
@@ -903,9 +980,8 @@ pub async fn update_iroh_invite(
     };
     if enabled == Some(true) {
         if let Err(error) = ensure_host(&network, path, app_handle).await {
-            if let Ok(mut last_error) = network.last_error.lock() {
-                *last_error = Some(error);
-            }
+            log::error!(target: "iroh", "Could not start the board-sharing service after invitation update: {error}");
+            set_last_error(&network, Some(error));
         }
     }
     if enabled == Some(false) {
@@ -1005,7 +1081,10 @@ pub async fn join_iroh_invite(
     connection.close(0u32.into(), b"shared board received");
     endpoint.close().await;
     let snapshot: Snapshot = serde_json::from_slice(&bytes)
-        .map_err(|_| "Invitation was revoked or the owner sent an invalid snapshot")?;
+        .map_err(|error| {
+            log::error!(target: "iroh", "Could not parse the shared-board invitation response: {error}");
+            "Invitation was revoked or the owner sent an invalid snapshot"
+        })?;
     if !snapshot.ok {
         let approval_required = snapshot_requires_approval(&snapshot);
         let error = snapshot
@@ -1051,11 +1130,10 @@ pub async fn request_iroh_board_access(
             .iroh_remote(board_id)
             .map_err(|e| e.to_string())?
             .ok_or("This is not a received shared board")?;
-        (
-            serde_json::from_str::<RemoteInvitation>(&remote)
-                .map_err(|_| "Stored invitation is invalid")?,
-            device_key(&mut guard.database)?,
-        )
+        (serde_json::from_str::<RemoteInvitation>(&remote).map_err(|error| {
+            log::warn!(target: "iroh", "Could not parse the stored shared-board invitation for an access request: {error}");
+            "Stored invitation is invalid"
+        })?, device_key(&mut guard.database)?)
     };
     let device_id = URL_SAFE_NO_PAD.encode(key.public().as_bytes());
     let address = endpoint_address(&remote.node_id, &remote.relay_urls)?;
@@ -1094,8 +1172,10 @@ pub async fn request_iroh_board_access(
     .await
     .map_err(|_| "Access request timed out".to_string())??;
     endpoint.close().await;
-    let snapshot: Snapshot =
-        serde_json::from_slice(&response).map_err(|_| "Owner sent an invalid response")?;
+    let snapshot: Snapshot = serde_json::from_slice(&response).map_err(|error| {
+        log::error!(target: "iroh", "Could not parse the shared-board access response: {error}");
+        "Owner sent an invalid response"
+    })?;
     if snapshot.ok {
         return Ok((true, device_id));
     }
@@ -1148,10 +1228,15 @@ pub async fn sync_iroh_board(
     if status == SyncStatus::Conflict {
         return Err("Resolve the saved sync conflict before syncing again".into());
     }
-    let ticket: RemoteInvitation =
-        serde_json::from_str(&ticket_text).map_err(|_| "Stored invitation is invalid")?;
+    let ticket: RemoteInvitation = serde_json::from_str(&ticket_text).map_err(|error| {
+        log::warn!(target: "iroh", "Could not parse the stored shared-board invitation for sync: {error}");
+        "Stored invitation is invalid"
+    })?;
     let address = endpoint_address(&ticket.node_id, &ticket.relay_urls)
-        .map_err(|_| "Stored invitation is invalid")?;
+        .map_err(|error| {
+            log::warn!(target: "iroh", "Stored shared-board invitation has an invalid endpoint: {error}");
+            "Stored invitation is invalid"
+        })?;
     let (loro_update, loro_state_vector) = {
         let guard = app
             .lock()
@@ -1219,8 +1304,10 @@ pub async fn sync_iroh_board(
     .await
     .map_err(|_| "Shared-board sync timed out after 60 seconds".to_string())??;
     endpoint.close().await;
-    let snapshot: Snapshot =
-        serde_json::from_slice(&bytes).map_err(|_| "Owner sent an invalid response")?;
+    let snapshot: Snapshot = serde_json::from_slice(&bytes).map_err(|error| {
+        log::error!(target: "iroh", "Could not parse the shared-board sync response: {error}");
+        "Owner sent an invalid response"
+    })?;
     let mut guard = app
         .lock()
         .map_err(|_| "Application state lock is poisoned")?;

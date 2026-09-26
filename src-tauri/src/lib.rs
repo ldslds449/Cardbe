@@ -7,8 +7,8 @@ mod state;
 mod storage;
 
 use commands::{
-    archive, board, boards, calendar_export, import_export, iroh_share, notes, notifications,
-    settings, share, templates, update,
+    archive, board, boards, calendar_export, diagnostics, import_export, iroh_share, notes,
+    notifications, settings, share, templates, update,
 };
 use state::AppData;
 #[cfg(all(debug_assertions, desktop))]
@@ -127,6 +127,18 @@ pub fn run() {
     }
 
     let mut builder = tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(if cfg!(debug_assertions) {
+                    log::LevelFilter::Debug
+                } else {
+                    log::LevelFilter::Info
+                })
+                .max_file_size(5_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -145,13 +157,26 @@ pub fn run() {
 
     builder
         .setup(move |app| {
+            log::info!(
+                target: "startup",
+                "Starting Cardbe {} on {} {}",
+                app.package_info().version,
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
             #[cfg(all(debug_assertions, desktop))]
             let app_data_dir = data_dir(app, port);
             #[cfg(not(all(debug_assertions, desktop)))]
             let app_data_dir = data_dir(app);
             #[cfg(all(debug_assertions, desktop))]
             let debug_data_lock = DebugDataLock::acquire(&app_data_dir)?;
-            let loaded = storage::load(&app_data_dir)?;
+            let loaded = storage::load(&app_data_dir).map_err(|error| {
+                log::error!(target: "storage", "Could not load application data: {error}");
+                error
+            })?;
+            for message in &loaded.recovery_messages {
+                log::warn!(target: "storage", "Application data recovery: {message}");
+            }
             #[cfg(all(debug_assertions, desktop))]
             app.manage(debug_data_lock);
             let iroh_database_path = loaded.database.path().to_path_buf();
@@ -207,6 +232,9 @@ pub fn run() {
             archive::archive_all_tasks,
             archive::unarchive_task,
             calendar_export::get_calendar_pdf_font,
+            diagnostics::log_frontend,
+            diagnostics::open_log_folder,
+            diagnostics::export_debug_logs,
             import_export::export_data,
             import_export::import_data,
             import_export::import_board_as_new,
