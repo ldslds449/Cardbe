@@ -1,22 +1,22 @@
 <script lang="ts">
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 
-  interface DeleteTaskDialogProps {
-    open: boolean;
-    task_title?: string;
-    onConfirm?: () => void;
-  }
+interface DeleteTaskDialogProps {
+  open: boolean;
+  task_title?: string;
+  onConfirm?: () => void;
+}
 
-  let {
-    open = $bindable(false),
-    task_title,
-    onConfirm = () => {},
-  }: DeleteTaskDialogProps = $props();
+let {
+  open = $bindable(false),
+  task_title,
+  onConfirm = () => {},
+}: DeleteTaskDialogProps = $props();
 
-  function confirm_delete() {
-    open = false;
-    onConfirm();
-  }
+function confirm_delete() {
+  open = false;
+  onConfirm();
+}
 </script>
 
 <AlertDialog.Root bind:open>

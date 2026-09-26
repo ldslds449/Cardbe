@@ -49,7 +49,8 @@ export function count_due_tasks(
     (count, column) =>
       count +
       column.tasks.filter(
-        (task) => task.due_time !== undefined && task_matches_search(task, search_text),
+        (task) =>
+          task.due_time !== undefined && task_matches_search(task, search_text),
       ).length,
     0,
   );
@@ -58,7 +59,8 @@ export function count_due_tasks(
   return (
     active_count +
     archives.filter(
-      ({ task }) => task.due_time !== undefined && task_matches_search(task, search_text),
+      ({ task }) =>
+        task.due_time !== undefined && task_matches_search(task, search_text),
     ).length
   );
 }
@@ -91,7 +93,11 @@ function next_recurrence_date(task: Task, from: Date): Date | undefined {
     const day = next.getDate();
     next.setDate(1);
     next.setMonth(next.getMonth() + interval);
-    const last_day = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    const last_day = new Date(
+      next.getFullYear(),
+      next.getMonth() + 1,
+      0,
+    ).getDate();
     next.setDate(Math.min(day, last_day));
   }
 
@@ -110,7 +116,12 @@ function add_recurring_previews(
 
   for (const column of columns) {
     for (const task of column.tasks) {
-      if (!task.due_time || !task.recurrence || !task_matches_search(task, search_text)) continue;
+      if (
+        !task.due_time ||
+        !task.recurrence ||
+        !task_matches_search(task, search_text)
+      )
+        continue;
 
       let occurrence = new Date(task.due_time);
       for (let guard = 0; guard < 100_000; guard++) {
@@ -118,7 +129,11 @@ function add_recurring_previews(
         if (!next || next.getTime() <= occurrence.getTime()) break;
         occurrence = next;
         if (occurrence > range_end) break;
-        if (occurrence < range_start || occurrence.getTime() < first_preview_day) continue;
+        if (
+          occurrence < range_start ||
+          occurrence.getTime() < first_preview_day
+        )
+          continue;
 
         const preview_task: Task = {
           ...task,
@@ -129,7 +144,12 @@ function add_recurring_previews(
         };
         const key = date_key(occurrence);
         const tasks = tasks_by_date.get(key) ?? [];
-        tasks.push({ task: preview_task, column, archived: false, preview: true });
+        tasks.push({
+          task: preview_task,
+          column,
+          archived: false,
+          preview: true,
+        });
         tasks_by_date.set(key, tasks);
       }
     }
@@ -147,9 +167,10 @@ export function build_calendar_days(
   view_mode: CalendarViewMode = "month",
 ): CalendarDay[] {
   const tasks_by_date = new Map<string, CalendarTask[]>();
-  const first = view_mode === "week"
-    ? start_of_day(visible_month)
-    : new Date(visible_month.getFullYear(), visible_month.getMonth(), 1);
+  const first =
+    view_mode === "week"
+      ? start_of_day(visible_month)
+      : new Date(visible_month.getFullYear(), visible_month.getMonth(), 1);
   const grid_start = new Date(first);
   grid_start.setDate(first.getDate() - first.getDay());
   const day_count = view_mode === "week" ? 7 : 42;
@@ -179,7 +200,12 @@ export function build_calendar_days(
       if (!task.due_time || !task_matches_search(task, search_text)) continue;
       const key = date_key(task.due_time);
       const tasks = tasks_by_date.get(key) ?? [];
-      tasks.push({ task, column: archived_column, archived: true, preview: false });
+      tasks.push({
+        task,
+        column: archived_column,
+        archived: true,
+        preview: false,
+      });
       tasks_by_date.set(key, tasks);
     }
   }
@@ -198,7 +224,8 @@ export function build_calendar_days(
   for (const tasks of tasks_by_date.values()) {
     tasks.sort(
       (left, right) =>
-        (left.task.due_time?.getTime() ?? 0) - (right.task.due_time?.getTime() ?? 0),
+        (left.task.due_time?.getTime() ?? 0) -
+        (right.task.due_time?.getTime() ?? 0),
     );
   }
 

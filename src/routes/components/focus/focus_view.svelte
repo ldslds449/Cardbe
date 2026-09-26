@@ -1,114 +1,114 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as Empty from "$lib/components/ui/empty/index.js";
+import { onMount } from "svelte";
+import { Badge } from "$lib/components/ui/badge/index.js";
+import { Button } from "$lib/components/ui/button/index.js";
+import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+import * as Empty from "$lib/components/ui/empty/index.js";
 
-  import ArchiveIcon from "@lucide/svelte/icons/archive";
-  import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
-  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
-  import ClockIcon from "@lucide/svelte/icons/clock";
-  import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-  import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import TrashIcon from "@lucide/svelte/icons/trash-2";
-  import Share2Icon from "@lucide/svelte/icons/share-2";
+import ArchiveIcon from "@lucide/svelte/icons/archive";
+import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
+import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
+import ClockIcon from "@lucide/svelte/icons/clock";
+import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
+import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+import PencilIcon from "@lucide/svelte/icons/pencil";
+import CopyIcon from "@lucide/svelte/icons/copy";
+import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
+import SparklesIcon from "@lucide/svelte/icons/sparkles";
+import TrashIcon from "@lucide/svelte/icons/trash-2";
+import Share2Icon from "@lucide/svelte/icons/share-2";
 
-  import type { Column } from "../../type/column.svelte";
-  import type { Task } from "../../type/task.svelte";
-  import { display_task_color } from "../../utils/task-color";
-  import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
-  import LabelBadge from "../label_badge.svelte";
-  import { build_focus_groups, focus_task_count, type FocusTask } from "./focus";
+import type { Column } from "../../type/column.svelte";
+import type { Task } from "../../type/task.svelte";
+import { display_task_color } from "../../utils/task-color";
+import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
+import LabelBadge from "../label_badge.svelte";
+import { build_focus_groups, focus_task_count, type FocusTask } from "./focus";
 
-  interface FocusViewProps {
-    columns: Column[];
-    search_text?: string;
-    onViewTask?: (task: Task) => void;
-    onEditTask?: (task: Task) => void;
-    onDuplicateTask?: (task: Task) => void;
-    onSaveAsTemplate?: (task: Task) => void;
-    onExportTask?: (task: Task) => void;
-    onAddTask?: (date: Date) => void;
-    onArchiveTask?: (task: Task) => void;
-    onDeleteTask?: (task: Task) => void;
-    read_only?: boolean;
-  }
+interface FocusViewProps {
+  columns: Column[];
+  search_text?: string;
+  onViewTask?: (task: Task) => void;
+  onEditTask?: (task: Task) => void;
+  onDuplicateTask?: (task: Task) => void;
+  onSaveAsTemplate?: (task: Task) => void;
+  onExportTask?: (task: Task) => void;
+  onAddTask?: (date: Date) => void;
+  onArchiveTask?: (task: Task) => void;
+  onDeleteTask?: (task: Task) => void;
+  read_only?: boolean;
+}
 
-  let {
-    columns,
-    search_text = "",
-    onViewTask = () => {},
-    onEditTask = () => {},
-    onDuplicateTask = () => {},
-    onSaveAsTemplate = () => {},
-    onExportTask = () => {},
-    onAddTask = () => {},
-    onArchiveTask = () => {},
-    onDeleteTask = () => {},
-    read_only = false,
-  }: FocusViewProps = $props();
+let {
+  columns,
+  search_text = "",
+  onViewTask = () => {},
+  onEditTask = () => {},
+  onDuplicateTask = () => {},
+  onSaveAsTemplate = () => {},
+  onExportTask = () => {},
+  onAddTask = () => {},
+  onArchiveTask = () => {},
+  onDeleteTask = () => {},
+  read_only = false,
+}: FocusViewProps = $props();
 
-  let now = $state(new Date());
-  let delete_confirm_open = $state(false);
-  let delete_target = $state<Task | null>(null);
-  let archive_focus_restore_target: string | null = null;
-  let groups = $derived(build_focus_groups(columns, now, search_text));
-  let total_count = $derived(focus_task_count(groups));
-  let attention_count = $derived(groups.overdue.length + groups.today.length);
+let now = $state(new Date());
+let delete_confirm_open = $state(false);
+let delete_target = $state<Task | null>(null);
+let archive_focus_restore_target: string | null = null;
+let groups = $derived(build_focus_groups(columns, now, search_text));
+let total_count = $derived(focus_task_count(groups));
+let attention_count = $derived(groups.overdue.length + groups.today.length);
 
-  onMount(() => {
-    const refresh = () => {
-      now = new Date();
-    };
-    const interval = window.setInterval(refresh, 60_000);
-    window.addEventListener("focus", refresh);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
-    };
+onMount(() => {
+  const refresh = () => {
+    now = new Date();
+  };
+  const interval = window.setInterval(refresh, 60_000);
+  window.addEventListener("focus", refresh);
+  return () => {
+    window.clearInterval(interval);
+    window.removeEventListener("focus", refresh);
+  };
+});
+
+function due_label(task: Task): string {
+  if (!task.due_time) return "No due date";
+  const include_year = task.due_time.getFullYear() !== now.getFullYear();
+  const date = task.due_time.toLocaleDateString("en", {
+    month: "short",
+    day: "numeric",
+    year: include_year ? "numeric" : undefined,
   });
+  const has_time =
+    task.due_time.getHours() !== 0 ||
+    task.due_time.getMinutes() !== 0 ||
+    task.due_time.getSeconds() !== 0;
+  return has_time
+    ? `${date}, ${task.due_time.toLocaleTimeString("en", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })}`
+    : date;
+}
 
-  function due_label(task: Task): string {
-    if (!task.due_time) return "No due date";
-    const include_year = task.due_time.getFullYear() !== now.getFullYear();
-    const date = task.due_time.toLocaleDateString("en", {
-      month: "short",
-      day: "numeric",
-      year: include_year ? "numeric" : undefined,
-    });
-    const has_time =
-      task.due_time.getHours() !== 0 ||
-      task.due_time.getMinutes() !== 0 ||
-      task.due_time.getSeconds() !== 0;
-    return has_time
-      ? `${date}, ${task.due_time.toLocaleTimeString("en", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        })}`
-      : date;
-  }
+function checklist_label(task: Task): string | undefined {
+  if (task.items.length === 0) return undefined;
+  const complete = task.items.filter((item) => item.completed).length;
+  return `${complete}/${task.items.length}`;
+}
 
-  function checklist_label(task: Task): string | undefined {
-    if (task.items.length === 0) return undefined;
-    const complete = task.items.filter((item) => item.completed).length;
-    return `${complete}/${task.items.length}`;
-  }
+function ask_to_delete(task: Task) {
+  delete_target = task;
+  delete_confirm_open = true;
+}
 
-  function ask_to_delete(task: Task) {
-    delete_target = task;
-    delete_confirm_open = true;
-  }
-
-  function confirm_delete() {
-    if (delete_target) onDeleteTask(delete_target);
-    delete_target = null;
-  }
+function confirm_delete() {
+  if (delete_target) onDeleteTask(delete_target);
+  delete_target = null;
+}
 </script>
 
 {#snippet task_row(entry: FocusTask, tone: "overdue" | "today" | "normal")}
@@ -127,11 +127,16 @@
       <span class="min-w-0 flex-1">
         <span class="flex min-w-0 items-center gap-2">
           <span class="truncate text-sm font-semibold">{entry.task.title}</span>
-          <Badge variant="outline" class="max-w-32 shrink-0 truncate font-normal">
+          <Badge
+            variant="outline"
+            class="max-w-32 shrink-0 truncate font-normal"
+          >
             {entry.column.name}
           </Badge>
         </span>
-        <span class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span
+          class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+        >
           <span
             class={`inline-flex items-center gap-1 ${
               tone === "overdue"
@@ -151,7 +156,8 @@
           {#if checklist_label(entry.task)}
             <span class="inline-flex items-center gap-1">
               <CircleCheckIcon class="size-3.5" />
-              {checklist_label(entry.task)} checklist
+              {checklist_label(entry.task)}
+              checklist
             </span>
           {/if}
           {#if entry.task.labels.length > 0}
@@ -221,7 +227,10 @@
             Archive Task
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
-          <DropdownMenu.Item variant="destructive" onclick={() => ask_to_delete(entry.task)}>
+          <DropdownMenu.Item
+            variant="destructive"
+            onclick={() => ask_to_delete(entry.task)}
+          >
             <TrashIcon />
             Delete Task
           </DropdownMenu.Item>
@@ -257,15 +266,22 @@
         {/each}
       </div>
     {:else}
-      <div class="flex min-h-24 items-center justify-center rounded-lg border border-dashed bg-background/60 px-4 text-center text-sm text-muted-foreground">
+      <div
+        class="flex min-h-24 items-center justify-center rounded-lg border border-dashed bg-background/60 px-4 text-center text-sm text-muted-foreground"
+      >
         Nothing here
       </div>
     {/if}
   </section>
 {/snippet}
 
-<div class="mx-auto w-full max-w-6xl space-y-5 p-1" aria-label="Today focus view">
-  <header class="overflow-hidden rounded-2xl border bg-background p-5 shadow-sm">
+<div
+  class="mx-auto w-full max-w-6xl space-y-5 p-1"
+  aria-label="Today focus view"
+>
+  <header
+    class="overflow-hidden rounded-2xl border bg-background p-5 shadow-sm"
+  >
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="flex items-start gap-3">
         <div class="rounded-xl bg-primary/10 p-2.5 text-primary">
@@ -286,7 +302,9 @@
             {#if attention_count === 0}
               You're clear for today.
             {:else}
-              {attention_count} {attention_count === 1 ? "task needs" : "tasks need"} your attention.
+              {attention_count}
+              {attention_count === 1 ? "task needs" : "tasks need"}
+              your attention.
             {/if}
           </p>
         </div>
@@ -295,15 +313,21 @@
 
     <div class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
       <div class="rounded-lg border bg-background/80 p-3">
-        <div class="text-2xl font-semibold tabular-nums text-destructive">{groups.overdue.length}</div>
+        <div class="text-2xl font-semibold tabular-nums text-destructive">
+          {groups.overdue.length}
+        </div>
         <div class="text-xs text-muted-foreground">Overdue</div>
       </div>
       <div class="rounded-lg border bg-background/80 p-3">
-        <div class="text-2xl font-semibold tabular-nums text-warning">{groups.today.length}</div>
+        <div class="text-2xl font-semibold tabular-nums text-warning">
+          {groups.today.length}
+        </div>
         <div class="text-xs text-muted-foreground">Today</div>
       </div>
       <div class="rounded-lg border bg-background/80 p-3">
-        <div class="text-2xl font-semibold tabular-nums">{groups.upcoming.length}</div>
+        <div class="text-2xl font-semibold tabular-nums">
+          {groups.upcoming.length}
+        </div>
         <div class="text-xs text-muted-foreground">Upcoming</div>
       </div>
       <div class="rounded-lg border bg-background/80 p-3">
@@ -317,7 +341,9 @@
     <Empty.Root class="min-h-72 rounded-xl border border-dashed">
       <Empty.Header>
         <Empty.Media variant="icon"><CircleCheckIcon /></Empty.Media>
-        <Empty.Title>{search_text ? "No matching tasks" : "All clear"}</Empty.Title>
+        <Empty.Title
+          >{search_text ? "No matching tasks" : "All clear"}</Empty.Title
+        >
         <Empty.Description>
           {search_text
             ? "Try another search."
@@ -326,7 +352,11 @@
       </Empty.Header>
       {#if !search_text}
         <Empty.Content>
-          {#if !read_only}<Button onclick={() => onAddTask(new Date(now))}>Add today's first task</Button>{/if}
+          {#if !read_only}
+            <Button onclick={() => onAddTask(new Date(now))}
+              >Add today's first task</Button
+            >
+          {/if}
         </Empty.Content>
       {/if}
     </Empty.Root>

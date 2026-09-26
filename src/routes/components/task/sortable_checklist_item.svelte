@@ -1,25 +1,25 @@
 <script lang="ts">
-  import { useSortable } from "@dnd-kit-svelte/svelte/sortable";
-  import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
-  import type { Snippet } from "svelte";
+import { useSortable } from "@dnd-kit-svelte/svelte/sortable";
+import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
+import type { Snippet } from "svelte";
 
-  let {
-    item_id,
-    index,
-    children,
-  }: {
-    item_id: string;
-    index: number;
-    children: Snippet;
-  } = $props();
+let {
+  item_id,
+  index,
+  children,
+}: {
+  item_id: string;
+  index: number;
+  children: Snippet;
+} = $props();
 
-  const { ref, handleRef, isDragging } = useSortable({
-    id: () => item_id,
-    index: () => index,
-    type: "checklist-item",
-    accept: "checklist-item",
-    group: "checklist",
-  });
+const { ref, handleRef, isDragging } = useSortable({
+  id: () => item_id,
+  index: () => index,
+  type: "checklist-item",
+  accept: "checklist-item",
+  group: "checklist",
+});
 </script>
 
 <div

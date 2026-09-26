@@ -16,9 +16,17 @@ if (args[0] === "dev") {
   }
   env.CARDBE_DEV_PORT = String(port);
   if (port !== 1420) {
-    env.CARGO_TARGET_DIR = path.join(root, "src-tauri", "target", `dev-${port}`);
+    env.CARGO_TARGET_DIR = path.join(
+      root,
+      "src-tauri",
+      "target",
+      `dev-${port}`,
+    );
   }
-  args.push("--config", JSON.stringify({ build: { devUrl: `http://localhost:${port}` } }));
+  args.push(
+    "--config",
+    JSON.stringify({ build: { devUrl: `http://localhost:${port}` } }),
+  );
 }
 
 const child = spawn(process.execPath, [cli, ...args], {

@@ -11,7 +11,9 @@ const devPort = process.env.CARDBE_DEV_PORT;
 const config = {
   preprocess: vitePreprocess(),
   kit: {
-    ...(devPort && devPort !== "1420" ? { outDir: `.svelte-kit-dev-${devPort}` } : {}),
+    ...(devPort && devPort !== "1420"
+      ? { outDir: `.svelte-kit-dev-${devPort}` }
+      : {}),
     adapter: adapter({
       fallback: "index.html",
     }),

@@ -26,8 +26,20 @@ function columns(): Column[] {
   sooner.recurrence = { frequency: "monthly", interval: 1 };
 
   return [
-    { id: "column_1", name: "Work", color: "", sort_order: "custom", tasks: [later, create_task()] },
-    { id: "column_2", name: "Finance", color: "", sort_order: "custom", tasks: [sooner] },
+    {
+      id: "column_1",
+      name: "Work",
+      color: "",
+      sort_order: "custom",
+      tasks: [later, create_task()],
+    },
+    {
+      id: "column_2",
+      name: "Finance",
+      color: "",
+      sort_order: "custom",
+      tasks: [sooner],
+    },
   ];
 }
 
@@ -40,11 +52,11 @@ describe("recurring task list", () => {
   });
 
   it("searches task content and column names", () => {
-    expect(get_recurring_tasks(columns(), "finance").map(({ task }) => task.id)).toEqual([
-      "task_2",
-    ]);
-    expect(get_recurring_tasks(columns(), "weekly").map(({ task }) => task.id)).toEqual([
-      "task_1",
-    ]);
+    expect(
+      get_recurring_tasks(columns(), "finance").map(({ task }) => task.id),
+    ).toEqual(["task_2"]);
+    expect(
+      get_recurring_tasks(columns(), "weekly").map(({ task }) => task.id),
+    ).toEqual(["task_1"]);
   });
 });

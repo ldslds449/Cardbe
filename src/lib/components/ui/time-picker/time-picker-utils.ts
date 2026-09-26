@@ -1,4 +1,4 @@
-import { Time } from '@internationalized/date';
+import { Time } from "@internationalized/date";
 
 /**
  * regular expression to check for valid hour format (01-23)
@@ -25,7 +25,7 @@ type GetValidNumberConfig = { max: number; min?: number; loop?: boolean };
 
 export function getValidNumber(
   value: string,
-  { max, min = 0, loop = false }: GetValidNumberConfig
+  { max, min = 0, loop = false }: GetValidNumberConfig,
 ) {
   let numericValue = parseInt(value, 10);
 
@@ -74,7 +74,7 @@ type GetValidArrowNumberConfig = {
 
 export function getValidArrowNumber(
   value: string,
-  { min, max, step }: GetValidArrowNumberConfig
+  { min, max, step }: GetValidArrowNumberConfig,
 ) {
   let numericValue = parseInt(value, 10);
   if (!isNaN(numericValue)) {
@@ -92,10 +92,18 @@ export function getValidArrow12Hour(value: string, step: number) {
   return getValidArrowNumber(value, { min: 1, max: 12, step });
 }
 
-export function getValidArrowMinuteOrSecond(value: string, step: number, interval = 1) {
+export function getValidArrowMinuteOrSecond(
+  value: string,
+  step: number,
+  interval = 1,
+) {
   const validInterval = Math.min(Math.max(Math.trunc(interval), 1), 59);
   const maximum = Math.floor(59 / validInterval) * validInterval;
-  return getValidArrowNumber(value, { min: 0, max: maximum, step: step * validInterval });
+  return getValidArrowNumber(value, {
+    min: 0,
+    max: maximum,
+    step: step * validInterval,
+  });
 }
 
 export function setMinutes(time: Time, value: string, step = 1) {
@@ -127,7 +135,7 @@ export function setDateByType(
   value: string,
   type: TimePickerType,
   period?: Period,
-  minuteStep = 1
+  minuteStep = 1,
 ) {
   switch (type) {
     case "minutes":
@@ -165,7 +173,7 @@ export function getArrowByType(
   value: string,
   step: number,
   type: TimePickerType,
-  minuteStep = 1
+  minuteStep = 1,
 ) {
   switch (type) {
     case "minutes":

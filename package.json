@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "prepare": "git config core.hooksPath .githooks",
+    "format": "biome format --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && biome format . && cargo fmt --check --manifest-path src-tauri/Cargo.toml",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "node scripts/tauri.mjs"
   },
@@ -33,6 +34,7 @@
     "svelte-exmarkdown": "^5.0.2"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
     "@internationalized/date": "^3.10.1",
     "@shikijs/rehype": "^3.17.0",
     "@sveltejs/adapter-static": "^3.0.6",

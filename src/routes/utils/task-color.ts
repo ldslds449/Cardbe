@@ -18,12 +18,17 @@ export function preset_display_color(preset: TaskColorPreset): string {
   return mode.current === "light" ? preset.light : preset.dark;
 }
 
-export function is_preset_color(color: string, preset: TaskColorPreset): boolean {
+export function is_preset_color(
+  color: string,
+  preset: TaskColorPreset,
+): boolean {
   const normalized_color = color.toLowerCase();
   return normalized_color === preset.light || normalized_color === preset.dark;
 }
 
 export function display_task_color(color: string): string {
-  const preset = task_color_presets.find((item) => is_preset_color(color, item));
+  const preset = task_color_presets.find((item) =>
+    is_preset_color(color, item),
+  );
   return preset ? preset_display_color(preset) : color;
 }

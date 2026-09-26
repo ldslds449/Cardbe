@@ -1,3 +1,3 @@
-import TagInput from './tag-input.svelte';
+import TagInput from "./tag-input.svelte";
 
 export { TagInput };

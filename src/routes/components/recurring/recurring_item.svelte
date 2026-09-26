@@ -1,42 +1,42 @@
 <script lang="ts">
-  import * as Card from "$lib/components/ui/card/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+import * as Card from "$lib/components/ui/card/index.js";
+import { Badge } from "$lib/components/ui/badge/index.js";
+import { Button } from "$lib/components/ui/button/index.js";
 
-  import ClockIcon from "@lucide/svelte/icons/clock";
-  import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
-  import XIcon from "@lucide/svelte/icons/x";
+import ClockIcon from "@lucide/svelte/icons/clock";
+import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+import PencilIcon from "@lucide/svelte/icons/pencil";
+import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
+import XIcon from "@lucide/svelte/icons/x";
 
-  import type { Column } from "../../type/column.svelte";
-  import { recurrence_label, type Task } from "../../type/task.svelte";
-  import { display_task_color } from "../../utils/task-color";
+import type { Column } from "../../type/column.svelte";
+import { recurrence_label, type Task } from "../../type/task.svelte";
+import { display_task_color } from "../../utils/task-color";
 
-  let {
-    column,
-    task,
-    onView,
-    onEdit,
-    onStopRepeat,
-  }: {
-    column: Column;
-    task: Task;
-    onView: (task: Task) => void;
-    onEdit: (task: Task) => void;
-    onStopRepeat: (task: Task) => void;
-  } = $props();
+let {
+  column,
+  task,
+  onView,
+  onEdit,
+  onStopRepeat,
+}: {
+  column: Column;
+  task: Task;
+  onView: (task: Task) => void;
+  onEdit: (task: Task) => void;
+  onStopRepeat: (task: Task) => void;
+} = $props();
 
-  function format_due_time(date: Date | undefined): string {
-    if (!date) return "No due time";
-    return date.toLocaleString([], {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
+function format_due_time(date: Date | undefined): string {
+  if (!date) return "No due time";
+  return date.toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 </script>
 
 <Card.Root class="w-full gap-2 border-2 py-3">

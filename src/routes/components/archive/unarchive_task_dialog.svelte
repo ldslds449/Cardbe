@@ -1,46 +1,46 @@
 <script lang="ts">
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import { Button, buttonVariants } from "$lib/components/ui/button/index.js";
+import * as Dialog from "$lib/components/ui/dialog/index.js";
+import * as Field from "$lib/components/ui/field/index.js";
+import { Button, buttonVariants } from "$lib/components/ui/button/index.js";
 
-  import type { Column } from "../../type/column.svelte";
-  import type { Task } from "../../type/task.svelte";
-  import Combobox from "../combobox.svelte";
+import type { Column } from "../../type/column.svelte";
+import type { Task } from "../../type/task.svelte";
+import Combobox from "../combobox.svelte";
 
-  let {
-    open = $bindable(false),
-    task,
-    columns,
-    onConfirm,
-  }: {
-    open: boolean;
-    task: Task | null;
-    columns: Column[];
-    onConfirm: (column_id: string, task_id: string) => void;
-  } = $props();
+let {
+  open = $bindable(false),
+  task,
+  columns,
+  onConfirm,
+}: {
+  open: boolean;
+  task: Task | null;
+  columns: Column[];
+  onConfirm: (column_id: string, task_id: string) => void;
+} = $props();
 
-  let selected_column_id = $state("");
-  let invalid_column = $state(false);
-  let column_items = $derived(
-    columns.map((column) => ({ value: column.id, label: column.name })),
-  );
+let selected_column_id = $state("");
+let invalid_column = $state(false);
+let column_items = $derived(
+  columns.map((column) => ({ value: column.id, label: column.name })),
+);
 
-  $effect(() => {
-    if (!open) {
-      selected_column_id = "";
-      invalid_column = false;
-    }
-  });
-
-  function confirm() {
-    if (!task || !selected_column_id) {
-      invalid_column = true;
-      return;
-    }
-
-    onConfirm(selected_column_id, task.id);
-    open = false;
+$effect(() => {
+  if (!open) {
+    selected_column_id = "";
+    invalid_column = false;
   }
+});
+
+function confirm() {
+  if (!task || !selected_column_id) {
+    invalid_column = true;
+    return;
+  }
+
+  onConfirm(selected_column_id, task.id);
+  open = false;
+}
 </script>
 
 <Dialog.Root bind:open>
@@ -64,7 +64,9 @@
       {/if}
     </Field.Field>
     <Dialog.Footer>
-      <Dialog.Close class={buttonVariants({ variant: "outline" })}>Cancel</Dialog.Close>
+      <Dialog.Close class={buttonVariants({ variant: "outline" })}
+        >Cancel</Dialog.Close
+      >
       <Button onclick={confirm}>Unarchive</Button>
     </Dialog.Footer>
   </Dialog.Content>

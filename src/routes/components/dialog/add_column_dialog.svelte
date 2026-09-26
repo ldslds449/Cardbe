@@ -1,20 +1,20 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
+import { Button } from "$lib/components/ui/button/index.js";
+import * as Dialog from "$lib/components/ui/dialog/index.js";
+import * as Field from "$lib/components/ui/field/index.js";
+import { Input } from "$lib/components/ui/input/index.js";
 
-  let {
-    open = $bindable(),
-    name = $bindable(),
-    title_error = $bindable(),
-    onSubmit,
-  }: {
-    open: boolean;
-    name: string;
-    title_error: boolean;
-    onSubmit: () => void;
-  } = $props();
+let {
+  open = $bindable(),
+  name = $bindable(),
+  title_error = $bindable(),
+  onSubmit,
+}: {
+  open: boolean;
+  name: string;
+  title_error: boolean;
+  onSubmit: () => void;
+} = $props();
 </script>
 
 <Dialog.Root bind:open>

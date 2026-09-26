@@ -6,11 +6,12 @@ function escape_markdown_label(label: string): string {
 }
 
 export function create_card_reference(title: string, task_id: string): string {
-  const safe_title = title
-    .replaceAll("]", " ")
-    .replaceAll("|", " ")
-    .replace(/[\r\n]/g, " ")
-    .trim() || "Untitled card";
+  const safe_title =
+    title
+      .replaceAll("]", " ")
+      .replaceAll("|", " ")
+      .replace(/[\r\n]/g, " ")
+      .trim() || "Untitled card";
   return `[[${safe_title}|${task_id}]]`;
 }
 

@@ -34,13 +34,23 @@ describe("calendar image selection", () => {
     expect(calendar_entry_key(day, entry)).toBe(
       `2026-09-05:task_1:${entry.task.due_time?.getTime()}:active:actual`,
     );
-    expect(calendar_entry_key(day, { ...entry, preview: true })).not.toBe(calendar_entry_key(day, entry));
+    expect(calendar_entry_key(day, { ...entry, preview: true })).not.toBe(
+      calendar_entry_key(day, entry),
+    );
   });
 
   it("keeps the complete date grid while filtering entries", () => {
     const { day, entry } = fixture();
-    const empty_day = { ...day, key: "2026-09-06", date: new Date(2026, 8, 6), tasks: [] };
-    const selected = selected_calendar_days([day, empty_day], [calendar_entry_key(day, entry)]);
+    const empty_day = {
+      ...day,
+      key: "2026-09-06",
+      date: new Date(2026, 8, 6),
+      tasks: [],
+    };
+    const selected = selected_calendar_days(
+      [day, empty_day],
+      [calendar_entry_key(day, entry)],
+    );
     expect(selected).toHaveLength(2);
     expect(selected[0].tasks).toEqual([entry]);
     expect(selected[1].tasks).toEqual([]);
@@ -50,7 +60,6 @@ describe("calendar image selection", () => {
     const { day } = fixture();
     expect(selected_calendar_days([day], [])[0].tasks).toEqual([]);
   });
-
 });
 
 describe("calendar export formats", () => {
@@ -81,20 +90,30 @@ describe("calendar export formats", () => {
     const { day, entry } = fixture();
     entry.task.title = "\u4e2d\u6587\u4efb\u52d9";
     const layout = vi.fn((_value: string) => ({
-      glyphs: [{
-        path: {
-          commands: [
-            { command: "moveTo" as const, args: [0, 0] as [number, number] },
-            { command: "lineTo" as const, args: [900, 0] as [number, number] },
-            { command: "lineTo" as const, args: [900, 900] as [number, number] },
-            { command: "closePath" as const, args: [] as [] },
-          ],
+      glyphs: [
+        {
+          path: {
+            commands: [
+              { command: "moveTo" as const, args: [0, 0] as [number, number] },
+              {
+                command: "lineTo" as const,
+                args: [900, 0] as [number, number],
+              },
+              {
+                command: "lineTo" as const,
+                args: [900, 900] as [number, number],
+              },
+              { command: "closePath" as const, args: [] as [] },
+            ],
+          },
         },
-      }],
+      ],
       positions: [{ xAdvance: 1000, yAdvance: 0, xOffset: 0, yOffset: 0 }],
       advanceWidth: 1000,
     }));
-    const outline_font: NonNullable<Parameters<typeof build_vector_calendar_pdf>[2]> = {
+    const outline_font: NonNullable<
+      Parameters<typeof build_vector_calendar_pdf>[2]
+    > = {
       unitsPerEm: 1000,
       hasGlyphForCodePoint: (code_point) => code_point > 0x7f,
       layout,
@@ -122,11 +141,13 @@ describe("calendar export formats", () => {
   });
 
   it("converts font coordinates to a PDF-compatible SVG outline", () => {
-    expect(fontkit_path_to_flipped_svg([
-      { command: "moveTo", args: [0, 10] },
-      { command: "lineTo", args: [10, 0] },
-      { command: "closePath", args: [] },
-    ])).toBe("M0 -10L10 0Z");
+    expect(
+      fontkit_path_to_flipped_svg([
+        { command: "moveTo", args: [0, 10] },
+        { command: "lineTo", args: [10, 0] },
+        { command: "closePath", args: [] },
+      ]),
+    ).toBe("M0 -10L10 0Z");
   });
 
   it("falls back through non-embedded PDF standard fonts", async () => {
@@ -156,14 +177,20 @@ describe("calendar export formats", () => {
     const { day } = fixture();
     const make_period = (label: string, month: number) => ({
       label,
-      days: Array.from({ length: 42 }, (_, index): CalendarDay => ({
-        ...day,
-        date: new Date(2026, month, index + 1),
-        key: `${label}-${index}`,
-        tasks: [],
-      })),
+      days: Array.from(
+        { length: 42 },
+        (_, index): CalendarDay => ({
+          ...day,
+          date: new Date(2026, month, index + 1),
+          key: `${label}-${index}`,
+          tasks: [],
+        }),
+      ),
     });
-    const periods = [make_period("September 2026", 8), make_period("October 2026", 9)];
+    const periods = [
+      make_period("September 2026", 8),
+      make_period("October 2026", 9),
+    ];
     const options = {
       theme: "light" as const,
       dpi: 150,
@@ -191,23 +218,32 @@ describe("calendar export formats", () => {
 
   it("wraps long Latin and CJK titles without exceeding the requested width", () => {
     const measure = (value: string) => Array.from(value).length;
-    const latin = wrap_calendar_text("A short word andaverylongword", 8, measure);
-    const cjk = wrap_calendar_text("這是一個需要自動換行的月曆標題", 6, measure);
+    const latin = wrap_calendar_text(
+      "A short word andaverylongword",
+      8,
+      measure,
+    );
+    const cjk = wrap_calendar_text(
+      "這是一個需要自動換行的月曆標題",
+      6,
+      measure,
+    );
     expect(latin.length).toBeGreaterThan(1);
     expect(cjk.length).toBeGreaterThan(1);
     expect([...latin, ...cjk].every((line) => measure(line) <= 8)).toBe(true);
   });
 
   it("raises low-contrast accents for a dark export", () => {
-    expect(calendar_export_accent("#000000", "dark")).toBe("rgb(128, 128, 128)");
+    expect(calendar_export_accent("#000000", "dark")).toBe(
+      "rgb(128, 128, 128)",
+    );
     expect(calendar_export_accent("#3b82f6", "dark")).toBe("#3b82f6");
   });
 
   it("adds physical DPI metadata to a PNG", () => {
     const png = new Uint8Array([
-      137, 80, 78, 71, 13, 10, 26, 10,
-      0, 0, 0, 13, 73, 72, 68, 82,
-      0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 0, 0, 0, 0,
+      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1,
+      0, 0, 0, 1, 8, 2, 0, 0, 0, 0, 0, 0, 0,
     ]);
     const result = add_png_dpi_metadata(png, 300);
     expect(new TextDecoder().decode(result.slice(37, 41))).toBe("pHYs");
@@ -217,11 +253,9 @@ describe("calendar export formats", () => {
 
   it("replaces an existing PNG physical-resolution chunk", () => {
     const png = new Uint8Array([
-      137, 80, 78, 71, 13, 10, 26, 10,
-      0, 0, 0, 13, 73, 72, 68, 82,
-      0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 9, 112, 72, 89, 115,
-      0, 0, 14, 196, 0, 0, 14, 196, 1, 0, 0, 0, 0,
+      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1,
+      0, 0, 0, 1, 8, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 112, 72, 89, 115, 0, 0,
+      14, 196, 0, 0, 14, 196, 1, 0, 0, 0, 0,
     ]);
     const result = add_png_dpi_metadata(png, 150);
     const encoded = new TextDecoder().decode(result);
@@ -229,5 +263,4 @@ describe("calendar export formats", () => {
     expect(new DataView(result.buffer).getUint32(41, false)).toBe(5_906);
     expect(result).toHaveLength(png.length);
   });
-
 });

@@ -25,8 +25,10 @@ export default defineConfig(async () => ({
     // Let the HMR client use the origin serving /@vite/client, including the
     // LAN share proxy. HTTP and WebSocket use the same upstream port.
     hmr: { timeout: 30000 },
-    watch: { // 3. tell Vite to ignore watching `src-tauri`
-    ignored: ["**/src-tauri/**"] }
+    watch: {
+      // 3. tell Vite to ignore watching `src-tauri`
+      ignored: ["**/src-tauri/**"],
+    },
   },
   resolve: {
     alias: {

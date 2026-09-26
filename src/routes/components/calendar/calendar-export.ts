@@ -66,18 +66,36 @@ export const DEFAULT_CALENDAR_EXPORT_OPTIONS: CalendarExportOptions = {
 
 const PALETTES = {
   light: {
-    page: "#f8fafc", text: "#0f172a", secondary_text: "#64748b",
-    weekday: "#e2e8f0", weekday_text: "#475569", day: "#ffffff",
-    outside_day: "#f1f5f9", outside_text: "#94a3b8", border: "#cbd5e1",
-    card: "#ffffff", subdued_card: "#f1f5f9", preview_card: "#f8fafc",
-    today: "#0f172a", today_text: "#ffffff",
+    page: "#f8fafc",
+    text: "#0f172a",
+    secondary_text: "#64748b",
+    weekday: "#e2e8f0",
+    weekday_text: "#475569",
+    day: "#ffffff",
+    outside_day: "#f1f5f9",
+    outside_text: "#94a3b8",
+    border: "#cbd5e1",
+    card: "#ffffff",
+    subdued_card: "#f1f5f9",
+    preview_card: "#f8fafc",
+    today: "#0f172a",
+    today_text: "#ffffff",
   },
   dark: {
-    page: "#0f172a", text: "#f8fafc", secondary_text: "#94a3b8",
-    weekday: "#1e293b", weekday_text: "#cbd5e1", day: "#111827",
-    outside_day: "#172033", outside_text: "#64748b", border: "#334155",
-    card: "#1e293b", subdued_card: "#202a3b", preview_card: "#172033",
-    today: "#f8fafc", today_text: "#0f172a",
+    page: "#0f172a",
+    text: "#f8fafc",
+    secondary_text: "#94a3b8",
+    weekday: "#1e293b",
+    weekday_text: "#cbd5e1",
+    day: "#111827",
+    outside_day: "#172033",
+    outside_text: "#64748b",
+    border: "#334155",
+    card: "#1e293b",
+    subdued_card: "#202a3b",
+    preview_card: "#172033",
+    today: "#f8fafc",
+    today_text: "#0f172a",
   },
 } as const;
 
@@ -103,7 +121,10 @@ interface CalendarCanvasResult {
   dpi: number;
 }
 
-export function calendar_entry_key(day: CalendarDay, entry: CalendarTask): string {
+export function calendar_entry_key(
+  day: CalendarDay,
+  entry: CalendarTask,
+): string {
   return [
     day.key,
     entry.task.id,
@@ -120,7 +141,9 @@ export function selected_calendar_days(
   const selected = new Set(selected_entry_keys);
   return days.map((day) => ({
     ...day,
-    tasks: day.tasks.filter((entry) => selected.has(calendar_entry_key(day, entry))),
+    tasks: day.tasks.filter((entry) =>
+      selected.has(calendar_entry_key(day, entry)),
+    ),
   }));
 }
 
@@ -146,13 +169,18 @@ function rounded_rect(
   context.closePath();
 }
 
-function fit_text(context: CanvasRenderingContext2D, value: string, max_width: number): string {
+function fit_text(
+  context: CanvasRenderingContext2D,
+  value: string,
+  max_width: number,
+): string {
   if (context.measureText(value).width <= max_width) return value;
   let low = 0;
   let high = value.length;
   while (low < high) {
     const middle = Math.ceil((low + high) / 2);
-    if (context.measureText(`${value.slice(0, middle)}…`).width <= max_width) low = middle;
+    if (context.measureText(`${value.slice(0, middle)}…`).width <= max_width)
+      low = middle;
     else high = middle - 1;
   }
   return `${value.slice(0, low)}…`;
@@ -193,22 +221,42 @@ export function wrap_calendar_text(
   return lines;
 }
 
-function wrap_text(context: CanvasRenderingContext2D, value: string, max_width: number): string[] {
-  return wrap_calendar_text(value, max_width, (candidate) => context.measureText(candidate).width);
+function wrap_text(
+  context: CanvasRenderingContext2D,
+  value: string,
+  max_width: number,
+): string[] {
+  return wrap_calendar_text(
+    value,
+    max_width,
+    (candidate) => context.measureText(candidate).width,
+  );
 }
 
 function has_time(date: Date): boolean {
-  return date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0;
+  return (
+    date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0
+  );
 }
 
-export function calendar_export_accent(color: string, theme: CalendarExportTheme): string {
+export function calendar_export_accent(
+  color: string,
+  theme: CalendarExportTheme,
+): string {
   const match = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
   if (!match) return color || (theme === "dark" ? "#94a3b8" : "#64748b");
-  const value = match[1].length === 3
-    ? match[1].split("").map((part) => `${part}${part}`).join("")
-    : match[1];
-  const channels = [0, 2, 4].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
-  const luminance = (channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722) / 255;
+  const value =
+    match[1].length === 3
+      ? match[1]
+          .split("")
+          .map((part) => `${part}${part}`)
+          .join("")
+      : match[1];
+  const channels = [0, 2, 4].map((offset) =>
+    Number.parseInt(value.slice(offset, offset + 2), 16),
+  );
+  const luminance =
+    (channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722) / 255;
   if (theme === "dark" && luminance < 0.28) {
     return `rgb(${channels.map((channel) => Math.round(channel + (255 - channel) * 0.5)).join(", ")})`;
   }
@@ -220,9 +268,10 @@ export function calendar_export_accent(color: string, theme: CalendarExportTheme
 
 function task_title(entry: CalendarTask): string {
   const due_time = entry.task.due_time;
-  const time = due_time && has_time(due_time)
-    ? `${due_time.toLocaleTimeString(EXPORT_LOCALE, { hour: "2-digit", minute: "2-digit", hour12: false })}  `
-    : "";
+  const time =
+    due_time && has_time(due_time)
+      ? `${due_time.toLocaleTimeString(EXPORT_LOCALE, { hour: "2-digit", minute: "2-digit", hour12: false })}  `
+      : "";
   return `${time}${entry.task.title || "Untitled task"}`;
 }
 
@@ -234,8 +283,16 @@ function build_task_layouts(
   context.font = "600 14px system-ui, sans-serif";
   for (const day of days) {
     for (const entry of day.tasks) {
-      const title_lines = wrap_text(context, task_title(entry), CELL_WIDTH - 47);
-      layouts.set(entry, { entry, title_lines, height: title_lines.length * 18 + 30 });
+      const title_lines = wrap_text(
+        context,
+        task_title(entry),
+        CELL_WIDTH - 47,
+      );
+      layouts.set(entry, {
+        entry,
+        title_lines,
+        height: title_lines.length * 18 + 30,
+      });
     }
   }
   return layouts;
@@ -257,11 +314,17 @@ function measure_calendar(
   const row_heights = Array.from({ length: row_count }, (_, row) => {
     const tallest_day = Math.max(
       0,
-      ...days.slice(row * 7, row * 7 + 7).map((day) =>
-        day.tasks.reduce(
-          (height, entry, index) => height + (layouts.get(entry)?.height ?? 48) + (index > 0 ? TASK_GAP : 0),
-          0,
-        )),
+      ...days
+        .slice(row * 7, row * 7 + 7)
+        .map((day) =>
+          day.tasks.reduce(
+            (height, entry, index) =>
+              height +
+              (layouts.get(entry)?.height ?? 48) +
+              (index > 0 ? TASK_GAP : 0),
+            0,
+          ),
+        ),
     );
     return Math.max(MIN_ROW_HEIGHT, DAY_HEADER_HEIGHT + 25 + tallest_day);
   });
@@ -270,8 +333,19 @@ function measure_calendar(
   if (options.show_details) grid_top += 36;
   if (title_lines.length > 0 || options.show_details) grid_top += 18;
   const logical_width = grid_width + PAGE_PADDING * 2;
-  const logical_height = grid_top + WEEKDAY_HEIGHT + row_heights.reduce((sum, value) => sum + value, 0) + PAGE_PADDING;
-  return { title_lines, layouts, row_heights, logical_width, logical_height, grid_top };
+  const logical_height =
+    grid_top +
+    WEEKDAY_HEIGHT +
+    row_heights.reduce((sum, value) => sum + value, 0) +
+    PAGE_PADDING;
+  return {
+    title_lines,
+    layouts,
+    row_heights,
+    logical_width,
+    logical_height,
+    grid_top,
+  };
 }
 
 function normalized_dpi(value: number): number {
@@ -299,7 +373,11 @@ function pixel_size(measured: MeasuredCalendar, dpi: number) {
 }
 
 function exceeds_canvas_limit(width: number, height: number): boolean {
-  return width > MAX_CANVAS_DIMENSION || height > MAX_CANVAS_DIMENSION || width * height > MAX_CANVAS_AREA;
+  return (
+    width > MAX_CANVAS_DIMENSION ||
+    height > MAX_CANVAS_DIMENSION ||
+    width * height > MAX_CANVAS_AREA
+  );
 }
 
 export function estimate_calendar_export(
@@ -310,8 +388,18 @@ export function estimate_calendar_export(
 ): CalendarExportEstimate {
   const prepared = prepare_calendar_pages(periods, title, format, options);
   if (format === "pdf") return vector_pdf_estimate(prepared.length);
-  const sizes = prepared.map((page) => pixel_size(measure_for_export(page.days, page.title, page.options), options.dpi));
-  return summarize_export_sizes(sizes, prepared.length, format, options.png_layout);
+  const sizes = prepared.map((page) =>
+    pixel_size(
+      measure_for_export(page.days, page.title, page.options),
+      options.dpi,
+    ),
+  );
+  return summarize_export_sizes(
+    sizes,
+    prepared.length,
+    format,
+    options.png_layout,
+  );
 }
 
 export async function estimate_calendar_export_async(
@@ -325,9 +413,19 @@ export async function estimate_calendar_export_async(
   const sizes: Array<{ width: number; height: number }> = [];
   for (const page of prepared) {
     await next_frame();
-    sizes.push(pixel_size(measure_for_export(page.days, page.title, page.options), options.dpi));
+    sizes.push(
+      pixel_size(
+        measure_for_export(page.days, page.title, page.options),
+        options.dpi,
+      ),
+    );
   }
-  return summarize_export_sizes(sizes, prepared.length, format, options.png_layout);
+  return summarize_export_sizes(
+    sizes,
+    prepared.length,
+    format,
+    options.png_layout,
+  );
 }
 
 function vector_pdf_estimate(page_count: number): CalendarExportEstimate {
@@ -348,27 +446,31 @@ function summarize_export_sizes(
   png_layout: CalendarPngLayout,
 ): CalendarExportEstimate {
   const largest = sizes.reduce(
-    (result, size) => size.width * size.height > result.width * result.height ? size : result,
+    (result, size) =>
+      size.width * size.height > result.width * result.height ? size : result,
     { width: 0, height: 0 },
   );
   const separate_png = format === "png" && png_layout === "separate";
-  const png_height = format === "png" && !separate_png
-    ? sizes.reduce((sum, size) => sum + size.height, 0)
-    : largest.height;
-  const png_width = format === "png" && !separate_png
-    ? Math.max(0, ...sizes.map((size) => size.width))
-    : largest.width;
+  const png_height =
+    format === "png" && !separate_png
+      ? sizes.reduce((sum, size) => sum + size.height, 0)
+      : largest.height;
+  const png_width =
+    format === "png" && !separate_png
+      ? Math.max(0, ...sizes.map((size) => size.width))
+      : largest.width;
   return {
     width: png_width,
     height: png_height,
     megapixels: (png_width * png_height) / 1_000_000,
     memory_mb: (png_width * png_height * 4) / 1_048_576,
     page_count: format === "pdf" || separate_png ? prepared_page_count : 1,
-    too_large: format === "png"
-      ? separate_png
-        ? sizes.some((size) => exceeds_canvas_limit(size.width, size.height))
-        : exceeds_canvas_limit(png_width, png_height)
-      : sizes.some((size) => exceeds_canvas_limit(size.width, size.height)),
+    too_large:
+      format === "png"
+        ? separate_png
+          ? sizes.some((size) => exceeds_canvas_limit(size.width, size.height))
+          : exceeds_canvas_limit(png_width, png_height)
+        : sizes.some((size) => exceeds_canvas_limit(size.width, size.height)),
   };
 }
 
@@ -386,13 +488,19 @@ export function prepare_calendar_pages(
 ): PreparedCalendarPage[] {
   return periods.flatMap((period) => {
     const days = period.days;
-    const page_title = periods.length > 1
-      ? [options.show_title ? title.trim() : "", period.label].filter(Boolean).join("\n")
-      : title;
-    const page_options = periods.length > 1
-      ? { ...options, show_title: true }
-      : options;
-    if (format === "pdf" && options.pdf_pagination === "weeks" && days.length > 7) {
+    const page_title =
+      periods.length > 1
+        ? [options.show_title ? title.trim() : "", period.label]
+            .filter(Boolean)
+            .join("\n")
+        : title;
+    const page_options =
+      periods.length > 1 ? { ...options, show_title: true } : options;
+    if (
+      format === "pdf" &&
+      options.pdf_pagination === "weeks" &&
+      days.length > 7
+    ) {
       return Array.from({ length: Math.ceil(days.length / 7) }, (_, index) => ({
         title: page_title,
         days: days.slice(index * 7, index * 7 + 7),
@@ -414,7 +522,8 @@ function localized_weekdays(): string[] {
 
 function next_frame(): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
+    if (typeof requestAnimationFrame === "function")
+      requestAnimationFrame(() => resolve());
     else setTimeout(resolve, 0);
   });
 }
@@ -427,9 +536,14 @@ async function render_calendar_canvas(
   const dpi = normalized_dpi(options.dpi);
   const scale = dpi / LOGICAL_DPI;
   const measured = measure_for_export(days, title, options);
-  const { width: pixel_width, height: pixel_height } = pixel_size(measured, dpi);
+  const { width: pixel_width, height: pixel_height } = pixel_size(
+    measured,
+    dpi,
+  );
   if (exceeds_canvas_limit(pixel_width, pixel_height)) {
-    throw new Error("This calendar is too large at the selected DPI. Lower the DPI or export fewer months.");
+    throw new Error(
+      "This calendar is too large at the selected DPI. Lower the DPI or export fewer months.",
+    );
   }
 
   await next_frame();
@@ -448,10 +562,14 @@ async function render_calendar_canvas(
     context.fillStyle = palette.text;
     context.font = "700 36px system-ui, sans-serif";
     measured.title_lines.forEach((line, index) =>
-      context.fillText(line, PAGE_PADDING, PAGE_PADDING + 34 + index * 44));
+      context.fillText(line, PAGE_PADDING, PAGE_PADDING + 34 + index * 44),
+    );
   }
   if (options.show_details) {
-    const entry_count = days.reduce((count, day) => count + day.tasks.length, 0);
+    const entry_count = days.reduce(
+      (count, day) => count + day.tasks.length,
+      0,
+    );
     context.fillStyle = palette.secondary_text;
     context.font = "16px system-ui, sans-serif";
     context.fillText(
@@ -468,7 +586,11 @@ async function render_calendar_canvas(
   context.font = "700 13px system-ui, sans-serif";
   context.textAlign = "center";
   for (let index = 0; index < 7; index++) {
-    context.fillText(weekdays[index], PAGE_PADDING + index * CELL_WIDTH + CELL_WIDTH / 2, measured.grid_top + 28);
+    context.fillText(
+      weekdays[index],
+      PAGE_PADDING + index * CELL_WIDTH + CELL_WIDTH / 2,
+      measured.grid_top + 28,
+    );
   }
   context.textAlign = "left";
 
@@ -478,11 +600,18 @@ async function render_calendar_canvas(
       const day = days[row * 7 + column];
       if (!day) continue;
       const x = PAGE_PADDING + column * CELL_WIDTH;
-      context.fillStyle = day.in_current_month ? palette.day : palette.outside_day;
+      context.fillStyle = day.in_current_month
+        ? palette.day
+        : palette.outside_day;
       context.fillRect(x, row_top, CELL_WIDTH, measured.row_heights[row]);
       context.strokeStyle = palette.border;
       context.lineWidth = 1;
-      context.strokeRect(x + 0.5, row_top + 0.5, CELL_WIDTH - 1, measured.row_heights[row] - 1);
+      context.strokeRect(
+        x + 0.5,
+        row_top + 0.5,
+        CELL_WIDTH - 1,
+        measured.row_heights[row] - 1,
+      );
 
       if (day.is_today) {
         context.fillStyle = palette.today;
@@ -490,7 +619,9 @@ async function render_calendar_canvas(
         context.fill();
         context.fillStyle = palette.today_text;
       } else {
-        context.fillStyle = day.in_current_month ? palette.text : palette.outside_text;
+        context.fillStyle = day.in_current_month
+          ? palette.text
+          : palette.outside_text;
       }
       context.font = "700 16px system-ui, sans-serif";
       context.textAlign = "center";
@@ -500,7 +631,11 @@ async function render_calendar_canvas(
         context.fillStyle = palette.secondary_text;
         context.font = "12px system-ui, sans-serif";
         context.textAlign = "right";
-        context.fillText(String(day.tasks.length), x + CELL_WIDTH - 13, row_top + 31);
+        context.fillText(
+          String(day.tasks.length),
+          x + CELL_WIDTH - 13,
+          row_top + 31,
+        );
         context.textAlign = "left";
       }
 
@@ -511,26 +646,50 @@ async function render_calendar_canvas(
         const card_x = x + 10;
         const card_width = CELL_WIDTH - 20;
         context.save();
-        context.fillStyle = entry.preview ? palette.preview_card : entry.archived ? palette.subdued_card : palette.card;
-        context.strokeStyle = entry.archived || entry.preview ? palette.secondary_text : palette.border;
+        context.fillStyle = entry.preview
+          ? palette.preview_card
+          : entry.archived
+            ? palette.subdued_card
+            : palette.card;
+        context.strokeStyle =
+          entry.archived || entry.preview
+            ? palette.secondary_text
+            : palette.border;
         context.lineWidth = entry.archived || entry.preview ? 1 : 2;
-        context.setLineDash(entry.preview ? [7, 5] : entry.archived ? [2, 4] : []);
+        context.setLineDash(
+          entry.preview ? [7, 5] : entry.archived ? [2, 4] : [],
+        );
         rounded_rect(context, card_x, task_top, card_width, layout.height, 7);
         context.fill();
         context.stroke();
         context.setLineDash([]);
-        context.fillStyle = entry.archived || entry.preview
-          ? "#94a3b8"
-          : calendar_export_accent(entry.task.color, options.theme);
-        rounded_rect(context, card_x + 6, task_top + 7, 4, layout.height - 14, 2);
+        context.fillStyle =
+          entry.archived || entry.preview
+            ? "#94a3b8"
+            : calendar_export_accent(entry.task.color, options.theme);
+        rounded_rect(
+          context,
+          card_x + 6,
+          task_top + 7,
+          4,
+          layout.height - 14,
+          2,
+        );
         context.fill();
 
         const text_x = card_x + 17;
-        context.fillStyle = entry.archived ? palette.secondary_text : palette.text;
+        context.fillStyle = entry.archived
+          ? palette.secondary_text
+          : palette.text;
         context.font = `${entry.archived || entry.preview ? "500" : "600"} 14px system-ui, sans-serif`;
         layout.title_lines.forEach((line, index) =>
-          context.fillText(line, text_x, task_top + 18 + index * 18));
-        const status = entry.archived ? " · Archived" : entry.preview ? " · Recurring preview" : "";
+          context.fillText(line, text_x, task_top + 18 + index * 18),
+        );
+        const status = entry.archived
+          ? " · Archived"
+          : entry.preview
+            ? " · Recurring preview"
+            : "";
         context.fillStyle = palette.secondary_text;
         context.font = "12px system-ui, sans-serif";
         context.fillText(
@@ -548,10 +707,17 @@ async function render_calendar_canvas(
   return { canvas, pixel_width, pixel_height, dpi };
 }
 
-function canvas_blob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+function canvas_blob(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality?: number,
+): Promise<Blob> {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
-      (blob) => blob ? resolve(blob) : reject(new Error("Couldn't create the exported file")),
+      (blob) =>
+        blob
+          ? resolve(blob)
+          : reject(new Error("Couldn't create the exported file")),
       type,
       quality,
     );
@@ -559,24 +725,35 @@ function canvas_blob(canvas: HTMLCanvasElement, type: string, quality?: number):
 }
 
 function write_u32(buffer: Uint8Array, offset: number, value: number) {
-  new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength).setUint32(offset, value, false);
+  new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength).setUint32(
+    offset,
+    value,
+    false,
+  );
 }
 
 function read_u32(buffer: Uint8Array, offset: number): number {
-  return new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength).getUint32(offset, false);
+  return new DataView(
+    buffer.buffer,
+    buffer.byteOffset,
+    buffer.byteLength,
+  ).getUint32(offset, false);
 }
 
 function crc32(data: Uint8Array): number {
   let crc = 0xffffffff;
   for (const byte of data) {
     crc ^= byte;
-    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    for (let bit = 0; bit < 8; bit++)
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
 
 function concat_bytes(parts: Uint8Array[]): Uint8Array {
-  const result = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
+  const result = new Uint8Array(
+    parts.reduce((length, part) => length + part.length, 0),
+  );
   let offset = 0;
   for (const part of parts) {
     result.set(part, offset);
@@ -587,7 +764,10 @@ function concat_bytes(parts: Uint8Array[]): Uint8Array {
 
 export function add_png_dpi_metadata(png: Uint8Array, dpi: number): Uint8Array {
   const signature = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
-  if (png.length < 33 || !signature.every((byte, index) => png[index] === byte)) {
+  if (
+    png.length < 33 ||
+    !signature.every((byte, index) => png[index] === byte)
+  ) {
     throw new Error("Invalid PNG data");
   }
   const chunks: Uint8Array[] = [];
@@ -613,16 +793,21 @@ export function add_png_dpi_metadata(png: Uint8Array, dpi: number): Uint8Array {
     }
     offset = end;
   }
-  if (!inserted || offset !== png.length) throw new Error("Invalid PNG structure");
+  if (!inserted || offset !== png.length)
+    throw new Error("Invalid PNG structure");
   return concat_bytes([signature, ...chunks]);
 }
 
 function pdf_color(value: string): Color {
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
   if (hex) {
-    const expanded = hex[1].length === 3
-      ? hex[1].split("").map((part) => `${part}${part}`).join("")
-      : hex[1];
+    const expanded =
+      hex[1].length === 3
+        ? hex[1]
+            .split("")
+            .map((part) => `${part}${part}`)
+            .join("")
+        : hex[1];
     if (!pdf_rgb) throw new Error("PDF color support is not initialized");
     return pdf_rgb(
       Number.parseInt(expanded.slice(0, 2), 16) / 255,
@@ -632,7 +817,12 @@ function pdf_color(value: string): Color {
   }
   const channels = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(value);
   if (!pdf_rgb) throw new Error("PDF color support is not initialized");
-  if (channels) return pdf_rgb(Number(channels[1]) / 255, Number(channels[2]) / 255, Number(channels[3]) / 255);
+  if (channels)
+    return pdf_rgb(
+      Number(channels[1]) / 255,
+      Number(channels[2]) / 255,
+      Number(channels[3]) / 255,
+    );
   return pdf_rgb(0.39, 0.45, 0.55);
 }
 
@@ -644,7 +834,10 @@ interface CalendarPdfFonts {
 type FontkitPathCommand =
   | { command: "moveTo" | "lineTo"; args: [number, number] }
   | { command: "quadraticCurveTo"; args: [number, number, number, number] }
-  | { command: "bezierCurveTo"; args: [number, number, number, number, number, number] }
+  | {
+      command: "bezierCurveTo";
+      args: [number, number, number, number, number, number];
+    }
   | { command: "closePath"; args: [] };
 
 interface CalendarPdfOutlineFont {
@@ -662,7 +855,10 @@ interface CalendarPdfOutlineFont {
   };
 }
 
-function pdf_standard_font_for_character(fonts: CalendarPdfFonts, character: string): PDFFont | undefined {
+function pdf_standard_font_for_character(
+  fonts: CalendarPdfFonts,
+  character: string,
+): PDFFont | undefined {
   for (const font of fonts.fallbacks) {
     try {
       font.encodeText(character);
@@ -674,24 +870,40 @@ function pdf_standard_font_for_character(fonts: CalendarPdfFonts, character: str
   return undefined;
 }
 
-function outline_font_supports(font: CalendarPdfOutlineFont | undefined, character: string): boolean {
+function outline_font_supports(
+  font: CalendarPdfOutlineFont | undefined,
+  character: string,
+): boolean {
   const code_point = character.codePointAt(0);
-  return code_point !== undefined && Boolean(font?.hasGlyphForCodePoint(code_point));
+  return (
+    code_point !== undefined && Boolean(font?.hasGlyphForCodePoint(code_point))
+  );
 }
 
 function pdf_safe_text(fonts: CalendarPdfFonts, value: string): string {
-  return Array.from(value).map((character) => {
-    if (pdf_standard_font_for_character(fonts, character)) return character;
-    return outline_font_supports(fonts.outline, character) ? character : "?";
-  }).join("");
+  return Array.from(value)
+    .map((character) => {
+      if (pdf_standard_font_for_character(fonts, character)) return character;
+      return outline_font_supports(fonts.outline, character) ? character : "?";
+    })
+    .join("");
 }
 
-function pdf_text_width(fonts: CalendarPdfFonts, value: string, size: number): number {
+function pdf_text_width(
+  fonts: CalendarPdfFonts,
+  value: string,
+  size: number,
+): number {
   return Array.from(value).reduce((width, character) => {
     const standard = pdf_standard_font_for_character(fonts, character);
     if (standard) return width + standard.widthOfTextAtSize(character, size);
     if (outline_font_supports(fonts.outline, character)) {
-      return width + fonts.outline!.layout(character).advanceWidth / fonts.outline!.unitsPerEm * size;
+      return (
+        width +
+        (fonts.outline!.layout(character).advanceWidth /
+          fonts.outline!.unitsPerEm) *
+          size
+      );
     }
     return width + fonts.fallbacks[0].widthOfTextAtSize("?", size);
   }, 0);
@@ -702,19 +914,26 @@ function svg_number(value: number): string {
   return String(Object.is(rounded, -0) ? 0 : rounded);
 }
 
-export function fontkit_path_to_flipped_svg(commands: FontkitPathCommand[]): string {
-  return commands.map((entry) => {
-    const args = entry.args;
-    switch (entry.command) {
-      case "moveTo": return `M${svg_number(args[0]!)} ${svg_number(-args[1]!)}`;
-      case "lineTo": return `L${svg_number(args[0]!)} ${svg_number(-args[1]!)}`;
-      case "quadraticCurveTo":
-        return `Q${svg_number(args[0]!)} ${svg_number(-args[1]!)} ${svg_number(args[2]!)} ${svg_number(-args[3]!)}`;
-      case "bezierCurveTo":
-        return `C${svg_number(args[0]!)} ${svg_number(-args[1]!)} ${svg_number(args[2]!)} ${svg_number(-args[3]!)} ${svg_number(args[4]!)} ${svg_number(-args[5]!)}`;
-      case "closePath": return "Z";
-    }
-  }).join("");
+export function fontkit_path_to_flipped_svg(
+  commands: FontkitPathCommand[],
+): string {
+  return commands
+    .map((entry) => {
+      const args = entry.args;
+      switch (entry.command) {
+        case "moveTo":
+          return `M${svg_number(args[0]!)} ${svg_number(-args[1]!)}`;
+        case "lineTo":
+          return `L${svg_number(args[0]!)} ${svg_number(-args[1]!)}`;
+        case "quadraticCurveTo":
+          return `Q${svg_number(args[0]!)} ${svg_number(-args[1]!)} ${svg_number(args[2]!)} ${svg_number(-args[3]!)}`;
+        case "bezierCurveTo":
+          return `C${svg_number(args[0]!)} ${svg_number(-args[1]!)} ${svg_number(args[2]!)} ${svg_number(-args[3]!)} ${svg_number(args[4]!)} ${svg_number(-args[5]!)}`;
+        case "closePath":
+          return "Z";
+      }
+    })
+    .join("");
 }
 
 function draw_outline_character(
@@ -754,24 +973,43 @@ function measure_pdf_calendar(
 ): MeasuredCalendar {
   const grid_width = CELL_WIDTH * 7;
   const title_lines = options.show_title
-    ? wrap_calendar_text(pdf_safe_text(fonts, title.trim() || "Calendar"), grid_width, (value) => pdf_text_width(fonts, value, 36))
+    ? wrap_calendar_text(
+        pdf_safe_text(fonts, title.trim() || "Calendar"),
+        grid_width,
+        (value) => pdf_text_width(fonts, value, 36),
+      )
     : [];
   const layouts = new Map<CalendarTask, TaskLayout>();
   for (const day of days) {
     for (const entry of day.tasks) {
       const safe_title = pdf_safe_text(fonts, task_title(entry));
-      const title_lines = wrap_calendar_text(safe_title, CELL_WIDTH - 47, (value) => pdf_text_width(fonts, value, 14));
-      layouts.set(entry, { entry, title_lines, height: title_lines.length * 18 + 30 });
+      const title_lines = wrap_calendar_text(
+        safe_title,
+        CELL_WIDTH - 47,
+        (value) => pdf_text_width(fonts, value, 14),
+      );
+      layouts.set(entry, {
+        entry,
+        title_lines,
+        height: title_lines.length * 18 + 30,
+      });
     }
   }
   const row_count = Math.max(1, Math.ceil(days.length / 7));
   const row_heights = Array.from({ length: row_count }, (_, row) => {
     const tallest_day = Math.max(
       0,
-      ...days.slice(row * 7, row * 7 + 7).map((day) => day.tasks.reduce(
-        (height, entry, index) => height + (layouts.get(entry)?.height ?? 48) + (index > 0 ? TASK_GAP : 0),
-        0,
-      )),
+      ...days
+        .slice(row * 7, row * 7 + 7)
+        .map((day) =>
+          day.tasks.reduce(
+            (height, entry, index) =>
+              height +
+              (layouts.get(entry)?.height ?? 48) +
+              (index > 0 ? TASK_GAP : 0),
+            0,
+          ),
+        ),
     );
     return Math.max(MIN_ROW_HEIGHT, DAY_HEADER_HEIGHT + 25 + tallest_day);
   });
@@ -780,11 +1018,27 @@ function measure_pdf_calendar(
   if (options.show_details) grid_top += 36;
   if (title_lines.length > 0 || options.show_details) grid_top += 18;
   const logical_width = grid_width + PAGE_PADDING * 2;
-  const logical_height = grid_top + WEEKDAY_HEIGHT + row_heights.reduce((sum, value) => sum + value, 0) + PAGE_PADDING;
-  return { title_lines, layouts, row_heights, logical_width, logical_height, grid_top };
+  const logical_height =
+    grid_top +
+    WEEKDAY_HEIGHT +
+    row_heights.reduce((sum, value) => sum + value, 0) +
+    PAGE_PADDING;
+  return {
+    title_lines,
+    layouts,
+    row_heights,
+    logical_width,
+    logical_height,
+    grid_top,
+  };
 }
 
-function fit_pdf_text(fonts: CalendarPdfFonts, value: string, size: number, max_width: number): string {
+function fit_pdf_text(
+  fonts: CalendarPdfFonts,
+  value: string,
+  size: number,
+  max_width: number,
+): string {
   const safe = pdf_safe_text(fonts, value);
   if (pdf_text_width(fonts, safe, size) <= max_width) return safe;
   const characters = Array.from(safe);
@@ -799,14 +1053,18 @@ function fit_pdf_text(fonts: CalendarPdfFonts, value: string, size: number, max_
   return `${characters.slice(0, low).join("")}...`;
 }
 
-function vector_page_geometry(measured: MeasuredCalendar, paper: CalendarPdfPaper) {
+function vector_page_geometry(
+  measured: MeasuredCalendar,
+  paper: CalendarPdfPaper,
+) {
   const content_width = measured.logical_width * 0.75;
   const content_height = measured.logical_height * 0.75;
-  const target = paper === "a4"
-    ? { width: 841.89, height: 595.28, margin: PDF_MARGIN }
-    : paper === "a3"
-      ? { width: 1190.55, height: 841.89, margin: PDF_MARGIN }
-      : { width: content_width, height: content_height, margin: 0 };
+  const target =
+    paper === "a4"
+      ? { width: 841.89, height: 595.28, margin: PDF_MARGIN }
+      : paper === "a3"
+        ? { width: 1190.55, height: 841.89, margin: PDF_MARGIN }
+        : { width: content_width, height: content_height, margin: 0 };
   const scale = Math.min(
     (target.width - target.margin * 2) / measured.logical_width,
     (target.height - target.margin * 2) / measured.logical_height,
@@ -833,9 +1091,17 @@ function draw_vector_calendar_page(
   const palette = PALETTES[options.theme];
   const scale = geometry.scale;
   const x = (logical: number) => geometry.offset_x + logical * scale;
-  const baseline_y = (logical: number) => geometry.height - geometry.offset_top - logical * scale;
-  const rect_y = (top: number, height: number) => geometry.height - geometry.offset_top - (top + height) * scale;
-  const draw_text = (value: string, left: number, baseline: number, size: number, color: string) => {
+  const baseline_y = (logical: number) =>
+    geometry.height - geometry.offset_top - logical * scale;
+  const rect_y = (top: number, height: number) =>
+    geometry.height - geometry.offset_top - (top + height) * scale;
+  const draw_text = (
+    value: string,
+    left: number,
+    baseline: number,
+    size: number,
+    color: string,
+  ) => {
     const safe = pdf_safe_text(fonts, value);
     let run = "";
     let run_font: PDFFont | undefined;
@@ -854,7 +1120,11 @@ function draw_vector_calendar_page(
     };
     for (const character of Array.from(safe)) {
       const character_font = pdf_standard_font_for_character(fonts, character);
-      if (!character_font && fonts.outline && outline_font_supports(fonts.outline, character)) {
+      if (
+        !character_font &&
+        fonts.outline &&
+        outline_font_supports(fonts.outline, character)
+      ) {
         flush();
         draw_outline_character(
           page,
@@ -877,10 +1147,27 @@ function draw_vector_calendar_page(
     flush();
   };
 
-  page.drawRectangle({ x: 0, y: 0, width: geometry.width, height: geometry.height, color: pdf_color(palette.page) });
-  measured.title_lines.forEach((line, index) => draw_text(line, PAGE_PADDING, PAGE_PADDING + 34 + index * 44, 36, palette.text));
+  page.drawRectangle({
+    x: 0,
+    y: 0,
+    width: geometry.width,
+    height: geometry.height,
+    color: pdf_color(palette.page),
+  });
+  measured.title_lines.forEach((line, index) =>
+    draw_text(
+      line,
+      PAGE_PADDING,
+      PAGE_PADDING + 34 + index * 44,
+      36,
+      palette.text,
+    ),
+  );
   if (options.show_details) {
-    const entry_count = days.reduce((count, day) => count + day.tasks.length, 0);
+    const entry_count = days.reduce(
+      (count, day) => count + day.tasks.length,
+      0,
+    );
     draw_text(
       `${entry_count} ${entry_count === 1 ? "entry" : "entries"} - ${new Date().toLocaleString(EXPORT_LOCALE)}`,
       PAGE_PADDING,
@@ -901,7 +1188,13 @@ function draw_vector_calendar_page(
   localized_weekdays().forEach((weekday, index) => {
     const safe = pdf_safe_text(fonts, weekday);
     const width = pdf_text_width(fonts, safe, 13);
-    draw_text(safe, PAGE_PADDING + index * CELL_WIDTH + (CELL_WIDTH - width) / 2, measured.grid_top + 28, 13, palette.weekday_text);
+    draw_text(
+      safe,
+      PAGE_PADDING + index * CELL_WIDTH + (CELL_WIDTH - width) / 2,
+      measured.grid_top + 28,
+      13,
+      palette.weekday_text,
+    );
   });
 
   let row_top = measured.grid_top + WEEKDAY_HEIGHT;
@@ -916,7 +1209,9 @@ function draw_vector_calendar_page(
         y: rect_y(row_top, row_height),
         width: CELL_WIDTH * scale,
         height: row_height * scale,
-        color: pdf_color(day.in_current_month ? palette.day : palette.outside_day),
+        color: pdf_color(
+          day.in_current_month ? palette.day : palette.outside_day,
+        ),
         borderColor: pdf_color(palette.border),
         borderWidth: Math.max(0.5, scale),
       });
@@ -936,12 +1231,22 @@ function draw_vector_calendar_page(
         cell_x + 29 - day_width / 2,
         row_top + 33,
         16,
-        day.is_today ? palette.today_text : day.in_current_month ? palette.text : palette.outside_text,
+        day.is_today
+          ? palette.today_text
+          : day.in_current_month
+            ? palette.text
+            : palette.outside_text,
       );
       if (day.tasks.length > 0) {
         const count = String(day.tasks.length);
         const count_width = pdf_text_width(fonts, count, 12);
-        draw_text(count, cell_x + CELL_WIDTH - 13 - count_width, row_top + 31, 12, palette.secondary_text);
+        draw_text(
+          count,
+          cell_x + CELL_WIDTH - 13 - count_width,
+          row_top + 31,
+          12,
+          palette.secondary_text,
+        );
       }
 
       let task_top = row_top + DAY_HEADER_HEIGHT;
@@ -955,25 +1260,59 @@ function draw_vector_calendar_page(
           y: rect_y(task_top, layout.height),
           width: card_width * scale,
           height: layout.height * scale,
-          color: pdf_color(entry.preview ? palette.preview_card : entry.archived ? palette.subdued_card : palette.card),
-          borderColor: pdf_color(entry.archived || entry.preview ? palette.secondary_text : palette.border),
+          color: pdf_color(
+            entry.preview
+              ? palette.preview_card
+              : entry.archived
+                ? palette.subdued_card
+                : palette.card,
+          ),
+          borderColor: pdf_color(
+            entry.archived || entry.preview
+              ? palette.secondary_text
+              : palette.border,
+          ),
           borderWidth: (entry.archived || entry.preview ? 1 : 2) * scale,
-          borderDashArray: entry.preview ? [7 * scale, 5 * scale] : entry.archived ? [2 * scale, 4 * scale] : undefined,
+          borderDashArray: entry.preview
+            ? [7 * scale, 5 * scale]
+            : entry.archived
+              ? [2 * scale, 4 * scale]
+              : undefined,
         });
         page.drawRectangle({
           x: x(card_x + 6),
           y: rect_y(task_top + 7, layout.height - 14),
           width: 4 * scale,
           height: (layout.height - 14) * scale,
-          color: pdf_color(entry.archived || entry.preview ? "#94a3b8" : calendar_export_accent(entry.task.color, options.theme)),
+          color: pdf_color(
+            entry.archived || entry.preview
+              ? "#94a3b8"
+              : calendar_export_accent(entry.task.color, options.theme),
+          ),
         });
 
         const text_x = card_x + 17;
         layout.title_lines.forEach((line, index) =>
-          draw_text(line, text_x, task_top + 18 + index * 18, 14, entry.archived ? palette.secondary_text : palette.text));
-        const status = entry.archived ? " - Archived" : entry.preview ? " - Recurring preview" : "";
+          draw_text(
+            line,
+            text_x,
+            task_top + 18 + index * 18,
+            14,
+            entry.archived ? palette.secondary_text : palette.text,
+          ),
+        );
+        const status = entry.archived
+          ? " - Archived"
+          : entry.preview
+            ? " - Recurring preview"
+            : "";
         draw_text(
-          fit_pdf_text(fonts, `${entry.column.name}${status}`, 12, card_width - 27),
+          fit_pdf_text(
+            fonts,
+            `${entry.column.name}${status}`,
+            12,
+            card_width - 27,
+          ),
           text_x,
           task_top + layout.title_lines.length * 18 + 22,
           12,
@@ -998,33 +1337,50 @@ export async function build_vector_calendar_pdf(
   // PDF has no CSS-like system font fallback. These standard fonts are supplied
   // by the viewer and add no font files to the exported document.
   const fonts: CalendarPdfFonts = {
-    fallbacks: await Promise.all([
-      StandardFonts.Helvetica,
-      StandardFonts.TimesRoman,
-      StandardFonts.Courier,
-      StandardFonts.Symbol,
-      StandardFonts.ZapfDingbats,
-    ].map((font) => document.embedFont(font))),
+    fallbacks: await Promise.all(
+      [
+        StandardFonts.Helvetica,
+        StandardFonts.TimesRoman,
+        StandardFonts.Courier,
+        StandardFonts.Symbol,
+        StandardFonts.ZapfDingbats,
+      ].map((font) => document.embedFont(font)),
+    ),
     outline: outline_font,
   };
   document.setTitle("Calendar export");
   document.setCreator("Cardbe");
   for (const prepared of pages) {
     const page = document.addPage();
-    draw_vector_calendar_page(page, fonts, prepared.days, prepared.title, prepared.options, paper);
+    draw_vector_calendar_page(
+      page,
+      fonts,
+      prepared.days,
+      prepared.title,
+      prepared.options,
+      paper,
+    );
     await next_frame();
   }
   return document.save({ useObjectStreams: false });
 }
 
-async function create_calendar_outline_font(font_data: ArrayBuffer | Uint8Array): Promise<CalendarPdfOutlineFont> {
+async function create_calendar_outline_font(
+  font_data: ArrayBuffer | Uint8Array,
+): Promise<CalendarPdfOutlineFont> {
   // The package's ESM build exports a default object, but its declarations only list named members.
-  const { default: fontkit } = await import("@pdf-lib/fontkit") as unknown as { default: FontkitModule };
-  const bytes = font_data instanceof Uint8Array ? font_data : new Uint8Array(font_data);
+  const { default: fontkit } = (await import(
+    "@pdf-lib/fontkit"
+  )) as unknown as { default: FontkitModule };
+  const bytes =
+    font_data instanceof Uint8Array ? font_data : new Uint8Array(font_data);
   const loaded = fontkit.create(bytes) as FontkitFont | FontkitCollection;
   if (!("fonts" in loaded)) return loaded as unknown as CalendarPdfOutlineFont;
   const preferred = loaded.fonts.find((candidate) =>
-    /(?:TC|Traditional|JhengHei|PingFang)/i.test(candidate.postscriptName ?? ""));
+    /(?:TC|Traditional|JhengHei|PingFang)/i.test(
+      candidate.postscriptName ?? "",
+    ),
+  );
   const selected = preferred ?? loaded.fonts[0];
   if (!selected) throw new Error("The system font collection is empty");
   return selected as unknown as CalendarPdfOutlineFont;
@@ -1033,18 +1389,31 @@ async function create_calendar_outline_font(font_data: ArrayBuffer | Uint8Array)
 let calendar_pdf_font: Promise<ArrayBuffer> | undefined;
 
 function load_calendar_pdf_font(): Promise<ArrayBuffer> {
-  calendar_pdf_font ??= invoke<ArrayBuffer>("get_calendar_pdf_font").catch((error) => {
-    calendar_pdf_font = undefined;
-    throw new Error(typeof error === "string" ? error : "Couldn't load a system font for PDF export");
-  });
+  calendar_pdf_font ??= invoke<ArrayBuffer>("get_calendar_pdf_font").catch(
+    (error) => {
+      calendar_pdf_font = undefined;
+      throw new Error(
+        typeof error === "string"
+          ? error
+          : "Couldn't load a system font for PDF export",
+      );
+    },
+  );
   return calendar_pdf_font;
 }
 
 function calendar_pdf_needs_outlines(pages: PreparedCalendarPage[]): boolean {
-  return pages.some((page) =>
-    /[^\x00-\x7f]/.test(page.title)
-    || page.days.some((day) => day.tasks.some((entry) =>
-      /[^\x00-\x7f]/.test(task_title(entry)) || /[^\x00-\x7f]/.test(entry.column.name))));
+  return pages.some(
+    (page) =>
+      /[^\x00-\x7f]/.test(page.title) ||
+      page.days.some((day) =>
+        day.tasks.some(
+          (entry) =>
+            /[^\x00-\x7f]/.test(task_title(entry)) ||
+            /[^\x00-\x7f]/.test(entry.column.name),
+        ),
+      ),
+  );
 }
 
 export async function render_calendar_export(
@@ -1054,18 +1423,28 @@ export async function render_calendar_export(
   options: CalendarExportOptions,
 ): Promise<Blob> {
   const prepared = prepare_calendar_pages(periods, title, format, options);
-  if (prepared.length === 0) throw new Error("Select at least one month to export");
+  if (prepared.length === 0)
+    throw new Error("Select at least one month to export");
   if (format === "pdf") {
     const outline_font = calendar_pdf_needs_outlines(prepared)
       ? await create_calendar_outline_font(await load_calendar_pdf_font())
       : undefined;
-    const pdf = await build_vector_calendar_pdf(prepared, options.pdf_paper, outline_font);
+    const pdf = await build_vector_calendar_pdf(
+      prepared,
+      options.pdf_paper,
+      outline_font,
+    );
     return new Blob([pdf], { type: "application/pdf" });
   }
 
-  const estimate = estimate_calendar_export(periods, title, format, { ...options, png_layout: "combined" });
+  const estimate = estimate_calendar_export(periods, title, format, {
+    ...options,
+    png_layout: "combined",
+  });
   if (estimate.too_large) {
-    throw new Error("This multi-month image is too large. Lower the DPI or export fewer months.");
+    throw new Error(
+      "This multi-month image is too large. Lower the DPI or export fewer months.",
+    );
   }
   const output = document.createElement("canvas");
   output.width = estimate.width;
@@ -1076,33 +1455,50 @@ export async function render_calendar_export(
   output_context.fillRect(0, 0, output.width, output.height);
   let y = 0;
   for (const page of prepared) {
-    const rendered = await render_calendar_canvas(page.days, page.title, page.options);
+    const rendered = await render_calendar_canvas(
+      page.days,
+      page.title,
+      page.options,
+    );
     output_context.drawImage(rendered.canvas, 0, y);
     y += rendered.pixel_height;
     rendered.canvas.width = 1;
     rendered.canvas.height = 1;
     await next_frame();
   }
-  const png = new Uint8Array(await (await canvas_blob(output, "image/png")).arrayBuffer());
-  return new Blob([add_png_dpi_metadata(png, normalized_dpi(options.dpi))], { type: "image/png" });
+  const png = new Uint8Array(
+    await (await canvas_blob(output, "image/png")).arrayBuffer(),
+  );
+  return new Blob([add_png_dpi_metadata(png, normalized_dpi(options.dpi))], {
+    type: "image/png",
+  });
 }
 
 function safe_filename_stem(filename: string): string {
   const without_extension = filename.trim().replace(/\.(png|pdf)$/i, "");
-  return without_extension.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/\s+/g, " ") || "calendar";
+  return (
+    without_extension
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
+      .replace(/\s+/g, " ") || "calendar"
+  );
 }
 
 function safe_filename(filename: string, format: CalendarExportFormat): string {
   return `${safe_filename_stem(filename)}.${format}`;
 }
 
-async function available_png_path(directory: string, stem: string): Promise<string> {
+async function available_png_path(
+  directory: string,
+  stem: string,
+): Promise<string> {
   for (let copy = 1; copy <= 999; copy += 1) {
     const suffix = copy === 1 ? "" : ` (${copy})`;
     const file_path = await join(directory, `${stem}${suffix}.png`);
     if (!(await exists(file_path))) return file_path;
   }
-  throw new Error("Couldn't find an available file name in the selected folder");
+  throw new Error(
+    "Couldn't find an available file name in the selected folder",
+  );
 }
 
 export async function save_split_calendar_png_export(
@@ -1120,20 +1516,36 @@ export async function save_split_calendar_png_export(
   if (!directory) return null;
 
   const pages = prepare_calendar_pages(periods, title, "png", options);
-  if (pages.length === 0) throw new Error("Select at least one month to export");
+  if (pages.length === 0)
+    throw new Error("Select at least one month to export");
   const number_width = String(pages.length).length;
   on_progress?.(0, pages.length);
 
   for (let index = 0; index < pages.length; index += 1) {
     const page = pages[index];
-    const rendered = await render_calendar_canvas(page.days, page.title, page.options);
-    const png = new Uint8Array(await (await canvas_blob(rendered.canvas, "image/png")).arrayBuffer());
+    const rendered = await render_calendar_canvas(
+      page.days,
+      page.title,
+      page.options,
+    );
+    const png = new Uint8Array(
+      await (await canvas_blob(rendered.canvas, "image/png")).arrayBuffer(),
+    );
     rendered.canvas.width = 1;
     rendered.canvas.height = 1;
-    const label = safe_filename_stem(periods[index]?.label ?? `Month ${index + 1}`);
+    const label = safe_filename_stem(
+      periods[index]?.label ?? `Month ${index + 1}`,
+    );
     const order = String(index + 1).padStart(number_width, "0");
-    const file_path = await available_png_path(directory, `${order} - ${label}`);
-    await writeFile(file_path, add_png_dpi_metadata(png, normalized_dpi(options.dpi)), { createNew: true });
+    const file_path = await available_png_path(
+      directory,
+      `${order} - ${label}`,
+    );
+    await writeFile(
+      file_path,
+      add_png_dpi_metadata(png, normalized_dpi(options.dpi)),
+      { createNew: true },
+    );
     on_progress?.(index + 1, pages.length);
     await next_frame();
   }
@@ -1146,7 +1558,12 @@ export async function save_calendar_export(
   format: CalendarExportFormat,
 ): Promise<boolean> {
   const file_path = await save({
-    filters: [{ name: format === "pdf" ? "PDF document" : "PNG image", extensions: [format] }],
+    filters: [
+      {
+        name: format === "pdf" ? "PDF document" : "PNG image",
+        extensions: [format],
+      },
+    ],
     defaultPath: safe_filename(filename, format),
   });
   if (!file_path) return false;

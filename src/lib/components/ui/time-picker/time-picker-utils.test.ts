@@ -70,11 +70,35 @@ describe("time picker conversions", () => {
 
   it("formats all 24 hours as two-digit 12-hour values", () => {
     const expected = [
-      "12", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11",
-      "12", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11",
+      "12",
+      "01",
+      "02",
+      "03",
+      "04",
+      "05",
+      "06",
+      "07",
+      "08",
+      "09",
+      "10",
+      "11",
+      "12",
+      "01",
+      "02",
+      "03",
+      "04",
+      "05",
+      "06",
+      "07",
+      "08",
+      "09",
+      "10",
+      "11",
     ];
 
-    expect(expected.map((_, hour) => display12HourValue(hour))).toEqual(expected);
+    expect(expected.map((_, hour) => display12HourValue(hour))).toEqual(
+      expected,
+    );
   });
 
   it("reads and updates Time values without mutating the original", () => {
@@ -87,7 +111,13 @@ describe("time picker conversions", () => {
   });
 
   it("updates minutes using the configured interval", () => {
-    const updated = setDateByType(new Time(9, 0, 30), "13", "minutes", undefined, 5);
+    const updated = setDateByType(
+      new Time(9, 0, 30),
+      "13",
+      "minutes",
+      undefined,
+      5,
+    );
 
     expect(updated.minute).toBe(15);
     expect(updated.second).toBe(30);

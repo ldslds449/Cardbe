@@ -1,38 +1,38 @@
 <script lang="ts">
-  import type { Task } from "../type/task.svelte";
+import type { Task } from "../type/task.svelte";
 
-  let {
-    task,
-    location,
-    left,
-    top,
-    show_below,
-  }: {
-    task: Task | undefined;
-    location?: string;
-    left: number;
-    top: number;
-    show_below: boolean;
-  } = $props();
+let {
+  task,
+  location,
+  left,
+  top,
+  show_below,
+}: {
+  task: Task | undefined;
+  location?: string;
+  left: number;
+  top: number;
+  show_below: boolean;
+} = $props();
 
-  function preview_description(description: string): string {
-    return description
-      .replace(/\[\[([^\]|]+)\|task_\d+\]\]/g, "$1")
-      .replace(/[*_`>#\[\]()~-]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
+function preview_description(description: string): string {
+  return description
+    .replace(/\[\[([^\]|]+)\|task_\d+\]\]/g, "$1")
+    .replace(/[*_`>#\[\]()~-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  function preview_due_time(due_time: Date | undefined): string | undefined {
-    if (!due_time) return undefined;
-    return due_time.toLocaleString([], {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
+function preview_due_time(due_time: Date | undefined): string | undefined {
+  if (!due_time) return undefined;
+  return due_time.toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 </script>
 
 <div

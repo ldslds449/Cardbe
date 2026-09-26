@@ -1,3 +1,3 @@
-import TimePicker from './time-picker.svelte';
+import TimePicker from "./time-picker.svelte";
 
 export { TimePicker };

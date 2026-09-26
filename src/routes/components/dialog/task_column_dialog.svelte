@@ -1,29 +1,29 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
+import { Button } from "$lib/components/ui/button/index.js";
+import * as Dialog from "$lib/components/ui/dialog/index.js";
+import * as Field from "$lib/components/ui/field/index.js";
 
-  import Combobox from "../combobox.svelte";
+import Combobox from "../combobox.svelte";
 
-  let {
-    open = $bindable(),
-    selected_column_id = $bindable(),
-    selection_error = $bindable(),
-    column_items,
-    onSubmit,
-    title = "Add Card",
-    description = "Select the column for the new card.",
-    submit_label = "Continue",
-  }: {
-    open: boolean;
-    selected_column_id: string;
-    selection_error: boolean;
-    column_items: { value: string; label: string }[];
-    onSubmit: () => void;
-    title?: string;
-    description?: string;
-    submit_label?: string;
-  } = $props();
+let {
+  open = $bindable(),
+  selected_column_id = $bindable(),
+  selection_error = $bindable(),
+  column_items,
+  onSubmit,
+  title = "Add Card",
+  description = "Select the column for the new card.",
+  submit_label = "Continue",
+}: {
+  open: boolean;
+  selected_column_id: string;
+  selection_error: boolean;
+  column_items: { value: string; label: string }[];
+  onSubmit: () => void;
+  title?: string;
+  description?: string;
+  submit_label?: string;
+} = $props();
 </script>
 
 <Dialog.Root bind:open>
@@ -54,7 +54,9 @@
             {/if}
           </Field.Field>
           <Field.Field>
-            <Button disabled={selected_column_id.length === 0} type="submit">{submit_label}</Button>
+            <Button disabled={selected_column_id.length === 0} type="submit"
+              >{submit_label}</Button
+            >
           </Field.Field>
         </Field.Group>
       </Field.Set>

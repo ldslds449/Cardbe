@@ -1,14 +1,18 @@
 <script lang="ts">
-	import { cn } from "$lib/utils.js";
-	import type { HTMLAttributes } from "svelte/elements";
+import { cn } from "$lib/utils.js";
+import type { HTMLAttributes } from "svelte/elements";
 
-	let { class: className, children, ...props }: HTMLAttributes<HTMLDivElement> = $props();
+let {
+  class: className,
+  children,
+  ...props
+}: HTMLAttributes<HTMLDivElement> = $props();
 </script>
 
 <div
-	data-slot="input-group"
-	role="group"
-	class={cn(
+  data-slot="input-group"
+  role="group"
+  class={cn(
 		"group/input-group border-input dark:bg-input/30 shadow-xs relative flex w-full items-center rounded-md border outline-none transition-[color,box-shadow]",
 		"h-9 has-[>textarea]:h-auto",
 
@@ -26,7 +30,7 @@
 
 		className
 	)}
-	{...props}
+  {...props}
 >
-	{@render children?.()}
+  {@render children?.()}
 </div>

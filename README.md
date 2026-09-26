@@ -68,9 +68,10 @@ git config core.hooksPath .githooks
 
 | Command | Description |
 | --- | --- |
+| `pnpm format` | Format frontend files with Biome and Rust files with rustfmt |
 | `pnpm tauri dev [port]` | Run an independent desktop development instance; defaults to port 1420 |
 | `pnpm test` | Run frontend unit tests |
-| `pnpm check` | Run Svelte and TypeScript checks |
+| `pnpm check` | Run Svelte, TypeScript, and formatting checks |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust unit tests |
 | `pnpm build` | Build the frontend assets |
 | `pnpm tauri build` | Build installable desktop bundles |

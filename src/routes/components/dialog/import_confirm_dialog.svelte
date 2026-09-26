@@ -1,22 +1,22 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+import { Button } from "$lib/components/ui/button/index.js";
+import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 
-  import type { ImportCandidate } from "../../board.svelte";
+import type { ImportCandidate } from "../../board.svelte";
 
-  let {
-    open = $bindable(),
-    candidate,
-    importing,
-    show_importing,
-    onConfirm,
-  }: {
-    open: boolean;
-    candidate: ImportCandidate | null;
-    importing: boolean;
-    show_importing: boolean;
-    onConfirm: () => void | Promise<void>;
-  } = $props();
+let {
+  open = $bindable(),
+  candidate,
+  importing,
+  show_importing,
+  onConfirm,
+}: {
+  open: boolean;
+  candidate: ImportCandidate | null;
+  importing: boolean;
+  show_importing: boolean;
+  onConfirm: () => void | Promise<void>;
+} = $props();
 </script>
 
 <AlertDialog.Root bind:open>
@@ -24,7 +24,8 @@
     <AlertDialog.Header>
       <AlertDialog.Title>Import board as new?</AlertDialog.Title>
       <AlertDialog.Description>
-        A new board named “{candidate?.board_name ?? "Imported board"}” will be created. Your existing boards will not be changed.
+        A new board named “{candidate?.board_name ?? "Imported board"}” will be
+        created. Your existing boards will not be changed.
       </AlertDialog.Description>
     </AlertDialog.Header>
 
@@ -55,7 +56,6 @@
           <div class="text-xs text-muted-foreground">Templates</div>
         </div>
       </div>
-
     {/if}
 
     <AlertDialog.Footer>

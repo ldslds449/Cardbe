@@ -121,7 +121,8 @@ fn create_node(
 ) -> Result<TreeID, String> {
     let node = tree.create(parent).map_err(|e| e.to_string())?;
     let meta = tree.get_meta(node).map_err(|e| e.to_string())?;
-    meta.insert("kind", kind.as_str()).map_err(|e| e.to_string())?;
+    meta.insert("kind", kind.as_str())
+        .map_err(|e| e.to_string())?;
     meta.insert("id", id.to_string())
         .map_err(|e| e.to_string())?;
     Ok(node)
@@ -257,7 +258,12 @@ pub fn apply_local_delta(
     for archive in &after.archives {
         let node = match task_nodes.get(&archive.task.id) {
             Some(node) => *node,
-            None => create_node(&tree, Some(archive_root), LoroNodeKind::Task, archive.task.id)?,
+            None => create_node(
+                &tree,
+                Some(archive_root),
+                LoroNodeKind::Task,
+                archive.task.id,
+            )?,
         };
         archive_order.push(node);
         let map = tasks

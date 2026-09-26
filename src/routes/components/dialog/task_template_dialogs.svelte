@@ -1,56 +1,56 @@
 <script lang="ts">
-  import EyeIcon from "@lucide/svelte/icons/eye";
-  import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
-  import TrashIcon from "@lucide/svelte/icons/trash-2";
+import EyeIcon from "@lucide/svelte/icons/eye";
+import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
+import PencilIcon from "@lucide/svelte/icons/pencil";
+import TrashIcon from "@lucide/svelte/icons/trash-2";
 
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Empty from "$lib/components/ui/empty/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
+import { Button } from "$lib/components/ui/button/index.js";
+import * as Dialog from "$lib/components/ui/dialog/index.js";
+import * as Empty from "$lib/components/ui/empty/index.js";
+import * as Field from "$lib/components/ui/field/index.js";
+import { Input } from "$lib/components/ui/input/index.js";
 
-  import type { Task, TaskTemplate } from "../../type/task.svelte";
-  import Combobox from "../combobox.svelte";
+import type { Task, TaskTemplate } from "../../type/task.svelte";
+import Combobox from "../combobox.svelte";
 
-  let {
-    open = $bindable(),
-    save_open = $bindable(),
-    selected_template_id = $bindable(),
-    template_column_id = $bindable(),
-    selection_error = $bindable(),
-    save_template_name = $bindable(),
-    saving_template,
-    templates,
-    column_items,
-    onUseTemplate,
-    onPreviewTemplate,
-    onEditTemplate,
-    onDeleteTemplate,
-    onSaveTemplate,
-  }: {
-    open: boolean;
-    save_open: boolean;
-    selected_template_id: string;
-    template_column_id: string;
-    selection_error: boolean;
-    save_template_name: string;
-    saving_template: boolean;
-    templates: TaskTemplate[];
-    column_items: { value: string; label: string }[];
-    onUseTemplate: () => void;
-    onPreviewTemplate: (task: Task) => void;
-    onEditTemplate: (template_id: number) => void;
-    onDeleteTemplate: (template_id: number) => void | Promise<unknown>;
-    onSaveTemplate: () => void | Promise<void>;
-  } = $props();
+let {
+  open = $bindable(),
+  save_open = $bindable(),
+  selected_template_id = $bindable(),
+  template_column_id = $bindable(),
+  selection_error = $bindable(),
+  save_template_name = $bindable(),
+  saving_template,
+  templates,
+  column_items,
+  onUseTemplate,
+  onPreviewTemplate,
+  onEditTemplate,
+  onDeleteTemplate,
+  onSaveTemplate,
+}: {
+  open: boolean;
+  save_open: boolean;
+  selected_template_id: string;
+  template_column_id: string;
+  selection_error: boolean;
+  save_template_name: string;
+  saving_template: boolean;
+  templates: TaskTemplate[];
+  column_items: { value: string; label: string }[];
+  onUseTemplate: () => void;
+  onPreviewTemplate: (task: Task) => void;
+  onEditTemplate: (template_id: number) => void;
+  onDeleteTemplate: (template_id: number) => void | Promise<unknown>;
+  onSaveTemplate: () => void | Promise<void>;
+} = $props();
 
-  const template_items = $derived(
-    templates.map((template) => ({
-      value: template.id.toString(),
-      label: template.name,
-    })),
-  );
+const template_items = $derived(
+  templates.map((template) => ({
+    value: template.id.toString(),
+    label: template.name,
+  })),
+);
 </script>
 
 <Dialog.Root bind:open>
@@ -58,7 +58,8 @@
     <Dialog.Header>
       <Dialog.Title>Task Templates</Dialog.Title>
       <Dialog.Description>
-        Choose a reusable task and the column where the new card should be created.
+        Choose a reusable task and the column where the new card should be
+        created.
       </Dialog.Description>
     </Dialog.Header>
     {#if templates.length === 0}
@@ -105,10 +106,16 @@
           </Field.Group>
           <div class="max-h-48 space-y-2 overflow-y-auto rounded-md border p-2">
             {#each templates as template (template.id)}
-              <div class="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50">
+              <div
+                class="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50"
+              >
                 <div class="min-w-0">
-                  <div class="truncate text-sm font-medium">{template.name}</div>
-                  <div class="truncate text-xs text-muted-foreground">{template.task.title}</div>
+                  <div class="truncate text-sm font-medium">
+                    {template.name}
+                  </div>
+                  <div class="truncate text-xs text-muted-foreground">
+                    {template.task.title}
+                  </div>
                 </div>
                 <div class="flex shrink-0 items-center gap-1">
                   <Button

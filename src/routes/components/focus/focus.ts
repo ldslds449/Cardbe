@@ -15,7 +15,9 @@ export interface FocusGroups {
 }
 
 function sort_by_due_time(left: FocusTask, right: FocusTask): number {
-  return (left.task.due_time?.getTime() ?? 0) - (right.task.due_time?.getTime() ?? 0);
+  return (
+    (left.task.due_time?.getTime() ?? 0) - (right.task.due_time?.getTime() ?? 0)
+  );
 }
 
 export function build_focus_groups(

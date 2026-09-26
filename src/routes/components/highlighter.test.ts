@@ -15,13 +15,19 @@ describe("Markdown code highlighting", () => {
     for (const theme of ["github-light", "github-dark"]) {
       const html = getHighlighter().codeToHtml(code, { lang, theme });
       expect(html).toContain('<span style="color:');
-      if (lang === "python") expect(html).toContain('    ');
-      const parse = createParser([{
-        rehypePlugin: [rehypeShikiFromHighlighter, getHighlighter(), { theme }],
-      }]);
+      if (lang === "python") expect(html).toContain("    ");
+      const parse = createParser([
+        {
+          rehypePlugin: [
+            rehypeShikiFromHighlighter,
+            getHighlighter(),
+            { theme },
+          ],
+        },
+      ]);
       const tree = JSON.stringify(parse(`\`\`\`${lang}\n${code}\n\`\`\``));
       expect(tree).toContain("color:");
-      if (lang === "python") expect(tree).toContain('    ');
+      if (lang === "python") expect(tree).toContain("    ");
     }
   });
 
@@ -36,11 +42,18 @@ describe("Markdown code highlighting", () => {
   it("leaves unknown languages readable without attempting a grammar load", () => {
     expect(loadHighlightLanguage("unknown-language")).toBeUndefined();
     expect(loadHighlightLanguage("__proto__")).toBeUndefined();
-    const parse = createParser([{
-      rehypePlugin: [rehypeShikiFromHighlighter, getHighlighter(), {
-        theme: "github-dark", fallbackLanguage: "text",
-      }],
-    }]);
+    const parse = createParser([
+      {
+        rehypePlugin: [
+          rehypeShikiFromHighlighter,
+          getHighlighter(),
+          {
+            theme: "github-dark",
+            fallbackLanguage: "text",
+          },
+        ],
+      },
+    ]);
     const tree = parse("```unknown-language\nkeep this code\n```");
     expect(JSON.stringify(tree)).toContain("keep this code");
   });

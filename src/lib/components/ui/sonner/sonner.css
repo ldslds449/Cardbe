@@ -1,10 +1,12 @@
-[data-sonner-toaster].toaster [data-sonner-toast][data-styled='true'] {
-	padding-left: 46px;
+[data-sonner-toaster].toaster [data-sonner-toast][data-styled="true"] {
+  padding-left: 46px;
 }
 
-[data-sonner-toaster].toaster [data-sonner-toast][data-styled='true'] [data-close-button] {
-	left: 14px;
-	right: auto;
-	top: 50%;
-	transform: translateY(-50%);
+[data-sonner-toaster].toaster
+  [data-sonner-toast][data-styled="true"]
+  [data-close-button] {
+  left: 14px;
+  right: auto;
+  top: 50%;
+  transform: translateY(-50%);
 }

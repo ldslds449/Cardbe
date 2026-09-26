@@ -49,13 +49,20 @@ impl From<&Ticket> for RemoteInvitation {
     }
 }
 fn endpoint_address(node_id: &str, relay_urls: &[String]) -> Result<EndpointAddr, String> {
-    let key: [u8; 32] = URL_SAFE_NO_PAD.decode(node_id)
+    let key: [u8; 32] = URL_SAFE_NO_PAD
+        .decode(node_id)
         .map_err(|_| "Invalid invitation node ID")?
-        .try_into().map_err(|_| "Invalid invitation node ID")?;
+        .try_into()
+        .map_err(|_| "Invalid invitation node ID")?;
     let id = EndpointId::from_bytes(&key).map_err(|_| "Invalid invitation node ID")?;
-    let addresses = relay_urls.iter().map(|url| {
-        url.parse().map(TransportAddr::Relay).map_err(|_| "Invalid invitation relay URL")
-    }).collect::<Result<Vec<_>, _>>()?;
+    let addresses = relay_urls
+        .iter()
+        .map(|url| {
+            url.parse()
+                .map(TransportAddr::Relay)
+                .map_err(|_| "Invalid invitation relay URL")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(EndpointAddr::from_parts(id, addresses))
 }
 #[derive(Serialize, Deserialize)]
@@ -182,10 +189,7 @@ fn parse_ticket(ticket: &str) -> Result<Ticket, String> {
             .map_err(|_| "Invalid invitation")?,
     )
     .map_err(|_| "Invalid invitation")?;
-    if ticket.version != 1
-        || ticket.invite_id.is_empty()
-        || ticket.secret.is_empty()
-    {
+    if ticket.version != 1 || ticket.invite_id.is_empty() || ticket.secret.is_empty() {
         return Err("Unsupported shared-board invitation".into());
     }
     endpoint_address(&ticket.node_id, &ticket.relay_urls)?;
@@ -198,9 +202,7 @@ fn ensure_invite_not_joined(db: &Database, ticket: &Ticket) -> Result<(), String
         .map_err(|e| e.to_string())?
         .iter()
         .filter_map(|saved| serde_json::from_str::<RemoteInvitation>(saved).ok())
-        .any(|saved| {
-            saved.node_id == ticket.node_id && saved.invite_id == ticket.invite_id
-        });
+        .any(|saved| saved.node_id == ticket.node_id && saved.invite_id == ticket.invite_id);
     if already_joined {
         return Err("This invitation has already been joined".into());
     }
@@ -295,7 +297,10 @@ fn viewer_is_current(request: &Request, permission: IrohPermission, revision: i6
 // Database::iroh_endpoint_seed; Iroh/N0 resolves fresh paths after restarts.
 fn share_address(endpoint: &Endpoint) -> (String, Vec<String>) {
     let address = endpoint.addr();
-    (URL_SAFE_NO_PAD.encode(address.id.as_bytes()), address.relay_urls().map(ToString::to_string).collect())
+    (
+        URL_SAFE_NO_PAD.encode(address.id.as_bytes()),
+        address.relay_urls().map(ToString::to_string).collect(),
+    )
 }
 
 fn ensure_board_owned(board: Option<&Board>) -> Result<(), String> {
@@ -319,8 +324,11 @@ fn snapshot_from_db(
         .lock()
         .map_err(|_| "Application state lock is poisoned")?;
     let mut db = Database::open(path.to_path_buf()).map_err(|e| e.to_string())?;
-    if db.iroh_device_access(&request.invite_id, &request.secret, peer_id, false)
-        .map_err(|e| e.to_string())? != Some(IrohDeviceStatus::Approved) {
+    if db
+        .iroh_device_access(&request.invite_id, &request.secret, peer_id, false)
+        .map_err(|e| e.to_string())?
+        != Some(IrohDeviceStatus::Approved)
+    {
         return Err("Access was declined or revoked. You can request access again.".into());
     }
     // Recheck after taking the app lock: the owner may revoke or change this
@@ -796,7 +804,9 @@ pub fn list_iroh_invites(app: State<'_, SharedAppData>) -> Result<Vec<IrohInvite
                 .into_iter()
                 .map(
                     |(invite_id, board_id, permission, enabled, created_at, _)| IrohInviteSummary {
-                        devices: devices.iter().filter(|(id, _, _)| id == &invite_id)
+                        devices: devices
+                            .iter()
+                            .filter(|(id, _, _)| id == &invite_id)
                             .map(|(_, node_id, status)| IrohDevice {
                                 node_id: node_id.clone(),
                                 status: *status,
@@ -818,9 +828,16 @@ pub fn list_iroh_invites(app: State<'_, SharedAppData>) -> Result<Vec<IrohInvite
 }
 
 #[tauri::command]
-pub fn set_iroh_device_approved(app: State<'_, SharedAppData>, invite_id: String, node_id: String, approved: bool) -> Result<(), String> {
-    app.lock().map_err(|_| "Application state lock is poisoned")?
-        .database.set_iroh_device_approved(&invite_id, &node_id, approved)
+pub fn set_iroh_device_approved(
+    app: State<'_, SharedAppData>,
+    invite_id: String,
+    node_id: String,
+    approved: bool,
+) -> Result<(), String> {
+    app.lock()
+        .map_err(|_| "Application state lock is poisoned")?
+        .database
+        .set_iroh_device_approved(&invite_id, &node_id, approved)
         .map_err(|e| e.to_string())
 }
 
@@ -938,7 +955,9 @@ pub async fn join_iroh_invite(
         device_key(&mut guard.database)?
     };
     let device_id = URL_SAFE_NO_PAD.encode(key.public().as_bytes());
-    let endpoint = Endpoint::builder(presets::N0).secret_key(key).bind()
+    let endpoint = Endpoint::builder(presets::N0)
+        .secret_key(key)
+        .bind()
         .await
         .map_err(|e| e.to_string())?;
     let connection = tokio::time::timeout(
@@ -960,7 +979,11 @@ pub async fn join_iroh_invite(
             &serde_json::to_vec(&Request {
                 invite_id: ticket.invite_id.clone(),
                 secret: ticket.secret.clone(),
-                action: if request_approval { IrohAction::Request } else { IrohAction::Pull },
+                action: if request_approval {
+                    IrohAction::Request
+                } else {
+                    IrohAction::Pull
+                },
                 loro_state_vector: Vec::new(),
                 loro_update: Vec::new(),
                 known_revision: None,
@@ -990,7 +1013,9 @@ pub async fn join_iroh_invite(
             .unwrap_or_else(|| "Invitation was revoked".into());
         return Err(if approval_required {
             format!("APPROVAL_REQUIRED:{device_id}")
-        } else { error });
+        } else {
+            error
+        });
     }
     let mut guard = app
         .lock()
@@ -1018,37 +1043,68 @@ pub async fn request_iroh_board_access(
     request_approval: bool,
 ) -> Result<(bool, String), String> {
     let (remote, key) = {
-        let mut guard = app.lock().map_err(|_| "Application state lock is poisoned")?;
-        let remote = guard.database.iroh_remote(board_id).map_err(|e| e.to_string())?
+        let mut guard = app
+            .lock()
+            .map_err(|_| "Application state lock is poisoned")?;
+        let remote = guard
+            .database
+            .iroh_remote(board_id)
+            .map_err(|e| e.to_string())?
             .ok_or("This is not a received shared board")?;
-        (serde_json::from_str::<RemoteInvitation>(&remote).map_err(|_| "Stored invitation is invalid")?, device_key(&mut guard.database)?)
+        (
+            serde_json::from_str::<RemoteInvitation>(&remote)
+                .map_err(|_| "Stored invitation is invalid")?,
+            device_key(&mut guard.database)?,
+        )
     };
     let device_id = URL_SAFE_NO_PAD.encode(key.public().as_bytes());
     let address = endpoint_address(&remote.node_id, &remote.relay_urls)?;
-    let endpoint = Endpoint::builder(presets::N0).secret_key(key).bind().await.map_err(|e| e.to_string())?;
+    let endpoint = Endpoint::builder(presets::N0)
+        .secret_key(key)
+        .bind()
+        .await
+        .map_err(|e| e.to_string())?;
     let response = tokio::time::timeout(TRANSFER_TIMEOUT, async {
-        let connection = endpoint.connect(address, ALPN).await.map_err(|e| e.to_string())?;
+        let connection = endpoint
+            .connect(address, ALPN)
+            .await
+            .map_err(|e| e.to_string())?;
         let (mut send, mut recv) = connection.open_bi().await.map_err(|e| e.to_string())?;
         let request = Request {
             invite_id: remote.invite_id,
             secret: remote.secret,
-            action: if request_approval { IrohAction::Request } else { IrohAction::Pull },
+            action: if request_approval {
+                IrohAction::Request
+            } else {
+                IrohAction::Pull
+            },
             loro_state_vector: Vec::new(),
             loro_update: Vec::new(),
             known_revision: None,
             known_permission: None,
         };
-        send.write_all(&serde_json::to_vec(&request).map_err(|e| e.to_string())?).await.map_err(|e| e.to_string())?;
+        send.write_all(&serde_json::to_vec(&request).map_err(|e| e.to_string())?)
+            .await
+            .map_err(|e| e.to_string())?;
         send.finish().map_err(|e| e.to_string())?;
-        recv.read_to_end(MAX_MESSAGE).await.map_err(|e| e.to_string())
-    }).await.map_err(|_| "Access request timed out".to_string())??;
+        recv.read_to_end(MAX_MESSAGE)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|_| "Access request timed out".to_string())??;
     endpoint.close().await;
-    let snapshot: Snapshot = serde_json::from_slice(&response).map_err(|_| "Owner sent an invalid response")?;
-    if snapshot.ok { return Ok((true, device_id)); }
+    let snapshot: Snapshot =
+        serde_json::from_slice(&response).map_err(|_| "Owner sent an invalid response")?;
+    if snapshot.ok {
+        return Ok((true, device_id));
+    }
     if snapshot_requires_approval(&snapshot) {
         return Ok((false, device_id));
     }
-    Err(snapshot.error.unwrap_or_else(|| "Access request failed".into()))
+    Err(snapshot
+        .error
+        .unwrap_or_else(|| "Access request failed".into()))
 }
 
 #[tauri::command]
@@ -1092,7 +1148,8 @@ pub async fn sync_iroh_board(
     if status == SyncStatus::Conflict {
         return Err("Resolve the saved sync conflict before syncing again".into());
     }
-    let ticket: RemoteInvitation = serde_json::from_str(&ticket_text).map_err(|_| "Stored invitation is invalid")?;
+    let ticket: RemoteInvitation =
+        serde_json::from_str(&ticket_text).map_err(|_| "Stored invitation is invalid")?;
     let address = endpoint_address(&ticket.node_id, &ticket.relay_urls)
         .map_err(|_| "Stored invitation is invalid")?;
     let (loro_update, loro_state_vector) = {
@@ -1110,7 +1167,9 @@ pub async fn sync_iroh_board(
     if role == BoardRole::Editor && loro_update.is_empty() {
         return Err("Editable board is missing its Loro document. Rejoin the invitation.".into());
     }
-    let endpoint = Endpoint::builder(presets::N0).secret_key(key).bind()
+    let endpoint = Endpoint::builder(presets::N0)
+        .secret_key(key)
+        .bind()
         .await
         .map_err(|e| e.to_string())?;
     // Editors always exchange their Loro state when a document exists. A clean
@@ -1377,7 +1436,11 @@ pub fn resolve_iroh_conflict(
     if let Some(board) = guard.boards.iter_mut().find(|board| board.id == board_id) {
         board.shared_role = permission.into();
         board.sync_revision = revision;
-        board.sync_status = if keep_local { SyncStatus::Pending } else { SyncStatus::Synced };
+        board.sync_status = if keep_local {
+            SyncStatus::Pending
+        } else {
+            SyncStatus::Synced
+        };
         if !keep_local {
             board.name = name;
             board.task_count = remote

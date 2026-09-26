@@ -1,39 +1,39 @@
 <script lang="ts">
-  import * as Sheet from "$lib/components/ui/sheet/index.js";
-  import * as InputGroup from "$lib/components/ui/input-group/index.js";
-  import * as Empty from "$lib/components/ui/empty/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+import * as Sheet from "$lib/components/ui/sheet/index.js";
+import * as InputGroup from "$lib/components/ui/input-group/index.js";
+import * as Empty from "$lib/components/ui/empty/index.js";
+import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
 
-  import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
-  import SearchIcon from "@lucide/svelte/icons/search";
-  import XIcon from "@lucide/svelte/icons/x";
+import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
+import SearchIcon from "@lucide/svelte/icons/search";
+import XIcon from "@lucide/svelte/icons/x";
 
-  import type { Column } from "../../type/column.svelte";
-  import type { Task } from "../../type/task.svelte";
-  import RecurringItem from "./recurring_item.svelte";
-  import { get_recurring_tasks } from "./recurring";
+import type { Column } from "../../type/column.svelte";
+import type { Task } from "../../type/task.svelte";
+import RecurringItem from "./recurring_item.svelte";
+import { get_recurring_tasks } from "./recurring";
 
-  let {
-    open = $bindable(false),
-    columns,
-    onViewTask,
-    onEditTask,
-    onStopRepeat,
-  }: {
-    open: boolean;
-    columns: Column[];
-    onViewTask: (task: Task) => void;
-    onEditTask: (task: Task) => void;
-    onStopRepeat: (task: Task) => void;
-  } = $props();
+let {
+  open = $bindable(false),
+  columns,
+  onViewTask,
+  onEditTask,
+  onStopRepeat,
+}: {
+  open: boolean;
+  columns: Column[];
+  onViewTask: (task: Task) => void;
+  onEditTask: (task: Task) => void;
+  onStopRepeat: (task: Task) => void;
+} = $props();
 
-  let search_text = $state("");
-  let recurring_tasks = $derived(get_recurring_tasks(columns, search_text));
+let search_text = $state("");
+let recurring_tasks = $derived(get_recurring_tasks(columns, search_text));
 
-  function leave_and(callback: (task: Task) => void, task: Task) {
-    open = false;
-    callback(task);
-  }
+function leave_and(callback: (task: Task) => void, task: Task) {
+  open = false;
+  callback(task);
+}
 </script>
 
 <Sheet.Root bind:open>
@@ -44,7 +44,8 @@
         Recurring Tasks
       </Sheet.Title>
       <Sheet.Description>
-        {recurring_tasks.length} active recurring
+        {recurring_tasks.length}
+        active recurring
         {recurring_tasks.length === 1 ? "task" : "tasks"}
       </Sheet.Description>
     </Sheet.Header>

@@ -99,8 +99,14 @@ describe("build_calendar_days", () => {
   });
 
   it("groups matching tasks by local due date and sorts them by time", () => {
-    const later = make_task({ id: "task_2", due_time: new Date(2026, 0, 15, 17, 0) });
-    const earlier = make_task({ id: "task_1", due_time: new Date(2026, 0, 15, 8, 0) });
+    const later = make_task({
+      id: "task_2",
+      due_time: new Date(2026, 0, 15, 17, 0),
+    });
+    const earlier = make_task({
+      id: "task_1",
+      due_time: new Date(2026, 0, 15, 8, 0),
+    });
     const filtered = make_task({
       id: "task_3",
       title: "Unrelated task",
@@ -117,12 +123,17 @@ describe("build_calendar_days", () => {
     );
     const due_day = days.find((day) => day.key === date_key(earlier.due_time!));
 
-    expect(due_day?.tasks.map((entry) => entry.task.id)).toEqual(["task_1", "task_2"]);
+    expect(due_day?.tasks.map((entry) => entry.task.id)).toEqual([
+      "task_1",
+      "task_2",
+    ]);
   });
 
   it("includes archived tasks only when the archived switch is enabled", () => {
     const archived_task = make_task({ id: "task_9" });
-    const archives: Archive[] = [{ time: new Date(2026, 0, 20), task: archived_task }];
+    const archives: Archive[] = [
+      { time: new Date(2026, 0, 20), task: archived_task },
+    ];
 
     const hidden = build_calendar_days(
       [],
@@ -206,7 +217,9 @@ describe("build_calendar_days", () => {
   });
 
   it("can hide recurring previews without hiding the real task", () => {
-    const task = make_task({ recurrence: { frequency: "weekly", interval: 1 } });
+    const task = make_task({
+      recurrence: { frequency: "weekly", interval: 1 },
+    });
     const days = build_calendar_days(
       [make_column([task])],
       new Date(2026, 0, 1),
@@ -233,7 +246,9 @@ describe("count_due_tasks", () => {
   });
 
   it("counts archived due tasks only when they are visible", () => {
-    const archives: Archive[] = [{ time: new Date(), task: make_task({ id: "task_9" }) }];
+    const archives: Archive[] = [
+      { time: new Date(), task: make_task({ id: "task_9" }) },
+    ];
 
     expect(count_due_tasks([], "", archives, false)).toBe(0);
     expect(count_due_tasks([], "", archives, true)).toBe(1);
