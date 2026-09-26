@@ -16,9 +16,9 @@ Cardbe is a local-first desktop task manager built around a flexible Kanban boar
 
 Cardbe persists its application data locally. The repository does not include a sample database or personal task data.
 
-Desktop development builds store their data in `.cardbe-debug/<port>/` at the repository root. The default port is 1420, so `pnpm tauri dev` uses `.cardbe-debug/1420/data.sqlite3`. Release builds continue to use the system app-local-data directory; existing release data is not copied into debug. Release uses Tauri's single-instance plugin. Each Debug port has its own runtime app identifier and data-directory lock, separating WebView storage and preventing two windows from opening the same database at once. The development directory is ignored by Git.
+Desktop development builds store their data in `.cardbe-debug/<port>/` at the repository root. The default port is 1420, so `pnpm dev` uses `.cardbe-debug/1420/data.sqlite3`. Release builds continue to use the system app-local-data directory; existing release data is not copied into debug. Release uses Tauri's single-instance plugin. Each Debug port has its own runtime app identifier and data-directory lock, separating WebView storage and preventing two windows from opening the same database at once. The development directory is ignored by Git.
 
-To develop with two data sets from the same checkout, run `pnpm tauri dev` in one terminal and `pnpm tauri dev 1421` in another. The second uses `.cardbe-debug/1421/data.sqlite3`. Both run Tauri's development watcher, so frontend and Rust changes rebuild independently. Additional ports use separate Cargo output under `src-tauri/target/dev-<port>/`; their first build takes longer and uses more disk space. Debug LAN shares use an available port unless `CARDBE_SHARE_DEV_PORT` is set.
+To develop with two data sets from the same checkout, run `pnpm dev` in one terminal and `pnpm tauri dev 1421` in another. The second uses `.cardbe-debug/1421/data.sqlite3`. Both run Tauri's development watcher, so frontend and Rust changes rebuild independently. Additional ports use separate Cargo output under `src-tauri/target/dev-<port>/`; their first build takes longer and uses more disk space. Debug LAN shares use an available port unless `CARDBE_SHARE_DEV_PORT` is set.
 
 LAN sharing is opt-in: publishing a board starts a local HTTP server reachable by devices on the same network and exposes the selected task content to anyone who has the unguessable share link. Treat the link as sensitive, share only content suitable for that audience, set an expiry where appropriate, and revoke it when finished. Do not use the feature on an untrusted network.
 
@@ -47,10 +47,10 @@ Revoking an invitation stops future sync, but cannot erase board data already do
 git clone https://github.com/ldslds449/Cardbe.git
 cd Cardbe
 pnpm install
-pnpm tauri dev
+pnpm dev
 ```
 
-`pnpm tauri dev` starts the complete desktop app. `pnpm dev` starts only the Vite frontend, so native features such as tray controls, notifications, file dialogs, and LAN sharing are unavailable there.
+`pnpm dev` starts the complete desktop app with sccache enabled. `pnpm frontend:dev` starts only the Vite frontend, so native features such as tray controls, notifications, file dialogs, and LAN sharing are unavailable there.
 
 ## Secret scanning
 
@@ -68,6 +68,8 @@ git config core.hooksPath .githooks
 
 | Command | Description |
 | --- | --- |
+| `pnpm dev` | Run the desktop app with sccache |
+| `pnpm frontend:dev` | Run only the Vite frontend |
 | `pnpm format` | Format frontend files with Biome and Rust files with rustfmt |
 | `pnpm tauri dev [port]` | Run an independent desktop development instance; defaults to port 1420 |
 | `pnpm test` | Run frontend unit tests |

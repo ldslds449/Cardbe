@@ -4,7 +4,7 @@
   "version": "0.8.0",
   "identifier": "com.malecat.cardbe",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm frontend:dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../build"

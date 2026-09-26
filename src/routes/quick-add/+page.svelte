@@ -39,6 +39,7 @@ let selected_board_id = $state("");
 let column_id = $state("");
 let title = $state("");
 let details = $state("");
+let database_ready = $state(false);
 let loading = $state(mode === "task");
 let saving = $state(false);
 let error = $state("");
@@ -46,7 +47,8 @@ let title_input = $state<HTMLInputElement | null>(null);
 let content_root = $state<HTMLElement | null>(null);
 
 const can_save = $derived(
-  !loading &&
+  database_ready &&
+    !loading &&
     !saving &&
     (mode === "task"
       ? title.trim().length > 0 && column_id.length > 0
@@ -120,12 +122,26 @@ onMount(() => {
   if (content_root) resize_observer.observe(content_root);
   schedule_window_resize();
   void document.fonts?.ready?.then(schedule_window_resize);
-  if (mode === "task") void load_columns();
+  void invoke<string | null>("get_startup_error")
+    .then((startup_error) => {
+      if (startup_error) {
+        error = startup_error;
+        loading = false;
+        return;
+      }
+      database_ready = true;
+      if (mode === "task") void load_columns();
+    })
+    .catch((caught) => {
+      error = `Could not check local data startup status: ${String(caught)}`;
+      loading = false;
+    });
   const handle_focus = () => {
     // Hidden Tauri windows retain their last size, so measure every time one
     // is shown. Do not listen to `window.resize`: setSize itself emits it and
     // would create an unnecessary resize loop.
     schedule_window_resize();
+    if (!database_ready) return;
     error = "";
     if (mode === "task") {
       void load_columns(true);

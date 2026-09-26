@@ -46,7 +46,9 @@ pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
 }
 
 pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Error>> {
-    let shortcuts_enabled = global_shortcuts_enabled(app.app_handle()).unwrap_or(true);
+    let database_ready = app.try_state::<SharedAppData>().is_some();
+    let shortcuts_enabled =
+        database_ready && global_shortcuts_enabled(app.app_handle()).unwrap_or(true);
     if shortcuts_enabled {
         if let Err(error) = set_global_shortcuts_enabled(app.app_handle(), true) {
             log::error!(target: "desktop", "Could not enable Cardbe global shortcuts: {error}");
@@ -57,21 +59,21 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
         app,
         "quick-task",
         format!("New Task\t{QUICK_TASK_SHORTCUT}"),
-        true,
+        database_ready,
         None::<&str>,
     )?;
     let quick_note = MenuItem::with_id(
         app,
         "quick-note",
         format!("New Note\t{QUICK_NOTE_SHORTCUT}"),
-        true,
+        database_ready,
         None::<&str>,
     )?;
     let shortcut_toggle = CheckMenuItem::with_id(
         app,
         "toggle-shortcuts",
         "Enable global shortcuts",
-        true,
+        database_ready,
         shortcuts_enabled,
         None::<&str>,
     )?;
@@ -113,9 +115,9 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
             }
         })
         .on_menu_event(move |app, event| match event.id().as_ref() {
-            "quick-task" => show_quick_add_window(app, "quick-task"),
-            "quick-note" => show_quick_add_window(app, "quick-note"),
-            "toggle-shortcuts" => {
+            "quick-task" if database_ready => show_quick_add_window(app, "quick-task"),
+            "quick-note" if database_ready => show_quick_add_window(app, "quick-note"),
+            "toggle-shortcuts" if database_ready => {
                 let was_enabled = match global_shortcuts_enabled(app) {
                     Ok(enabled) => enabled,
                     Err(_) => return,
@@ -161,12 +163,10 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
 
 fn global_shortcuts_enabled<R: Runtime>(app: &AppHandle<R>) -> Result<bool, String> {
     let state = app.state::<SharedAppData>();
-    let guard = state
-        .lock()
-        .map_err(|error| {
-            log::error!(target: "desktop", "Could not read the global shortcut setting: {error}");
-            "Application state lock is poisoned".to_string()
-        })?;
+    let guard = state.lock().map_err(|error| {
+        log::error!(target: "desktop", "Could not read the global shortcut setting: {error}");
+        "Application state lock is poisoned".to_string()
+    })?;
     Ok(guard.stored.settings.global_shortcuts_enabled)
 }
 

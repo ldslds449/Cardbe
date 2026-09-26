@@ -10,6 +10,7 @@ import { Button } from "$lib/components/ui/button/index.js";
 import { Spinner } from "$lib/components/ui/spinner/index.js";
 import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
 import * as Empty from "$lib/components/ui/empty/index.js";
+import * as Card from "$lib/components/ui/card/index.js";
 
 import BugIcon from "@lucide/svelte/icons/bug";
 
@@ -86,6 +87,7 @@ let calendar_visible_date = $state(new Date());
 let calendar_view_mode = $state<CalendarViewMode>("month");
 let calendar_show_archived = $state(false);
 let calendar_show_recurring_previews = $state(true);
+let startup_error = $state<string | null>(null);
 let app_name = $state("");
 let app_name_promise: Promise<string> | undefined;
 let update_check_in_progress = $state(false);
@@ -655,17 +657,34 @@ async function restore_everything() {
 }
 
 onMount(() => {
-  void refresh_device_requests();
-  const device_request_timer = window.setInterval(
-    () => void refresh_device_requests(),
-    5000,
-  );
-  void board.init().then(async () => {
-    restore_managed_share_state(
-      board.boards.length === 1 ? board.boards[0].id : undefined,
-    );
-    await restore_all_managed_shares();
-  });
+  let device_request_timer: number | undefined;
+  void invoke<string | null>("get_startup_error")
+    .then((error) => {
+      if (error) {
+        startup_error = error;
+        requestAnimationFrame(() =>
+          window.dispatchEvent(new Event("cardbe:workspace-ready")),
+        );
+        return;
+      }
+      void refresh_device_requests();
+      device_request_timer = window.setInterval(
+        () => void refresh_device_requests(),
+        5000,
+      );
+      void board.init().then(async () => {
+        restore_managed_share_state(
+          board.boards.length === 1 ? board.boards[0].id : undefined,
+        );
+        await restore_all_managed_shares();
+      });
+    })
+    .catch((error) => {
+      startup_error = `Could not check local data startup status: ${String(error)}`;
+      requestAnimationFrame(() =>
+        window.dispatchEvent(new Event("cardbe:workspace-ready")),
+      );
+    });
   void load_app_name();
 
   const update_check_timeout = window.setTimeout(() => {
@@ -798,7 +817,8 @@ onMount(() => {
     }
   });
   return () => {
-    window.clearInterval(device_request_timer);
+    if (device_request_timer !== undefined)
+      window.clearInterval(device_request_timer);
     window.clearTimeout(update_check_timeout);
     void data_changed_listener.then((unlisten) => unlisten());
     void iroh_remote_push_listener.then((unlisten) => unlisten());
@@ -1263,7 +1283,56 @@ function switch_view(view: WorkspaceView) {
 <div class="flex h-screen min-h-0 flex-col bg-background">
   <ModeWatcher />
 
-  {#if board.column_fetch_error}
+  {#if startup_error}
+    <main
+      class="grid min-h-0 flex-1 place-items-center overflow-y-auto bg-muted/30 p-6"
+      aria-labelledby="startup-error-title"
+    >
+      <Card.Root
+        class="w-full max-w-2xl gap-0 overflow-hidden border-border bg-card p-0 shadow-sm"
+      >
+        <header class="flex items-start gap-4 border-b px-6 py-6">
+          <div
+            class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/20"
+            aria-hidden="true"
+          >
+            <BugIcon class="size-5" />
+          </div>
+          <div class="min-w-0 space-y-1.5">
+            <p
+              class="text-xs font-medium uppercase tracking-wider text-muted-foreground"
+            >
+              Local database
+            </p>
+            <h1
+              id="startup-error-title"
+              class="text-lg font-semibold tracking-tight"
+            >
+              Couldn't open your data
+            </h1>
+            <p class="text-sm leading-relaxed text-muted-foreground">
+              Cardbe opened, but couldn't read its local database. The workspace
+              can't load until this issue is resolved.
+            </p>
+          </div>
+        </header>
+
+        <Card.Content class="grid gap-3 py-5">
+          <div class="flex items-center gap-2 text-sm font-medium">
+            <span class="size-2 rounded-full bg-destructive" aria-hidden="true"></span>
+            Error details
+          </div>
+          <pre
+            class="max-h-[40vh] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-destructive/20 bg-muted/50 px-4 py-3 font-mono text-xs leading-relaxed text-foreground selection:bg-primary/20"
+            role="alert"
+          >{startup_error}</pre>
+          <p class="text-xs text-muted-foreground">
+            This error is also recorded in the Cardbe app log.
+          </p>
+        </Card.Content>
+      </Card.Root>
+    </main>
+  {:else if board.column_fetch_error}
     <Empty.Root class="w-full">
       <Empty.Header>
         <Empty.Media variant="icon">

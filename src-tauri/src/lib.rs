@@ -21,6 +21,17 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
 
+struct StartupError(Mutex<Option<String>>);
+
+#[tauri::command]
+fn get_startup_error(state: tauri::State<'_, StartupError>) -> Result<Option<String>, String> {
+    state
+        .0
+        .lock()
+        .map(|error| error.clone())
+        .map_err(|_| "Startup error state lock is poisoned".to_string())
+}
+
 #[cfg(all(debug_assertions, desktop))]
 fn debug_port() -> io::Result<u16> {
     let port = match std::env::var("CARDBE_DEV_PORT") {
@@ -170,32 +181,48 @@ pub fn run() {
             let app_data_dir = data_dir(app);
             #[cfg(all(debug_assertions, desktop))]
             let debug_data_lock = DebugDataLock::acquire(&app_data_dir)?;
-            let loaded = storage::load(&app_data_dir).map_err(|error| {
-                log::error!(target: "storage", "Could not load application data: {error}");
-                error
-            })?;
-            for message in &loaded.recovery_messages {
-                log::warn!(target: "storage", "Application data recovery: {message}");
-            }
             #[cfg(all(debug_assertions, desktop))]
             app.manage(debug_data_lock);
-            let iroh_database_path = loaded.database.path().to_path_buf();
-            app.manage(Mutex::new(
-                AppData::new(
-                    loaded.stored,
-                    loaded.database,
-                    loaded.recovery_messages,
-                    loaded.archives_loaded,
-                )
-                .map_err(std::io::Error::other)?,
-            ));
             app.manage(share::LanShareState::default());
             app.manage(iroh_share::IrohShareState::default());
-            let iroh_app = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                let network = iroh_app.state::<iroh_share::IrohShareState>();
-                iroh_share::restore_iroh_host(&network, iroh_database_path, iroh_app.clone()).await;
-            });
+
+            let startup_result = storage::load(&app_data_dir)
+                .map_err(|error| {
+                    format!(
+                        "{error}\n\nDatabase: {}",
+                        app_data_dir.join("data.sqlite3").display()
+                    )
+                })
+                .and_then(|loaded| {
+                    for message in &loaded.recovery_messages {
+                        log::warn!(target: "storage", "Application data recovery: {message}");
+                    }
+                    let database_path = loaded.database.path().to_path_buf();
+                    let data = AppData::new(
+                        loaded.stored,
+                        loaded.database,
+                        loaded.recovery_messages,
+                        loaded.archives_loaded,
+                    )
+                    .map_err(|error| format!("{error}\n\nDatabase: {}", database_path.display()))?;
+                    Ok((data, database_path))
+                });
+            match startup_result {
+                Ok((data, database_path)) => {
+                    app.manage(StartupError(Mutex::new(None)));
+                    app.manage(Mutex::new(data));
+                    let iroh_app = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        let network = iroh_app.state::<iroh_share::IrohShareState>();
+                        iroh_share::restore_iroh_host(&network, database_path, iroh_app.clone())
+                            .await;
+                    });
+                }
+                Err(error) => {
+                    log::error!(target: "storage", "Could not load application data: {error}");
+                    app.manage(StartupError(Mutex::new(Some(error))));
+                }
+            }
             #[cfg(desktop)]
             desktop::setup(app)?;
             #[cfg(all(debug_assertions, desktop))]
@@ -263,6 +290,7 @@ pub fn run() {
             settings::get_settings,
             settings::set_notify_enabled,
             settings::take_recovery_messages,
+            get_startup_error,
             share::publish_lan_share,
             share::revoke_lan_share,
             templates::get_task_templates,
