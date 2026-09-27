@@ -183,11 +183,7 @@ fn set_global_shortcuts_enabled<R: Runtime>(
     let previous_registration = shortcuts.map(|shortcut| manager.is_registered(shortcut));
 
     let result: Result<(), String> = (|| {
-        for (shortcut, was_registered) in shortcuts
-            .iter()
-            .copied()
-            .zip(previous_registration.into_iter())
-        {
+        for (shortcut, was_registered) in shortcuts.iter().copied().zip(previous_registration) {
             if enabled && !was_registered {
                 manager
                     .register(shortcut)
@@ -203,11 +199,7 @@ fn set_global_shortcuts_enabled<R: Runtime>(
     })();
 
     if result.is_err() {
-        for (shortcut, was_registered) in shortcuts
-            .iter()
-            .copied()
-            .zip(previous_registration.into_iter())
-        {
+        for (shortcut, was_registered) in shortcuts.iter().copied().zip(previous_registration) {
             if was_registered {
                 if let Err(error) = manager.register(shortcut) {
                     log::error!(target: "desktop", "Could not restore a global shortcut after a failed update: {error}");

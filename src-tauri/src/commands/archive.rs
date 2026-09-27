@@ -122,7 +122,7 @@ pub fn archive_all_tasks(
     let time = current_time_millis()?;
     update_stored_with_archives_for_board(&state, expected_board_id, |data| {
         let column = column_index(data, column_id)?;
-        let tasks = data.columns[column].tasks.drain(..).collect::<Vec<_>>();
+        let tasks = std::mem::take(&mut data.columns[column].tasks);
         let mut next_tasks = Vec::new();
         let mut archives = Vec::with_capacity(tasks.len());
         for task in tasks {

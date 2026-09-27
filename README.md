@@ -72,11 +72,11 @@ git config core.hooksPath .githooks
 | `pnpm dev`                                        | Run the desktop app with sccache                                       |
 | `pnpm frontend:dev`                               | Run only the Vite frontend                                             |
 | `pnpm format`                                     | Format frontend files with Prettier and Rust files with rustfmt        |
-| `pnpm lint`                                       | Check frontend lint rules with Biome                                   |
-| `pnpm lint:fix`                                   | Apply Biome safe lint fixes                                            |
+| `pnpm lint`                                       | Check frontend and Rust lint rules                                     |
+| `pnpm lint:fix`                                   | Apply frontend and Rust lint fixes                                     |
 | `pnpm tauri dev [port]`                           | Run an independent desktop development instance; defaults to port 1420 |
 | `pnpm frontend:test`                              | Run frontend unit tests                                                |
-| `pnpm check`                                      | Run Svelte, TypeScript, and formatting checks                          |
+| `pnpm check`                                      | Run frontend, formatting, and Rust checks                              |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust unit tests                                                    |
 | `pnpm frontend:build`                             | Build the frontend assets                                              |
 | `pnpm tauri build`                                | Build installable desktop bundles                                      |

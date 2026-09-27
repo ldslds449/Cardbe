@@ -104,10 +104,10 @@ fn active_nodes(tree: &LoroTree, kind: LoroNodeKind) -> Result<HashMap<i64, Tree
     // ponytail: Scan the board per save; add a persisted ID index if large boards make saves slow.
     let mut result = HashMap::new();
     for node in tree.get_nodes(false) {
-        if node_kind(tree, node.id)? == kind {
-            if result.insert(node_id(tree, node.id)?, node.id).is_some() {
-                return Err("Duplicate Loro tree node ID".into());
-            }
+        if node_kind(tree, node.id)? == kind
+            && result.insert(node_id(tree, node.id)?, node.id).is_some()
+        {
+            return Err("Duplicate Loro tree node ID".into());
         }
     }
     Ok(result)

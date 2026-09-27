@@ -17,6 +17,8 @@ use std::{
 };
 
 type StorageResult<T> = Result<T, Box<dyn std::error::Error>>;
+type IrohInviteRecord = (String, i64, String, IrohPermission, bool);
+type IrohInviteSummaryRecord = (String, i64, IrohPermission, bool, String, String);
 
 macro_rules! impl_text_enum {
     ($type:ty { $($value:literal => $variant:path),+ $(,)? }) => {
@@ -775,7 +777,7 @@ impl Database {
             .query_map([], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?)
     }
-    pub fn iroh_invites(&self) -> StorageResult<Vec<(String, i64, String, IrohPermission, bool)>> {
+    pub fn iroh_invites(&self) -> StorageResult<Vec<IrohInviteRecord>> {
         Ok(self
             .connection
             .prepare(
@@ -792,9 +794,7 @@ impl Database {
             })?
             .collect::<Result<Vec<_>, _>>()?)
     }
-    pub fn iroh_invite_summaries(
-        &self,
-    ) -> StorageResult<Vec<(String, i64, IrohPermission, bool, String, String)>> {
+    pub fn iroh_invite_summaries(&self) -> StorageResult<Vec<IrohInviteSummaryRecord>> {
         Ok(self.connection.prepare("SELECT invite_id,board_id,permission,enabled,created_at,secret FROM cardbe_iroh_invites ORDER BY created_at DESC")?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0, r.get(4)?, r.get(5)?)))?
             .collect::<Result<Vec<_>, _>>()?)
@@ -893,6 +893,7 @@ impl Database {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn use_iroh_conflict_remote(
         &mut self,
         board_id: i64,

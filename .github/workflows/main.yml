@@ -1,14 +1,16 @@
-name: Main CI
+name: CI
 
 on:
+  pull_request:
+    branches: [develop]
   push:
-    branches: [main]
+    branches: [develop, main]
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  check:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,5 +32,5 @@ jobs:
       - run: pnpm frontend:test
       - run: cargo check --manifest-path src-tauri/Cargo.toml --locked
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked
-      - run: pnpm tauri build
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: pnpm tauri build

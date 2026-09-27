@@ -331,6 +331,7 @@ impl LanShareState {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn publish_lan_share(
     app: AppHandle,
     state: State<'_, LanShareState>,

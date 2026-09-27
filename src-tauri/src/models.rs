@@ -161,16 +161,12 @@ pub struct TaskTemplate {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ColumnSort {
+    #[default]
     Custom,
     DueDateAsc,
     DueDateDesc,
-}
-
-impl Default for ColumnSort {
-    fn default() -> Self {
-        Self::Custom
-    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]

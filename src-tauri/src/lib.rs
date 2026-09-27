@@ -89,6 +89,7 @@ impl DebugDataLock {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(&lock_path)?;
         match file.try_lock() {
             Ok(()) => Ok(Self { _file: file }),

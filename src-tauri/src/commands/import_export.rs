@@ -172,12 +172,14 @@ pub fn import_board_as_new(
     if name.is_empty() || name.len() > 200 {
         return Err("Invalid board name".into());
     }
-    let mut data = StoredData::default();
-    data.columns = import.columns;
-    data.archives = import.archives;
-    data.templates = import.templates;
-    data.label_recency = import.label_recency;
-    data.schema_version = CURRENT_SCHEMA_VERSION;
+    let mut data = StoredData {
+        columns: import.columns,
+        archives: import.archives,
+        templates: import.templates,
+        label_recency: import.label_recency,
+        schema_version: CURRENT_SCHEMA_VERSION,
+        ..StoredData::default()
+    };
     data.repair_column_ids();
     data.repair_task_ids();
     data.repair_template_ids();
