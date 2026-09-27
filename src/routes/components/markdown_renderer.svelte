@@ -5,6 +5,7 @@
   import { toast } from "svelte-sonner";
 
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import Link2Icon from "@lucide/svelte/icons/link-2";
 
   import Markdown from "svelte-exmarkdown";
@@ -128,7 +129,15 @@
   }
 
   function prevent_task_drag(node: HTMLElement) {
-    const stop_pointerdown = (event: PointerEvent) => event.stopPropagation();
+    const stop_pointerdown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest('[data-slot="scroll-area-scrollbar"]')
+      ) {
+        return;
+      }
+      event.stopPropagation();
+    };
     node.addEventListener("pointerdown", stop_pointerdown);
 
     return {
@@ -281,12 +290,14 @@
     {#snippet pre(props)}
       {@const { children, class: className, ...rest } = props}
       <div
-        class="my-3 min-w-0 max-w-full overflow-x-auto overflow-y-hidden rounded-md border"
+        class="my-3 min-w-0 max-w-full rounded-md border"
         use:prevent_task_drag
       >
-        <pre
-          class="{className ?? ''} m-0 min-w-max p-3 text-sm"
-          {...rest}>{@render children?.()}</pre>
+        <ScrollArea orientation="horizontal" class="min-w-0 max-w-full">
+          <pre
+            class="{className ?? ''} m-0 min-w-max p-3 text-sm"
+            {...rest}>{@render children?.()}</pre>
+        </ScrollArea>
       </div>
     {/snippet}
     {#snippet code(props)}

@@ -203,6 +203,13 @@
         { activate: (event: PointerEvent) => void } | undefined,
       onEvent(event: PointerEvent) {
         if (event.type === "pointerdown") {
+          if (
+            event.target instanceof Element &&
+            event.target.closest('[data-slot="scroll-area-scrollbar"]')
+          ) {
+            this.abort();
+            return;
+          }
           origin = { x: event.clientX, y: event.clientY };
         } else if (
           event.type === "pointermove" &&
