@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { DragDropProvider } from "@dnd-kit-svelte/svelte";
+  import {
+    DragDropProvider,
+    KeyboardSensor,
+    PointerSensor,
+  } from "@dnd-kit-svelte/svelte";
   import SquirrelIcon from "@lucide/svelte/icons/squirrel";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
@@ -191,6 +195,42 @@
       }
     }
   }
+
+  function distance_activation_constraint(value: number) {
+    let origin: { x: number; y: number } | undefined;
+    return {
+      controller: undefined as
+        { activate: (event: PointerEvent) => void } | undefined,
+      onEvent(event: PointerEvent) {
+        if (event.type === "pointerdown") {
+          origin = { x: event.clientX, y: event.clientY };
+        } else if (
+          event.type === "pointermove" &&
+          origin &&
+          Math.hypot(event.clientX - origin.x, event.clientY - origin.y) >=
+            value
+        ) {
+          this.controller?.activate(event);
+        } else if (
+          event.type === "pointerup" ||
+          event.type === "pointercancel"
+        ) {
+          this.abort();
+        }
+      },
+      abort() {
+        origin = undefined;
+      },
+    };
+  }
+
+  // ponytail: distance-only activation keeps clicks reliable; add a long-press sensor if needed.
+  const dnd_sensors = [
+    PointerSensor.configure({
+      activationConstraints: () => [distance_activation_constraint(8)] as never,
+    }),
+    KeyboardSensor,
+  ];
 </script>
 
 {#if board.columns.length === 0}
@@ -213,6 +253,7 @@
   </Empty.Root>
 {:else}
   <DragDropProvider
+    sensors={dnd_sensors}
     onDragStart={handle_drag_start}
     onDragEnd={handle_drag_end}
     onDragOver={handle_drag_over}

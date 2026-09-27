@@ -125,6 +125,7 @@
   data-task-card
   class="group relative max-w-full select-none overflow-hidden"
   {@attach ref}
+  ondblclick={read_only ? undefined : onViewTask}
   oncontextmenu={(event) => {
     if (read_only) {
       return;
@@ -149,7 +150,6 @@
           }
         }
       : undefined}
-    ondblclick={read_only ? undefined : onViewTask}
   >
     <Card.Header class="w-full px-4">
       <Card.Title
