@@ -8,11 +8,19 @@ const port = Number(process.env.CARDBE_DEV_PORT ?? "1420");
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error("CARDBE_DEV_PORT must be a port between 1 and 65535");
 }
+const isCustomPort = port !== 1420;
+const ownGeneratedDir = `/.svelte-kit-dev-${port}/`;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [tailwindcss(), sveltekit()],
-  ...(port !== 1420 ? { cacheDir: `node_modules/.vite-cardbe-${port}` } : {}),
+  // ponytail: custom ports skip the fixed root tsconfig; SvelteKit owns the generated config.
+  ...(isCustomPort
+    ? {
+        cacheDir: `node_modules/.vite-cardbe-${port}`,
+        esbuild: { tsconfigRaw: JSON.stringify({ compilerOptions: {} }) },
+      }
+    : {}),
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
@@ -27,7 +35,14 @@ export default defineConfig(async () => ({
     hmr: { timeout: 30000 },
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      ignored: (filePath) => {
+        const normalizedPath = filePath.replaceAll("\\", "/");
+        return (
+          normalizedPath.includes("/src-tauri/") ||
+          (normalizedPath.includes("/.svelte-kit-dev-") &&
+            !normalizedPath.includes(ownGeneratedDir))
+        );
+      },
     },
   },
   resolve: {

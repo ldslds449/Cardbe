@@ -135,6 +135,15 @@ pub struct PersistStats {
 impl Database {
     pub(crate) fn open(path: PathBuf) -> StorageResult<Self> {
         let connection = Connection::open(&path)?;
+        let sqlite_user_version: i64 =
+            connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        log::debug!(
+            target: "storage.database",
+            "Opened database path={} sqlite_user_version={} current_schema_version={}",
+            path.display(),
+            sqlite_user_version,
+            CURRENT_SCHEMA_VERSION,
+        );
         connection.execute_batch(
             "PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
@@ -298,10 +307,29 @@ impl Database {
         self.migrate_multiboard_schema(legacy)?;
         let boards = self.boards()?;
         if let Some(board) = boards.first() {
-            let id = namespaced_metadata_parse::<i64>(&self.connection, "active_board_id")?
+            let requested_active_board_id =
+                namespaced_metadata_parse::<i64>(&self.connection, "active_board_id")?;
+            let id = requested_active_board_id
                 .filter(|id| boards.iter().any(|board| board.id == *id))
                 .unwrap_or(board.id);
             let stored = self.load_board(id)?;
+            if requested_active_board_id != Some(id) {
+                log::warn!(
+                    target: "storage.database",
+                    "Stored active board {:?} was not selected; using active_board_id={} board_count={}",
+                    requested_active_board_id,
+                    id,
+                    boards.len(),
+                );
+            }
+            log::debug!(
+                target: "storage.database",
+                "Boards initialized board_count={} active_board_id={} schema_version={} current_schema_version={}",
+                boards.len(),
+                id,
+                stored.schema_version,
+                CURRENT_SCHEMA_VERSION,
+            );
             return Ok((boards, stored));
         }
         self.connection
@@ -1558,22 +1586,30 @@ pub fn load(app_data_dir: &Path) -> StorageResult<LoadedData> {
     let database_path = app_data_dir.join("data.sqlite3");
     let database_existed = database_path.try_exists()?;
     let mut messages = Vec::new();
+    log::debug!(
+        target: "storage.database",
+        "Loading database path={} file_exists={} current_schema_version={}",
+        database_path.display(),
+        database_existed,
+        CURRENT_SCHEMA_VERSION,
+    );
     let mut database = Database::open(database_path)?;
+    let storage_initialized = database.is_initialized()?;
+    let legacy_schema_version = metadata_parse::<u32>(&database.connection, "schema_version")?;
+    log::debug!(
+        target: "storage.database",
+        "Database state storage_initialized={} legacy_schema_version={:?}",
+        storage_initialized,
+        legacy_schema_version,
+    );
 
-    let (legacy, _archives_loaded) = if database_existed && database.is_initialized()? {
+    let (legacy, _archives_loaded) = if database_existed && storage_initialized {
         let archives_loaded = !database.lazy_archives_ready()?;
         // Snapshots must include archives even when the legacy store is still
         // using lazy archive hydration, otherwise the first board migration
         // would omit them.
         let stored = database.load()?;
-        let (migrated, changed) = stored.clone().migrate().map_err(std::io::Error::other)?;
-        if changed {
-            if archives_loaded {
-                database.persist_diff(&stored, &migrated)?;
-            } else {
-                database.persist_diff_without_archives(&stored, &migrated)?;
-            }
-        }
+        let (migrated, _) = stored.migrate().map_err(std::io::Error::other)?;
         if archives_loaded {
             database.mark_lazy_archives_ready()?;
         }
@@ -1595,7 +1631,7 @@ pub fn load(app_data_dir: &Path) -> StorageResult<LoadedData> {
     // Board snapshots were introduced after the original single-board SQLite
     // layout.  The first run copies that complete document into the default
     // board before any future writes, preserving every old field verbatim.
-    let (_boards, stored) = database.initialize_boards(&legacy)?;
+    let (boards, stored) = database.initialize_boards(&legacy)?;
     let (mut stored, changed) = stored.migrate().map_err(std::io::Error::other)?;
     if changed {
         database.persist_diff(&legacy, &stored)?;
@@ -1603,6 +1639,16 @@ pub fn load(app_data_dir: &Path) -> StorageResult<LoadedData> {
     if !_archives_loaded {
         stored.archives.clear();
     }
+    log::debug!(
+        target: "storage.database",
+        "Database ready board_count={} active_board_id={} schema_version={} schema_migrated={} archives_loaded={} recovery_messages={}",
+        boards.len(),
+        database.active_board_id(),
+        stored.schema_version,
+        changed,
+        _archives_loaded,
+        messages.len(),
+    );
     Ok(LoadedData {
         stored,
         database,
@@ -3063,6 +3109,34 @@ mod tests {
         let reloaded = load(&dir).unwrap();
         assert_eq!(reloaded.stored, stored);
         drop(reloaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn migrates_legacy_sqlite_before_persisting_schema_changes() {
+        let dir = test_dir("sqlite-schema-migration");
+        fs::create_dir_all(&dir).unwrap();
+        let database_path = dir.join("data.sqlite3");
+        let mut legacy = StoredData::default();
+        legacy.schema_version = CURRENT_SCHEMA_VERSION - 1;
+        legacy.columns.push(Column {
+            id: 0,
+            name: "Legacy".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: Vec::new(),
+        });
+        legacy.next_column_id = 1;
+
+        let mut database = Database::open(database_path).unwrap();
+        database.replace_all(&legacy).unwrap();
+        drop(database);
+
+        let loaded = load(&dir).unwrap();
+        assert_ne!(loaded.database.active_board_id(), 0);
+        assert_eq!(loaded.database.boards().unwrap().len(), 1);
+        assert_eq!(loaded.stored.columns[0].name, "Legacy");
+        drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }
 
