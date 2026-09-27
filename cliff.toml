@@ -1,0 +1,22 @@
+[changelog]
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+format = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+filter_commits = true
+commit_parsers = [
+  { message = "^feat", group = "✨ Features" },
+  { message = "^fix", group = "🐛 Bug Fixes" },
+  { message = "^perf", group = "⚡ Performance" },
+  { message = "^(refactor|chore|ci|test|docs)", skip = true },
+]

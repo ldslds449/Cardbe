@@ -1,0 +1,58 @@
+name: Draft Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify tag is on main
+        shell: bash
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: pnpm install --frozen-lockfile
+      - uses: taiki-e/install-action@git-cliff
+      - name: Generate release notes
+        id: notes
+        shell: pwsh
+        run: |
+          git-cliff --current --output release-notes.md
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $delimiter = [guid]::NewGuid().ToString()
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "content<<$delimiter"
+          Get-Content -Raw release-notes.md | Add-Content -Path $env:GITHUB_OUTPUT
+          Add-Content -Path $env:GITHUB_OUTPUT -Value $delimiter
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Cardbe ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.content }}
+          releaseDraft: true
+          args: ${{ matrix.args }}
