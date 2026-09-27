@@ -57,20 +57,30 @@ export class LatestShareSyncQueue<T> {
   private settle_through(id: string, generation: number, error?: unknown) {
     const waiters = this.waiters.get(id) ?? [];
     const remaining = waiters.filter((waiter) => {
-      if (waiter.generation > generation) return true;
-      if (error === undefined) waiter.resolve();
-      else waiter.reject(error);
+      if (waiter.generation > generation) {
+        return true;
+      }
+      if (error === undefined) {
+        waiter.resolve();
+      } else {
+        waiter.reject(error);
+      }
       return false;
     });
-    if (remaining.length) this.waiters.set(id, remaining);
-    else this.waiters.delete(id);
+    if (remaining.length) {
+      this.waiters.set(id, remaining);
+    } else {
+      this.waiters.delete(id);
+    }
   }
 
   private async drain(id: string) {
     try {
       while (true) {
         const next = this.latest.get(id);
-        if (!next) return;
+        if (!next) {
+          return;
+        }
         this.latest.delete(id);
         this.on_start(id);
         try {
@@ -91,7 +101,9 @@ export class LatestShareSyncQueue<T> {
           this.settle_through(id, next.generation, error);
           // A newer request may have arrived while the failed one
           // was running. Let it have its own terminal result.
-          if (!this.latest.has(id)) return;
+          if (!this.latest.has(id)) {
+            return;
+          }
         }
       }
     } finally {

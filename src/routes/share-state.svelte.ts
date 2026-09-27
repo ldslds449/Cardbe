@@ -17,12 +17,16 @@ export interface ShareSyncState {
 }
 
 function managed_share_storage(): Storage | undefined {
-  if (typeof window === "undefined") return undefined;
+  if (typeof window === "undefined") {
+    return undefined;
+  }
   return window.localStorage;
 }
 
 function is_unexpired(share: ManagedShare): boolean {
-  if (!share.expires_at) return true;
+  if (!share.expires_at) {
+    return true;
+  }
   const expiration = Date.parse(share.expires_at);
   return Number.isFinite(expiration) && expiration > Date.now();
 }
@@ -34,11 +38,15 @@ export class ManagedShareState {
 
   restore(single_board_id?: number) {
     const storage = managed_share_storage();
-    if (!storage) return;
+    if (!storage) {
+      return;
+    }
 
     try {
       const value = storage.getItem(MANAGED_SHARE_STORAGE_KEY);
-      if (!value) return;
+      if (!value) {
+        return;
+      }
 
       const persisted = JSON.parse(value) as Partial<PersistedManagedShares>;
       const candidates = Array.isArray(persisted.shares)
@@ -48,7 +56,7 @@ export class ManagedShareState {
           : [];
       const unique = new Map<string, ManagedShare>();
       for (const share of candidates) {
-        if (share?.id && is_unexpired(share))
+        if (share?.id && is_unexpired(share)) {
           unique.set(share.id, {
             ...share,
             board_id: Number.isInteger(share.board_id)
@@ -61,6 +69,7 @@ export class ManagedShareState {
                 ? share.enabled
                 : false,
           });
+        }
       }
 
       this.shares = [...unique.values()];
@@ -126,7 +135,9 @@ export class ManagedShareState {
 
   private persist() {
     const storage = managed_share_storage();
-    if (!storage) return;
+    if (!storage) {
+      return;
+    }
     if (this.shares.length === 0) {
       storage.removeItem(MANAGED_SHARE_STORAGE_KEY);
       return;

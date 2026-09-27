@@ -1,540 +1,590 @@
 <script lang="ts">
-import { logger } from "$lib/logger";
-import { invoke } from "@tauri-apps/api/core";
-import { toast } from "svelte-sonner";
-import PlusIcon from "@lucide/svelte/icons/plus";
-import PencilIcon from "@lucide/svelte/icons/pencil";
-import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
-import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-import SearchIcon from "@lucide/svelte/icons/search";
-import Trash2Icon from "@lucide/svelte/icons/trash-2";
-import PowerIcon from "@lucide/svelte/icons/power";
-import CopyIcon from "@lucide/svelte/icons/copy";
-import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
-import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
-import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
-import { Button } from "$lib/components/ui/button/index.js";
-import Calendar from "$lib/components/ui/calendar/calendar.svelte";
-import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-import * as Dialog from "$lib/components/ui/dialog/index.js";
-import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-import { Input } from "$lib/components/ui/input/index.js";
-import { TagInput } from "$lib/components/ui/tag-input/index.js";
-import * as Popover from "$lib/components/ui/popover/index.js";
-import {
-  deserialize_column,
-  type Column,
-  type ColumnSerialized,
-} from "../../type/column.svelte";
-import type { BoardRole } from "../../board.svelte";
-import {
-  build_share_snapshot,
-  forget_managed_share,
-  is_managed_share_enabled,
-  load_managed_shares,
-  publish_share,
-  rebind_managed_share,
-  revoke_share,
-  resolve_share_selection,
-  save_managed_share,
-  share_content_signature,
-  type ManagedShare,
-} from "../../share";
+  import { logger } from "$lib/logger";
+  import { invoke } from "@tauri-apps/api/core";
+  import { toast } from "svelte-sonner";
+  import PlusIcon from "@lucide/svelte/icons/plus";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+  import SearchIcon from "@lucide/svelte/icons/search";
+  import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import PowerIcon from "@lucide/svelte/icons/power";
+  import CopyIcon from "@lucide/svelte/icons/copy";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
+  import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
+  import {
+    CalendarDate,
+    getLocalTimeZone,
+    today,
+  } from "@internationalized/date";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import Calendar from "$lib/components/ui/calendar/calendar.svelte";
+  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { TagInput } from "$lib/components/ui/tag-input/index.js";
+  import * as Popover from "$lib/components/ui/popover/index.js";
+  import {
+    deserialize_column,
+    type Column,
+    type ColumnSerialized,
+  } from "../../type/column.svelte";
+  import type { BoardRole } from "../../board.svelte";
+  import {
+    build_share_snapshot,
+    forget_managed_share,
+    is_managed_share_enabled,
+    load_managed_shares,
+    publish_share,
+    rebind_managed_share,
+    revoke_share,
+    resolve_share_selection,
+    save_managed_share,
+    share_content_signature,
+    type ManagedShare,
+  } from "../../share";
 
-let {
-  open = $bindable(),
-  columns,
-  default_title,
-  active_board_id,
-  boards,
-  onRetireShare,
-  onShareRevokeError,
-}: {
-  open: boolean;
-  columns: Column[];
-  default_title: string;
-  active_board_id: number | null;
-  boards: Array<{ id: number; name: string; shared_role?: BoardRole }>;
-  onRetireShare?: (share_id: string) => void;
-  onShareRevokeError?: (share_id: string, error: unknown) => void;
-} = $props();
+  let {
+    open = $bindable(),
+    columns,
+    default_title,
+    active_board_id,
+    boards,
+    onRetireShare,
+    onShareRevokeError,
+  }: {
+    open: boolean;
+    columns: Column[];
+    default_title: string;
+    active_board_id: number | null;
+    boards: Array<{ id: number; name: string; shared_role?: BoardRole }>;
+    onRetireShare?: (share_id: string) => void;
+    onShareRevokeError?: (share_id: string, error: unknown) => void;
+  } = $props();
 
-let share = $state<ManagedShare | null>(null);
-let title = $state("");
-let selected_column_ids = $state<string[]>([]);
-let selected_task_ids = $state<string[]>([]);
-let selected_labels = $state<string[]>([]);
-let task_search = $state("");
-let reuse_link_open = $state(false);
-let requested_link = $state("");
-let expiration_enabled = $state(true);
-let expiration_date = $state(today(getLocalTimeZone()).add({ days: 30 }));
-let expiration_open = $state(false);
-let context_menu_share_id = $state<string | null>(null);
-let publishing = $state(false);
-let revoking = $state(false);
-let delete_confirm_open = $state(false);
-let editing = $state(false);
-// A share can belong to any board, even while another board is open in the
-// workspace. Keep its content loaded locally so managing a link never
-// changes the user's current board.
-let selected_board_id = $state<number | null>(null);
-let loaded_board_id = $state<number | null>(null);
-const owned_boards = $derived(
-  boards.filter((board) => !board.shared_role || board.shared_role === "owner"),
-);
-let loaded_columns = $state<Column[]>([]);
-let loading_board_content = $state(false);
-let board_content_generation = 0;
-const share_columns = $derived(
-  loaded_board_id === active_board_id ? columns : loaded_columns,
-);
-let initialized_for_open = false;
-const all_managed_shares = $derived(
-  load_managed_shares().filter((candidate) =>
-    Number.isInteger(candidate.board_id),
-  ),
-);
-const managed_shares = $derived(
-  all_managed_shares.filter(
-    (candidate) => candidate.board_id === active_board_id,
-  ),
-);
-const legacy_share_count = $derived(
-  load_managed_shares().filter(
-    (candidate) => !Number.isInteger(candidate.board_id),
-  ).length,
-);
-const legacy_shares = $derived(
-  load_managed_shares().filter(
-    (candidate) => !Number.isInteger(candidate.board_id),
-  ),
-);
-function board_name(board_id: number | undefined): string {
-  return boards.find((board) => board.id === board_id)?.name ?? "Unknown board";
-}
-const share_date_formatter = new Intl.DateTimeFormat("en-US", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-});
-const share_datetime_formatter = new Intl.DateTimeFormat("en-US", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-async function load_board_content(board_id: number | null): Promise<boolean> {
-  if (board_id === null) return false;
-  const generation = ++board_content_generation;
-  selected_board_id = board_id;
-  if (board_id === active_board_id) {
-    loaded_board_id = board_id;
-    loaded_columns = columns;
-    loading_board_content = false;
-    return true;
-  }
-  loading_board_content = true;
-  try {
-    const serialized = await invoke<ColumnSerialized[]>("get_board_columns", {
-      boardId: board_id,
-    });
-    if (generation !== board_content_generation) return false;
-    loaded_columns = serialized.map(deserialize_column);
-    loaded_board_id = board_id;
-    return true;
-  } catch (error) {
-    logger.error("share.content_load.failed", error);
-    if (generation !== board_content_generation) return false;
-    console.error("Couldn't load shared board content", error);
-    toast.error("Couldn't load this board's share settings");
-    return false;
-  } finally {
-    if (generation === board_content_generation) loading_board_content = false;
-  }
-}
-
-function load_share(
-  candidate: ManagedShare | null,
-  editing_state = candidate === null,
-) {
-  share = candidate;
-  editing = editing_state;
-  title = candidate?.title || `${default_title || "Cardbe"} board`;
-  const available_ids = new Set(share_columns.map((column) => column.id));
-  const candidate_column_ids = Array.isArray(candidate?.selected_column_ids)
-    ? candidate.selected_column_ids
-    : [];
-  selected_column_ids = candidate
-    ? candidate_column_ids.filter((id) => available_ids.has(id))
-    : [];
-  const available_task_ids = new Set(
-    share_columns.flatMap((column) => column.tasks.map((task) => task.id)),
-  );
-  const candidate_task_ids = Array.isArray(candidate?.selected_task_ids)
-    ? candidate.selected_task_ids
-    : [];
-  selected_task_ids = candidate
-    ? candidate_task_ids.filter((id) => available_task_ids.has(id))
-    : [];
-  selected_labels = [...(candidate?.selected_labels ?? [])];
-  if (candidate?.expires_at) {
-    const expires = new Date(candidate.expires_at);
-    expiration_enabled = true;
-    expiration_date = new CalendarDate(
-      expires.getFullYear(),
-      expires.getMonth() + 1,
-      expires.getDate(),
-    );
-  } else if (candidate) {
-    expiration_enabled = false;
-  } else {
-    expiration_enabled = true;
-    expiration_date = today(getLocalTimeZone()).add({ days: 30 });
-  }
-  task_search = "";
-  reuse_link_open = false;
-  requested_link = "";
-  context_menu_share_id = null;
-}
-
-async function select_share(
-  candidate: ManagedShare | null,
-  editing_state = candidate === null,
-): Promise<boolean> {
-  const target_board_id =
-    candidate?.board_id ??
-    (owned_boards.some((board) => board.id === active_board_id)
-      ? active_board_id
-      : (owned_boards[0]?.id ?? null));
-  if (!(await load_board_content(target_board_id))) return false;
-  load_share(candidate, editing_state);
-  return true;
-}
-
-async function select_new_share_board(board_id: number) {
-  if (!owned_boards.some((board) => board.id === board_id)) return;
-  if (!(await load_board_content(board_id))) return;
-  selected_column_ids = [];
-  selected_task_ids = [];
-  selected_labels = [];
-  task_search = "";
-  title = `${board_name(board_id)} board`;
-}
-
-function cancel_editing() {
-  if (!share) return;
-  load_share(share);
-}
-
-$effect(() => {
-  if (open && !initialized_for_open) {
-    void select_share(managed_shares[0] ?? null);
-    initialized_for_open = true;
-  } else if (!open) {
-    initialized_for_open = false;
-  }
-});
-
-function set_column_selected(column_id: string, checked: boolean) {
-  const task_ids =
-    share_columns
-      .find((column) => column.id === column_id)
-      ?.tasks.map((task) => task.id) ?? [];
-  selected_column_ids = checked
-    ? Array.from(new Set([...selected_column_ids, column_id]))
-    : selected_column_ids.filter((id) => id !== column_id);
-  selected_task_ids = checked
-    ? Array.from(new Set([...selected_task_ids, ...task_ids]))
-    : selected_task_ids.filter((id) => !task_ids.includes(id));
-}
-
-function set_task_selected(
-  column_id: string,
-  task_id: string,
-  checked: boolean,
-) {
-  if (checked) {
-    selected_column_ids = Array.from(
-      new Set([...selected_column_ids, column_id]),
-    );
-    selected_task_ids = Array.from(new Set([...selected_task_ids, task_id]));
-  } else {
-    selected_task_ids = selected_task_ids.filter((id) => id !== task_id);
-  }
-}
-
-function expiration_value(): Date | null {
-  if (!expiration_enabled) return null;
-  return new Date(
-    expiration_date.year,
-    expiration_date.month - 1,
-    expiration_date.day,
-    23,
-    59,
-    59,
-    999,
-  );
-}
-
-const visible_columns = $derived.by(() => {
-  const needle = task_search.trim().toLocaleLowerCase();
-  if (!needle) return share_columns;
-  return share_columns
-    .map((column) => {
-      if (column.name.toLocaleLowerCase().includes(needle)) return column;
-      return {
-        ...column,
-        tasks: column.tasks.filter((task) =>
-          [task.title, task.description, ...task.labels]
-            .join(" ")
-            .toLocaleLowerCase()
-            .includes(needle),
-        ),
-      };
-    })
-    .filter((column) => column.tasks.length > 0);
-});
-const available_labels = $derived(
-  Array.from(
-    new Set(
-      share_columns.flatMap((column) =>
-        column.tasks.flatMap((task) => task.labels),
-      ),
+  let share = $state<ManagedShare | null>(null);
+  let title = $state("");
+  let selected_column_ids = $state<string[]>([]);
+  let selected_task_ids = $state<string[]>([]);
+  let selected_labels = $state<string[]>([]);
+  let task_search = $state("");
+  let reuse_link_open = $state(false);
+  let requested_link = $state("");
+  let expiration_enabled = $state(true);
+  let expiration_date = $state(today(getLocalTimeZone()).add({ days: 30 }));
+  let expiration_open = $state(false);
+  let context_menu_share_id = $state<string | null>(null);
+  let publishing = $state(false);
+  let revoking = $state(false);
+  let delete_confirm_open = $state(false);
+  let editing = $state(false);
+  // A share can belong to any board, even while another board is open in the
+  // workspace. Keep its content loaded locally so managing a link never
+  // changes the user's current board.
+  let selected_board_id = $state<number | null>(null);
+  let loaded_board_id = $state<number | null>(null);
+  const owned_boards = $derived(
+    boards.filter(
+      (board) => !board.shared_role || board.shared_role === "owner",
     ),
-  ).sort(),
-);
-const effective_selection = $derived(
-  resolve_share_selection(
-    share_columns,
-    selected_column_ids,
-    selected_task_ids,
-    selected_labels,
-  ),
-);
-const visible_task_ids = $derived(
-  visible_columns.flatMap((column) => column.tasks.map((task) => task.id)),
-);
-const all_visible_tasks_selected = $derived(
-  visible_task_ids.length > 0 &&
-    visible_task_ids.every((id) => selected_task_ids.includes(id)),
-);
-const no_visible_tasks_selected = $derived(
-  visible_task_ids.every((id) => !selected_task_ids.includes(id)),
-);
-
-function set_visible_tasks_selected(include: boolean) {
-  const task_ids = new Set(visible_task_ids);
-  const column_ids = new Set(
-    visible_columns
-      .filter((column) => column.tasks.length > 0)
-      .map((column) => column.id),
   );
-  if (include) {
-    selected_task_ids = Array.from(
-      new Set([...selected_task_ids, ...task_ids]),
+  let loaded_columns = $state<Column[]>([]);
+  let loading_board_content = $state(false);
+  let board_content_generation = 0;
+  const share_columns = $derived(
+    loaded_board_id === active_board_id ? columns : loaded_columns,
+  );
+  let initialized_for_open = false;
+  const all_managed_shares = $derived(
+    load_managed_shares().filter((candidate) =>
+      Number.isInteger(candidate.board_id),
+    ),
+  );
+  const managed_shares = $derived(
+    all_managed_shares.filter(
+      (candidate) => candidate.board_id === active_board_id,
+    ),
+  );
+  const legacy_share_count = $derived(
+    load_managed_shares().filter(
+      (candidate) => !Number.isInteger(candidate.board_id),
+    ).length,
+  );
+  const legacy_shares = $derived(
+    load_managed_shares().filter(
+      (candidate) => !Number.isInteger(candidate.board_id),
+    ),
+  );
+  function board_name(board_id: number | undefined): string {
+    return (
+      boards.find((board) => board.id === board_id)?.name ?? "Unknown board"
     );
-    selected_column_ids = Array.from(
-      new Set([...selected_column_ids, ...column_ids]),
-    );
-    return;
+  }
+  const share_date_formatter = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  const share_datetime_formatter = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  async function load_board_content(board_id: number | null): Promise<boolean> {
+    if (board_id === null) {
+      return false;
+    }
+    const generation = ++board_content_generation;
+    selected_board_id = board_id;
+    if (board_id === active_board_id) {
+      loaded_board_id = board_id;
+      loaded_columns = columns;
+      loading_board_content = false;
+      return true;
+    }
+    loading_board_content = true;
+    try {
+      const serialized = await invoke<ColumnSerialized[]>("get_board_columns", {
+        boardId: board_id,
+      });
+      if (generation !== board_content_generation) {
+        return false;
+      }
+      loaded_columns = serialized.map(deserialize_column);
+      loaded_board_id = board_id;
+      return true;
+    } catch (error) {
+      logger.error("share.content_load.failed", error);
+      if (generation !== board_content_generation) {
+        return false;
+      }
+      console.error("Couldn't load shared board content", error);
+      toast.error("Couldn't load this board's share settings");
+      return false;
+    } finally {
+      if (generation === board_content_generation) {
+        loading_board_content = false;
+      }
+    }
   }
 
-  selected_task_ids = selected_task_ids.filter((id) => !task_ids.has(id));
-  selected_column_ids = selected_column_ids.filter((column_id) => {
-    if (!column_ids.has(column_id)) return true;
-    return (
+  function load_share(
+    candidate: ManagedShare | null,
+    editing_state = candidate === null,
+  ) {
+    share = candidate;
+    editing = editing_state;
+    title = candidate?.title || `${default_title || "Cardbe"} board`;
+    const available_ids = new Set(share_columns.map((column) => column.id));
+    const candidate_column_ids = Array.isArray(candidate?.selected_column_ids)
+      ? candidate.selected_column_ids
+      : [];
+    selected_column_ids = candidate
+      ? candidate_column_ids.filter((id) => available_ids.has(id))
+      : [];
+    const available_task_ids = new Set(
+      share_columns.flatMap((column) => column.tasks.map((task) => task.id)),
+    );
+    const candidate_task_ids = Array.isArray(candidate?.selected_task_ids)
+      ? candidate.selected_task_ids
+      : [];
+    selected_task_ids = candidate
+      ? candidate_task_ids.filter((id) => available_task_ids.has(id))
+      : [];
+    selected_labels = [...(candidate?.selected_labels ?? [])];
+    if (candidate?.expires_at) {
+      const expires = new Date(candidate.expires_at);
+      expiration_enabled = true;
+      expiration_date = new CalendarDate(
+        expires.getFullYear(),
+        expires.getMonth() + 1,
+        expires.getDate(),
+      );
+    } else if (candidate) {
+      expiration_enabled = false;
+    } else {
+      expiration_enabled = true;
+      expiration_date = today(getLocalTimeZone()).add({ days: 30 });
+    }
+    task_search = "";
+    reuse_link_open = false;
+    requested_link = "";
+    context_menu_share_id = null;
+  }
+
+  async function select_share(
+    candidate: ManagedShare | null,
+    editing_state = candidate === null,
+  ): Promise<boolean> {
+    const target_board_id =
+      candidate?.board_id ??
+      (owned_boards.some((board) => board.id === active_board_id)
+        ? active_board_id
+        : (owned_boards[0]?.id ?? null));
+    if (!(await load_board_content(target_board_id))) {
+      return false;
+    }
+    load_share(candidate, editing_state);
+    return true;
+  }
+
+  async function select_new_share_board(board_id: number) {
+    if (!owned_boards.some((board) => board.id === board_id)) {
+      return;
+    }
+    if (!(await load_board_content(board_id))) {
+      return;
+    }
+    selected_column_ids = [];
+    selected_task_ids = [];
+    selected_labels = [];
+    task_search = "";
+    title = `${board_name(board_id)} board`;
+  }
+
+  function cancel_editing() {
+    if (!share) {
+      return;
+    }
+    load_share(share);
+  }
+
+  $effect(() => {
+    if (open && !initialized_for_open) {
+      void select_share(managed_shares[0] ?? null);
+      initialized_for_open = true;
+    } else if (!open) {
+      initialized_for_open = false;
+    }
+  });
+
+  function set_column_selected(column_id: string, checked: boolean) {
+    const task_ids =
       share_columns
         .find((column) => column.id === column_id)
-        ?.tasks.some((task) => selected_task_ids.includes(task.id)) ?? false
-    );
-  });
-}
-
-async function publish() {
-  if (publishing) return;
-  if (!owned_boards.some((board) => board.id === selected_board_id)) {
-    toast.error("Only boards you own can be published");
-    return;
+        ?.tasks.map((task) => task.id) ?? [];
+    selected_column_ids = checked
+      ? Array.from(new Set([...selected_column_ids, column_id]))
+      : selected_column_ids.filter((id) => id !== column_id);
+    selected_task_ids = checked
+      ? Array.from(new Set([...selected_task_ids, ...task_ids]))
+      : selected_task_ids.filter((id) => !task_ids.includes(id));
   }
-  publishing = true;
-  try {
-    const was_update = share !== null;
-    const was_reused = !was_update && requested_link.trim() !== "";
-    const snapshot = build_share_snapshot(
-      share_columns,
-      effective_selection.selected_column_ids,
-      effective_selection.selected_task_ids,
-      title,
+
+  function set_task_selected(
+    column_id: string,
+    task_id: string,
+    checked: boolean,
+  ) {
+    if (checked) {
+      selected_column_ids = Array.from(
+        new Set([...selected_column_ids, column_id]),
+      );
+      selected_task_ids = Array.from(new Set([...selected_task_ids, task_id]));
+    } else {
+      selected_task_ids = selected_task_ids.filter((id) => id !== task_id);
+    }
+  }
+
+  function expiration_value(): Date | null {
+    if (!expiration_enabled) {
+      return null;
+    }
+    return new Date(
+      expiration_date.year,
+      expiration_date.month - 1,
+      expiration_date.day,
+      23,
+      59,
+      59,
+      999,
     );
-    const updated_share = await publish_share(
-      snapshot,
+  }
+
+  const visible_columns = $derived.by(() => {
+    const needle = task_search.trim().toLocaleLowerCase();
+    if (!needle) {
+      return share_columns;
+    }
+    return share_columns
+      .map((column) => {
+        if (column.name.toLocaleLowerCase().includes(needle)) {
+          return column;
+        }
+        return {
+          ...column,
+          tasks: column.tasks.filter((task) =>
+            [task.title, task.description, ...task.labels]
+              .join(" ")
+              .toLocaleLowerCase()
+              .includes(needle),
+          ),
+        };
+      })
+      .filter((column) => column.tasks.length > 0);
+  });
+  const available_labels = $derived(
+    Array.from(
+      new Set(
+        share_columns.flatMap((column) =>
+          column.tasks.flatMap((task) => task.labels),
+        ),
+      ),
+    ).sort(),
+  );
+  const effective_selection = $derived(
+    resolve_share_selection(
+      share_columns,
       selected_column_ids,
       selected_task_ids,
-      expiration_value(),
-      // Updating an existing share keeps its URL; new shares receive an
-      // independent capability ID and remain active alongside existing ones.
-      share,
       selected_labels,
-      requested_link,
-      // Saving from this dialog is an explicit user action, so it may recover
-      // an ID that was retired by a previous disable or an in-flight revoke.
-      was_update,
-      selected_board_id ?? undefined,
+    ),
+  );
+  const visible_task_ids = $derived(
+    visible_columns.flatMap((column) => column.tasks.map((task) => task.id)),
+  );
+  const all_visible_tasks_selected = $derived(
+    visible_task_ids.length > 0 &&
+      visible_task_ids.every((id) => selected_task_ids.includes(id)),
+  );
+  const no_visible_tasks_selected = $derived(
+    visible_task_ids.every((id) => !selected_task_ids.includes(id)),
+  );
+
+  function set_visible_tasks_selected(include: boolean) {
+    const task_ids = new Set(visible_task_ids);
+    const column_ids = new Set(
+      visible_columns
+        .filter((column) => column.tasks.length > 0)
+        .map((column) => column.id),
     );
-    updated_share.board_id = selected_board_id ?? undefined;
-    share = updated_share;
-    requested_link = "";
-    save_managed_share(
-      updated_share,
-      share_content_signature(
+    if (include) {
+      selected_task_ids = Array.from(
+        new Set([...selected_task_ids, ...task_ids]),
+      );
+      selected_column_ids = Array.from(
+        new Set([...selected_column_ids, ...column_ids]),
+      );
+      return;
+    }
+
+    selected_task_ids = selected_task_ids.filter((id) => !task_ids.has(id));
+    selected_column_ids = selected_column_ids.filter((column_id) => {
+      if (!column_ids.has(column_id)) {
+        return true;
+      }
+      return (
+        share_columns
+          .find((column) => column.id === column_id)
+          ?.tasks.some((task) => selected_task_ids.includes(task.id)) ?? false
+      );
+    });
+  }
+
+  async function publish() {
+    if (publishing) {
+      return;
+    }
+    if (!owned_boards.some((board) => board.id === selected_board_id)) {
+      toast.error("Only boards you own can be published");
+      return;
+    }
+    publishing = true;
+    try {
+      const was_update = share !== null;
+      const was_reused = !was_update && requested_link.trim() !== "";
+      const snapshot = build_share_snapshot(
         share_columns,
         effective_selection.selected_column_ids,
         effective_selection.selected_task_ids,
         title,
-      ),
-    );
-    load_share(updated_share, false);
-    toast.success(
-      was_update
-        ? "Published view updated"
-        : was_reused
-          ? "Previous web address reused"
-          : "Web view published",
-    );
-  } catch (error) {
-    logger.error("share.publish.failed", error);
-    console.error("Couldn't publish board share", error);
-    toast.error(
-      error instanceof Error ? error.message : "Couldn't publish the web view",
-    );
-  } finally {
-    publishing = false;
+      );
+      const updated_share = await publish_share(
+        snapshot,
+        selected_column_ids,
+        selected_task_ids,
+        expiration_value(),
+        // Updating an existing share keeps its URL; new shares receive an
+        // independent capability ID and remain active alongside existing ones.
+        share,
+        selected_labels,
+        requested_link,
+        // Saving from this dialog is an explicit user action, so it may recover
+        // an ID that was retired by a previous disable or an in-flight revoke.
+        was_update,
+        selected_board_id ?? undefined,
+      );
+      updated_share.board_id = selected_board_id ?? undefined;
+      share = updated_share;
+      requested_link = "";
+      save_managed_share(
+        updated_share,
+        share_content_signature(
+          share_columns,
+          effective_selection.selected_column_ids,
+          effective_selection.selected_task_ids,
+          title,
+        ),
+      );
+      load_share(updated_share, false);
+      toast.success(
+        was_update
+          ? "Published view updated"
+          : was_reused
+            ? "Previous web address reused"
+            : "Web view published",
+      );
+    } catch (error) {
+      logger.error("share.publish.failed", error);
+      console.error("Couldn't publish board share", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Couldn't publish the web view",
+      );
+    } finally {
+      publishing = false;
+    }
   }
-}
 
-async function copy_link(target: ManagedShare | null = share) {
-  if (!target) return;
-  try {
-    await navigator.clipboard.writeText(target.url);
-    toast.success("Web address copied");
-  } catch (error) {
-    logger.warn("share.link_copy.failed", error);
-    toast.error("Couldn't copy the link");
+  async function copy_link(target: ManagedShare | null = share) {
+    if (!target) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(target.url);
+      toast.success("Web address copied");
+    } catch (error) {
+      logger.warn("share.link_copy.failed", error);
+      toast.error("Couldn't copy the link");
+    }
   }
-}
 
-async function disable(target: ManagedShare | null = share) {
-  if (!target || revoking) return;
-  revoking = true;
-  try {
-    onRetireShare?.(target.id);
-    await revoke_share(target);
-    const disabled_share = { ...target, enabled: false };
-    save_managed_share(disabled_share, "");
-    if (share?.id === target.id) load_share(disabled_share);
-    toast.success("Published view disabled. You can enable it again later.");
-  } catch (error) {
-    logger.error("share.disable.failed", error);
-    console.error("Couldn't disable board share", error);
-    onShareRevokeError?.(target.id, error);
-    toast.error(
-      error instanceof Error
-        ? error.message
-        : "Couldn't disable the published view",
-    );
-  } finally {
-    revoking = false;
+  async function disable(target: ManagedShare | null = share) {
+    if (!target || revoking) {
+      return;
+    }
+    revoking = true;
+    try {
+      onRetireShare?.(target.id);
+      await revoke_share(target);
+      const disabled_share = { ...target, enabled: false };
+      save_managed_share(disabled_share, "");
+      if (share?.id === target.id) {
+        load_share(disabled_share);
+      }
+      toast.success("Published view disabled. You can enable it again later.");
+    } catch (error) {
+      logger.error("share.disable.failed", error);
+      console.error("Couldn't disable board share", error);
+      onShareRevokeError?.(target.id, error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Couldn't disable the published view",
+      );
+    } finally {
+      revoking = false;
+    }
   }
-}
 
-async function enable(target: ManagedShare | null = share) {
-  if (!target || publishing || is_managed_share_enabled(target)) return;
-  publishing = true;
-  try {
-    // Context-menu actions can enable a link from another board without
-    // selecting its row first. Always load that board before constructing a
-    // snapshot so it cannot accidentally publish the current board's cards.
-    if (!(await load_board_content(target.board_id ?? null))) return;
-    const selection = resolve_share_selection(
-      share_columns,
-      target.selected_column_ids,
-      target.selected_task_ids,
-      target.selected_labels,
-    );
-    const snapshot = build_share_snapshot(
-      share_columns,
-      selection.selected_column_ids,
-      selection.selected_task_ids,
-      target.title,
-    );
-    const enabled_share = await publish_share(
-      snapshot,
-      target.selected_column_ids,
-      target.selected_task_ids,
-      target.expires_at ? new Date(target.expires_at) : null,
-      target,
-      target.selected_labels,
-      null,
-      true,
-      target.board_id ?? selected_board_id ?? undefined,
-    );
-    save_managed_share(
-      enabled_share,
-      share_content_signature(
+  async function enable(target: ManagedShare | null = share) {
+    if (!target || publishing || is_managed_share_enabled(target)) {
+      return;
+    }
+    publishing = true;
+    try {
+      // Context-menu actions can enable a link from another board without
+      // selecting its row first. Always load that board before constructing a
+      // snapshot so it cannot accidentally publish the current board's cards.
+      if (!(await load_board_content(target.board_id ?? null))) {
+        return;
+      }
+      const selection = resolve_share_selection(
+        share_columns,
+        target.selected_column_ids,
+        target.selected_task_ids,
+        target.selected_labels,
+      );
+      const snapshot = build_share_snapshot(
         share_columns,
         selection.selected_column_ids,
         selection.selected_task_ids,
         target.title,
-      ),
-    );
-    if (share?.id === target.id) load_share(enabled_share);
-    toast.success("Published view enabled");
-  } catch (error) {
-    logger.error("share.enable.failed", error);
-    console.error("Couldn't enable board share", error);
-    toast.error(
-      error instanceof Error
-        ? error.message
-        : "Couldn't enable the published view",
-    );
-  } finally {
-    publishing = false;
+      );
+      const enabled_share = await publish_share(
+        snapshot,
+        target.selected_column_ids,
+        target.selected_task_ids,
+        target.expires_at ? new Date(target.expires_at) : null,
+        target,
+        target.selected_labels,
+        null,
+        true,
+        target.board_id ?? selected_board_id ?? undefined,
+      );
+      save_managed_share(
+        enabled_share,
+        share_content_signature(
+          share_columns,
+          selection.selected_column_ids,
+          selection.selected_task_ids,
+          target.title,
+        ),
+      );
+      if (share?.id === target.id) {
+        load_share(enabled_share);
+      }
+      toast.success("Published view enabled");
+    } catch (error) {
+      logger.error("share.enable.failed", error);
+      console.error("Couldn't enable board share", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Couldn't enable the published view",
+      );
+    } finally {
+      publishing = false;
+    }
   }
-}
 
-async function delete_share() {
-  if (!share || revoking) return;
-  revoking = true;
-  const deleted_id = share.id;
-  try {
-    onRetireShare?.(deleted_id);
-    await revoke_share(share);
-    forget_managed_share(deleted_id);
-    const remaining = load_managed_shares().filter(
-      (candidate) => candidate.id !== deleted_id,
-    );
-    share = null;
-    await select_share(remaining[0] ?? null);
-    delete_confirm_open = false;
-    toast.success("Published view deleted");
-  } catch (error) {
-    logger.error("share.delete.failed", error);
-    console.error("Couldn't delete board share", error);
-    onShareRevokeError?.(deleted_id, error);
-    toast.error(
-      error instanceof Error
-        ? error.message
-        : "Couldn't delete the published view",
-    );
-  } finally {
-    revoking = false;
+  async function delete_share() {
+    if (!share || revoking) {
+      return;
+    }
+    revoking = true;
+    const deleted_id = share.id;
+    try {
+      onRetireShare?.(deleted_id);
+      await revoke_share(share);
+      forget_managed_share(deleted_id);
+      const remaining = load_managed_shares().filter(
+        (candidate) => candidate.id !== deleted_id,
+      );
+      share = null;
+      await select_share(remaining[0] ?? null);
+      delete_confirm_open = false;
+      toast.success("Published view deleted");
+    } catch (error) {
+      logger.error("share.delete.failed", error);
+      console.error("Couldn't delete board share", error);
+      onShareRevokeError?.(deleted_id, error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Couldn't delete the published view",
+      );
+    } finally {
+      revoking = false;
+    }
   }
-}
 </script>
 
 <Dialog.Root bind:open>
@@ -574,7 +624,9 @@ async function delete_share() {
             >
               <p>
                 {legacy_share_count}
-                older published view{legacy_share_count === 1 ? " has" : "s have"}
+                older published view{legacy_share_count === 1
+                  ? " has"
+                  : "s have"}
                 no board assigned.
               </p>
               {#each legacy_shares as legacy (legacy.id)}
@@ -585,7 +637,9 @@ async function delete_share() {
                     size="sm"
                     variant="outline"
                     disabled={active_board_id === null}
-                    onclick={() => active_board_id !== null && rebind_managed_share(legacy.id, active_board_id)}
+                    onclick={() =>
+                      active_board_id !== null &&
+                      rebind_managed_share(legacy.id, active_board_id)}
                     >Assign to this board</Button
                   >
                 </div>
@@ -634,12 +688,16 @@ async function delete_share() {
                           >
                           <span
                             class={`size-1.5 shrink-0 rounded-full ${candidate_enabled ? "bg-success" : "bg-muted-foreground/50"}`}
-                            aria-label={candidate_enabled ? "Active" : "Disabled"}
+                            aria-label={candidate_enabled
+                              ? "Active"
+                              : "Disabled"}
                           ></span>
                         </span>
                         <span class="text-xs text-muted-foreground">
                           <span
-                            class={candidate_enabled ? "text-success" : undefined}
+                            class={candidate_enabled
+                              ? "text-success"
+                              : undefined}
                           >
                             {candidate_enabled ? "Active" : "Disabled"}
                           </span>
@@ -648,7 +706,9 @@ async function delete_share() {
                             >{board_name(candidate.board_id)}</span
                           >
                           {" · "}
-                          {candidate.expires_at ? `Expires ${share_date_formatter.format(new Date(candidate.expires_at))}` : "No expiration"}
+                          {candidate.expires_at
+                            ? `Expires ${share_date_formatter.format(new Date(candidate.expires_at))}`
+                            : "No expiration"}
                         </span>
                       </button>
                     {/snippet}
@@ -673,10 +733,15 @@ async function delete_share() {
                     <ContextMenu.Item
                       class="h-9 gap-2.5 rounded-md px-2.5"
                       disabled={publishing || revoking}
-                      onclick={() => candidate_enabled ? void disable(candidate) : void enable(candidate)}
+                      onclick={() =>
+                        candidate_enabled
+                          ? void disable(candidate)
+                          : void enable(candidate)}
                     >
                       <PowerIcon
-                        class={candidate_enabled ? "size-4 text-success" : "size-4 text-muted-foreground"}
+                        class={candidate_enabled
+                          ? "size-4 text-success"
+                          : "size-4 text-muted-foreground"}
                       />
                       {candidate_enabled ? "Disable view" : "Enable view"}
                     </ContextMenu.Item>
@@ -687,7 +752,9 @@ async function delete_share() {
                       disabled={publishing || revoking}
                       onclick={() => {
                         void select_share(candidate).then((selected) => {
-                          if (selected) delete_confirm_open = true;
+                          if (selected) {
+                            delete_confirm_open = true;
+                          }
                         });
                       }}
                     >
@@ -756,8 +823,7 @@ async function delete_share() {
                       aria-hidden="true"
                     />
                     <span class="text-muted-foreground">Source board:</span>
-                    <span class="font-medium"
-                      >{board_name(share.board_id)}</span
+                    <span class="font-medium">{board_name(share.board_id)}</span
                     >
                   </p>
                   <p class="mt-1 min-h-10 text-sm text-muted-foreground">
@@ -810,7 +876,9 @@ async function delete_share() {
                   value={share.url}
                   readonly
                   aria-label="Web address"
-                  class={!is_managed_share_enabled(share) ? "text-muted-foreground" : ""}
+                  class={!is_managed_share_enabled(share)
+                    ? "text-muted-foreground"
+                    : ""}
                 />
                 <Button
                   variant="outline"
@@ -825,7 +893,9 @@ async function delete_share() {
               <p class="text-xs text-muted-foreground">
                 Last published
                 {share_datetime_formatter.format(new Date(share.updated_at))}
-                {share.expires_at ? ` · Expires ${share_date_formatter.format(new Date(share.expires_at))}` : " · No expiration"}
+                {share.expires_at
+                  ? ` · Expires ${share_date_formatter.format(new Date(share.expires_at))}`
+                  : " · No expiration"}
               </p>
             </div>
           </section>
@@ -853,7 +923,9 @@ async function delete_share() {
                   Expiration
                 </div>
                 <p class="mt-1 text-sm font-medium">
-                  {share.expires_at ? share_date_formatter.format(new Date(share.expires_at)) : "No expiration"}
+                  {share.expires_at
+                    ? share_date_formatter.format(new Date(share.expires_at))
+                    : "No expiration"}
                 </p>
               </div>
               <div>
@@ -890,9 +962,14 @@ async function delete_share() {
             <label class="grid gap-1.5 text-sm font-medium">
               Board to share
               <select
-                value={selected_board_id === null ? "" : String(selected_board_id)}
+                value={selected_board_id === null
+                  ? ""
+                  : String(selected_board_id)}
                 disabled={publishing || loading_board_content}
-                onchange={(event) => void select_new_share_board(Number(event.currentTarget.value))}
+                onchange={(event) =>
+                  void select_new_share_board(
+                    Number(event.currentTarget.value),
+                  )}
                 class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-10 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-[3px] disabled:opacity-50"
               >
                 {#each owned_boards as target (target.id)}
@@ -933,9 +1010,9 @@ async function delete_share() {
                   type="button"
                   class={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${!reuse_link_open ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:bg-muted/40"}`}
                   onclick={() => {
-                reuse_link_open = false;
-                requested_link = "";
-              }}
+                    reuse_link_open = false;
+                    requested_link = "";
+                  }}
                 >
                   <CircleCheckIcon
                     class={`mt-0.5 size-4 shrink-0 ${!reuse_link_open ? "text-primary" : "text-muted-foreground"}`}
@@ -950,7 +1027,7 @@ async function delete_share() {
                 <button
                   type="button"
                   class={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${reuse_link_open ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:bg-muted/40"}`}
-                  onclick={() => reuse_link_open = true}
+                  onclick={() => (reuse_link_open = true)}
                 >
                   <RefreshCwIcon
                     class={`mt-0.5 size-4 shrink-0 ${reuse_link_open ? "text-primary" : "text-muted-foreground"}`}
@@ -995,8 +1072,8 @@ async function delete_share() {
                 id="share-expiration-enabled"
                 checked={expiration_enabled}
                 onCheckedChange={(checked) => {
-              expiration_enabled = checked === true;
-            }}
+                  expiration_enabled = checked === true;
+                }}
               />
               <label for="share-expiration-enabled" class="text-sm font-medium"
                 >Set web address expiration</label
@@ -1013,7 +1090,9 @@ async function delete_share() {
                     >
                       <span class="flex items-center gap-2">
                         <CalendarDaysIcon class="size-4" />
-                        {share_date_formatter.format(expiration_date.toDate(getLocalTimeZone()))}
+                        {share_date_formatter.format(
+                          expiration_date.toDate(getLocalTimeZone()),
+                        )}
                       </span>
                       <ChevronDownIcon />
                     </Button>
@@ -1029,8 +1108,8 @@ async function delete_share() {
                     minValue={today(getLocalTimeZone())}
                     captionLayout="dropdown"
                     onValueChange={() => {
-                  expiration_open = false;
-                }}
+                      expiration_open = false;
+                    }}
                   />
                 </Popover.Content>
               </Popover.Root>
@@ -1060,8 +1139,7 @@ async function delete_share() {
                 <div class="text-sm font-medium">Content to include</div>
                 <div class="text-xs text-muted-foreground">
                   {effective_selection.selected_column_ids.length}
-                  columns · {effective_selection.selected_task_ids.length} tasks
-                  selected
+                  columns · {effective_selection.selected_task_ids.length} tasks selected
                 </div>
               </div>
             </div>
@@ -1086,7 +1164,8 @@ async function delete_share() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={visible_task_ids.length === 0 || all_visible_tasks_selected}
+                  disabled={visible_task_ids.length === 0 ||
+                    all_visible_tasks_selected}
                   onclick={() => set_visible_tasks_selected(true)}
                 >
                   Select all
@@ -1094,7 +1173,8 @@ async function delete_share() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={visible_task_ids.length === 0 || no_visible_tasks_selected}
+                  disabled={visible_task_ids.length === 0 ||
+                    no_visible_tasks_selected}
                   onclick={() => set_visible_tasks_selected(false)}
                 >
                   Clear all
@@ -1105,16 +1185,25 @@ async function delete_share() {
               class="max-h-72 space-y-2 overflow-y-auto rounded-md border p-2"
             >
               {#each visible_columns as column (column.id)}
-                {@const all_column_task_ids = share_columns.find((candidate) => candidate.id === column.id)?.tasks.map((task) => task.id) ?? []}
-                {@const selected_in_column = all_column_task_ids.filter((id) => selected_task_ids.includes(id)).length}
+                {@const all_column_task_ids =
+                  share_columns
+                    .find((candidate) => candidate.id === column.id)
+                    ?.tasks.map((task) => task.id) ?? []}
+                {@const selected_in_column = all_column_task_ids.filter((id) =>
+                  selected_task_ids.includes(id),
+                ).length}
                 <div class="rounded-md border bg-muted/20">
                   <label
                     class="flex cursor-pointer items-center gap-3 rounded-t-md px-3 py-2 hover:bg-muted/60"
                   >
                     <Checkbox
-                      checked={selected_column_ids.includes(column.id) && selected_in_column === all_column_task_ids.length}
-                      indeterminate={selected_column_ids.includes(column.id) && all_column_task_ids.length > 0 && selected_in_column < all_column_task_ids.length}
-                      onCheckedChange={(checked) => set_column_selected(column.id, checked === true)}
+                      checked={selected_column_ids.includes(column.id) &&
+                        selected_in_column === all_column_task_ids.length}
+                      indeterminate={selected_column_ids.includes(column.id) &&
+                        all_column_task_ids.length > 0 &&
+                        selected_in_column < all_column_task_ids.length}
+                      onCheckedChange={(checked) =>
+                        set_column_selected(column.id, checked === true)}
                     />
                     <span class="min-w-0 flex-1 truncate text-sm font-medium"
                       >{column.name}</span
@@ -1132,7 +1221,12 @@ async function delete_share() {
                           <Checkbox
                             class="mt-0.5"
                             checked={selected_task_ids.includes(task.id)}
-                            onCheckedChange={(checked) => set_task_selected(column.id, task.id, checked === true)}
+                            onCheckedChange={(checked) =>
+                              set_task_selected(
+                                column.id,
+                                task.id,
+                                checked === true,
+                              )}
                           />
                           <span class="min-w-0 flex-1">
                             <span class="block truncate text-sm"
@@ -1170,7 +1264,7 @@ async function delete_share() {
             variant="ghost"
             class="text-destructive hover:bg-destructive/10 hover:text-destructive"
             disabled={publishing || revoking}
-            onclick={() => delete_confirm_open = true}
+            onclick={() => (delete_confirm_open = true)}
           >
             <Trash2Icon />
             Delete view
@@ -1180,11 +1274,12 @@ async function delete_share() {
           <Button
             variant="outline"
             disabled={publishing || revoking}
-            onclick={cancel_editing}
-            >Cancel</Button
+            onclick={cancel_editing}>Cancel</Button
           >
           <Button
-            disabled={publishing || revoking || effective_selection.selected_column_ids.length === 0}
+            disabled={publishing ||
+              revoking ||
+              effective_selection.selected_column_ids.length === 0}
             onclick={() => void publish()}
           >
             <RefreshCwIcon />
@@ -1192,10 +1287,16 @@ async function delete_share() {
           </Button>
         {:else if !share}
           <Button
-            disabled={publishing || revoking || effective_selection.selected_column_ids.length === 0}
+            disabled={publishing ||
+              revoking ||
+              effective_selection.selected_column_ids.length === 0}
             onclick={() => void publish()}
           >
-            {publishing ? "Publishing..." : requested_link.trim() ? "Reuse address" : "Publish web view"}
+            {publishing
+              ? "Publishing..."
+              : requested_link.trim()
+                ? "Reuse address"
+                : "Publish web view"}
           </Button>
         {/if}
       </div>

@@ -21,7 +21,9 @@ export function parse_import_summary(json_data: string): ImportSummary {
   }
 
   const tasks = candidate.columns.reduce<number>((count, column) => {
-    if (typeof column !== "object" || column === null) return count;
+    if (typeof column !== "object" || column === null) {
+      return count;
+    }
     const column_tasks = (column as { tasks?: unknown }).tasks;
     return count + (Array.isArray(column_tasks) ? column_tasks.length : 0);
   }, 0);

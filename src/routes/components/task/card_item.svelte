@@ -1,123 +1,123 @@
 <script lang="ts">
-import * as Card from "$lib/components/ui/card/index.js";
-import * as Collapsible from "$lib/components/ui/collapsible/index.js";
-import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-import { Button } from "$lib/components/ui/button/index.js";
-import { useSortable } from "@dnd-kit-svelte/svelte/sortable";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { useSortable } from "@dnd-kit-svelte/svelte/sortable";
 
-import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-import ChevronUpIcon from "@lucide/svelte/icons/chevron-up";
-import ClockIcon from "@lucide/svelte/icons/clock";
-import PencilIcon from "@lucide/svelte/icons/pencil";
-import CopyIcon from "@lucide/svelte/icons/copy";
-import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
-import ArchiveIcon from "@lucide/svelte/icons/archive";
-import TrashIcon from "@lucide/svelte/icons/trash-2";
-import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
-import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
-import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
-import Share2Icon from "@lucide/svelte/icons/share-2";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import ChevronUpIcon from "@lucide/svelte/icons/chevron-up";
+  import ClockIcon from "@lucide/svelte/icons/clock";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import CopyIcon from "@lucide/svelte/icons/copy";
+  import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
+  import ArchiveIcon from "@lucide/svelte/icons/archive";
+  import TrashIcon from "@lucide/svelte/icons/trash-2";
+  import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
+  import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+  import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
+  import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
+  import Share2Icon from "@lucide/svelte/icons/share-2";
 
-import { recurrence_label, type Task } from "../../type/task.svelte";
-import { display_task_color } from "../../utils/task-color";
-import Markdown from "../markdown.svelte";
-import LabelBadge from "../label_badge.svelte";
-import ChecklistDisplay from "./checklist_display.svelte";
-import DeleteTaskDialog from "./delete_task_dialog.svelte";
-import { due_status } from "./due-status";
+  import { recurrence_label, type Task } from "../../type/task.svelte";
+  import { display_task_color } from "../../utils/task-color";
+  import Markdown from "../markdown.svelte";
+  import LabelBadge from "../label_badge.svelte";
+  import ChecklistDisplay from "./checklist_display.svelte";
+  import DeleteTaskDialog from "./delete_task_dialog.svelte";
+  import { due_status } from "./due-status";
 
-interface CardItemProps {
-  task: Task;
-  index: number;
-  group?: string | number;
-  data?: { group: string | number };
-  expand_content: boolean;
-  read_only?: boolean;
-  onViewTask: () => void;
-  onEditTask: () => void;
-  onDuplicateTask: () => void;
-  onSaveAsTemplate?: () => void;
-  onExportTask?: () => void;
-  onDeleteTask: () => void;
-  onArchiveTask: () => void;
-}
-
-let {
-  task,
-  index,
-  group,
-  data,
-  expand_content,
-  read_only = false,
-  onViewTask = () => {},
-  onEditTask = () => {},
-  onDuplicateTask = () => {},
-  onSaveAsTemplate,
-  onExportTask = () => {},
-  onDeleteTask = () => {},
-  onArchiveTask = () => {},
-}: CardItemProps = $props();
-
-const { ref, isDragging, isDropTarget } = useSortable({
-  id: () => task.id,
-  index: () => index,
-  type: "item",
-  accept: "item",
-  group: () => group,
-  data: () => data,
-  disabled: () => read_only,
-});
-
-let show_content = $state(false);
-let prevent_menu_focus_restore = false;
-let has_expandable_content = $derived(
-  task.items.length > 0 || task.description.trim().length > 0,
-);
-let delete_confirm_open = $state(false);
-let due_metadata = $derived(
-  (() => {
-    if (!task.due_time) {
-      return undefined;
-    }
-
-    const now = new Date();
-    const include_year = task.due_time.getFullYear() !== now.getFullYear();
-    const date = task.due_time.toLocaleDateString("en", {
-      month: "short",
-      day: "numeric",
-      year: include_year ? "numeric" : undefined,
-    });
-    const has_time =
-      task.due_time.getHours() !== 0 ||
-      task.due_time.getMinutes() !== 0 ||
-      task.due_time.getSeconds() !== 0;
-    const time = has_time
-      ? `, ${String(task.due_time.getHours()).padStart(2, "0")}:${String(task.due_time.getMinutes()).padStart(2, "0")}`
-      : "";
-    const status = due_status(task.due_time, now);
-    return {
-      text:
-        status === "today"
-          ? `Due today · ${date}${time}`
-          : status === "soon"
-            ? `Due soon · ${date}${time}`
-            : `${date}${time}`,
-      status,
-    };
-  })(),
-);
-
-let previous_expand_content = $state<boolean | undefined>(undefined);
-$effect(() => {
-  if (
-    previous_expand_content !== undefined &&
-    expand_content !== previous_expand_content
-  ) {
-    show_content = false;
+  interface CardItemProps {
+    task: Task;
+    index: number;
+    group?: string | number;
+    data?: { group: string | number };
+    expand_content: boolean;
+    read_only?: boolean;
+    onViewTask: () => void;
+    onEditTask: () => void;
+    onDuplicateTask: () => void;
+    onSaveAsTemplate?: () => void;
+    onExportTask?: () => void;
+    onDeleteTask: () => void;
+    onArchiveTask: () => void;
   }
-  previous_expand_content = expand_content;
-});
+
+  let {
+    task,
+    index,
+    group,
+    data,
+    expand_content,
+    read_only = false,
+    onViewTask = () => {},
+    onEditTask = () => {},
+    onDuplicateTask = () => {},
+    onSaveAsTemplate,
+    onExportTask = () => {},
+    onDeleteTask = () => {},
+    onArchiveTask = () => {},
+  }: CardItemProps = $props();
+
+  const { ref, isDragging, isDropTarget } = useSortable({
+    id: () => task.id,
+    index: () => index,
+    type: "item",
+    accept: "item",
+    group: () => group,
+    data: () => data,
+    disabled: () => read_only,
+  });
+
+  let show_content = $state(false);
+  let prevent_menu_focus_restore = false;
+  let has_expandable_content = $derived(
+    task.items.length > 0 || task.description.trim().length > 0,
+  );
+  let delete_confirm_open = $state(false);
+  let due_metadata = $derived(
+    (() => {
+      if (!task.due_time) {
+        return undefined;
+      }
+
+      const now = new Date();
+      const include_year = task.due_time.getFullYear() !== now.getFullYear();
+      const date = task.due_time.toLocaleDateString("en", {
+        month: "short",
+        day: "numeric",
+        year: include_year ? "numeric" : undefined,
+      });
+      const has_time =
+        task.due_time.getHours() !== 0 ||
+        task.due_time.getMinutes() !== 0 ||
+        task.due_time.getSeconds() !== 0;
+      const time = has_time
+        ? `, ${String(task.due_time.getHours()).padStart(2, "0")}:${String(task.due_time.getMinutes()).padStart(2, "0")}`
+        : "";
+      const status = due_status(task.due_time, now);
+      return {
+        text:
+          status === "today"
+            ? `Due today · ${date}${time}`
+            : status === "soon"
+              ? `Due soon · ${date}${time}`
+              : `${date}${time}`,
+        status,
+      };
+    })(),
+  );
+
+  let previous_expand_content = $state<boolean | undefined>(undefined);
+  $effect(() => {
+    if (
+      previous_expand_content !== undefined &&
+      expand_content !== previous_expand_content
+    ) {
+      show_content = false;
+    }
+    previous_expand_content = expand_content;
+  });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -126,25 +126,29 @@ $effect(() => {
   class="group relative max-w-full select-none overflow-hidden"
   {@attach ref}
   oncontextmenu={(event) => {
-        if (read_only) return;
-        event.preventDefault();
-        onEditTask();
-    }}
+    if (read_only) {
+      return;
+    }
+    event.preventDefault();
+    onEditTask();
+  }}
 >
   <Card.Root
     data-task-card-surface
-    class="relative my-1 w-full gap-2 border-2 py-3 transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground/40 hover:shadow-sm {read_only ? 'cursor-pointer' : ''}"
+    class="relative my-1 w-full gap-2 border-2 py-3 transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground/40 hover:shadow-sm {read_only
+      ? 'cursor-pointer'
+      : ''}"
     role={read_only ? "button" : undefined}
     tabindex={read_only ? 0 : undefined}
     onclick={read_only ? onViewTask : undefined}
     onkeydown={read_only
-            ? (event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onViewTask();
-                  }
-              }
-            : undefined}
+      ? (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onViewTask();
+          }
+        }
+      : undefined}
     ondblclick={read_only ? undefined : onViewTask}
   >
     <Card.Header class="w-full px-4">
@@ -158,14 +162,14 @@ $effect(() => {
         {#if due_metadata != undefined}
           <span
             class={`inline-flex items-center gap-1.5 text-xs ${
-                                    due_metadata.status === "overdue"
-                                        ? "text-destructive"
-                                        : due_metadata.status === "today"
-                                          ? "font-medium text-warning"
-                                          : due_metadata.status === "soon"
-                                            ? "font-medium text-warning"
-                                            : "text-muted-foreground"
-                                }`}
+              due_metadata.status === "overdue"
+                ? "text-destructive"
+                : due_metadata.status === "today"
+                  ? "font-medium text-warning"
+                  : due_metadata.status === "soon"
+                    ? "font-medium text-warning"
+                    : "text-muted-foreground"
+            }`}
           >
             {#if due_metadata.status === "overdue"}
               <CircleAlertIcon class="size-3.5 shrink-0" />
@@ -196,12 +200,16 @@ $effect(() => {
             variant="ghost"
             size="icon-sm"
             class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-            aria-label={show_content ? "Collapse task content" : "Expand task content"}
-            title={show_content ? "Collapse task content" : "Expand task content"}
+            aria-label={show_content
+              ? "Collapse task content"
+              : "Expand task content"}
+            title={show_content
+              ? "Collapse task content"
+              : "Expand task content"}
             onpointerup={(event) => event.currentTarget.blur()}
             onclick={() => {
-                                show_content = !show_content;
-                            }}
+              show_content = !show_content;
+            }}
           >
             {#if show_content}
               <ChevronUpIcon class="size-4" />
@@ -229,9 +237,11 @@ $effect(() => {
             align="end"
             class="min-w-36"
             onCloseAutoFocus={(event) => {
-                                if (prevent_menu_focus_restore) event.preventDefault();
-                                prevent_menu_focus_restore = false;
-                            }}
+              if (prevent_menu_focus_restore) {
+                event.preventDefault();
+              }
+              prevent_menu_focus_restore = false;
+            }}
           >
             <DropdownMenu.Item onclick={onViewTask}>
               <FullscreenIcon />
@@ -257,11 +267,11 @@ $effect(() => {
             </DropdownMenu.Item>
             <DropdownMenu.Item
               onSelect={() => {
-                                    // This trigger disappears with the archived card. Restoring
-                                    // focus to it can make the scroll viewport jump to the top.
-                                    prevent_menu_focus_restore = true;
-                                    onArchiveTask();
-                                }}
+                // This trigger disappears with the archived card. Restoring
+                // focus to it can make the scroll viewport jump to the top.
+                prevent_menu_focus_restore = true;
+                onArchiveTask();
+              }}
             >
               <ArchiveIcon />
               Archive Task
@@ -270,8 +280,8 @@ $effect(() => {
             <DropdownMenu.Item
               variant="destructive"
               onclick={() => {
-                                    delete_confirm_open = true;
-                                }}
+                delete_confirm_open = true;
+              }}
             >
               <TrashIcon />
               Delete Task
@@ -295,8 +305,8 @@ $effect(() => {
             <Collapsible.Content>
               <div
                 class={task.items.length > 0
-                                            ? "mt-3 rounded-md bg-muted/40 px-3 py-2"
-                                            : "rounded-md bg-muted/40 px-3 py-2"}
+                  ? "mt-3 rounded-md bg-muted/40 px-3 py-2"
+                  : "rounded-md bg-muted/40 px-3 py-2"}
               >
                 <Markdown md={task.description} compact />
               </div>

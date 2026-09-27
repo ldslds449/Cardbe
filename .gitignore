@@ -38,4 +38,8 @@ vite.config.ts.timestamp-*
 
 # Editor and operating-system files
 .vscode/
+!.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/

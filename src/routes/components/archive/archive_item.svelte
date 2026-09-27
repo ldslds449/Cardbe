@@ -1,21 +1,21 @@
 <script lang="ts">
-import * as Card from "$lib/components/ui/card/index.js";
-import UndoIcon from "@lucide/svelte/icons/undo-2";
-import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import UndoIcon from "@lucide/svelte/icons/undo-2";
+  import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
 
-import type { Task } from "../../type/task.svelte";
-import { display_task_color } from "../../utils/task-color";
-import { Button } from "$lib/components/ui/button/index.js";
-import LabelBadge from "../label_badge.svelte";
+  import type { Task } from "../../type/task.svelte";
+  import { display_task_color } from "../../utils/task-color";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import LabelBadge from "../label_badge.svelte";
 
-interface ArchiveItemProps {
-  date: string;
-  tasks: Task[];
-  onUnarchive: (task_id: string) => void;
-  onShowDetail: (task: Task) => void;
-}
+  interface ArchiveItemProps {
+    date: string;
+    tasks: Task[];
+    onUnarchive: (task_id: string) => void;
+    onShowDetail: (task: Task) => void;
+  }
 
-let { date, tasks, onUnarchive, onShowDetail }: ArchiveItemProps = $props();
+  let { date, tasks, onUnarchive, onShowDetail }: ArchiveItemProps = $props();
 </script>
 
 <div>
@@ -55,8 +55,8 @@ let { date, tasks, onUnarchive, onShowDetail }: ArchiveItemProps = $props();
                 aria-label="View task details"
                 title="View task details"
                 onclick={() => {
-                                    onShowDetail(t);
-                                }}
+                  onShowDetail(t);
+                }}
               >
                 <FullscreenIcon class="h-4 w-4" />
               </Button>
@@ -67,8 +67,8 @@ let { date, tasks, onUnarchive, onShowDetail }: ArchiveItemProps = $props();
                 aria-label="Unarchive task"
                 title="Unarchive task"
                 onclick={() => {
-                                    onUnarchive(t.id);
-                                }}
+                  onUnarchive(t.id);
+                }}
               >
                 <UndoIcon class="text-white" />
               </Button>

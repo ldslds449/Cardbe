@@ -1,6 +1,6 @@
 import type { Column } from "../../type/column.svelte";
 import type { Task } from "../../type/task.svelte";
-import { task_matches_search } from "../calendar/calendar";
+import { task_matches_search_text } from "../calendar/calendar";
 
 export interface RecurringTaskEntry {
   column: Column;
@@ -21,7 +21,7 @@ export function get_recurring_tasks(
     )
     .filter(
       ({ column, task }) =>
-        task_matches_search(task, search_text) ||
+        task_matches_search_text(task, search_text) ||
         (query.length > 0 && column.name.toLocaleLowerCase().includes(query)),
     )
     .toSorted((a, b) => {

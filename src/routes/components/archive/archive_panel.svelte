@@ -1,82 +1,82 @@
 <script lang="ts">
-import * as Sheet from "$lib/components/ui/sheet/index.js";
-import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-import { Separator } from "$lib/components/ui/separator/index.js";
-import { Spinner } from "$lib/components/ui/spinner/index.js";
-import * as InputGroup from "$lib/components/ui/input-group/index.js";
-import ArchiveIcon from "@lucide/svelte/icons/archive";
-import SearchIcon from "@lucide/svelte/icons/search";
-import XIcon from "@lucide/svelte/icons/x";
+  import * as Sheet from "$lib/components/ui/sheet/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
+  import { Spinner } from "$lib/components/ui/spinner/index.js";
+  import * as InputGroup from "$lib/components/ui/input-group/index.js";
+  import ArchiveIcon from "@lucide/svelte/icons/archive";
+  import SearchIcon from "@lucide/svelte/icons/search";
+  import XIcon from "@lucide/svelte/icons/x";
 
-import ArchiveItem from "./archive_item.svelte";
-import UnarchiveTaskDialog from "./unarchive_task_dialog.svelte";
-import ViewTaskDialog from "../dialog/view_task_dialog.svelte";
-import { task_matches_search } from "../calendar/calendar";
+  import ArchiveItem from "./archive_item.svelte";
+  import UnarchiveTaskDialog from "./unarchive_task_dialog.svelte";
+  import ViewTaskDialog from "../dialog/view_task_dialog.svelte";
+  import { task_matches_search_text } from "../calendar/calendar";
 
-import type { Task } from "../../type/task.svelte";
-import type { Column } from "../../type/column.svelte";
-import type { Archive } from "../../type/archive.svelte";
+  import type { Task } from "../../type/task.svelte";
+  import type { Column } from "../../type/column.svelte";
+  import type { Archive } from "../../type/archive.svelte";
 
-let {
-  open = $bindable(false),
-  archives,
-  loading = false,
-  columns,
-  onUnarchive,
-}: {
-  open: boolean;
-  archives: Archive[];
-  loading?: boolean;
-  columns: Column[];
-  onUnarchive: (column_id: string, task_id: string) => void;
-} = $props();
+  let {
+    open = $bindable(false),
+    archives,
+    loading = false,
+    columns,
+    onUnarchive,
+  }: {
+    open: boolean;
+    archives: Archive[];
+    loading?: boolean;
+    columns: Column[];
+    onUnarchive: (column_id: string, task_id: string) => void;
+  } = $props();
 
-let search_text = $state("");
+  let search_text = $state("");
 
-// 1. sort by date
-// 2. reduce into date unit
-let archive_reduced = $derived(
-  archives
-    .filter((archive) => task_matches_search(archive.task, search_text))
-    .toSorted((a, b) => b.time.getTime() - a.time.getTime())
-    .reduce(
-      (acc, el) => {
-        const date_str = [
-          el.time.getFullYear(),
-          String(el.time.getMonth() + 1).padStart(2, "0"),
-          String(el.time.getDate()).padStart(2, "0"),
-        ].join("-");
-        const current = acc.get(date_str) || {
-          tasks: [],
-        };
+  // 1. sort by date
+  // 2. reduce into date unit
+  let archive_reduced = $derived(
+    archives
+      .filter((archive) => task_matches_search_text(archive.task, search_text))
+      .toSorted((a, b) => b.time.getTime() - a.time.getTime())
+      .reduce(
+        (acc, el) => {
+          const date_str = [
+            el.time.getFullYear(),
+            String(el.time.getMonth() + 1).padStart(2, "0"),
+            String(el.time.getDate()).padStart(2, "0"),
+          ].join("-");
+          const current = acc.get(date_str) || {
+            tasks: [],
+          };
 
-        acc.set(date_str, {
-          tasks: [...current.tasks, el.task],
-        });
-        return acc;
-      },
-      new Map<
-        string,
-        {
-          tasks: Task[];
-        }
-      >(),
-    ),
-);
+          acc.set(date_str, {
+            tasks: [...current.tasks, el.task],
+          });
+          return acc;
+        },
+        new Map<
+          string,
+          {
+            tasks: Task[];
+          }
+        >(),
+      ),
+  );
 
-let unarchive_dialog_open = $state(false);
-let unarchive_target = $state<Task | null>(null);
-let view_task_dialog_open = $state(false);
-let view_task = $state<Task | null>(null);
-function unarchive_callback(task_id: string) {
-  unarchive_target =
-    archives.find((archive) => archive.task.id === task_id)?.task ?? null;
-  unarchive_dialog_open = true;
-}
-function show_detail_callback(task: Task) {
-  view_task = task;
-  view_task_dialog_open = true;
-}
+  let unarchive_dialog_open = $state(false);
+  let unarchive_target = $state<Task | null>(null);
+  let view_task_dialog_open = $state(false);
+  let view_task = $state<Task | null>(null);
+  function unarchive_callback(task_id: string) {
+    unarchive_target =
+      archives.find((archive) => archive.task.id === task_id)?.task ?? null;
+    unarchive_dialog_open = true;
+  }
+  function show_detail_callback(task: Task) {
+    view_task = task;
+    view_task_dialog_open = true;
+  }
 </script>
 
 <div>
@@ -113,8 +113,8 @@ function show_detail_callback(task: Task) {
                 title="Clear search"
                 size="icon-xs"
                 onclick={() => {
-                                    search_text = "";
-                                }}
+                  search_text = "";
+                }}
               >
                 <XIcon />
               </InputGroup.Button>
@@ -158,8 +158,6 @@ function show_detail_callback(task: Task) {
     onConfirm={onUnarchive}
   />
 
-  <ViewTaskDialog
-    bind:open={view_task_dialog_open}
-    task={view_task}
+  <ViewTaskDialog bind:open={view_task_dialog_open} task={view_task}
   ></ViewTaskDialog>
 </div>

@@ -1,22 +1,22 @@
 <script lang="ts">
-import { Calendar as CalendarPrimitive } from "bits-ui";
-import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
-import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import { Calendar as CalendarPrimitive } from "bits-ui";
+  import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 
-let {
-  ref = $bindable(null),
-  class: className,
-  value,
-  onchange,
-  ...restProps
-}: WithoutChildrenOrChild<CalendarPrimitive.MonthSelectProps> = $props();
+  let {
+    ref = $bindable(null),
+    class: className,
+    value,
+    onchange,
+    ...restProps
+  }: WithoutChildrenOrChild<CalendarPrimitive.MonthSelectProps> = $props();
 </script>
 
 <span
   class={cn(
-		"has-focus:border-ring border-input has-focus:ring-ring/50 relative flex rounded-md border shadow-xs has-focus:ring-[3px]",
-		className
-	)}
+    "has-focus:border-ring border-input has-focus:ring-ring/50 relative flex rounded-md border shadow-xs has-focus:ring-[3px]",
+    className,
+  )}
 >
   <CalendarPrimitive.MonthSelect
     bind:ref
@@ -27,9 +27,9 @@ let {
       <select
         {...props}
         class={cn(
-					typeof props.class === "string" ? props.class : undefined,
-					"bg-popover text-popover-foreground [color-scheme:light] dark:[color-scheme:dark] [&>option]:bg-popover [&>option]:text-popover-foreground",
-				)}
+          typeof props.class === "string" ? props.class : undefined,
+          "bg-popover text-popover-foreground [color-scheme:light] dark:[color-scheme:dark] [&>option]:bg-popover [&>option]:text-popover-foreground",
+        )}
         {value}
         {onchange}
       >
@@ -37,8 +37,8 @@ let {
           <option
             value={monthItem.value}
             selected={value !== undefined
-							? monthItem.value === value
-							: monthItem.value === selectedMonthItem.value}
+              ? monthItem.value === value
+              : monthItem.value === selectedMonthItem.value}
           >
             {monthItem.label}
           </option>
@@ -48,7 +48,8 @@ let {
         class="[&>svg]:text-muted-foreground flex h-8 items-center gap-1 rounded-md ps-2 pe-1 text-sm font-medium select-none [&>svg]:size-3.5"
         aria-hidden="true"
       >
-        {monthItems.find((item) => item.value === value)?.label || selectedMonthItem.label}
+        {monthItems.find((item) => item.value === value)?.label ||
+          selectedMonthItem.label}
         <ChevronDownIcon class="size-4" />
       </span>
     {/snippet}

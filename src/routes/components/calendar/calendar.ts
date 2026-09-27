@@ -32,8 +32,26 @@ export function task_matches_search(
   search_text: string,
   search_task_ids?: ReadonlySet<string> | null,
 ): boolean {
-  if (!search_text.trim() || !search_task_ids) return true;
+  if (!search_text.trim() || !search_task_ids) {
+    return true;
+  }
   return search_task_ids.has(task.id);
+}
+
+export function task_matches_search_text(
+  task: Task,
+  search_text: string,
+): boolean {
+  const query = search_text.trim().toLocaleLowerCase();
+  if (!query) {
+    return true;
+  }
+  return [
+    task.title,
+    task.description,
+    ...task.labels,
+    ...task.items.map((item) => item.text),
+  ].some((text) => text.toLocaleLowerCase().includes(query));
 }
 
 export function count_due_tasks(
@@ -54,7 +72,9 @@ export function count_due_tasks(
     0,
   );
 
-  if (!show_archived) return active_count;
+  if (!show_archived) {
+    return active_count;
+  }
   return (
     active_count +
     archives.filter(
@@ -81,7 +101,9 @@ export function reschedule_due_time(due_time: Date, target_date: Date): Date {
 
 function next_recurrence_date(task: Task, from: Date): Date | undefined {
   const recurrence = task.recurrence;
-  if (!recurrence) return undefined;
+  if (!recurrence) {
+    return undefined;
+  }
   const interval = Math.max(1, Math.trunc(recurrence.interval) || 1);
   const next = new Date(from);
 
@@ -121,20 +143,26 @@ function add_recurring_previews(
         !task.due_time ||
         !task.recurrence ||
         !task_matches_search(task, search_text, search_task_ids)
-      )
+      ) {
         continue;
+      }
 
       let occurrence = new Date(task.due_time);
       for (let guard = 0; guard < 100_000; guard++) {
         const next = next_recurrence_date(task, occurrence);
-        if (!next || next.getTime() <= occurrence.getTime()) break;
+        if (!next || next.getTime() <= occurrence.getTime()) {
+          break;
+        }
         occurrence = next;
-        if (occurrence > range_end) break;
+        if (occurrence > range_end) {
+          break;
+        }
         if (
           occurrence < range_start ||
           occurrence.getTime() < first_preview_day
-        )
+        ) {
           continue;
+        }
 
         const preview_task: Task = {
           ...task,
@@ -185,8 +213,9 @@ export function build_calendar_days(
       if (
         !task.due_time ||
         !task_matches_search(task, search_text, search_task_ids)
-      )
+      ) {
         continue;
+      }
       const key = date_key(task.due_time);
       const tasks = tasks_by_date.get(key) ?? [];
       tasks.push({ task, column, archived: false, preview: false });
@@ -206,8 +235,9 @@ export function build_calendar_days(
       if (
         !task.due_time ||
         !task_matches_search(task, search_text, search_task_ids)
-      )
+      ) {
         continue;
+      }
       const key = date_key(task.due_time);
       const tasks = tasks_by_date.get(key) ?? [];
       tasks.push({

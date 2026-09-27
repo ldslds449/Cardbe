@@ -1,22 +1,22 @@
 <script lang="ts">
-import CircleIcon from "@lucide/svelte/icons/circle";
-import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
+  import CircleIcon from "@lucide/svelte/icons/circle";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
 
-import type { TaskItem } from "../../type/task.svelte";
-import Markdown from "../markdown.svelte";
+  import type { TaskItem } from "../../type/task.svelte";
+  import Markdown from "../markdown.svelte";
 
-let {
-  items,
-  show_items = true,
-}: {
-  items: TaskItem[];
-  show_items?: boolean;
-} = $props();
+  let {
+    items,
+    show_items = true,
+  }: {
+    items: TaskItem[];
+    show_items?: boolean;
+  } = $props();
 
-let completed_count = $derived(items.filter((item) => item.completed).length);
-let progress_percentage = $derived(
-  items.length === 0 ? 0 : Math.round((completed_count / items.length) * 100),
-);
+  let completed_count = $derived(items.filter((item) => item.completed).length);
+  let progress_percentage = $derived(
+    items.length === 0 ? 0 : Math.round((completed_count / items.length) * 100),
+  );
 </script>
 
 {#if items.length > 0}

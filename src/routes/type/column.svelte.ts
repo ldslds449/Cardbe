@@ -45,7 +45,9 @@ export function set_column_id(column: Column, id: number): void {
 export function get_column_id(column: Column | string): number {
   const value = typeof column === "string" ? column : column.id;
   const match = value.match(/^column_(\d+)$/);
-  if (!match) throw new Error(`Invalid column ID: ${value}`);
+  if (!match) {
+    throw new Error(`Invalid column ID: ${value}`);
+  }
   return Number.parseInt(match[1], 10);
 }
 

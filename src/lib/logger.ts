@@ -6,9 +6,15 @@ type LogContext = Record<string, unknown>;
 const originalConsoleError = console.error.bind(console);
 
 function safeValue(value: unknown, depth = 0): unknown {
-  if (typeof value === "bigint") return value.toString();
-  if (value === null || typeof value !== "object") return value;
-  if (depth >= 3) return "[object omitted]";
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  if (depth >= 3) {
+    return "[object omitted]";
+  }
   if (value instanceof Error) {
     const details: Record<string, unknown> = {
       name: value.name,
@@ -16,11 +22,17 @@ function safeValue(value: unknown, depth = 0): unknown {
       stack: value.stack,
     };
     const coded_error = value as Error & { code?: unknown; cause?: unknown };
-    if ("code" in value) details.code = safeValue(coded_error.code, depth + 1);
-    if (coded_error.cause !== undefined) details.cause = safeValue(coded_error.cause, depth + 1);
+    if ("code" in value) {
+      details.code = safeValue(coded_error.code, depth + 1);
+    }
+    if (coded_error.cause !== undefined) {
+      details.cause = safeValue(coded_error.cause, depth + 1);
+    }
     return details;
   }
-  if (Array.isArray(value)) return value.slice(0, 20).map((item) => safeValue(item, depth + 1));
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => safeValue(item, depth + 1));
+  }
 
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
@@ -30,16 +42,22 @@ function safeValue(value: unknown, depth = 0): unknown {
 }
 
 function safeContext(context?: LogContext): LogContext | undefined {
-  return context ? safeValue(context) as LogContext : undefined;
+  return context ? (safeValue(context) as LogContext) : undefined;
 }
 
 function serialize(error?: unknown, context?: LogContext): string {
   try {
     const payload: Record<string, unknown> = {};
-    if (error !== undefined) payload.error = safeValue(error);
+    if (error !== undefined) {
+      payload.error = safeValue(error);
+    }
     const sanitized = safeContext(context);
-    if (sanitized) payload.context = sanitized;
-    if (Object.keys(payload).length === 0) return "";
+    if (sanitized) {
+      payload.context = sanitized;
+    }
+    if (Object.keys(payload).length === 0) {
+      return "";
+    }
     return JSON.stringify(payload);
   } catch {
     return JSON.stringify({ error: true });
@@ -67,8 +85,10 @@ async function write(
 }
 
 export const logger = {
-  debug: (event: string, context?: LogContext) => void write("debug", event, undefined, context),
-  info: (event: string, context?: LogContext) => void write("info", event, undefined, context),
+  debug: (event: string, context?: LogContext) =>
+    void write("debug", event, undefined, context),
+  info: (event: string, context?: LogContext) =>
+    void write("info", event, undefined, context),
   warn: (event: string, error?: unknown, context?: LogContext) =>
     void write("warn", event, error, context),
   error: (event: string, error?: unknown, context?: LogContext) =>

@@ -65,8 +65,12 @@ describe("initial board loading", () => {
   it("loads columns without waiting for an earlier background mission", async () => {
     const labels = deferred<string[]>();
     invoke_mock.mockImplementation((command) => {
-      if (command === "get_labels") return labels.promise;
-      if (command === "get_columns") return Promise.resolve([]);
+      if (command === "get_labels") {
+        return labels.promise;
+      }
+      if (command === "get_columns") {
+        return Promise.resolve([]);
+      }
       return Promise.resolve();
     });
     const store = create_store();
@@ -90,7 +94,9 @@ describe("initial board loading", () => {
     try {
       const columns = deferred<never>();
       invoke_mock.mockImplementation((command) => {
-        if (command === "get_columns") return columns.promise;
+        if (command === "get_columns") {
+          return columns.promise;
+        }
         return Promise.resolve();
       });
       const store = create_store();
@@ -114,9 +120,15 @@ describe("pending task operations", () => {
   it("waits for creation before deleting a new task", async () => {
     const add_task = deferred<number>();
     invoke_mock.mockImplementation((command) => {
-      if (command === "add_task") return add_task.promise;
-      if (command === "delete_task") return Promise.resolve();
-      if (command === "get_labels") return Promise.resolve([]);
+      if (command === "add_task") {
+        return add_task.promise;
+      }
+      if (command === "delete_task") {
+        return Promise.resolve();
+      }
+      if (command === "get_labels") {
+        return Promise.resolve([]);
+      }
       return Promise.resolve();
     });
     const store = create_store();
@@ -142,8 +154,12 @@ describe("pending task operations", () => {
   it("does not restore a pending task when its creation fails", async () => {
     const add_task = deferred<number>();
     invoke_mock.mockImplementation((command) => {
-      if (command === "add_task") return add_task.promise;
-      if (command === "get_labels") return Promise.resolve([]);
+      if (command === "add_task") {
+        return add_task.promise;
+      }
+      if (command === "get_labels") {
+        return Promise.resolve([]);
+      }
       return Promise.resolve();
     });
     const store = create_store();
@@ -172,7 +188,9 @@ describe("pending task operations", () => {
         add_count += 1;
         return add_count === 1 ? first_add.promise : Promise.resolve(43);
       }
-      if (command === "get_labels") return Promise.resolve([]);
+      if (command === "get_labels") {
+        return Promise.resolve([]);
+      }
       return Promise.resolve();
     });
     const store = create_store();
@@ -200,9 +218,15 @@ describe("pending task operations", () => {
   it("waits for creation before updating a new task", async () => {
     const add_task = deferred<number>();
     invoke_mock.mockImplementation((command) => {
-      if (command === "add_task") return add_task.promise;
-      if (command === "update_task") return Promise.resolve();
-      if (command === "get_labels") return Promise.resolve([]);
+      if (command === "add_task") {
+        return add_task.promise;
+      }
+      if (command === "update_task") {
+        return Promise.resolve();
+      }
+      if (command === "get_labels") {
+        return Promise.resolve([]);
+      }
       return Promise.resolve();
     });
     const store = create_store();
@@ -229,8 +253,12 @@ describe("pending task operations", () => {
 
   it("resolves a temporary ID retained by a dialog after creation", async () => {
     invoke_mock.mockImplementation((command) => {
-      if (command === "add_task") return Promise.resolve(42);
-      if (command === "get_labels") return Promise.resolve([]);
+      if (command === "add_task") {
+        return Promise.resolve(42);
+      }
+      if (command === "get_labels") {
+        return Promise.resolve([]);
+      }
       if (command === "save_task_template") {
         return Promise.resolve({
           id: 7,
@@ -271,9 +299,15 @@ describe("pending task operations", () => {
 
   it("finds a created task through its retained temporary ID", async () => {
     invoke_mock.mockImplementation((command) => {
-      if (command === "add_task") return Promise.resolve(42);
-      if (command === "delete_task") return Promise.resolve();
-      if (command === "get_labels") return Promise.resolve([]);
+      if (command === "add_task") {
+        return Promise.resolve(42);
+      }
+      if (command === "delete_task") {
+        return Promise.resolve();
+      }
+      if (command === "get_labels") {
+        return Promise.resolve([]);
+      }
       return Promise.resolve();
     });
     const store = create_store();
@@ -296,9 +330,15 @@ describe("pending task operations", () => {
   it("persists a drag made before creation finishes", async () => {
     const add_task = deferred<number>();
     invoke_mock.mockImplementation((command) => {
-      if (command === "add_task") return add_task.promise;
-      if (command === "move_task") return Promise.resolve();
-      if (command === "get_labels") return Promise.resolve([]);
+      if (command === "add_task") {
+        return add_task.promise;
+      }
+      if (command === "move_task") {
+        return Promise.resolve();
+      }
+      if (command === "get_labels") {
+        return Promise.resolve([]);
+      }
       return Promise.resolve();
     });
     const store = create_store(2);
@@ -323,16 +363,22 @@ describe("pending task operations", () => {
   it("keeps a queued pending-task deletion bound to the board where it began", async () => {
     const add_task = deferred<number>();
     invoke_mock.mockImplementation((command) => {
-      if (command === "add_task") return add_task.promise;
-      if (command === "delete_task" || command === "switch_board")
+      if (command === "add_task") {
+        return add_task.promise;
+      }
+      if (command === "delete_task" || command === "switch_board") {
         return Promise.resolve();
-      if (command === "get_columns") return Promise.resolve([]);
+      }
+      if (command === "get_columns") {
+        return Promise.resolve([]);
+      }
       if (
         command === "get_labels" ||
         command === "get_task_templates" ||
         command === "get_expired_tasks"
-      )
+      ) {
         return Promise.resolve([]);
+      }
       return Promise.resolve();
     });
     const store = create_store();
@@ -376,16 +422,22 @@ describe("pending task operations", () => {
     try {
       const add_task = deferred<number>();
       invoke_mock.mockImplementation((command) => {
-        if (command === "add_task") return add_task.promise;
-        if (command === "move_task" || command === "switch_board")
+        if (command === "add_task") {
+          return add_task.promise;
+        }
+        if (command === "move_task" || command === "switch_board") {
           return Promise.resolve();
-        if (command === "get_columns") return Promise.resolve([]);
+        }
+        if (command === "get_columns") {
+          return Promise.resolve([]);
+        }
         if (
           command === "get_labels" ||
           command === "get_task_templates" ||
           command === "get_expired_tasks"
-        )
+        ) {
           return Promise.resolve([]);
+        }
         return Promise.resolve();
       });
       const store = create_store(2);

@@ -86,6 +86,7 @@ describe("build_focus_groups", () => {
       [column],
       new Date(2026, 6, 25),
       "RELEASE",
+      new Set(["task_1"]),
     );
 
     expect(groups.today.map(({ task }) => task.title)).toEqual([

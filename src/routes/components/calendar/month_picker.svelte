@@ -1,56 +1,64 @@
 <script lang="ts">
-import CalendarIcon from "@lucide/svelte/icons/calendar";
-import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
-import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-import { Button } from "$lib/components/ui/button/index.js";
-import * as Popover from "$lib/components/ui/popover/index.js";
+  import CalendarIcon from "@lucide/svelte/icons/calendar";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Popover from "$lib/components/ui/popover/index.js";
 
-let {
-  value = $bindable(),
-  disabled = false,
-  onValueChange,
-}: {
-  value: string;
-  disabled?: boolean;
-  onValueChange?: (value: string) => void;
-} = $props();
+  let {
+    value = $bindable(),
+    disabled = false,
+    onValueChange,
+  }: {
+    value: string;
+    disabled?: boolean;
+    onValueChange?: (value: string) => void;
+  } = $props();
 
-const month_names = Array.from({ length: 12 }, (_, month) => ({
-  short: new Date(2024, month, 1).toLocaleDateString("en-US", {
-    month: "short",
-  }),
-  long: new Date(2024, month, 1).toLocaleDateString("en-US", { month: "long" }),
-}));
+  const month_names = Array.from({ length: 12 }, (_, month) => ({
+    short: new Date(2024, month, 1).toLocaleDateString("en-US", {
+      month: "short",
+    }),
+    long: new Date(2024, month, 1).toLocaleDateString("en-US", {
+      month: "long",
+    }),
+  }));
 
-let open = $state(false);
-let display_year = $state(new Date().getFullYear());
+  let open = $state(false);
+  let display_year = $state(new Date().getFullYear());
 
-function parse_value() {
-  const match = /^(\d{4})-(\d{2})$/.exec(value);
-  if (!match) return undefined;
-  const year = Number(match[1]);
-  const month = Number(match[2]) - 1;
-  if (year < 1 || year > 9999 || month < 0 || month > 11) return undefined;
-  return { year, month };
-}
+  function parse_value() {
+    const match = /^(\d{4})-(\d{2})$/.exec(value);
+    if (!match) {
+      return undefined;
+    }
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    if (year < 1 || year > 9999 || month < 0 || month > 11) {
+      return undefined;
+    }
+    return { year, month };
+  }
 
-const selected = $derived(parse_value());
-const display_value = $derived(
-  selected
-    ? `${month_names[selected.month].long} ${selected.year}`
-    : "Select month",
-);
+  const selected = $derived(parse_value());
+  const display_value = $derived(
+    selected
+      ? `${month_names[selected.month].long} ${selected.year}`
+      : "Select month",
+  );
 
-$effect(() => {
-  if (open) display_year = selected?.year ?? new Date().getFullYear();
-});
+  $effect(() => {
+    if (open) {
+      display_year = selected?.year ?? new Date().getFullYear();
+    }
+  });
 
-function select_month(month: number) {
-  value = `${display_year}-${String(month + 1).padStart(2, "0")}`;
-  open = false;
-  onValueChange?.(value);
-}
+  function select_month(month: number) {
+    value = `${display_year}-${String(month + 1).padStart(2, "0")}`;
+    open = false;
+    onValueChange?.(value);
+  }
 </script>
 
 <Popover.Root bind:open>
@@ -77,7 +85,9 @@ function select_month(month: number) {
         size="icon-sm"
         aria-label="Previous year"
         disabled={display_year <= 1}
-        onclick={() => { display_year -= 1; }}
+        onclick={() => {
+          display_year -= 1;
+        }}
       >
         <ChevronLeftIcon />
       </Button>
@@ -87,7 +97,9 @@ function select_month(month: number) {
         size="icon-sm"
         aria-label="Next year"
         disabled={display_year >= 9999}
-        onclick={() => { display_year += 1; }}
+        onclick={() => {
+          display_year += 1;
+        }}
       >
         <ChevronRightIcon />
       </Button>
@@ -99,11 +111,14 @@ function select_month(month: number) {
     >
       {#each month_names as month, index (month.short)}
         <Button
-          variant={selected?.year === display_year && selected.month === index ? "secondary" : "ghost"}
+          variant={selected?.year === display_year && selected.month === index
+            ? "secondary"
+            : "ghost"}
           size="sm"
           class="font-normal"
           aria-label={`${month.long} ${display_year}`}
-          aria-pressed={selected?.year === display_year && selected.month === index}
+          aria-pressed={selected?.year === display_year &&
+            selected.month === index}
           onclick={() => select_month(index)}
         >
           {month.short}

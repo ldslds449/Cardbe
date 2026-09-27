@@ -1,71 +1,73 @@
 <script lang="ts">
-import * as Sheet from "$lib/components/ui/sheet/index.js";
-import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-import { Separator } from "$lib/components/ui/separator/index.js";
-import * as InputGroup from "$lib/components/ui/input-group/index.js";
-import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
-import SearchIcon from "@lucide/svelte/icons/search";
-import XIcon from "@lucide/svelte/icons/x";
+  import * as Sheet from "$lib/components/ui/sheet/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
+  import * as InputGroup from "$lib/components/ui/input-group/index.js";
+  import AlertCircleIcon from "@lucide/svelte/icons/alert-circle";
+  import SearchIcon from "@lucide/svelte/icons/search";
+  import XIcon from "@lucide/svelte/icons/x";
 
-import type { Task } from "../../type/task.svelte";
-import ExpiredItem from "./expired_item.svelte";
-import ViewTaskDialog from "../dialog/view_task_dialog.svelte";
-import { task_matches_search } from "../calendar/calendar";
+  import type { Task } from "../../type/task.svelte";
+  import ExpiredItem from "./expired_item.svelte";
+  import ViewTaskDialog from "../dialog/view_task_dialog.svelte";
+  import { task_matches_search_text } from "../calendar/calendar";
 
-let {
-  open = $bindable(false),
-  expired_tasks,
-}: {
-  open: boolean;
-  expired_tasks: Task[];
-} = $props();
+  let {
+    open = $bindable(false),
+    expired_tasks,
+  }: {
+    open: boolean;
+    expired_tasks: Task[];
+  } = $props();
 
-let view_task_dialog_open = $state(false);
-let view_task = $state<Task | null>(null);
-let search_text = $state("");
+  let view_task_dialog_open = $state(false);
+  let view_task = $state<Task | null>(null);
+  let search_text = $state("");
 
-// Group expired tasks by due date
-let expired_reduced = $derived(
-  expired_tasks
-    .filter((task) => task_matches_search(task, search_text))
-    .map((el, el_idx) => ({ el, el_idx }))
-    .toSorted((a, b) => {
-      const a_time = a.el.due_time?.getTime() ?? 0;
-      const b_time = b.el.due_time?.getTime() ?? 0;
-      return b_time - a_time;
-    })
-    .reduce(
-      (acc, { el, el_idx }) => {
-        if (!el.due_time) return acc;
-        const year = el.due_time.getFullYear();
-        const month = String(el.due_time.getMonth() + 1).padStart(2, "0");
-        const day = String(el.due_time.getDate()).padStart(2, "0");
-        const date_str = `${year}-${month}-${day}`;
-        const current = acc.get(date_str) || {
-          tasks: [],
-          index: [],
-        };
+  // Group expired tasks by due date
+  let expired_reduced = $derived(
+    expired_tasks
+      .filter((task) => task_matches_search_text(task, search_text))
+      .map((el, el_idx) => ({ el, el_idx }))
+      .toSorted((a, b) => {
+        const a_time = a.el.due_time?.getTime() ?? 0;
+        const b_time = b.el.due_time?.getTime() ?? 0;
+        return b_time - a_time;
+      })
+      .reduce(
+        (acc, { el, el_idx }) => {
+          if (!el.due_time) {
+            return acc;
+          }
+          const year = el.due_time.getFullYear();
+          const month = String(el.due_time.getMonth() + 1).padStart(2, "0");
+          const day = String(el.due_time.getDate()).padStart(2, "0");
+          const date_str = `${year}-${month}-${day}`;
+          const current = acc.get(date_str) || {
+            tasks: [],
+            index: [],
+          };
 
-        acc.set(date_str, {
-          tasks: [...current.tasks, el],
-          index: [...current.index, el_idx],
-        });
-        return acc;
-      },
-      new Map<
-        string,
-        {
-          tasks: Task[];
-          index: number[];
-        }
-      >(),
-    ),
-);
+          acc.set(date_str, {
+            tasks: [...current.tasks, el],
+            index: [...current.index, el_idx],
+          });
+          return acc;
+        },
+        new Map<
+          string,
+          {
+            tasks: Task[];
+            index: number[];
+          }
+        >(),
+      ),
+  );
 
-function show_detail_callback(task: Task) {
-  view_task = task;
-  view_task_dialog_open = true;
-}
+  function show_detail_callback(task: Task) {
+    view_task = task;
+    view_task_dialog_open = true;
+  }
 </script>
 
 <div>
@@ -104,8 +106,8 @@ function show_detail_callback(task: Task) {
                 title="Clear search"
                 size="icon-xs"
                 onclick={() => {
-                                    search_text = "";
-                                }}
+                  search_text = "";
+                }}
               >
                 <XIcon />
               </InputGroup.Button>
@@ -125,9 +127,7 @@ function show_detail_callback(task: Task) {
               </div>
               <div class="space-y-2 p-2">
                 {#each reduced_pair.tasks as t (t)}
-                  <ExpiredItem
-                    task={t}
-                    onShowDetail={show_detail_callback}
+                  <ExpiredItem task={t} onShowDetail={show_detail_callback}
                   ></ExpiredItem>
                 {/each}
               </div>
@@ -143,8 +143,6 @@ function show_detail_callback(task: Task) {
     </Sheet.Content>
   </Sheet.Root>
 
-  <ViewTaskDialog
-    bind:open={view_task_dialog_open}
-    task={view_task}
+  <ViewTaskDialog bind:open={view_task_dialog_open} task={view_task}
   ></ViewTaskDialog>
 </div>

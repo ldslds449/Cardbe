@@ -1,12 +1,12 @@
 <script lang="ts">
-import {
-  Toaster as Sonner,
-  type ToasterProps as SonnerProps,
-} from "svelte-sonner";
-import { mode } from "mode-watcher";
-import "./sonner.css";
+  import {
+    Toaster as Sonner,
+    type ToasterProps as SonnerProps,
+  } from "svelte-sonner";
+  import { mode } from "mode-watcher";
+  import "./sonner.css";
 
-let { ...restProps }: SonnerProps = $props();
+  let { ...restProps }: SonnerProps = $props();
 </script>
 
 <Sonner

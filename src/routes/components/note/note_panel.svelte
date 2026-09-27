@@ -1,213 +1,236 @@
 <script lang="ts">
-import { logger } from "$lib/logger";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { toast } from "svelte-sonner";
-import { onDestroy, onMount, untrack } from "svelte";
-import { create_note_queue } from "./note-queue";
+  import { logger } from "$lib/logger";
+  import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import { toast } from "svelte-sonner";
+  import { onDestroy, onMount, untrack } from "svelte";
+  import { create_note_queue } from "./note-queue";
 
-import PlusIcon from "@lucide/svelte/icons/plus";
-import EyeIcon from "@lucide/svelte/icons/eye";
-import PencilIcon from "@lucide/svelte/icons/pencil";
-import SearchIcon from "@lucide/svelte/icons/search";
-import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
-import PinIcon from "@lucide/svelte/icons/pin";
-import Trash2Icon from "@lucide/svelte/icons/trash-2";
-import XIcon from "@lucide/svelte/icons/x";
+  import PlusIcon from "@lucide/svelte/icons/plus";
+  import EyeIcon from "@lucide/svelte/icons/eye";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import SearchIcon from "@lucide/svelte/icons/search";
+  import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
+  import PinIcon from "@lucide/svelte/icons/pin";
+  import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import XIcon from "@lucide/svelte/icons/x";
 
-import { Button } from "$lib/components/ui/button/index.js";
-import * as InputGroup from "$lib/components/ui/input-group/index.js";
-import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-import * as Sheet from "$lib/components/ui/sheet/index.js";
-import { Textarea } from "$lib/components/ui/textarea/index.js";
-import { cn } from "$lib/utils";
-import Markdown from "../markdown.svelte";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as InputGroup from "$lib/components/ui/input-group/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import * as Sheet from "$lib/components/ui/sheet/index.js";
+  import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import { cn } from "$lib/utils";
+  import Markdown from "../markdown.svelte";
 
-interface Note {
-  id: number;
-  title: string;
-  content: string;
-  pinned: boolean;
-  created_at: number;
-  updated_at: number;
-}
+  interface Note {
+    id: number;
+    title: string;
+    content: string;
+    pinned: boolean;
+    created_at: number;
+    updated_at: number;
+  }
 
-let { open = $bindable(false) }: { open: boolean } = $props();
+  let { open = $bindable(false) }: { open: boolean } = $props();
 
-let notes = $state<Note[]>([]);
-let selected_id = $state<number | null>(null);
-let search_text = $state("");
-let loading = $state(false);
-let loaded = $state(false);
-let creating = $state(false);
-let deleting_id = $state<number | null>(null);
-const enqueue = create_note_queue();
-let preview_mode = $state(false);
-const save_timers = new Map<number, ReturnType<typeof setTimeout>>();
-const save_versions = new Map<number, number>();
+  let notes = $state<Note[]>([]);
+  let selected_id = $state<number | null>(null);
+  let search_text = $state("");
+  let loading = $state(false);
+  let loaded = $state(false);
+  let creating = $state(false);
+  let deleting_id = $state<number | null>(null);
+  const enqueue = create_note_queue();
+  let preview_mode = $state(false);
+  const save_timers = new Map<number, ReturnType<typeof setTimeout>>();
+  const save_versions = new Map<number, number>();
 
-const selected_note = $derived(notes.find((note) => note.id === selected_id));
-const filtered_notes = $derived.by(() => {
-  const query = search_text.trim().toLocaleLowerCase();
-  return query
-    ? notes.filter((note) =>
-        `${note.title}\n${note.content}`.toLocaleLowerCase().includes(query),
-      )
-    : notes;
-});
-
-$effect(() => {
-  const is_open = open;
-  untrack(() => {
-    if (is_open && !loaded && !loading) void load_notes();
-    if (!is_open) flush_saves();
+  const selected_note = $derived(notes.find((note) => note.id === selected_id));
+  const filtered_notes = $derived.by(() => {
+    const query = search_text.trim().toLocaleLowerCase();
+    return query
+      ? notes.filter((note) =>
+          `${note.title}\n${note.content}`.toLocaleLowerCase().includes(query),
+        )
+      : notes;
   });
-});
 
-function flush_saves() {
-  for (const [id, timer] of save_timers) {
-    clearTimeout(timer);
-    const note = notes.find((candidate) => candidate.id === id);
-    if (note) void save_note(note, save_versions.get(id)!);
+  $effect(() => {
+    const is_open = open;
+    untrack(() => {
+      if (is_open && !loaded && !loading) {
+        void load_notes();
+      }
+      if (!is_open) {
+        flush_saves();
+      }
+    });
+  });
+
+  function flush_saves() {
+    for (const [id, timer] of save_timers) {
+      clearTimeout(timer);
+      const note = notes.find((candidate) => candidate.id === id);
+      if (note) {
+        void save_note(note, save_versions.get(id)!);
+      }
+    }
+    save_timers.clear();
   }
-  save_timers.clear();
-}
 
-onDestroy(flush_saves);
+  onDestroy(flush_saves);
 
-onMount(() => {
-  const data_changed_listener = listen<{ kind?: string }>(
-    "cardbe:data-changed",
-    (event) => {
-      if (event.payload.kind !== "note") return;
-      loaded = false;
-      if (open && !loading) void load_notes();
-    },
-  );
-  return () => void data_changed_listener.then((unlisten) => unlisten());
-});
-
-async function load_notes() {
-  loading = true;
-  try {
-    notes = await invoke<Note[]>("get_notes");
-    selected_id = notes[0]?.id ?? null;
-    loaded = true;
-  } catch (error) {
-    logger.error("note.load.failed", error);
-    console.error(error);
-    toast.error("Couldn't load notes");
-  } finally {
-    loading = false;
-  }
-}
-
-async function create_note() {
-  if (creating || loading || !loaded) return;
-  creating = true;
-  try {
-    const note = await invoke<Note>("create_note");
-    const first_unpinned = notes.findIndex((candidate) => !candidate.pinned);
-    notes.splice(
-      first_unpinned === -1 ? notes.length : first_unpinned,
-      0,
-      note,
+  onMount(() => {
+    const data_changed_listener = listen<{ kind?: string }>(
+      "cardbe:data-changed",
+      (event) => {
+        if (event.payload.kind !== "note") {
+          return;
+        }
+        loaded = false;
+        if (open && !loading) {
+          void load_notes();
+        }
+      },
     );
-    selected_id = note.id;
-    search_text = "";
-    preview_mode = false;
-  } catch (error) {
-    logger.error("note.create.failed", error);
-    console.error(error);
-    toast.error("Couldn't create note");
-  } finally {
-    creating = false;
-  }
-}
+    return () => void data_changed_listener.then((unlisten) => unlisten());
+  });
 
-function queue_save(note: Note) {
-  const existing = save_timers.get(note.id);
-  if (existing) clearTimeout(existing);
-  note.updated_at = Date.now();
-  const version = (save_versions.get(note.id) ?? 0) + 1;
-  save_versions.set(note.id, version);
-  save_timers.set(
-    note.id,
-    setTimeout(() => {
-      save_timers.delete(note.id);
-      void save_note(note, version);
-    }, 400),
-  );
-}
-
-async function save_note(note: Note, version: number) {
-  try {
-    const snapshot = {
-      id: note.id,
-      title: note.title,
-      content: note.content,
-      pinned: note.pinned,
-    };
-    const saved = await enqueue(() => invoke<Note>("update_note", snapshot));
-    const index = notes.findIndex((candidate) => candidate.id === saved.id);
-    if (index !== -1 && save_versions.get(saved.id) === version) {
-      notes[index].created_at = saved.created_at;
-      notes[index].updated_at = saved.updated_at;
+  async function load_notes() {
+    loading = true;
+    try {
+      notes = await invoke<Note[]>("get_notes");
+      selected_id = notes[0]?.id ?? null;
+      loaded = true;
+    } catch (error) {
+      logger.error("note.load.failed", error);
+      console.error(error);
+      toast.error("Couldn't load notes");
+    } finally {
+      loading = false;
     }
-  } catch (error) {
-    logger.error("note.save.failed", error);
-    console.error(error);
-    toast.error("Couldn't save note");
   }
-}
 
-function toggle_pinned(note: Note) {
-  note.pinned = !note.pinned;
-  queue_save(note);
-  notes.sort(
-    (left, right) =>
-      Number(right.pinned) - Number(left.pinned) ||
-      right.updated_at - left.updated_at,
-  );
-}
-
-async function delete_note(note: Note) {
-  if (deleting_id !== null) return;
-  if (!window.confirm(`Delete “${note.title.trim() || "Untitled note"}”?`))
-    return;
-  const timer = save_timers.get(note.id);
-  if (timer) clearTimeout(timer);
-  save_timers.delete(note.id);
-  deleting_id = note.id;
-  try {
-    // Persist pending edits first so a failed delete cannot discard them.
-    await save_note(note, save_versions.get(note.id) ?? 0);
-    await enqueue(() => invoke("delete_note", { id: note.id }));
-    save_versions.delete(note.id);
-    const index = notes.findIndex((candidate) => candidate.id === note.id);
-    if (index !== -1) notes.splice(index, 1);
-    if (selected_id === note.id) {
-      selected_id = notes[Math.min(index, notes.length - 1)]?.id ?? null;
+  async function create_note() {
+    if (creating || loading || !loaded) {
+      return;
     }
-    toast.success("Note deleted");
-  } catch (error) {
-    logger.error("note.delete.failed", error);
-    console.error(error);
-    toast.error("Couldn't delete note");
-  } finally {
-    deleting_id = null;
+    creating = true;
+    try {
+      const note = await invoke<Note>("create_note");
+      const first_unpinned = notes.findIndex((candidate) => !candidate.pinned);
+      notes.splice(
+        first_unpinned === -1 ? notes.length : first_unpinned,
+        0,
+        note,
+      );
+      selected_id = note.id;
+      search_text = "";
+      preview_mode = false;
+    } catch (error) {
+      logger.error("note.create.failed", error);
+      console.error(error);
+      toast.error("Couldn't create note");
+    } finally {
+      creating = false;
+    }
   }
-}
 
-function select_note(note_id: number) {
-  selected_id = note_id;
-}
+  function queue_save(note: Note) {
+    const existing = save_timers.get(note.id);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    note.updated_at = Date.now();
+    const version = (save_versions.get(note.id) ?? 0) + 1;
+    save_versions.set(note.id, version);
+    save_timers.set(
+      note.id,
+      setTimeout(() => {
+        save_timers.delete(note.id);
+        void save_note(note, version);
+      }, 400),
+    );
+  }
 
-function select_note_with_keyboard(event: KeyboardEvent, note_id: number) {
-  if (event.key !== "Enter" && event.key !== " ") return;
-  event.preventDefault();
-  select_note(note_id);
-}
+  async function save_note(note: Note, version: number) {
+    try {
+      const snapshot = {
+        id: note.id,
+        title: note.title,
+        content: note.content,
+        pinned: note.pinned,
+      };
+      const saved = await enqueue(() => invoke<Note>("update_note", snapshot));
+      const index = notes.findIndex((candidate) => candidate.id === saved.id);
+      if (index !== -1 && save_versions.get(saved.id) === version) {
+        notes[index].created_at = saved.created_at;
+        notes[index].updated_at = saved.updated_at;
+      }
+    } catch (error) {
+      logger.error("note.save.failed", error);
+      console.error(error);
+      toast.error("Couldn't save note");
+    }
+  }
+
+  function toggle_pinned(note: Note) {
+    note.pinned = !note.pinned;
+    queue_save(note);
+    notes.sort(
+      (left, right) =>
+        Number(right.pinned) - Number(left.pinned) ||
+        right.updated_at - left.updated_at,
+    );
+  }
+
+  async function delete_note(note: Note) {
+    if (deleting_id !== null) {
+      return;
+    }
+    if (!window.confirm(`Delete “${note.title.trim() || "Untitled note"}”?`)) {
+      return;
+    }
+    const timer = save_timers.get(note.id);
+    if (timer) {
+      clearTimeout(timer);
+    }
+    save_timers.delete(note.id);
+    deleting_id = note.id;
+    try {
+      // Persist pending edits first so a failed delete cannot discard them.
+      await save_note(note, save_versions.get(note.id) ?? 0);
+      await enqueue(() => invoke("delete_note", { id: note.id }));
+      save_versions.delete(note.id);
+      const index = notes.findIndex((candidate) => candidate.id === note.id);
+      if (index !== -1) {
+        notes.splice(index, 1);
+      }
+      if (selected_id === note.id) {
+        selected_id = notes[Math.min(index, notes.length - 1)]?.id ?? null;
+      }
+      toast.success("Note deleted");
+    } catch (error) {
+      logger.error("note.delete.failed", error);
+      console.error(error);
+      toast.error("Couldn't delete note");
+    } finally {
+      deleting_id = null;
+    }
+  }
+
+  function select_note(note_id: number) {
+    selected_id = note_id;
+  }
+
+  function select_note_with_keyboard(event: KeyboardEvent, note_id: number) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    select_note(note_id);
+  }
 </script>
 
 <Sheet.Root bind:open>
@@ -282,10 +305,12 @@ function select_note_with_keyboard(event: KeyboardEvent, note_id: number) {
                   tabindex="0"
                   class={cn(
                     "w-full cursor-pointer rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                    selected_id === note.id && "border-primary bg-accent ring-1 ring-primary/30",
+                    selected_id === note.id &&
+                      "border-primary bg-accent ring-1 ring-primary/30",
                   )}
                   onclick={() => select_note(note.id)}
-                  onkeydown={(event) => select_note_with_keyboard(event, note.id)}
+                  onkeydown={(event) =>
+                    select_note_with_keyboard(event, note.id)}
                 >
                   <div class="flex items-start gap-2">
                     <span class="min-w-0 flex-1 truncate text-sm font-semibold">
@@ -378,10 +403,15 @@ function select_note_with_keyboard(event: KeyboardEvent, note_id: number) {
                 disabled={deleting_id === selected_note.id}
                 value={selected_note.title}
                 onkeydown={(event) => {
-                  if (event.key === "Enter") event.preventDefault();
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                  }
                 }}
                 oninput={(event) => {
-                  const title = event.currentTarget.value.replace(/[\r\n]+/g, " ");
+                  const title = event.currentTarget.value.replace(
+                    /[\r\n]+/g,
+                    " ",
+                  );
                   event.currentTarget.value = title;
                   selected_note.title = title;
                   queue_save(selected_note);
@@ -431,21 +461,21 @@ function select_note_with_keyboard(event: KeyboardEvent, note_id: number) {
 </Sheet.Root>
 
 <style>
-.note-layout {
-  grid-template-columns: clamp(10rem, 36%, 15rem) minmax(0, 1fr);
-}
-
-.note-editor {
-  container-type: inline-size;
-}
-
-.note-toolbar-label {
-  display: none;
-}
-
-@container (min-width: 20rem) {
-  .note-toolbar-label {
-    display: inline;
+  .note-layout {
+    grid-template-columns: clamp(10rem, 36%, 15rem) minmax(0, 1fr);
   }
-}
+
+  .note-editor {
+    container-type: inline-size;
+  }
+
+  .note-toolbar-label {
+    display: none;
+  }
+
+  @container (min-width: 20rem) {
+    .note-toolbar-label {
+      display: inline;
+    }
+  }
 </style>

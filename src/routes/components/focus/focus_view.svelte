@@ -1,118 +1,128 @@
 <script lang="ts">
-import { onMount } from "svelte";
-import { Badge } from "$lib/components/ui/badge/index.js";
-import { Button } from "$lib/components/ui/button/index.js";
-import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-import * as Empty from "$lib/components/ui/empty/index.js";
+  import { onMount } from "svelte";
+  import { Badge } from "$lib/components/ui/badge/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
 
-import ArchiveIcon from "@lucide/svelte/icons/archive";
-import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
-import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
-import ClockIcon from "@lucide/svelte/icons/clock";
-import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
-import PencilIcon from "@lucide/svelte/icons/pencil";
-import CopyIcon from "@lucide/svelte/icons/copy";
-import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
-import SparklesIcon from "@lucide/svelte/icons/sparkles";
-import TrashIcon from "@lucide/svelte/icons/trash-2";
-import Share2Icon from "@lucide/svelte/icons/share-2";
+  import ArchiveIcon from "@lucide/svelte/icons/archive";
+  import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
+  import ClockIcon from "@lucide/svelte/icons/clock";
+  import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
+  import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import CopyIcon from "@lucide/svelte/icons/copy";
+  import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
+  import SparklesIcon from "@lucide/svelte/icons/sparkles";
+  import TrashIcon from "@lucide/svelte/icons/trash-2";
+  import Share2Icon from "@lucide/svelte/icons/share-2";
 
-import type { Column } from "../../type/column.svelte";
-import type { Task } from "../../type/task.svelte";
-import { display_task_color } from "../../utils/task-color";
-import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
-import LabelBadge from "../label_badge.svelte";
-import { build_focus_groups, focus_task_count, type FocusTask } from "./focus";
+  import type { Column } from "../../type/column.svelte";
+  import type { Task } from "../../type/task.svelte";
+  import { display_task_color } from "../../utils/task-color";
+  import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
+  import LabelBadge from "../label_badge.svelte";
+  import {
+    build_focus_groups,
+    focus_task_count,
+    type FocusTask,
+  } from "./focus";
 
-interface FocusViewProps {
-  columns: Column[];
-  search_text?: string;
-  search_task_ids?: ReadonlySet<string> | null;
-  onViewTask?: (task: Task) => void;
-  onEditTask?: (task: Task) => void;
-  onDuplicateTask?: (task: Task) => void;
-  onSaveAsTemplate?: (task: Task) => void;
-  onExportTask?: (task: Task) => void;
-  onAddTask?: (date: Date) => void;
-  onArchiveTask?: (task: Task) => void;
-  onDeleteTask?: (task: Task) => void;
-  read_only?: boolean;
-}
+  interface FocusViewProps {
+    columns: Column[];
+    search_text?: string;
+    search_task_ids?: ReadonlySet<string> | null;
+    onViewTask?: (task: Task) => void;
+    onEditTask?: (task: Task) => void;
+    onDuplicateTask?: (task: Task) => void;
+    onSaveAsTemplate?: (task: Task) => void;
+    onExportTask?: (task: Task) => void;
+    onAddTask?: (date: Date) => void;
+    onArchiveTask?: (task: Task) => void;
+    onDeleteTask?: (task: Task) => void;
+    read_only?: boolean;
+  }
 
-let {
-  columns,
-  search_text = "",
-  search_task_ids = null,
-  onViewTask = () => {},
-  onEditTask = () => {},
-  onDuplicateTask = () => {},
-  onSaveAsTemplate = () => {},
-  onExportTask = () => {},
-  onAddTask = () => {},
-  onArchiveTask = () => {},
-  onDeleteTask = () => {},
-  read_only = false,
-}: FocusViewProps = $props();
+  let {
+    columns,
+    search_text = "",
+    search_task_ids = null,
+    onViewTask = () => {},
+    onEditTask = () => {},
+    onDuplicateTask = () => {},
+    onSaveAsTemplate = () => {},
+    onExportTask = () => {},
+    onAddTask = () => {},
+    onArchiveTask = () => {},
+    onDeleteTask = () => {},
+    read_only = false,
+  }: FocusViewProps = $props();
 
-let now = $state(new Date());
-let delete_confirm_open = $state(false);
-let delete_target = $state<Task | null>(null);
-let archive_focus_restore_target: string | null = null;
-let groups = $derived(
-  build_focus_groups(columns, now, search_text, search_task_ids),
-);
-let total_count = $derived(focus_task_count(groups));
-let attention_count = $derived(groups.overdue.length + groups.today.length);
+  let now = $state(new Date());
+  let delete_confirm_open = $state(false);
+  let delete_target = $state<Task | null>(null);
+  let archive_focus_restore_target: string | null = null;
+  let groups = $derived(
+    build_focus_groups(columns, now, search_text, search_task_ids),
+  );
+  let total_count = $derived(focus_task_count(groups));
+  let attention_count = $derived(groups.overdue.length + groups.today.length);
 
-onMount(() => {
-  const refresh = () => {
-    now = new Date();
-  };
-  const interval = window.setInterval(refresh, 60_000);
-  window.addEventListener("focus", refresh);
-  return () => {
-    window.clearInterval(interval);
-    window.removeEventListener("focus", refresh);
-  };
-});
-
-function due_label(task: Task): string {
-  if (!task.due_time) return "No due date";
-  const include_year = task.due_time.getFullYear() !== now.getFullYear();
-  const date = task.due_time.toLocaleDateString("en", {
-    month: "short",
-    day: "numeric",
-    year: include_year ? "numeric" : undefined,
+  onMount(() => {
+    const refresh = () => {
+      now = new Date();
+    };
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
   });
-  const has_time =
-    task.due_time.getHours() !== 0 ||
-    task.due_time.getMinutes() !== 0 ||
-    task.due_time.getSeconds() !== 0;
-  return has_time
-    ? `${date}, ${task.due_time.toLocaleTimeString("en", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      })}`
-    : date;
-}
 
-function checklist_label(task: Task): string | undefined {
-  if (task.items.length === 0) return undefined;
-  const complete = task.items.filter((item) => item.completed).length;
-  return `${complete}/${task.items.length}`;
-}
+  function due_label(task: Task): string {
+    if (!task.due_time) {
+      return "No due date";
+    }
+    const include_year = task.due_time.getFullYear() !== now.getFullYear();
+    const date = task.due_time.toLocaleDateString("en", {
+      month: "short",
+      day: "numeric",
+      year: include_year ? "numeric" : undefined,
+    });
+    const has_time =
+      task.due_time.getHours() !== 0 ||
+      task.due_time.getMinutes() !== 0 ||
+      task.due_time.getSeconds() !== 0;
+    return has_time
+      ? `${date}, ${task.due_time.toLocaleTimeString("en", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })}`
+      : date;
+  }
 
-function ask_to_delete(task: Task) {
-  delete_target = task;
-  delete_confirm_open = true;
-}
+  function checklist_label(task: Task): string | undefined {
+    if (task.items.length === 0) {
+      return undefined;
+    }
+    const complete = task.items.filter((item) => item.completed).length;
+    return `${complete}/${task.items.length}`;
+  }
 
-function confirm_delete() {
-  if (delete_target) onDeleteTask(delete_target);
-  delete_target = null;
-}
+  function ask_to_delete(task: Task) {
+    delete_target = task;
+    delete_confirm_open = true;
+  }
+
+  function confirm_delete() {
+    if (delete_target) {
+      onDeleteTask(delete_target);
+    }
+    delete_target = null;
+  }
 </script>
 
 {#snippet task_row(entry: FocusTask, tone: "overdue" | "today" | "normal")}
@@ -197,7 +207,9 @@ function confirm_delete() {
           align="end"
           class="min-w-36"
           onCloseAutoFocus={(event) => {
-            if (archive_focus_restore_target === entry.task.id) event.preventDefault();
+            if (archive_focus_restore_target === entry.task.id) {
+              event.preventDefault();
+            }
             archive_focus_restore_target = null;
           }}
         >
@@ -257,8 +269,12 @@ function confirm_delete() {
         <p class="text-xs text-muted-foreground">{description}</p>
       </div>
       <Badge
-        variant={tone === "overdue" && entries.length > 0 ? "destructive" : "secondary"}
-        class={tone === "today" && entries.length > 0 ? "border-warning/30 bg-warning/10 text-warning" : ""}
+        variant={tone === "overdue" && entries.length > 0
+          ? "destructive"
+          : "secondary"}
+        class={tone === "today" && entries.length > 0
+          ? "border-warning/30 bg-warning/10 text-warning"
+          : ""}
       >
         {entries.length}
       </Badge>

@@ -47,7 +47,9 @@ function with_timeout<T>(
   return new Promise<T>((resolve, reject) => {
     timeout = setTimeout(() => reject(new Error(message)), timeout_ms);
     request.then(resolve, reject).finally(() => {
-      if (timeout !== undefined) clearTimeout(timeout);
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
     });
   });
 }
@@ -152,8 +154,9 @@ export class BoardStore {
           : typeof error === "string"
             ? error
             : "Couldn't join shared board";
-      if (!silent && !this.iroh_last_error.startsWith("APPROVAL_REQUIRED:"))
+      if (!silent && !this.iroh_last_error.startsWith("APPROVAL_REQUIRED:")) {
         toast.error(this.iroh_last_error);
+      }
       return false;
     }
   }
@@ -162,8 +165,12 @@ export class BoardStore {
     board_id = this.active_board_id,
     silent = false,
   ): Promise<boolean> {
-    if (board_id === null) return false;
-    if (this.iroh_syncing.has(board_id)) return false;
+    if (board_id === null) {
+      return false;
+    }
+    if (this.iroh_syncing.has(board_id)) {
+      return false;
+    }
     const previous_status = this.boards.find(
       (item) => item.id === board_id,
     )?.sync_status;
@@ -190,7 +197,9 @@ export class BoardStore {
         this.can_undo = false;
         this.reload_active_board_data();
       }
-      if (!silent) toast.success("Shared board synced");
+      if (!silent) {
+        toast.success("Shared board synced");
+      }
       return true;
     } catch (error) {
       logger.error("iroh.board_sync.failed", error);
@@ -200,11 +209,12 @@ export class BoardStore {
           : typeof error === "string"
             ? error
             : "Couldn't sync shared board";
-      if (message.startsWith("Access was declined or revoked"))
+      if (message.startsWith("Access was declined or revoked")) {
         this.iroh_access_removed = {
           ...this.iroh_access_removed,
           [board_id]: true,
         };
+      }
       const failures = Math.min(5, (this.iroh_failures.get(board_id) ?? 0) + 1);
       this.iroh_failures.set(board_id, failures);
       this.iroh_retry_after.set(
@@ -221,7 +231,9 @@ export class BoardStore {
           previous_status === "pending" ? "pending" : "error",
         );
       }
-      if (!silent) toast.error(message);
+      if (!silent) {
+        toast.error(message);
+      }
       return false;
     } finally {
       this.iroh_syncing.delete(board_id);
@@ -249,7 +261,9 @@ export class BoardStore {
           ? "Local version ready to sync"
           : "Owner version restored; local copy saved",
       );
-      if (keep_local) this.trigger_iroh_background_sync();
+      if (keep_local) {
+        this.trigger_iroh_background_sync();
+      }
       return true;
     } catch (error) {
       logger.error("iroh.conflict_resolve.failed", error);
@@ -273,9 +287,12 @@ export class BoardStore {
     if (
       typeof document !== "undefined" &&
       document.visibilityState !== "visible"
-    )
+    ) {
       return;
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return;
+    }
     if (!this.iroh_host_checking) {
       this.iroh_host_checking = true;
       void invoke("ensure_iroh_host")
@@ -313,11 +330,15 @@ export class BoardStore {
     this.update_labels();
     this.get_task_templates();
     this.get_expired_tasks();
-    if (this.archives_loaded) void this.get_archives();
+    if (this.archives_loaded) {
+      void this.get_archives();
+    }
   }
 
   private start_iroh_background_sync() {
-    if (this.iroh_sync_timer || typeof window === "undefined") return;
+    if (this.iroh_sync_timer || typeof window === "undefined") {
+      return;
+    }
     this.iroh_sync_timer = window.setInterval(
       () => this.trigger_iroh_background_sync(),
       IROH_BACKGROUND_SYNC_MS,
@@ -326,8 +347,9 @@ export class BoardStore {
       this.trigger_iroh_background_sync(),
     );
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible")
+      if (document.visibilityState === "visible") {
         this.trigger_iroh_background_sync();
+      }
     });
     this.trigger_iroh_background_sync();
   }
@@ -354,16 +376,22 @@ export class BoardStore {
   }
 
   async undo(): Promise<boolean> {
-    if (!this.can_undo || this.undo_in_progress) return false;
+    if (!this.can_undo || this.undo_in_progress) {
+      return false;
+    }
     this.undo_in_progress = true;
     try {
       const expectedBoardId = this.active_board_id;
       const generation = this.board_generation;
-      if (expectedBoardId === null) return false;
+      if (expectedBoardId === null) {
+        return false;
+      }
       const canUndo = await addMission(() =>
         invoke<boolean>("undo", { expectedBoardId }),
       );
-      if (generation !== this.board_generation) return false;
+      if (generation !== this.board_generation) {
+        return false;
+      }
       this.can_undo = canUndo;
       this.get_columns();
       this.refresh_archives_if_loaded();
@@ -400,10 +428,14 @@ export class BoardStore {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     addMission(() => invoke<string[]>("get_labels", { expectedBoardId }))
       .then((data) => {
-        if (generation !== board.board_generation) return;
+        if (generation !== board.board_generation) {
+          return;
+        }
         board.labels = data;
       })
       .catch((e) => {
@@ -419,7 +451,9 @@ export class BoardStore {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     // Only replace the workspace with the loading state during the initial fetch
     // or when retrying an initial-load error.
     // Later refreshes (for example after archiving a recurring task) must keep the
@@ -440,7 +474,9 @@ export class BoardStore {
       "Loading board data timed out",
     )
       .then((data: ColumnSerialized[]) => {
-        if (generation !== board.board_generation) return;
+        if (generation !== board.board_generation) {
+          return;
+        }
         board.columns = data.map(deserialize_column);
         board.sync_active_board_task_count();
         board.column_fetch_finish = true;
@@ -462,11 +498,15 @@ export class BoardStore {
   search_tasks(search_text: string) {
     this.search_query = search_text.trim();
     const request = ++this.search_request;
-    if (this.search_timer) clearTimeout(this.search_timer);
+    if (this.search_timer) {
+      clearTimeout(this.search_timer);
+    }
     this.search_task_ids = null;
     this.search_error = false;
     this.search_pending = Boolean(this.search_query);
-    if (!this.search_query) return;
+    if (!this.search_query) {
+      return;
+    }
 
     const query = this.search_query;
     const query_length = [...query].length;
@@ -480,8 +520,9 @@ export class BoardStore {
       if (
         request !== this.search_request ||
         generation !== this.board_generation
-      )
+      ) {
         return;
+      }
       this.search_timer = undefined;
       const started_at = performance.now();
       try {
@@ -492,8 +533,9 @@ export class BoardStore {
         if (
           request !== this.search_request ||
           generation !== this.board_generation
-        )
+        ) {
           return;
+        }
         this.search_task_ids = new Set(ids.map((id) => `task_${id}`));
         logger.debug("board.search.completed", {
           board_id: expectedBoardId,
@@ -505,8 +547,9 @@ export class BoardStore {
         if (
           request !== this.search_request ||
           generation !== this.board_generation
-        )
+        ) {
           return;
+        }
         logger.error("board.search.failed", error, {
           board_id: expectedBoardId,
           query_length,
@@ -517,18 +560,23 @@ export class BoardStore {
         if (
           request === this.search_request &&
           generation === this.board_generation
-        )
+        ) {
           this.search_pending = false;
+        }
       }
     }, 160);
   }
 
   get_archives() {
-    if (this.archives_request) return this.archives_request;
+    if (this.archives_request) {
+      return this.archives_request;
+    }
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return Promise.resolve();
+    if (expectedBoardId === null) {
+      return Promise.resolve();
+    }
     board.archives_loading = true;
     const request = addMission(() =>
       invoke<{ time: number; task: TaskSerialized }[]>("get_archives", {
@@ -536,7 +584,9 @@ export class BoardStore {
       }),
     )
       .then((data) => {
-        if (generation !== board.board_generation) return;
+        if (generation !== board.board_generation) {
+          return;
+        }
         board.archives = data.reduce<Archive[]>((list, d) => {
           list.push({
             time: new Date(d.time),
@@ -566,24 +616,32 @@ export class BoardStore {
   }
 
   ensure_archives_loaded() {
-    if (this.archives_loaded) return Promise.resolve();
+    if (this.archives_loaded) {
+      return Promise.resolve();
+    }
     return this.get_archives();
   }
 
   private refresh_archives_if_loaded() {
-    if (this.archives_loaded) void this.get_archives();
+    if (this.archives_loaded) {
+      void this.get_archives();
+    }
   }
 
   get_expired_tasks() {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     addMission(() =>
       invoke<TaskSerialized[]>("get_expired_tasks", { expectedBoardId }),
     )
       .then((data) => {
-        if (generation !== board.board_generation) return;
+        if (generation !== board.board_generation) {
+          return;
+        }
         board.expired_tasks = data.map((t) => deserialize_task(t));
       })
       .catch((e) => {
@@ -622,7 +680,9 @@ export class BoardStore {
 
   private sync_active_board_task_count() {
     const active_board_id = this.active_board_id;
-    if (active_board_id === null) return;
+    if (active_board_id === null) {
+      return;
+    }
     const task_count = this.columns.reduce(
       (total, column) => total + column.tasks.length,
       0,
@@ -647,7 +707,9 @@ export class BoardStore {
 
   async create_board(name: string) {
     const trimmed = name.trim();
-    if (!trimmed) return false;
+    if (!trimmed) {
+      return false;
+    }
     try {
       const created = await invoke<BoardSummary>("create_board", {
         name: trimmed,
@@ -665,7 +727,9 @@ export class BoardStore {
 
   async rename_board(id: number, name: string) {
     const trimmed = name.trim();
-    if (!trimmed) return false;
+    if (!trimmed) {
+      return false;
+    }
     try {
       await invoke("rename_board", { boardId: id, name: trimmed });
       this.boards = this.boards.map((board) =>
@@ -681,11 +745,17 @@ export class BoardStore {
   }
 
   async switch_board(id: number): Promise<boolean> {
-    if (id === this.active_board_id) return true;
+    if (id === this.active_board_id) {
+      return true;
+    }
     try {
       this.board_generation++;
-      for (const timer of this.task_move_timers.values()) clearTimeout(timer);
-      for (const timer of this.column_move_timers.values()) clearTimeout(timer);
+      for (const timer of this.task_move_timers.values()) {
+        clearTimeout(timer);
+      }
+      for (const timer of this.column_move_timers.values()) {
+        clearTimeout(timer);
+      }
       this.task_move_timers.clear();
       this.column_move_timers.clear();
       await invoke("switch_board", { boardId: id });
@@ -741,7 +811,9 @@ export class BoardStore {
   }
 
   async set_notify_enabled(enabled: boolean) {
-    if (this.notification_setting_updating) return;
+    if (this.notification_setting_updating) {
+      return;
+    }
     this.notification_setting_updating = true;
 
     try {
@@ -801,10 +873,14 @@ export class BoardStore {
   }
 
   private start_expired_task_checker() {
-    if (this.expired_task_checker !== undefined) return;
+    if (this.expired_task_checker !== undefined) {
+      return;
+    }
 
     const check_expired_tasks = async () => {
-      if (!this.notify_enabled) return;
+      if (!this.notify_enabled) {
+        return;
+      }
       try {
         await invoke("check_expired_tasks");
       } catch (e: unknown) {
@@ -821,7 +897,9 @@ export class BoardStore {
   }
 
   private stop_expired_task_checker() {
-    if (this.expired_task_checker === undefined) return;
+    if (this.expired_task_checker === undefined) {
+      return;
+    }
     clearInterval(this.expired_task_checker);
     this.expired_task_checker = undefined;
   }
@@ -829,11 +907,17 @@ export class BoardStore {
   // ============ Task Operations ============
 
   sort_column_tasks(column: Column) {
-    if (column.sort_order === "custom") return;
+    if (column.sort_order === "custom") {
+      return;
+    }
     const direction = column.sort_order === "due_date_asc" ? 1 : -1;
     column.tasks.sort((a, b) => {
-      if (!a.due_time) return b.due_time ? 1 : 0;
-      if (!b.due_time) return -1;
+      if (!a.due_time) {
+        return b.due_time ? 1 : 0;
+      }
+      if (!b.due_time) {
+        return -1;
+      }
       return (a.due_time.getTime() - b.due_time.getTime()) * direction;
     });
   }
@@ -841,14 +925,18 @@ export class BoardStore {
   get_task_templates() {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     addMission(() =>
       invoke<TaskTemplateSerialized[]>("get_task_templates", {
         expectedBoardId,
       }),
     )
       .then((templates) => {
-        if (generation !== this.board_generation) return;
+        if (generation !== this.board_generation) {
+          return;
+        }
         this.templates = templates.map((template) => {
           const task = deserialize_task(template.task);
           task.id = "";
@@ -858,15 +946,18 @@ export class BoardStore {
       .catch((e: unknown) => {
         logger.error("template.load.failed", e);
         console.log(e);
-        if (generation === this.board_generation)
+        if (generation === this.board_generation) {
           toast.error("Couldn't load task templates");
+        }
       });
   }
 
   save_task_template(task_id: string, name: string): Promise<boolean> {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return Promise.resolve(false);
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
     const task_id_resolution = this.capture_task_id(task_id);
     return addMission(async () =>
       invoke<TaskTemplateSerialized>("save_task_template", {
@@ -876,7 +967,9 @@ export class BoardStore {
       }),
     )
       .then((template) => {
-        if (generation !== this.board_generation) return false;
+        if (generation !== this.board_generation) {
+          return false;
+        }
         const task = deserialize_task(template.task);
         task.id = "";
         this.templates = [
@@ -889,8 +982,9 @@ export class BoardStore {
       .catch((e: unknown) => {
         logger.error("template.create.failed", e);
         console.log(e);
-        if (generation === this.board_generation)
+        if (generation === this.board_generation) {
           toast.error("Couldn't save template");
+        }
         return false;
       });
   }
@@ -902,7 +996,9 @@ export class BoardStore {
   ): Promise<boolean> {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return Promise.resolve(false);
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
     return addMission(() =>
       invoke<TaskTemplateSerialized>("update_task_template", {
         templateId: template_id,
@@ -912,7 +1008,9 @@ export class BoardStore {
       }),
     )
       .then((template) => {
-        if (generation !== this.board_generation) return false;
+        if (generation !== this.board_generation) {
+          return false;
+        }
         const updated_task = deserialize_task(template.task);
         updated_task.id = "";
         this.templates = this.templates.map((candidate) =>
@@ -926,8 +1024,9 @@ export class BoardStore {
       .catch((e: unknown) => {
         logger.error("template.update.failed", e);
         console.log(e);
-        if (generation === this.board_generation)
+        if (generation === this.board_generation) {
           toast.error("Couldn't update template");
+        }
         return false;
       });
   }
@@ -935,7 +1034,9 @@ export class BoardStore {
   delete_task_template(template_id: number): Promise<boolean> {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return Promise.resolve(false);
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
     return addMission(() =>
       invoke<void>("delete_task_template", {
         templateId: template_id,
@@ -943,7 +1044,9 @@ export class BoardStore {
       }),
     )
       .then(() => {
-        if (generation !== this.board_generation) return false;
+        if (generation !== this.board_generation) {
+          return false;
+        }
         this.templates = this.templates.filter(
           (template) => template.id !== template_id,
         );
@@ -953,8 +1056,9 @@ export class BoardStore {
       .catch((e: unknown) => {
         logger.error("template.delete.failed", e);
         console.log(e);
-        if (generation === this.board_generation)
+        if (generation === this.board_generation) {
           toast.error("Couldn't delete template");
+        }
         return false;
       });
   }
@@ -965,7 +1069,9 @@ export class BoardStore {
       const task_idx = this.columns[column_idx].tasks.findIndex(
         (task) => task.id === current_task_id,
       );
-      if (task_idx !== -1) return { column_idx, task_idx };
+      if (task_idx !== -1) {
+        return { column_idx, task_idx };
+      }
     }
     return undefined;
   }
@@ -993,14 +1099,18 @@ export class BoardStore {
 
   private cancel_task_move_timer(task_id: string) {
     const timer = this.task_move_timers.get(task_id);
-    if (!timer) return;
+    if (!timer) {
+      return;
+    }
     clearTimeout(timer);
     this.task_move_timers.delete(task_id);
   }
 
   private forget_task_move_timer(timer: ReturnType<typeof setTimeout>) {
     for (const [task_id, candidate] of this.task_move_timers) {
-      if (candidate === timer) this.task_move_timers.delete(task_id);
+      if (candidate === timer) {
+        this.task_move_timers.delete(task_id);
+      }
     }
   }
 
@@ -1009,7 +1119,9 @@ export class BoardStore {
     persisted_task_id: string,
   ) {
     const timer = this.task_move_timers.get(pending_task_id);
-    if (!timer) return;
+    if (!timer) {
+      return;
+    }
     this.task_move_timers.delete(pending_task_id);
 
     // A move made after creation resolved is newer and should win over a
@@ -1029,7 +1141,9 @@ export class BoardStore {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return Promise.resolve(false);
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
     const new_task = clone_task(task);
 
     // Use a temporary ID so the new card can appear before the backend has
@@ -1073,7 +1187,9 @@ export class BoardStore {
       }),
     )
       .then((new_id: number) => {
-        if (generation !== board.board_generation) return `task_${new_id}`;
+        if (generation !== board.board_generation) {
+          return `task_${new_id}`;
+        }
         // The card may have been edited while its creation was still
         // queued, so update the current card rather than only the
         // original optimistic object.
@@ -1095,7 +1211,9 @@ export class BoardStore {
       .catch((e: unknown) => {
         logger.error("task.create.failed", e);
         console.log(e);
-        if (generation !== board.board_generation) throw e;
+        if (generation !== board.board_generation) {
+          throw e;
+        }
         const position = this.find_task_position(pending_task_id);
         if (position) {
           this.columns[position.column_idx].tasks.splice(position.task_idx, 1);
@@ -1131,9 +1249,13 @@ export class BoardStore {
   delete_task(task_id: string): Promise<boolean> {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return Promise.resolve(false);
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
     const position = this.find_task_position(task_id);
-    if (!position) return Promise.resolve(false);
+    if (!position) {
+      return Promise.resolve(false);
+    }
     const task_id_resolution = this.capture_task_id(task_id);
     const current_task_id = this.resolve_task_alias(task_id);
     const deleted_task = clone_task(
@@ -1156,7 +1278,9 @@ export class BoardStore {
       });
     })
       .then(() => {
-        if (generation !== this.board_generation) return false;
+        if (generation !== this.board_generation) {
+          return false;
+        }
         this.search_tasks(this.search_query);
         this.show_success_with_undo("Task deleted");
         return true;
@@ -1164,7 +1288,9 @@ export class BoardStore {
       .catch((e: unknown) => {
         logger.error("task.delete.failed", e);
         console.log(e);
-        if (generation !== this.board_generation) return false;
+        if (generation !== this.board_generation) {
+          return false;
+        }
         if (task_was_created) {
           const column = this.columns.find(
             (candidate) => candidate.id === column_id,
@@ -1187,9 +1313,13 @@ export class BoardStore {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return Promise.resolve(false);
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
     const position = this.find_task_position(task_id);
-    if (!position) return Promise.resolve(false);
+    if (!position) {
+      return Promise.resolve(false);
+    }
     const task_id_resolution = this.capture_task_id(task_id);
     const current_task_id = this.resolve_task_alias(task_id);
     const archived_task = clone_task(
@@ -1212,7 +1342,9 @@ export class BoardStore {
       });
     })
       .then(() => {
-        if (generation !== board.board_generation) return false;
+        if (generation !== board.board_generation) {
+          return false;
+        }
         board.get_columns();
         board.refresh_archives_if_loaded();
         this.show_success_with_undo("Task archived");
@@ -1221,7 +1353,9 @@ export class BoardStore {
       .catch((e: unknown) => {
         logger.error("task.archive.failed", e);
         console.log(e);
-        if (generation !== board.board_generation) return false;
+        if (generation !== board.board_generation) {
+          return false;
+        }
         if (task_was_created) {
           const column = this.columns.find(
             (candidate) => candidate.id === column_id,
@@ -1244,11 +1378,15 @@ export class BoardStore {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     const column = board.columns.find(
       (candidate) => candidate.id === column_id,
     );
-    if (!column) return;
+    if (!column) {
+      return;
+    }
     const archived_tasks = column.tasks.map(clone_task);
     column.tasks = [];
     board.columns = [...board.columns];
@@ -1260,7 +1398,9 @@ export class BoardStore {
         expectedBoardId,
       })
         .then(() => {
-          if (generation !== board.board_generation) return;
+          if (generation !== board.board_generation) {
+            return;
+          }
           board.get_columns();
           board.refresh_archives_if_loaded();
           this.show_success_with_undo("Tasks archived");
@@ -1268,7 +1408,9 @@ export class BoardStore {
         .catch((e: string) => {
           logger.error("task.archive_all.failed", e);
           console.log(e);
-          if (generation !== board.board_generation) return;
+          if (generation !== board.board_generation) {
+            return;
+          }
           const current_column = board.columns.find(
             (candidate) => candidate.id === column_id,
           );
@@ -1286,7 +1428,9 @@ export class BoardStore {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     const archive_task_data = board.archives.find(
       (archive) => archive.task.id === task_id,
     );
@@ -1298,7 +1442,9 @@ export class BoardStore {
     const column = board.columns.find(
       (candidate) => candidate.id === column_id,
     );
-    if (!column) return;
+    if (!column) {
+      return;
+    }
     column.tasks.push(restored_task);
     board.sort_column_tasks(column);
     board.archives.splice(archive_index, 1);
@@ -1313,14 +1459,18 @@ export class BoardStore {
         expectedBoardId,
       })
         .then(() => {
-          if (generation !== board.board_generation) return;
+          if (generation !== board.board_generation) {
+            return;
+          }
           board.get_archives();
           this.show_success_with_undo("Task restored");
         })
         .catch((e: string) => {
           logger.error("task.unarchive.failed", e);
           console.log(e);
-          if (generation !== board.board_generation) return;
+          if (generation !== board.board_generation) {
+            return;
+          }
           const current_column = board.columns.find(
             (candidate) => candidate.id === column_id,
           );
@@ -1328,7 +1478,9 @@ export class BoardStore {
             const task_index = current_column.tasks.findIndex(
               (task) => task.id === task_id,
             );
-            if (task_index !== -1) current_column.tasks.splice(task_index, 1);
+            if (task_index !== -1) {
+              current_column.tasks.splice(task_index, 1);
+            }
           }
           if (!board.archives.some((archive) => archive.task.id === task_id)) {
             board.archives.splice(archive_index, 0, archive_task_data);
@@ -1345,7 +1497,9 @@ export class BoardStore {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return Promise.resolve(false);
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
     const task_id_resolution = this.capture_task_id(task_id);
     const position = this.find_task_position(task_id);
     const previous_task = position
@@ -1353,7 +1507,9 @@ export class BoardStore {
       : undefined;
     const updated_task = clone_task(task);
     const resolved_task_id = this.resolve_task_alias(task_id);
-    if (resolved_task_id !== task_id) updated_task.id = resolved_task_id;
+    if (resolved_task_id !== task_id) {
+      updated_task.id = resolved_task_id;
+    }
     if (position) {
       this.columns[position.column_idx].tasks[position.task_idx] = updated_task;
       this.sort_column_tasks(this.columns[position.column_idx]);
@@ -1368,7 +1524,9 @@ export class BoardStore {
       task_was_created = true;
       current_task_id = `task_${persisted_task_id}`;
       set_task_id(updated_task, persisted_task_id);
-      if (previous_task) set_task_id(previous_task, persisted_task_id);
+      if (previous_task) {
+        set_task_id(previous_task, persisted_task_id);
+      }
       await invoke<void>("update_task", {
         taskId: persisted_task_id,
         task: serialize_task(updated_task),
@@ -1376,7 +1534,9 @@ export class BoardStore {
       });
     })
       .then(() => {
-        if (generation !== board.board_generation) return false;
+        if (generation !== board.board_generation) {
+          return false;
+        }
         this.update_labels();
         this.search_tasks(this.search_query);
         this.show_success_with_undo("Task updated");
@@ -1385,7 +1545,9 @@ export class BoardStore {
       .catch((e: unknown) => {
         logger.error("task.update.failed", e);
         console.log(e);
-        if (generation !== board.board_generation) return false;
+        if (generation !== board.board_generation) {
+          return false;
+        }
         const current_position = this.find_task_position(current_task_id);
         if (task_was_created && current_position && previous_task) {
           this.columns[current_position.column_idx].tasks[
@@ -1395,7 +1557,9 @@ export class BoardStore {
           this.columns = [...this.columns];
           board.refresh_labels_from_columns();
         }
-        if (task_was_created) toast.error("Couldn't update task");
+        if (task_was_created) {
+          toast.error("Couldn't update task");
+        }
         return false;
       });
   }
@@ -1434,7 +1598,9 @@ export class BoardStore {
       to_column.tasks.splice(to_task_idx, 0, data);
     }
     this.sort_column_tasks(from_column);
-    if (to_column !== from_column) this.sort_column_tasks(to_column);
+    if (to_column !== from_column) {
+      this.sort_column_tasks(to_column);
+    }
     // Trigger reactivity for Svelte 5
     this.columns = [...this.columns];
 
@@ -1469,19 +1635,25 @@ export class BoardStore {
   ) {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     const task_id_resolution = this.capture_task_id(task_id);
     const before_task_id_resolution =
       before_task_id === null ? null : this.capture_task_id(before_task_id);
     const timer_task_id = this.resolve_task_alias(task_id);
     const existing_timer = this.task_move_timers.get(timer_task_id);
-    if (existing_timer) clearTimeout(existing_timer);
+    if (existing_timer) {
+      clearTimeout(existing_timer);
+    }
 
     const timer = setTimeout(() => {
       this.forget_task_move_timer(timer);
       addMission(async () => {
         const persisted_task_id = await task_id_resolution.id.catch(() => null);
-        if (persisted_task_id === null) return false;
+        if (persisted_task_id === null) {
+          return false;
+        }
         const persisted_before_task_id =
           before_task_id_resolution === null
             ? null
@@ -1495,13 +1667,16 @@ export class BoardStore {
         return true;
       })
         .then((persisted) => {
-          if (persisted && generation === this.board_generation)
+          if (persisted && generation === this.board_generation) {
             this.can_undo = true;
+          }
         })
         .catch((e: unknown) => {
           logger.error("task.move.failed", e);
           console.log(e);
-          if (generation !== this.board_generation) return;
+          if (generation !== this.board_generation) {
+            return;
+          }
           toast.error("Couldn't move task");
           this.get_columns();
         });
@@ -1516,7 +1691,9 @@ export class BoardStore {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     addMission(async () => {
       return invoke<number>("add_column", {
         name: name,
@@ -1524,7 +1701,9 @@ export class BoardStore {
         expectedBoardId,
       })
         .then((new_id) => {
-          if (generation !== board.board_generation) return;
+          if (generation !== board.board_generation) {
+            return;
+          }
           board.show_success_with_undo("Column added");
           const column: Column = {
             id: "",
@@ -1541,7 +1720,9 @@ export class BoardStore {
         .catch((e: string) => {
           logger.error("column.create.failed", e);
           console.log(e);
-          if (generation !== board.board_generation) return;
+          if (generation !== board.board_generation) {
+            return;
+          }
           toast.error("Couldn't add column");
         });
     });
@@ -1551,7 +1732,9 @@ export class BoardStore {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     const column = board.columns.find(
       (candidate) => candidate.id === column_id,
     );
@@ -1565,7 +1748,9 @@ export class BoardStore {
         expectedBoardId,
       })
         .then(() => {
-          if (generation !== board.board_generation) return;
+          if (generation !== board.board_generation) {
+            return;
+          }
           board.show_success_with_undo("Column updated");
           const updated_column = board.columns.find(
             (candidate) => candidate.id === column_id,
@@ -1580,7 +1765,9 @@ export class BoardStore {
         .catch((e: string) => {
           logger.error("column.update.failed", e);
           console.log(e);
-          if (generation !== board.board_generation) return;
+          if (generation !== board.board_generation) {
+            return;
+          }
           toast.error("Couldn't update column");
         });
     });
@@ -1623,9 +1810,13 @@ export class BoardStore {
   persist_column_move(column_id: string, before_column_id: string | null) {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     const existing_timer = this.column_move_timers.get(column_id);
-    if (existing_timer) clearTimeout(existing_timer);
+    if (existing_timer) {
+      clearTimeout(existing_timer);
+    }
 
     const timer = setTimeout(() => {
       this.column_move_timers.delete(column_id);
@@ -1637,12 +1828,16 @@ export class BoardStore {
           expectedBoardId,
         })
           .then(() => {
-            if (generation === this.board_generation) this.can_undo = true;
+            if (generation === this.board_generation) {
+              this.can_undo = true;
+            }
           })
           .catch((e: string) => {
             logger.error("column.move.failed", e);
             console.log(e);
-            if (generation !== this.board_generation) return;
+            if (generation !== this.board_generation) {
+              return;
+            }
             toast.error("Couldn't move column");
             this.get_columns();
           });
@@ -1655,25 +1850,33 @@ export class BoardStore {
   delete_column(column_id: string) {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return;
+    if (expectedBoardId === null) {
+      return;
+    }
     addMission(async () => {
       return invoke<void>("delete_column", {
         columnId: get_column_id(column_id),
         expectedBoardId,
       })
         .then(() => {
-          if (generation !== this.board_generation) return;
+          if (generation !== this.board_generation) {
+            return;
+          }
           const index = this.columns.findIndex(
             (column) => column.id === column_id,
           );
-          if (index !== -1) this.columns.splice(index, 1);
+          if (index !== -1) {
+            this.columns.splice(index, 1);
+          }
           this.columns = [...this.columns];
           this.show_success_with_undo("Column deleted");
         })
         .catch((e: string) => {
           logger.error("column.delete.failed", e);
           console.log(e);
-          if (generation !== this.board_generation) return;
+          if (generation !== this.board_generation) {
+            return;
+          }
           toast.error("Couldn't delete column");
         });
     });
@@ -1694,10 +1897,14 @@ export class BoardStore {
         defaultPath: this.timestamped_filename("cardbe-board-export"),
       });
 
-      if (!file_path) return;
+      if (!file_path) {
+        return;
+      }
 
       const expectedBoardId = this.active_board_id;
-      if (expectedBoardId === null) return;
+      if (expectedBoardId === null) {
+        return;
+      }
       const data = await invoke<string>("export_data", { expectedBoardId });
       await writeTextFile(file_path, data);
       toast.success("Board exported");
@@ -1714,7 +1921,9 @@ export class BoardStore {
         filters: [{ name: "Cardbe everything backup", extensions: ["json"] }],
         defaultPath: this.timestamped_filename("cardbe-everything-backup"),
       });
-      if (!file_path) return;
+      if (!file_path) {
+        return;
+      }
       await writeTextFile(file_path, await invoke<string>("export_all_boards"));
       toast.success("Everything backed up");
     } catch (e) {
@@ -1734,7 +1943,9 @@ export class BoardStore {
         filters: [{ name: "JSON", extensions: ["json"] }],
         multiple: false,
       });
-      if (!file_path) return false;
+      if (!file_path) {
+        return false;
+      }
       const jsonData = await readTextFile(file_path as string);
       const parsed = JSON.parse(jsonData) as {
         schema_version?: number;
@@ -1752,8 +1963,9 @@ export class BoardStore {
         !window.confirm(
           "Restore everything from this backup? This replaces every board and all notes. Existing LAN share links will be permanently revoked and are not restored.",
         )
-      )
+      ) {
         return false;
+      }
       await before_restore?.();
       share_links_revoked = before_restore !== undefined;
       await invoke("import_all_boards", { jsonData });
@@ -1787,7 +1999,9 @@ export class BoardStore {
         multiple: false,
       });
 
-      if (!file_path) return null;
+      if (!file_path) {
+        return null;
+      }
 
       const data = await readTextFile(file_path as string);
       const filename =
@@ -1835,15 +2049,21 @@ export class BoardStore {
   import_data(json_data: string): Promise<boolean> {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
-    if (expectedBoardId === null) return Promise.resolve(false);
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
     return addMission(() =>
       invoke<string>("import_data", { jsonData: json_data, expectedBoardId }),
     )
       .then((snapshot_path) => {
-        if (generation !== this.board_generation) return false;
+        if (generation !== this.board_generation) {
+          return false;
+        }
         this.update_labels();
         this.get_columns();
-        if (this.archives_loaded) this.get_archives();
+        if (this.archives_loaded) {
+          this.get_archives();
+        }
         this.get_task_templates();
         this.get_expired_tasks();
         this.can_undo = true;
@@ -1861,8 +2081,9 @@ export class BoardStore {
       .catch((e: unknown) => {
         logger.error("board.import_data.failed", e);
         console.log(e);
-        if (generation === this.board_generation)
+        if (generation === this.board_generation) {
           toast.error("Couldn't import data");
+        }
         return false;
       });
   }

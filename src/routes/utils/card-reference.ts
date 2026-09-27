@@ -24,6 +24,8 @@ export function render_card_references(markdown: string): string {
 }
 
 export function task_id_from_card_reference(href: unknown): string | undefined {
-  if (typeof href !== "string") return undefined;
+  if (typeof href !== "string") {
+    return undefined;
+  }
   return CARD_REFERENCE_HREF_PATTERN.exec(href)?.[1];
 }

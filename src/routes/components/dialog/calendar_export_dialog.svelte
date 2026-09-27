@@ -1,508 +1,532 @@
 <script lang="ts">
-import { logger } from "$lib/logger";
-import { tick } from "svelte";
-import { toast } from "svelte-sonner";
-import DownloadIcon from "@lucide/svelte/icons/download";
-import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
-import SearchIcon from "@lucide/svelte/icons/search";
-import { Button } from "$lib/components/ui/button/index.js";
-import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-import * as Dialog from "$lib/components/ui/dialog/index.js";
-import { Input } from "$lib/components/ui/input/index.js";
-import type { Archive } from "../../type/archive.svelte";
-import type { Column } from "../../type/column.svelte";
-import MonthPicker from "../calendar/month_picker.svelte";
-import {
-  build_calendar_days,
-  type CalendarDay,
-  type CalendarViewMode,
-} from "../calendar/calendar";
-import {
-  DEFAULT_CALENDAR_EXPORT_OPTIONS,
-  calendar_entry_key,
-  estimate_calendar_export_async,
-  render_calendar_export,
-  save_calendar_export,
-  save_split_calendar_png_export,
-  selected_calendar_days,
-  type CalendarExportFormat,
-  type CalendarExportEstimate,
-  type CalendarExportOptions,
-  type CalendarExportPeriod,
-  type CalendarExportTheme,
-  type CalendarPngLayout,
-  type CalendarPdfPagination,
-  type CalendarPdfPaper,
-} from "../calendar/calendar-export";
+  import { logger } from "$lib/logger";
+  import { tick } from "svelte";
+  import { toast } from "svelte-sonner";
+  import DownloadIcon from "@lucide/svelte/icons/download";
+  import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
+  import SearchIcon from "@lucide/svelte/icons/search";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
+  import type { Archive } from "../../type/archive.svelte";
+  import type { Column } from "../../type/column.svelte";
+  import MonthPicker from "../calendar/month_picker.svelte";
+  import {
+    build_calendar_days,
+    type CalendarDay,
+    type CalendarViewMode,
+  } from "../calendar/calendar";
+  import {
+    DEFAULT_CALENDAR_EXPORT_OPTIONS,
+    calendar_entry_key,
+    estimate_calendar_export_async,
+    render_calendar_export,
+    save_calendar_export,
+    save_split_calendar_png_export,
+    selected_calendar_days,
+    type CalendarExportFormat,
+    type CalendarExportEstimate,
+    type CalendarExportOptions,
+    type CalendarExportPeriod,
+    type CalendarExportTheme,
+    type CalendarPngLayout,
+    type CalendarPdfPagination,
+    type CalendarPdfPaper,
+  } from "../calendar/calendar-export";
 
-const PREFERENCES_KEY = "cardbe-calendar-export-preferences-v1";
-const EXPORT_LOCALE = "en-US";
+  const PREFERENCES_KEY = "cardbe-calendar-export-preferences-v1";
+  const EXPORT_LOCALE = "en-US";
 
-let {
-  open = $bindable(),
-  days,
-  columns,
-  archives,
-  search_text,
-  visible_date,
-  today,
-  show_archived,
-  show_recurring_previews,
-  view_mode,
-  period_label,
-}: {
-  open: boolean;
-  days: CalendarDay[];
-  columns: Column[];
-  archives: Archive[];
-  search_text: string;
-  visible_date: Date;
-  today: Date;
-  show_archived: boolean;
-  show_recurring_previews: boolean;
-  view_mode: CalendarViewMode;
-  period_label: string;
-} = $props();
+  let {
+    open = $bindable(),
+    days,
+    columns,
+    archives,
+    search_text,
+    visible_date,
+    today,
+    show_archived,
+    show_recurring_previews,
+    view_mode,
+    period_label,
+  }: {
+    open: boolean;
+    days: CalendarDay[];
+    columns: Column[];
+    archives: Archive[];
+    search_text: string;
+    visible_date: Date;
+    today: Date;
+    show_archived: boolean;
+    show_recurring_previews: boolean;
+    view_mode: CalendarViewMode;
+    period_label: string;
+  } = $props();
 
-let search = $state("");
-let selected_entry_keys = $state<string[]>([]);
-let format = $state<CalendarExportFormat>("png");
-let png_layout = $state<CalendarPngLayout>("combined");
-let theme = $state<CalendarExportTheme>("light");
-let dpi = $state(150);
-let show_details = $state(true);
-let pdf_paper = $state<CalendarPdfPaper>("fit");
-let pdf_pagination = $state<CalendarPdfPagination>("single");
-let month_count = $state(1);
-let start_month = $state("");
-let end_month = $state("");
-let periods = $state<CalendarExportPeriod[]>([]);
-let known_entry_keys = $state<string[]>([]);
-let estimate = $state<CalendarExportEstimate>({
-  width: 0,
-  height: 0,
-  megapixels: 0,
-  memory_mb: 0,
-  page_count: 0,
-  too_large: false,
-});
-let preparing_periods = $state(false);
-let calculating_estimate = $state(false);
-let exporting = $state(false);
-let export_progress = $state("");
-let initialized_for_open = false;
-let period_generation = 0;
-let estimate_generation = 0;
-let period_timer: ReturnType<typeof setTimeout> | undefined;
-let estimate_timer: ReturnType<typeof setTimeout> | undefined;
+  let search = $state("");
+  let selected_entry_keys = $state<string[]>([]);
+  let format = $state<CalendarExportFormat>("png");
+  let png_layout = $state<CalendarPngLayout>("combined");
+  let theme = $state<CalendarExportTheme>("light");
+  let dpi = $state(150);
+  let show_details = $state(true);
+  let pdf_paper = $state<CalendarPdfPaper>("fit");
+  let pdf_pagination = $state<CalendarPdfPagination>("single");
+  let month_count = $state(1);
+  let start_month = $state("");
+  let end_month = $state("");
+  let periods = $state<CalendarExportPeriod[]>([]);
+  let known_entry_keys = $state<string[]>([]);
+  let estimate = $state<CalendarExportEstimate>({
+    width: 0,
+    height: 0,
+    megapixels: 0,
+    memory_mb: 0,
+    page_count: 0,
+    too_large: false,
+  });
+  let preparing_periods = $state(false);
+  let calculating_estimate = $state(false);
+  let exporting = $state(false);
+  let export_progress = $state("");
+  let initialized_for_open = false;
+  let period_generation = 0;
+  let estimate_generation = 0;
+  let period_timer: ReturnType<typeof setTimeout> | undefined;
+  let estimate_timer: ReturnType<typeof setTimeout> | undefined;
 
-function current_options(): CalendarExportOptions {
-  return {
-    theme,
-    dpi,
-    show_title: true,
-    show_details,
-    pdf_paper,
-    pdf_pagination,
-    png_layout,
-  };
-}
-
-function load_preferences(): Partial<CalendarExportOptions> & {
-  format?: CalendarExportFormat;
-  month_count?: number;
-} {
-  try {
-    return JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? "{}");
-  } catch (error) {
-    logger.debug("calendar.preferences_load.failed", { error });
-    return {};
+  function current_options(): CalendarExportOptions {
+    return {
+      theme,
+      dpi,
+      show_title: true,
+      show_details,
+      pdf_paper,
+      pdf_pagination,
+      png_layout,
+    };
   }
-}
 
-function save_preferences() {
-  try {
-    localStorage.setItem(
-      PREFERENCES_KEY,
-      JSON.stringify({ format, month_count, ...current_options() }),
+  function load_preferences(): Partial<CalendarExportOptions> & {
+    format?: CalendarExportFormat;
+    month_count?: number;
+  } {
+    try {
+      return JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? "{}");
+    } catch (error) {
+      logger.debug("calendar.preferences_load.failed", { error });
+      return {};
+    }
+  }
+
+  function save_preferences() {
+    try {
+      localStorage.setItem(
+        PREFERENCES_KEY,
+        JSON.stringify({ format, month_count, ...current_options() }),
+      );
+    } catch (error) {
+      logger.debug("calendar.preferences_save.failed", { error });
+      // Exporting still works when storage is unavailable.
+    }
+  }
+
+  function month_value(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function parsed_month(value: string, fallback: Date): Date {
+    const match = /^(\d{4})-(\d{2})$/.exec(value);
+    if (!match) {
+      return new Date(fallback.getFullYear(), fallback.getMonth(), 1);
+    }
+    const month = Number(match[2]);
+    if (month < 1 || month > 12) {
+      return new Date(fallback.getFullYear(), fallback.getMonth(), 1);
+    }
+    return new Date(Number(match[1]), month - 1, 1);
+  }
+
+  function normalized_month_range(): { start: Date; end: Date; count: number } {
+    const fallback = new Date(
+      visible_date.getFullYear(),
+      visible_date.getMonth(),
+      1,
     );
-  } catch (error) {
-    logger.debug("calendar.preferences_save.failed", { error });
-    // Exporting still works when storage is unavailable.
+    const start = parsed_month(start_month, fallback);
+    let end = parsed_month(end_month, start);
+    let difference =
+      (end.getFullYear() - start.getFullYear()) * 12 +
+      end.getMonth() -
+      start.getMonth();
+    if (difference < 0) {
+      end = new Date(start);
+      difference = 0;
+    } else if (difference > 11) {
+      end = new Date(start.getFullYear(), start.getMonth() + 11, 1);
+      difference = 11;
+    }
+    return { start, end, count: difference + 1 };
   }
-}
 
-function month_value(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
+  function build_export_period(
+    index: number,
+    count: number,
+  ): CalendarExportPeriod {
+    if (view_mode !== "month") {
+      return { label: period_label, days };
+    }
+    const start = parsed_month(start_month, visible_date);
+    const month = new Date(start.getFullYear(), start.getMonth() + index, 1);
+    const uses_visible_month =
+      month.getFullYear() === visible_date.getFullYear() &&
+      month.getMonth() === visible_date.getMonth();
+    const month_days =
+      index === 0 && count === 1 && uses_visible_month
+        ? days
+        : build_calendar_days(
+            columns,
+            month,
+            today,
+            search_text,
+            archives,
+            show_archived,
+            show_recurring_previews,
+            "month",
+          ).map((day) => (day.in_current_month ? day : { ...day, tasks: [] }));
+    return {
+      label: month.toLocaleDateString(EXPORT_LOCALE, {
+        year: "numeric",
+        month: "long",
+      }),
+      days: month_days,
+    };
+  }
 
-function parsed_month(value: string, fallback: Date): Date {
-  const match = /^(\d{4})-(\d{2})$/.exec(value);
-  if (!match) return new Date(fallback.getFullYear(), fallback.getMonth(), 1);
-  const month = Number(match[2]);
-  if (month < 1 || month > 12)
-    return new Date(fallback.getFullYear(), fallback.getMonth(), 1);
-  return new Date(Number(match[1]), month - 1, 1);
-}
+  function period_entry_keys(periods: CalendarExportPeriod[]): string[] {
+    return periods.flatMap((period) =>
+      period.days.flatMap((day) =>
+        day.tasks.map((entry) => calendar_entry_key(day, entry)),
+      ),
+    );
+  }
 
-function normalized_month_range(): { start: Date; end: Date; count: number } {
-  const fallback = new Date(
-    visible_date.getFullYear(),
-    visible_date.getMonth(),
-    1,
+  function initialize() {
+    const stored = load_preferences();
+    const default_theme: CalendarExportTheme =
+      document.documentElement.classList.contains("dark") ? "dark" : "light";
+    search = "";
+    format = stored.format === "pdf" ? "pdf" : "png";
+    png_layout = stored.png_layout === "separate" ? "separate" : "combined";
+    theme =
+      stored.theme === "dark" || stored.theme === "light"
+        ? stored.theme
+        : default_theme;
+    dpi = Math.min(
+      300,
+      Math.max(72, Number(stored.dpi) || DEFAULT_CALENDAR_EXPORT_OPTIONS.dpi),
+    );
+    show_details = stored.show_details ?? true;
+    pdf_paper =
+      stored.pdf_paper === "a4" || stored.pdf_paper === "a3"
+        ? stored.pdf_paper
+        : "fit";
+    pdf_pagination = stored.pdf_pagination === "weeks" ? "weeks" : "single";
+    month_count =
+      view_mode === "month"
+        ? Math.min(12, Math.max(1, Math.round(Number(stored.month_count) || 1)))
+        : 1;
+    const initial_start = new Date(
+      visible_date.getFullYear(),
+      visible_date.getMonth(),
+      1,
+    );
+    start_month = month_value(initial_start);
+    end_month = month_value(
+      new Date(
+        initial_start.getFullYear(),
+        initial_start.getMonth() + month_count - 1,
+        1,
+      ),
+    );
+    periods = [build_export_period(0, 1)];
+    const initial_keys = period_entry_keys(periods);
+    selected_entry_keys = initial_keys;
+    known_entry_keys = initial_keys;
+    void rebuild_export_periods();
+  }
+
+  $effect(() => {
+    if (open && !initialized_for_open) {
+      initialize();
+      initialized_for_open = true;
+    } else if (!open && initialized_for_open) {
+      save_preferences();
+      period_generation += 1;
+      estimate_generation += 1;
+      clearTimeout(period_timer);
+      clearTimeout(estimate_timer);
+      preparing_periods = false;
+      calculating_estimate = false;
+      initialized_for_open = false;
+    }
+  });
+
+  const all_days = $derived(periods.flatMap((period) => period.days));
+  const all_entry_keys = $derived(period_entry_keys(periods));
+  const valid_selected_entry_keys = $derived.by(() => {
+    const available = new Set(all_entry_keys);
+    return selected_entry_keys.filter((key) => available.has(key));
+  });
+  const selected_periods = $derived(
+    periods.map((period) => ({
+      ...period,
+      days: selected_calendar_days(period.days, valid_selected_entry_keys),
+    })),
   );
-  const start = parsed_month(start_month, fallback);
-  let end = parsed_month(end_month, start);
-  let difference =
-    (end.getFullYear() - start.getFullYear()) * 12 +
-    end.getMonth() -
-    start.getMonth();
-  if (difference < 0) {
-    end = new Date(start);
-    difference = 0;
-  } else if (difference > 11) {
-    end = new Date(start.getFullYear(), start.getMonth() + 11, 1);
-    difference = 11;
-  }
-  return { start, end, count: difference + 1 };
-}
+  const export_title = $derived(
+    periods.length === 1 ? (periods[0]?.label ?? period_label) : "",
+  );
+  const default_filename = $derived.by(() => {
+    if (periods.length > 1) {
+      return `${periods[0].label} - ${periods.at(-1)?.label}`;
+    }
+    return periods[0]?.label ?? period_label;
+  });
+  const preview_days = $derived((selected_periods[0]?.days ?? []).slice(0, 7));
+  const preview_entry = $derived(preview_days.flatMap((day) => day.tasks)[0]);
 
-function build_export_period(
-  index: number,
-  count: number,
-): CalendarExportPeriod {
-  if (view_mode !== "month") return { label: period_label, days };
-  const start = parsed_month(start_month, visible_date);
-  const month = new Date(start.getFullYear(), start.getMonth() + index, 1);
-  const uses_visible_month =
-    month.getFullYear() === visible_date.getFullYear() &&
-    month.getMonth() === visible_date.getMonth();
-  const month_days =
-    index === 0 && count === 1 && uses_visible_month
-      ? days
-      : build_calendar_days(
-          columns,
-          month,
-          today,
-          search_text,
-          archives,
-          show_archived,
-          show_recurring_previews,
-          "month",
-        ).map((day) => (day.in_current_month ? day : { ...day, tasks: [] }));
-  return {
-    label: month.toLocaleDateString(EXPORT_LOCALE, {
-      year: "numeric",
-      month: "long",
-    }),
-    days: month_days,
-  };
-}
-
-function period_entry_keys(periods: CalendarExportPeriod[]): string[] {
-  return periods.flatMap((period) =>
-    period.days.flatMap((day) =>
+  const days_with_entries = $derived(
+    all_days.filter((day) => day.tasks.length > 0),
+  );
+  const visible_days = $derived.by(() => {
+    const needle = search.trim().toLocaleLowerCase();
+    if (!needle) {
+      return days_with_entries;
+    }
+    return days_with_entries
+      .map((day) => ({
+        ...day,
+        tasks: day.tasks.filter((entry) =>
+          [
+            entry.task.title,
+            entry.task.description,
+            entry.column.name,
+            ...entry.task.labels,
+          ]
+            .join(" ")
+            .toLocaleLowerCase()
+            .includes(needle),
+        ),
+      }))
+      .filter((day) => day.tasks.length > 0);
+  });
+  const visible_entry_keys = $derived(
+    visible_days.flatMap((day) =>
       day.tasks.map((entry) => calendar_entry_key(day, entry)),
     ),
   );
-}
+  const all_visible_selected = $derived(
+    visible_entry_keys.length > 0 &&
+      visible_entry_keys.every((key) => selected_entry_keys.includes(key)),
+  );
+  const no_visible_selected = $derived(
+    visible_entry_keys.every((key) => !selected_entry_keys.includes(key)),
+  );
 
-function initialize() {
-  const stored = load_preferences();
-  const default_theme: CalendarExportTheme =
-    document.documentElement.classList.contains("dark") ? "dark" : "light";
-  search = "";
-  format = stored.format === "pdf" ? "pdf" : "png";
-  png_layout = stored.png_layout === "separate" ? "separate" : "combined";
-  theme =
-    stored.theme === "dark" || stored.theme === "light"
-      ? stored.theme
-      : default_theme;
-  dpi = Math.min(
-    300,
-    Math.max(72, Number(stored.dpi) || DEFAULT_CALENDAR_EXPORT_OPTIONS.dpi),
-  );
-  show_details = stored.show_details ?? true;
-  pdf_paper =
-    stored.pdf_paper === "a4" || stored.pdf_paper === "a3"
-      ? stored.pdf_paper
-      : "fit";
-  pdf_pagination = stored.pdf_pagination === "weeks" ? "weeks" : "single";
-  month_count =
-    view_mode === "month"
-      ? Math.min(12, Math.max(1, Math.round(Number(stored.month_count) || 1)))
-      : 1;
-  const initial_start = new Date(
-    visible_date.getFullYear(),
-    visible_date.getMonth(),
-    1,
-  );
-  start_month = month_value(initial_start);
-  end_month = month_value(
-    new Date(
-      initial_start.getFullYear(),
-      initial_start.getMonth() + month_count - 1,
-      1,
-    ),
-  );
-  periods = [build_export_period(0, 1)];
-  const initial_keys = period_entry_keys(periods);
-  selected_entry_keys = initial_keys;
-  known_entry_keys = initial_keys;
-  void rebuild_export_periods();
-}
+  $effect(() => {
+    if (!open || preparing_periods) {
+      return;
+    }
+    const requested_periods = selected_periods;
+    const requested_title = export_title;
+    const requested_format = format;
+    const requested_options = current_options();
+    const generation = ++estimate_generation;
+    clearTimeout(estimate_timer);
+    calculating_estimate = true;
+    estimate_timer = setTimeout(() => {
+      void estimate_calendar_export_async(
+        requested_periods,
+        requested_title,
+        requested_format,
+        requested_options,
+      )
+        .then((result) => {
+          if (generation === estimate_generation && open) {
+            estimate = result;
+          }
+        })
+        .catch((error) => {
+          logger.warn("calendar.export_estimate.failed", error);
+          console.error("Couldn't estimate calendar export", error);
+        })
+        .finally(() => {
+          if (generation === estimate_generation) {
+            calculating_estimate = false;
+          }
+        });
+    }, 120);
+  });
 
-$effect(() => {
-  if (open && !initialized_for_open) {
-    initialize();
-    initialized_for_open = true;
-  } else if (!open && initialized_for_open) {
-    save_preferences();
+  function set_entry_selected(key: string, checked: boolean) {
+    selected_entry_keys = checked
+      ? Array.from(new Set([...selected_entry_keys, key]))
+      : selected_entry_keys.filter((candidate) => candidate !== key);
+  }
+
+  function set_day_selected(day: CalendarDay, checked: boolean) {
+    const keys = day.tasks.map((entry) => calendar_entry_key(day, entry));
+    const key_set = new Set(keys);
+    selected_entry_keys = checked
+      ? Array.from(new Set([...selected_entry_keys, ...keys]))
+      : selected_entry_keys.filter((key) => !key_set.has(key));
+  }
+
+  function set_visible_selected(checked: boolean) {
+    const keys = new Set(visible_entry_keys);
+    selected_entry_keys = checked
+      ? Array.from(new Set([...selected_entry_keys, ...keys]))
+      : selected_entry_keys.filter((key) => !keys.has(key));
+  }
+
+  function format_time(date: Date | undefined): string {
+    if (
+      !date ||
+      (date.getHours() === 0 &&
+        date.getMinutes() === 0 &&
+        date.getSeconds() === 0)
+    ) {
+      return "";
+    }
+    return date.toLocaleTimeString(EXPORT_LOCALE, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  }
+
+  function set_dpi() {
+    dpi = Math.min(300, Math.max(72, Math.round(Number(dpi) || 96)));
+  }
+
+  function next_ui_frame(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  async function rebuild_export_periods() {
+    const generation = ++period_generation;
+    estimate_generation += 1;
+    clearTimeout(estimate_timer);
+    calculating_estimate = false;
+    preparing_periods = true;
+    const range = normalized_month_range();
+    start_month = month_value(range.start);
+    end_month = month_value(range.end);
+    month_count = view_mode === "month" ? range.count : 1;
+    const count = month_count;
+    await tick();
+    await next_ui_frame();
+
+    const next_periods: CalendarExportPeriod[] = [];
+    for (let index = 0; index < count; index += 1) {
+      if (generation !== period_generation || !open) {
+        return;
+      }
+      next_periods.push(build_export_period(index, count));
+      if (index < count - 1) {
+        await next_ui_frame();
+      }
+    }
+    if (generation !== period_generation || !open) {
+      return;
+    }
+
+    const available = period_entry_keys(next_periods);
+    const known = new Set(known_entry_keys);
+    selected_entry_keys = Array.from(
+      new Set([
+        ...selected_entry_keys,
+        ...available.filter((key) => !known.has(key)),
+      ]),
+    );
+    known_entry_keys = Array.from(new Set([...known_entry_keys, ...available]));
+    periods = next_periods;
+    preparing_periods = false;
+  }
+
+  function schedule_period_rebuild() {
     period_generation += 1;
     estimate_generation += 1;
     clearTimeout(period_timer);
     clearTimeout(estimate_timer);
-    preparing_periods = false;
     calculating_estimate = false;
-    initialized_for_open = false;
+    preparing_periods = true;
+    period_timer = setTimeout(() => void rebuild_export_periods(), 160);
   }
-});
 
-const all_days = $derived(periods.flatMap((period) => period.days));
-const all_entry_keys = $derived(period_entry_keys(periods));
-const valid_selected_entry_keys = $derived.by(() => {
-  const available = new Set(all_entry_keys);
-  return selected_entry_keys.filter((key) => available.has(key));
-});
-const selected_periods = $derived(
-  periods.map((period) => ({
-    ...period,
-    days: selected_calendar_days(period.days, valid_selected_entry_keys),
-  })),
-);
-const export_title = $derived(
-  periods.length === 1 ? (periods[0]?.label ?? period_label) : "",
-);
-const default_filename = $derived.by(() => {
-  if (periods.length > 1)
-    return `${periods[0].label} - ${periods.at(-1)?.label}`;
-  return periods[0]?.label ?? period_label;
-});
-const preview_days = $derived((selected_periods[0]?.days ?? []).slice(0, 7));
-const preview_entry = $derived(preview_days.flatMap((day) => day.tasks)[0]);
-
-const days_with_entries = $derived(
-  all_days.filter((day) => day.tasks.length > 0),
-);
-const visible_days = $derived.by(() => {
-  const needle = search.trim().toLocaleLowerCase();
-  if (!needle) return days_with_entries;
-  return days_with_entries
-    .map((day) => ({
-      ...day,
-      tasks: day.tasks.filter((entry) =>
-        [
-          entry.task.title,
-          entry.task.description,
-          entry.column.name,
-          ...entry.task.labels,
-        ]
-          .join(" ")
-          .toLocaleLowerCase()
-          .includes(needle),
-      ),
-    }))
-    .filter((day) => day.tasks.length > 0);
-});
-const visible_entry_keys = $derived(
-  visible_days.flatMap((day) =>
-    day.tasks.map((entry) => calendar_entry_key(day, entry)),
-  ),
-);
-const all_visible_selected = $derived(
-  visible_entry_keys.length > 0 &&
-    visible_entry_keys.every((key) => selected_entry_keys.includes(key)),
-);
-const no_visible_selected = $derived(
-  visible_entry_keys.every((key) => !selected_entry_keys.includes(key)),
-);
-
-$effect(() => {
-  if (!open || preparing_periods) return;
-  const requested_periods = selected_periods;
-  const requested_title = export_title;
-  const requested_format = format;
-  const requested_options = current_options();
-  const generation = ++estimate_generation;
-  clearTimeout(estimate_timer);
-  calculating_estimate = true;
-  estimate_timer = setTimeout(() => {
-    void estimate_calendar_export_async(
-      requested_periods,
-      requested_title,
-      requested_format,
-      requested_options,
-    )
-      .then((result) => {
-        if (generation === estimate_generation && open) estimate = result;
-      })
-      .catch((error) => {
-        logger.warn("calendar.export_estimate.failed", error);
-        console.error("Couldn't estimate calendar export", error);
-      })
-      .finally(() => {
-        if (generation === estimate_generation) calculating_estimate = false;
-      });
-  }, 120);
-});
-
-function set_entry_selected(key: string, checked: boolean) {
-  selected_entry_keys = checked
-    ? Array.from(new Set([...selected_entry_keys, key]))
-    : selected_entry_keys.filter((candidate) => candidate !== key);
-}
-
-function set_day_selected(day: CalendarDay, checked: boolean) {
-  const keys = day.tasks.map((entry) => calendar_entry_key(day, entry));
-  const key_set = new Set(keys);
-  selected_entry_keys = checked
-    ? Array.from(new Set([...selected_entry_keys, ...keys]))
-    : selected_entry_keys.filter((key) => !key_set.has(key));
-}
-
-function set_visible_selected(checked: boolean) {
-  const keys = new Set(visible_entry_keys);
-  selected_entry_keys = checked
-    ? Array.from(new Set([...selected_entry_keys, ...keys]))
-    : selected_entry_keys.filter((key) => !keys.has(key));
-}
-
-function format_time(date: Date | undefined): string {
-  if (
-    !date ||
-    (date.getHours() === 0 &&
-      date.getMinutes() === 0 &&
-      date.getSeconds() === 0)
-  )
-    return "";
-  return date.toLocaleTimeString(EXPORT_LOCALE, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
-function set_dpi() {
-  dpi = Math.min(300, Math.max(72, Math.round(Number(dpi) || 96)));
-}
-
-function next_ui_frame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-}
-
-async function rebuild_export_periods() {
-  const generation = ++period_generation;
-  estimate_generation += 1;
-  clearTimeout(estimate_timer);
-  calculating_estimate = false;
-  preparing_periods = true;
-  const range = normalized_month_range();
-  start_month = month_value(range.start);
-  end_month = month_value(range.end);
-  month_count = view_mode === "month" ? range.count : 1;
-  const count = month_count;
-  await tick();
-  await next_ui_frame();
-
-  const next_periods: CalendarExportPeriod[] = [];
-  for (let index = 0; index < count; index += 1) {
-    if (generation !== period_generation || !open) return;
-    next_periods.push(build_export_period(index, count));
-    if (index < count - 1) await next_ui_frame();
-  }
-  if (generation !== period_generation || !open) return;
-
-  const available = period_entry_keys(next_periods);
-  const known = new Set(known_entry_keys);
-  selected_entry_keys = Array.from(
-    new Set([
-      ...selected_entry_keys,
-      ...available.filter((key) => !known.has(key)),
-    ]),
-  );
-  known_entry_keys = Array.from(new Set([...known_entry_keys, ...available]));
-  periods = next_periods;
-  preparing_periods = false;
-}
-
-function schedule_period_rebuild() {
-  period_generation += 1;
-  estimate_generation += 1;
-  clearTimeout(period_timer);
-  clearTimeout(estimate_timer);
-  calculating_estimate = false;
-  preparing_periods = true;
-  period_timer = setTimeout(() => void rebuild_export_periods(), 160);
-}
-
-async function export_calendar() {
-  if (
-    exporting ||
-    preparing_periods ||
-    calculating_estimate ||
-    valid_selected_entry_keys.length === 0 ||
-    estimate.too_large
-  )
-    return;
-  exporting = true;
-  export_progress = "";
-  save_preferences();
-  await tick();
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  try {
+  async function export_calendar() {
     if (
-      format === "png" &&
-      png_layout === "separate" &&
-      selected_periods.length > 1
+      exporting ||
+      preparing_periods ||
+      calculating_estimate ||
+      valid_selected_entry_keys.length === 0 ||
+      estimate.too_large
     ) {
-      const count = await save_split_calendar_png_export(
-        selected_periods,
-        export_title,
-        current_options(),
-        (completed, total) => {
-          export_progress =
-            completed === 0
-              ? `Preparing ${total} images...`
-              : `Saving ${completed} of ${total}...`;
-        },
-      );
-      if (count !== null) {
-        toast.success(`${count} calendar PNGs exported`);
-        open = false;
-      }
       return;
     }
-    const blob = await render_calendar_export(
-      selected_periods,
-      export_title,
-      format,
-      current_options(),
-    );
-    if (await save_calendar_export(blob, default_filename, format)) {
-      toast.success(`Calendar ${format.toUpperCase()} exported`);
-      open = false;
-    }
-  } catch (error) {
-    logger.error("calendar.export.failed", error);
-    console.error("Couldn't export calendar", error);
-    toast.error(
-      error instanceof Error ? error.message : "Couldn't export the calendar",
-    );
-  } finally {
-    exporting = false;
+    exporting = true;
     export_progress = "";
+    save_preferences();
+    await tick();
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    try {
+      if (
+        format === "png" &&
+        png_layout === "separate" &&
+        selected_periods.length > 1
+      ) {
+        const count = await save_split_calendar_png_export(
+          selected_periods,
+          export_title,
+          current_options(),
+          (completed, total) => {
+            export_progress =
+              completed === 0
+                ? `Preparing ${total} images...`
+                : `Saving ${completed} of ${total}...`;
+          },
+        );
+        if (count !== null) {
+          toast.success(`${count} calendar PNGs exported`);
+          open = false;
+        }
+        return;
+      }
+      const blob = await render_calendar_export(
+        selected_periods,
+        export_title,
+        format,
+        current_options(),
+      );
+      if (await save_calendar_export(blob, default_filename, format)) {
+        toast.success(`Calendar ${format.toUpperCase()} exported`);
+        open = false;
+      }
+    } catch (error) {
+      logger.error("calendar.export.failed", error);
+      console.error("Couldn't export calendar", error);
+      toast.error(
+        error instanceof Error ? error.message : "Couldn't export the calendar",
+      );
+    } finally {
+      exporting = false;
+      export_progress = "";
+    }
   }
-}
 </script>
 
 <Dialog.Root bind:open>
@@ -543,8 +567,8 @@ async function export_calendar() {
             </label>
           </div>
           <p class="pb-2 text-xs text-muted-foreground">
-            {month_count} {month_count === 1 ? "month" : "months"} · Maximum 12
-            months
+            {month_count}
+            {month_count === 1 ? "month" : "months"} · Maximum 12 months
           </p>
         </div>
       {/if}
@@ -560,16 +584,18 @@ async function export_calendar() {
               size="sm"
               class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
               aria-pressed={format === "png"}
-              onclick={() => { format = "png"; }}
-              >PNG</Button
+              onclick={() => {
+                format = "png";
+              }}>PNG</Button
             >
             <Button
               variant={format === "pdf" ? "secondary" : "ghost"}
               size="sm"
               class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
               aria-pressed={format === "pdf"}
-              onclick={() => { format = "pdf"; }}
-              >PDF</Button
+              onclick={() => {
+                format = "pdf";
+              }}>PDF</Button
             >
           </div>
         </fieldset>
@@ -583,16 +609,18 @@ async function export_calendar() {
               size="sm"
               class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
               aria-pressed={theme === "light"}
-              onclick={() => { theme = "light"; }}
-              >Light</Button
+              onclick={() => {
+                theme = "light";
+              }}>Light</Button
             >
             <Button
               variant={theme === "dark" ? "secondary" : "ghost"}
               size="sm"
               class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
               aria-pressed={theme === "dark"}
-              onclick={() => { theme = "dark"; }}
-              >Dark</Button
+              onclick={() => {
+                theme = "dark";
+              }}>Dark</Button
             >
           </div>
         </fieldset>
@@ -621,16 +649,18 @@ async function export_calendar() {
                 size="sm"
                 class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
                 aria-pressed={png_layout === "combined"}
-                onclick={() => { png_layout = "combined"; }}
-                >Single image</Button
+                onclick={() => {
+                  png_layout = "combined";
+                }}>Single image</Button
               >
               <Button
                 variant={png_layout === "separate" ? "secondary" : "ghost"}
                 size="sm"
                 class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
                 aria-pressed={png_layout === "separate"}
-                onclick={() => { png_layout = "separate"; }}
-                >Separate images</Button
+                onclick={() => {
+                  png_layout = "separate";
+                }}>Separate images</Button
               >
             </div>
             {#if png_layout === "separate"}
@@ -653,8 +683,9 @@ async function export_calendar() {
                   size="sm"
                   class="h-full flex-1 rounded-none border-0 border-r shadow-none last:border-r-0 focus-visible:z-10"
                   aria-pressed={pdf_paper === value}
-                  onclick={() => { pdf_paper = value as CalendarPdfPaper; }}
-                  >{label}</Button
+                  onclick={() => {
+                    pdf_paper = value as CalendarPdfPaper;
+                  }}>{label}</Button
                 >
               {/each}
             </div>
@@ -669,16 +700,18 @@ async function export_calendar() {
                 size="sm"
                 class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
                 aria-pressed={pdf_pagination === "single"}
-                onclick={() => { pdf_pagination = "single"; }}
-                >{view_mode === "month" ? "Months" : "One page"}</Button
+                onclick={() => {
+                  pdf_pagination = "single";
+                }}>{view_mode === "month" ? "Months" : "One page"}</Button
               >
               <Button
                 variant={pdf_pagination === "weeks" ? "secondary" : "ghost"}
                 size="sm"
                 class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
                 aria-pressed={pdf_pagination === "weeks"}
-                onclick={() => { pdf_pagination = "weeks"; }}
-                >Weeks</Button
+                onclick={() => {
+                  pdf_pagination = "weeks";
+                }}>Weeks</Button
               >
             </div>
           </fieldset>
@@ -688,7 +721,9 @@ async function export_calendar() {
           <label class="flex cursor-pointer items-center gap-2 text-sm">
             <Checkbox
               checked={show_details}
-              onCheckedChange={(checked) => { show_details = checked === true; }}
+              onCheckedChange={(checked) => {
+                show_details = checked === true;
+              }}
             />
             Show entry count and date
           </label>
@@ -720,7 +755,9 @@ async function export_calendar() {
               >
             {:else}
               <span
-                class={estimate.too_large ? "font-medium text-destructive" : "text-muted-foreground"}
+                class={estimate.too_large
+                  ? "font-medium text-destructive"
+                  : "text-muted-foreground"}
               >
                 {estimate.width.toLocaleString()}
                 × {estimate.height.toLocaleString()} px ·
@@ -843,34 +880,43 @@ async function export_calendar() {
               variant="ghost"
               size="sm"
               disabled={visible_entry_keys.length === 0 || all_visible_selected}
-              onclick={() => set_visible_selected(true)}
-              >Select all</Button
+              onclick={() => set_visible_selected(true)}>Select all</Button
             >
             <Button
               variant="ghost"
               size="sm"
               disabled={visible_entry_keys.length === 0 || no_visible_selected}
-              onclick={() => set_visible_selected(false)}
-              >Clear all</Button
+              onclick={() => set_visible_selected(false)}>Clear all</Button
             >
           </div>
         </div>
 
         <div class="max-h-80 space-y-2 overflow-y-auto rounded-md border p-2">
           {#each visible_days as day (day.key)}
-            {@const day_keys = day.tasks.map((entry) => calendar_entry_key(day, entry))}
-            {@const selected_in_day = day_keys.filter((key) => selected_entry_keys.includes(key)).length}
+            {@const day_keys = day.tasks.map((entry) =>
+              calendar_entry_key(day, entry),
+            )}
+            {@const selected_in_day = day_keys.filter((key) =>
+              selected_entry_keys.includes(key),
+            ).length}
             <div class="rounded-md border bg-muted/20">
               <label
                 class="flex cursor-pointer items-center gap-3 rounded-t-md px-3 py-2 hover:bg-muted/60"
               >
                 <Checkbox
                   checked={selected_in_day === day_keys.length}
-                  indeterminate={selected_in_day > 0 && selected_in_day < day_keys.length}
-                  onCheckedChange={(checked) => set_day_selected(day, checked === true)}
+                  indeterminate={selected_in_day > 0 &&
+                    selected_in_day < day_keys.length}
+                  onCheckedChange={(checked) =>
+                    set_day_selected(day, checked === true)}
                 />
                 <span class="min-w-0 flex-1 truncate text-sm font-medium"
-                  >{day.date.toLocaleDateString(EXPORT_LOCALE, { weekday: "short", year: "numeric", month: "short", day: "numeric" })}</span
+                  >{day.date.toLocaleDateString(EXPORT_LOCALE, {
+                    weekday: "short",
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}</span
                 >
                 <span class="text-xs tabular-nums text-muted-foreground"
                   >{selected_in_day}/{day_keys.length}</span
@@ -885,7 +931,8 @@ async function export_calendar() {
                     <Checkbox
                       class="mt-0.5"
                       checked={selected_entry_keys.includes(key)}
-                      onCheckedChange={(checked) => set_entry_selected(key, checked === true)}
+                      onCheckedChange={(checked) =>
+                        set_entry_selected(key, checked === true)}
                     />
                     <span class="min-w-0 flex-1">
                       <span class="block truncate text-sm"
@@ -897,7 +944,11 @@ async function export_calendar() {
                         {entry.task.title || "Untitled task"}</span
                       >
                       <span class="block truncate text-xs text-muted-foreground"
-                        >{entry.column.name}{entry.archived ? " · Archived" : entry.preview ? " · Recurring preview" : ""}</span
+                        >{entry.column.name}{entry.archived
+                          ? " · Archived"
+                          : entry.preview
+                            ? " · Recurring preview"
+                            : ""}</span
                       >
                     </span>
                   </label>
@@ -924,7 +975,11 @@ async function export_calendar() {
         {/snippet}
       </Dialog.Close>
       <Button
-        disabled={exporting || preparing_periods || calculating_estimate || valid_selected_entry_keys.length === 0 || estimate.too_large}
+        disabled={exporting ||
+          preparing_periods ||
+          calculating_estimate ||
+          valid_selected_entry_keys.length === 0 ||
+          estimate.too_large}
         onclick={() => void export_calendar()}
       >
         {#if exporting}
@@ -936,7 +991,9 @@ async function export_calendar() {
           ? export_progress || "Rendering..."
           : preparing_periods || calculating_estimate
             ? "Preparing..."
-            : format === "png" && png_layout === "separate" && selected_periods.length > 1
+            : format === "png" &&
+                png_layout === "separate" &&
+                selected_periods.length > 1
               ? "Export PNGs"
               : `Export ${format.toUpperCase()}`}
       </Button>

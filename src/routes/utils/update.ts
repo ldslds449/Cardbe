@@ -6,13 +6,18 @@ export const UPDATE_CHECK_INTERVAL_MS =
 export const UPDATE_LAST_CHECK_KEY = "app.update.lastSuccessfulCheck";
 
 export function updateCheckErrorMessage(error: unknown): string {
-  if (typeof error === "string" && error.trim()) return error.trim();
-  if (error instanceof Error && error.message.trim())
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+  if (error instanceof Error && error.message.trim()) {
     return error.message.trim();
+  }
 
   if (error && typeof error === "object" && "message" in error) {
     const message = Reflect.get(error, "message");
-    if (typeof message === "string" && message.trim()) return message.trim();
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
   }
 
   return "An unknown error occurred.";
@@ -23,7 +28,9 @@ export function shouldCheckForUpdate(
   now = Date.now(),
 ): boolean {
   const value = storage.getItem(UPDATE_LAST_CHECK_KEY);
-  if (value === null) return true;
+  if (value === null) {
+    return true;
+  }
 
   const lastCheck = Number(value);
   return (

@@ -1,190 +1,214 @@
 <script lang="ts">
-import { logger } from "$lib/logger";
-import { mode } from "mode-watcher";
-import { invoke, isTauri } from "@tauri-apps/api/core";
-import { toast } from "svelte-sonner";
+  import { logger } from "$lib/logger";
+  import { mode } from "mode-watcher";
+  import { invoke, isTauri } from "@tauri-apps/api/core";
+  import { toast } from "svelte-sonner";
 
-import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-import Link2Icon from "@lucide/svelte/icons/link-2";
+  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import Link2Icon from "@lucide/svelte/icons/link-2";
 
-import Markdown from "svelte-exmarkdown";
-import type { HastNode, Plugin } from "svelte-exmarkdown";
-import { gfmPlugin } from "svelte-exmarkdown/gfm";
+  import Markdown from "svelte-exmarkdown";
+  import type { HastNode, Plugin } from "svelte-exmarkdown";
+  import { gfmPlugin } from "svelte-exmarkdown/gfm";
 
-// code highlight
-import rehypeShikiFromHighlighter from "@shikijs/rehype/core";
+  // code highlight
+  import rehypeShikiFromHighlighter from "@shikijs/rehype/core";
 
-import { getHighlighter, loadHighlightLanguage } from "./highlighter.svelte";
-import { task_id_from_card_reference } from "../utils/card-reference";
+  import { getHighlighter, loadHighlightLanguage } from "./highlighter.svelte";
+  import { task_id_from_card_reference } from "../utils/card-reference";
 
-let {
-  md,
-  compact = false,
-}: {
-  md: string;
-  compact?: boolean;
-} = $props();
+  let {
+    md,
+    compact = false,
+  }: {
+    md: string;
+    compact?: boolean;
+  } = $props();
 
-const sharedHighlighter = getHighlighter();
-let highlight_revision = $state(0);
+  const sharedHighlighter = getHighlighter();
+  let highlight_revision = $state(0);
 
-// Exmarkdown parses synchronously. Load grammars in the background, then
-// rebuild the plugin so the current Markdown is highlighted on completion.
-function load_code_languages(): (tree: HastNode) => void {
-  return (tree) => {
-    const pending = new Set<Promise<void>>();
-    const visit = (node: HastNode) => {
-      if (node.type === "element" && node.tagName === "code") {
-        const classes = node.properties?.className;
-        if (Array.isArray(classes)) {
-          for (const name of classes) {
-            if (typeof name !== "string" || !name.startsWith("language-"))
-              continue;
-            const load = loadHighlightLanguage(name.slice("language-".length));
-            if (load) pending.add(load);
+  // Exmarkdown parses synchronously. Load grammars in the background, then
+  // rebuild the plugin so the current Markdown is highlighted on completion.
+  function load_code_languages(): (tree: HastNode) => void {
+    return (tree) => {
+      const pending = new Set<Promise<void>>();
+      const visit = (node: HastNode) => {
+        if (node.type === "element" && node.tagName === "code") {
+          const classes = node.properties?.className;
+          if (Array.isArray(classes)) {
+            for (const name of classes) {
+              if (typeof name !== "string" || !name.startsWith("language-")) {
+                continue;
+              }
+              const load = loadHighlightLanguage(
+                name.slice("language-".length),
+              );
+              if (load) {
+                pending.add(load);
+              }
+            }
           }
         }
+        node.children?.forEach(visit);
+      };
+      visit(tree);
+      if (pending.size) {
+        void Promise.allSettled(pending).then((results) => {
+          if (results.some((result) => result.status === "fulfilled")) {
+            highlight_revision += 1;
+          }
+          for (const result of results) {
+            if (result.status === "rejected") {
+              console.error("Couldn't load code highlighting", result.reason);
+              logger.warn("markdown.highlight_load.failed", result.reason);
+            }
+          }
+        });
       }
-      node.children?.forEach(visit);
     };
-    visit(tree);
-    if (pending.size) {
-      void Promise.allSettled(pending).then((results) => {
-        if (results.some((result) => result.status === "fulfilled"))
-          highlight_revision += 1;
-        for (const result of results) {
-          if (result.status === "rejected") {
-            console.error("Couldn't load code highlighting", result.reason);
-            logger.warn("markdown.highlight_load.failed", result.reason);
-          }
+  }
+
+  const languageLoaderPlugin: Plugin = { rehypePlugin: load_code_languages };
+
+  // Task descriptions are also rendered by the unauthenticated LAN viewer.
+  // Keep Markdown as data: raw HTML is not part of the supported format and
+  // must not acquire rendering semantics through a dependency update.
+  function strip_raw_html(): (tree: HastNode) => void {
+    return (tree) => {
+      const visit = (node: HastNode) => {
+        if (!node.children) {
+          return;
         }
-      });
-    }
-  };
-}
-
-const languageLoaderPlugin: Plugin = { rehypePlugin: load_code_languages };
-
-// Task descriptions are also rendered by the unauthenticated LAN viewer.
-// Keep Markdown as data: raw HTML is not part of the supported format and
-// must not acquire rendering semantics through a dependency update.
-function strip_raw_html(): (tree: HastNode) => void {
-  return (tree) => {
-    const visit = (node: HastNode) => {
-      if (!node.children) return;
-      node.children = node.children.filter((child) => child.type !== "raw");
-      node.children.forEach(visit);
+        node.children = node.children.filter((child) => child.type !== "raw");
+        node.children.forEach(visit);
+      };
+      visit(tree);
     };
-    visit(tree);
-  };
-}
-
-function safe_external_href(href: unknown): string | undefined {
-  if (typeof href !== "string") return undefined;
-  if (task_id_from_card_reference(href)) return href;
-
-  try {
-    const url = new URL(href);
-    return url.protocol === "https:" || url.protocol === "http:"
-      ? url.href
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function show_card_reference_preview(event: Event, task_id: string) {
-  const target = event.currentTarget;
-  if (!(target instanceof HTMLElement)) return;
-  const rect = target.getBoundingClientRect();
-  window.dispatchEvent(
-    new CustomEvent("cardbe:show-card-preview", {
-      detail: {
-        taskId: task_id,
-        left: rect.left,
-        top: rect.top,
-        bottom: rect.bottom,
-      },
-    }),
-  );
-}
-
-function hide_card_reference_preview() {
-  window.dispatchEvent(new CustomEvent("cardbe:hide-card-preview"));
-}
-
-function prevent_task_drag(node: HTMLElement) {
-  const stop_pointerdown = (event: PointerEvent) => event.stopPropagation();
-  node.addEventListener("pointerdown", stop_pointerdown);
-
-  return {
-    destroy() {
-      node.removeEventListener("pointerdown", stop_pointerdown);
-    },
-  };
-}
-
-async function open_external_link(event: MouseEvent, href: unknown) {
-  event.stopPropagation();
-  const safe_href = safe_external_href(href);
-  if (!safe_href) {
-    event.preventDefault();
-    return;
   }
 
-  const task_id = task_id_from_card_reference(safe_href);
-  if (task_id) {
-    event.preventDefault();
+  function safe_external_href(href: unknown): string | undefined {
+    if (typeof href !== "string") {
+      return undefined;
+    }
+    if (task_id_from_card_reference(href)) {
+      return href;
+    }
+
+    try {
+      const url = new URL(href);
+      return url.protocol === "https:" || url.protocol === "http:"
+        ? url.href
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function show_card_reference_preview(event: Event, task_id: string) {
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const rect = target.getBoundingClientRect();
     window.dispatchEvent(
-      new CustomEvent("cardbe:open-card", { detail: { taskId: task_id } }),
+      new CustomEvent("cardbe:show-card-preview", {
+        detail: {
+          taskId: task_id,
+          left: rect.left,
+          top: rect.top,
+          bottom: rect.bottom,
+        },
+      }),
     );
-    return;
   }
 
-  // In a regular browser, keep the anchor's native target="_blank" behavior.
-  // The Tauri app uses the system opener through a validated backend command.
-  if (!isTauri()) return;
-
-  event.preventDefault();
-  try {
-    await invoke("open_external_url", { url: safe_href });
-  } catch (error) {
-    logger.warn("markdown.open_link.failed", error);
-    console.error("Couldn't open external link", error);
-    toast.error("Couldn't open link");
+  function hide_card_reference_preview() {
+    window.dispatchEvent(new CustomEvent("cardbe:hide-card-preview"));
   }
-}
 
-const shikiPlugin = $derived.by(() => {
-  void highlight_revision;
-  const activeTheme = mode.current === "light" ? "github-light" : "github-dark";
+  function prevent_task_drag(node: HTMLElement) {
+    const stop_pointerdown = (event: PointerEvent) => event.stopPropagation();
+    node.addEventListener("pointerdown", stop_pointerdown);
 
-  return {
-    rehypePlugin: [
-      rehypeShikiFromHighlighter,
-      sharedHighlighter, // The same instance is reused here
-      {
-        theme: activeTheme,
-        fallbackLanguage: "text",
+    return {
+      destroy() {
+        node.removeEventListener("pointerdown", stop_pointerdown);
       },
-    ],
-  } satisfies Plugin;
-});
+    };
+  }
 
-const safeMarkdownPlugin: Plugin = {
-  rehypePlugin: strip_raw_html,
-};
+  async function open_external_link(event: MouseEvent, href: unknown) {
+    event.stopPropagation();
+    const safe_href = safe_external_href(href);
+    if (!safe_href) {
+      event.preventDefault();
+      return;
+    }
+
+    const task_id = task_id_from_card_reference(safe_href);
+    if (task_id) {
+      event.preventDefault();
+      window.dispatchEvent(
+        new CustomEvent("cardbe:open-card", { detail: { taskId: task_id } }),
+      );
+      return;
+    }
+
+    // In a regular browser, keep the anchor's native target="_blank" behavior.
+    // The Tauri app uses the system opener through a validated backend command.
+    if (!isTauri()) {
+      return;
+    }
+
+    event.preventDefault();
+    try {
+      await invoke("open_external_url", { url: safe_href });
+    } catch (error) {
+      logger.warn("markdown.open_link.failed", error);
+      console.error("Couldn't open external link", error);
+      toast.error("Couldn't open link");
+    }
+  }
+
+  const shikiPlugin = $derived.by(() => {
+    void highlight_revision;
+    const activeTheme =
+      mode.current === "light" ? "github-light" : "github-dark";
+
+    return {
+      rehypePlugin: [
+        rehypeShikiFromHighlighter,
+        sharedHighlighter, // The same instance is reused here
+        {
+          theme: activeTheme,
+          fallbackLanguage: "text",
+        },
+      ],
+    } satisfies Plugin;
+  });
+
+  const safeMarkdownPlugin: Plugin = {
+    rehypePlugin: strip_raw_html,
+  };
 </script>
 
 <div class="min-w-0 max-w-full [overflow-wrap:anywhere] [&_table]:table-fixed">
   <Markdown
     {md}
-    plugins={[gfmPlugin(), safeMarkdownPlugin, languageLoaderPlugin, shikiPlugin]}
+    plugins={[
+      gfmPlugin(),
+      safeMarkdownPlugin,
+      languageLoaderPlugin,
+      shikiPlugin,
+    ]}
   >
     {#snippet h1(props)}
       {@const { children, style, class: className, ...rest } = props}
       <h1
-        class="{className} scroll-m-20 {compact ? 'text-lg' : 'text-2xl'} mt-4 mb-2 first:mt-0 font-bold tracking-tight"
+        class="{className} scroll-m-20 {compact
+          ? 'text-lg'
+          : 'text-2xl'} mt-4 mb-2 first:mt-0 font-bold tracking-tight"
         {...rest}
       >
         {@render children?.()}
@@ -193,7 +217,9 @@ const safeMarkdownPlugin: Plugin = {
     {#snippet h2(props)}
       {@const { children, style, class: className, ...rest } = props}
       <h2
-        class="{className} scroll-m-20 {compact ? 'text-base' : 'text-xl'} mt-4 mb-2 first:mt-0 font-semibold tracking-tight"
+        class="{className} scroll-m-20 {compact
+          ? 'text-base'
+          : 'text-xl'} mt-4 mb-2 first:mt-0 font-semibold tracking-tight"
         {...rest}
       >
         {@render children?.()}
@@ -202,7 +228,9 @@ const safeMarkdownPlugin: Plugin = {
     {#snippet h3(props)}
       {@const { children, style, class: className, ...rest } = props}
       <h3
-        class="{className} scroll-m-20 {compact ? 'text-sm' : 'text-lg'} mt-3 mb-1.5 first:mt-0 font-semibold tracking-tight"
+        class="{className} scroll-m-20 {compact
+          ? 'text-sm'
+          : 'text-lg'} mt-3 mb-1.5 first:mt-0 font-semibold tracking-tight"
         {...rest}
       >
         {@render children?.()}
@@ -211,7 +239,9 @@ const safeMarkdownPlugin: Plugin = {
     {#snippet h4(props)}
       {@const { children, style, class: className, ...rest } = props}
       <h4
-        class="{className} scroll-m-20 {compact ? 'text-sm' : 'text-base'} mt-3 mb-1.5 first:mt-0 font-medium tracking-tight"
+        class="{className} scroll-m-20 {compact
+          ? 'text-sm'
+          : 'text-base'} mt-3 mb-1.5 first:mt-0 font-medium tracking-tight"
         {...rest}
       >
         {@render children?.()}
@@ -229,7 +259,9 @@ const safeMarkdownPlugin: Plugin = {
     {#snippet blockquote(props)}
       {@const { children, style, class: className, ...rest } = props}
       <blockquote
-        class="{className} my-3 rounded-r-md border-l-2 border-primary/40 bg-muted/40 py-2 pr-3 {compact ? 'pl-3 text-sm' : 'pl-4'} text-muted-foreground"
+        class="{className} my-3 rounded-r-md border-l-2 border-primary/40 bg-muted/40 py-2 pr-3 {compact
+          ? 'pl-3 text-sm'
+          : 'pl-4'} text-muted-foreground"
         {...rest}
       >
         {@render children?.()}
@@ -238,7 +270,9 @@ const safeMarkdownPlugin: Plugin = {
     {#snippet p(props)}
       {@const { children, style, class: className, ...rest } = props}
       <p
-        class="{className} {compact ? 'text-sm leading-5 [&:not(:first-child)]:mt-2.5' : 'leading-6 [&:not(:first-child)]:mt-3'}"
+        class="{className} {compact
+          ? 'text-sm leading-5 [&:not(:first-child)]:mt-2.5'
+          : 'leading-6 [&:not(:first-child)]:mt-3'}"
         {...rest}
       >
         {@render children?.()}
@@ -252,8 +286,7 @@ const safeMarkdownPlugin: Plugin = {
       >
         <pre
           class="{className ?? ''} m-0 min-w-max p-3 text-sm"
-          {...rest}
-        >{@render children?.()}</pre>
+          {...rest}>{@render children?.()}</pre>
       </div>
     {/snippet}
     {#snippet code(props)}
@@ -263,7 +296,9 @@ const safeMarkdownPlugin: Plugin = {
     {#snippet ul(props)}
       {@const { children, style, class: className, ...rest } = props}
       <ul
-        class="{className} my-3 ml-5 {compact ? 'text-sm' : ''} list-disc [&>li]:mt-1"
+        class="{className} my-3 ml-5 {compact
+          ? 'text-sm'
+          : ''} list-disc [&>li]:mt-1"
         {...rest}
       >
         {@render children?.()}
@@ -272,7 +307,9 @@ const safeMarkdownPlugin: Plugin = {
     {#snippet ol(props)}
       {@const { children, style, class: className, ...rest } = props}
       <ol
-        class="{className} my-3 ml-5 {compact ? 'text-sm' : ''} list-decimal [&>li]:mt-1"
+        class="{className} my-3 ml-5 {compact
+          ? 'text-sm'
+          : ''} list-decimal [&>li]:mt-1"
         {...rest}
       >
         {@render children?.()}
@@ -356,7 +393,7 @@ const safeMarkdownPlugin: Plugin = {
           {style}
         />
       {:else}
-        <input {type} {...rest}>
+        <input {type} {...rest} />
       {/if}
     {/snippet}
   </Markdown>

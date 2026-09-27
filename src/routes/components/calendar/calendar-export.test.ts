@@ -177,15 +177,12 @@ describe("calendar export formats", () => {
     const { day } = fixture();
     const make_period = (label: string, month: number) => ({
       label,
-      days: Array.from(
-        { length: 42 },
-        (_, index): CalendarDay => ({
-          ...day,
-          date: new Date(2026, month, index + 1),
-          key: `${label}-${index}`,
-          tasks: [],
-        }),
-      ),
+      days: Array.from({ length: 42 }, (_, index): CalendarDay => ({
+        ...day,
+        date: new Date(2026, month, index + 1),
+        key: `${label}-${index}`,
+        tasks: [],
+      })),
     });
     const periods = [
       make_period("September 2026", 8),

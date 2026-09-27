@@ -1,29 +1,29 @@
 <script lang="ts">
-import * as Card from "$lib/components/ui/card/index.js";
-import { Badge } from "$lib/components/ui/badge/index.js";
-import { Button } from "$lib/components/ui/button/index.js";
-import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
-import ClockIcon from "@lucide/svelte/icons/clock";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import { Badge } from "$lib/components/ui/badge/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+  import ClockIcon from "@lucide/svelte/icons/clock";
 
-import type { Task } from "../../type/task.svelte";
-import { display_task_color } from "../../utils/task-color";
-import LabelBadge from "../label_badge.svelte";
+  import type { Task } from "../../type/task.svelte";
+  import { display_task_color } from "../../utils/task-color";
+  import LabelBadge from "../label_badge.svelte";
 
-interface ExpiredItemProps {
-  task: Task;
-  onShowDetail: (task: Task) => void;
-}
+  interface ExpiredItemProps {
+    task: Task;
+    onShowDetail: (task: Task) => void;
+  }
 
-let { task: t, onShowDetail }: ExpiredItemProps = $props();
+  let { task: t, onShowDetail }: ExpiredItemProps = $props();
 
-function format_time(due_time: Date): string {
-  const year = due_time.getFullYear();
-  const month = String(due_time.getMonth() + 1).padStart(2, "0");
-  const day = String(due_time.getDate()).padStart(2, "0");
-  const hour = String(due_time.getHours()).padStart(2, "0");
-  const minute = String(due_time.getMinutes()).padStart(2, "0");
-  return `${year}/${month}/${day} ${hour}:${minute}`;
-}
+  function format_time(due_time: Date): string {
+    const year = due_time.getFullYear();
+    const month = String(due_time.getMonth() + 1).padStart(2, "0");
+    const day = String(due_time.getDate()).padStart(2, "0");
+    const hour = String(due_time.getHours()).padStart(2, "0");
+    const minute = String(due_time.getMinutes()).padStart(2, "0");
+    return `${year}/${month}/${day} ${hour}:${minute}`;
+  }
 </script>
 
 <Card.Root
@@ -65,8 +65,8 @@ function format_time(due_time: Date): string {
         aria-label="View task details"
         title="View task details"
         onclick={() => {
-                    onShowDetail(t);
-                }}
+          onShowDetail(t);
+        }}
       >
         <FullscreenIcon class="h-4 w-4" />
       </Button>

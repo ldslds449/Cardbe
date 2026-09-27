@@ -15,7 +15,9 @@ describe("Markdown code highlighting", () => {
     for (const theme of ["github-light", "github-dark"]) {
       const html = getHighlighter().codeToHtml(code, { lang, theme });
       expect(html).toContain('<span style="color:');
-      if (lang === "python") expect(html).toContain("    ");
+      if (lang === "python") {
+        expect(html).toContain("    ");
+      }
       const parse = createParser([
         {
           rehypePlugin: [
@@ -27,7 +29,9 @@ describe("Markdown code highlighting", () => {
       ]);
       const tree = JSON.stringify(parse(`\`\`\`${lang}\n${code}\n\`\`\``));
       expect(tree).toContain("color:");
-      if (lang === "python") expect(tree).toContain("    ");
+      if (lang === "python") {
+        expect(tree).toContain("    ");
+      }
     }
   });
 

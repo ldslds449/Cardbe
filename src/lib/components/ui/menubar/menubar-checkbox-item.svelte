@@ -1,20 +1,20 @@
 <script lang="ts">
-import { Menubar as MenubarPrimitive } from "bits-ui";
-import CheckIcon from "@lucide/svelte/icons/check";
-import MinusIcon from "@lucide/svelte/icons/minus";
-import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
-import type { Snippet } from "svelte";
+  import { Menubar as MenubarPrimitive } from "bits-ui";
+  import CheckIcon from "@lucide/svelte/icons/check";
+  import MinusIcon from "@lucide/svelte/icons/minus";
+  import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+  import type { Snippet } from "svelte";
 
-let {
-  ref = $bindable(null),
-  class: className,
-  checked = $bindable(false),
-  indeterminate = $bindable(false),
-  children: childrenProp,
-  ...restProps
-}: WithoutChildrenOrChild<MenubarPrimitive.CheckboxItemProps> & {
-  children?: Snippet;
-} = $props();
+  let {
+    ref = $bindable(null),
+    class: className,
+    checked = $bindable(false),
+    indeterminate = $bindable(false),
+    children: childrenProp,
+    ...restProps
+  }: WithoutChildrenOrChild<MenubarPrimitive.CheckboxItemProps> & {
+    children?: Snippet;
+  } = $props();
 </script>
 
 <MenubarPrimitive.CheckboxItem
@@ -23,9 +23,9 @@ let {
   bind:indeterminate
   data-slot="menubar-checkbox-item"
   class={cn(
-		"focus:bg-accent focus:text-accent-foreground rounded-xs outline-hidden relative flex cursor-default select-none items-center gap-2 py-1.5 pl-8 pr-2 text-sm data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
-		className
-	)}
+    "focus:bg-accent focus:text-accent-foreground rounded-xs outline-hidden relative flex cursor-default select-none items-center gap-2 py-1.5 pl-8 pr-2 text-sm data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+    className,
+  )}
   {...restProps}
 >
   {#snippet children({ checked, indeterminate })}

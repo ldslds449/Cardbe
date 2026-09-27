@@ -1,22 +1,22 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button/index.js";
-import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 
-import type { ImportCandidate } from "../../board.svelte";
+  import type { ImportCandidate } from "../../board.svelte";
 
-let {
-  open = $bindable(),
-  candidate,
-  importing,
-  show_importing,
-  onConfirm,
-}: {
-  open: boolean;
-  candidate: ImportCandidate | null;
-  importing: boolean;
-  show_importing: boolean;
-  onConfirm: () => void | Promise<void>;
-} = $props();
+  let {
+    open = $bindable(),
+    candidate,
+    importing,
+    show_importing,
+    onConfirm,
+  }: {
+    open: boolean;
+    candidate: ImportCandidate | null;
+    importing: boolean;
+    show_importing: boolean;
+    onConfirm: () => void | Promise<void>;
+  } = $props();
 </script>
 
 <AlertDialog.Root bind:open>

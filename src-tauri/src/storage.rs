@@ -2547,6 +2547,55 @@ fn quarantine_file(path: &Path, name: &str, error: &dyn std::fmt::Display) -> St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::TaskItem;
+
+    #[test]
+    fn task_search_finds_title_description_labels_and_checklist_text() {
+        let dir = test_dir("task-search");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let data = StoredData {
+            columns: vec![Column {
+                id: 1,
+                name: "Todo".into(),
+                color: String::new(),
+                sort_order: Default::default(),
+                tasks: vec![Task {
+                    id: 2,
+                    title: "Write release notes".into(),
+                    description: "Prepare the public changelog".into(),
+                    labels: vec!["launch".into()],
+                    items: vec![TaskItem {
+                        id: "item_1".into(),
+                        text: "Add screenshots".into(),
+                        completed: false,
+                    }],
+                    ..Task::default()
+                }],
+            }],
+            ..StoredData::default()
+        };
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &data)
+            .unwrap();
+
+        for query in ["RELEASE NOTES", "public changelog", "launch", "screenshots"] {
+            assert_eq!(
+                loaded.database.search_tasks(board_id, query).unwrap(),
+                vec![2]
+            );
+        }
+        assert!(loaded
+            .database
+            .search_tasks(board_id, "not found")
+            .unwrap()
+            .is_empty());
+
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn loro_push_is_atomic_idempotent_and_checks_current_permission() {

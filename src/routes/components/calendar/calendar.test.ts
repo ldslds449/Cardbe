@@ -9,6 +9,7 @@ import {
   date_key,
   reschedule_due_time,
   task_matches_search,
+  task_matches_search_text,
 } from "./calendar";
 
 describe("reschedule_due_time", () => {
@@ -51,16 +52,22 @@ function make_column(tasks: Task[]): Column {
 describe("task_matches_search", () => {
   const task = make_task();
 
-  it("matches title, description, labels, and checklist items case-insensitively", () => {
-    expect(task_matches_search(task, "RELEASE NOTES")).toBe(true);
-    expect(task_matches_search(task, "public changelog")).toBe(true);
-    expect(task_matches_search(task, "release")).toBe(true);
-    expect(task_matches_search(task, "screenshots")).toBe(true);
+  it("filters by backend result IDs", () => {
+    expect(task_matches_search(task, "release", new Set(["task_1"]))).toBe(
+      true,
+    );
+    expect(task_matches_search(task, "release", new Set(["task_2"]))).toBe(
+      false,
+    );
+    expect(task_matches_search(task, "   ", new Set())).toBe(true);
   });
 
-  it("treats blank search text as unfiltered", () => {
-    expect(task_matches_search(task, "   ")).toBe(true);
-    expect(task_matches_search(task, "missing")).toBe(false);
+  it("matches local panel searches across task fields", () => {
+    expect(task_matches_search_text(task, "RELEASE NOTES")).toBe(true);
+    expect(task_matches_search_text(task, "public changelog")).toBe(true);
+    expect(task_matches_search_text(task, "release")).toBe(true);
+    expect(task_matches_search_text(task, "screenshots")).toBe(true);
+    expect(task_matches_search_text(task, "missing")).toBe(false);
   });
 });
 
@@ -120,6 +127,11 @@ describe("build_calendar_days", () => {
       new Date(2026, 0, 1),
       new Date(2026, 0, 1),
       "release",
+      [],
+      false,
+      true,
+      "month",
+      new Set(["task_1", "task_2"]),
     );
     const due_day = days.find((day) => day.key === date_key(earlier.due_time!));
 
@@ -241,8 +253,10 @@ describe("count_due_tasks", () => {
     const no_due_time = make_task({ id: "task_2", due_time: undefined });
     const columns = [make_column([make_task(), no_due_time])];
 
-    expect(count_due_tasks(columns, "release")).toBe(1);
-    expect(count_due_tasks(columns, "missing")).toBe(0);
+    expect(
+      count_due_tasks(columns, "release", [], false, new Set(["task_1"])),
+    ).toBe(1);
+    expect(count_due_tasks(columns, "missing", [], false, new Set())).toBe(0);
   });
 
   it("counts archived due tasks only when they are visible", () => {

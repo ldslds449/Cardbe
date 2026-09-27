@@ -41,7 +41,9 @@ export function build_focus_groups(
 
   for (const column of columns) {
     for (const task of column.tasks) {
-      if (!task_matches_search(task, search_text, search_task_ids)) continue;
+      if (!task_matches_search(task, search_text, search_task_ids)) {
+        continue;
+      }
 
       const due_time = task.due_time?.getTime();
       const entry = { task, column };

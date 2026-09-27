@@ -55,7 +55,8 @@ pnpm dev
 ## Secret scanning
 
 `pnpm install` configures Git to use this repository's hooks. Before every commit, the
-`pre-commit` hook runs `gitleaks protect --staged --redact` and rejects staged secrets.
+`pre-commit` hook runs the formatting check, frontend lint, and
+`gitleaks protect --staged --redact`; it rejects formatting errors, lint errors, and staged secrets.
 Install the Gitleaks CLI and make sure `gitleaks` is available on your `PATH` before committing.
 
 If hooks were installed before this change, run the following once from the repository root:
@@ -66,17 +67,19 @@ git config core.hooksPath .githooks
 
 ## Scripts
 
-| Command | Description |
-| --- | --- |
-| `pnpm dev` | Run the desktop app with sccache |
-| `pnpm frontend:dev` | Run only the Vite frontend |
-| `pnpm format` | Format frontend files with Biome and Rust files with rustfmt |
-| `pnpm tauri dev [port]` | Run an independent desktop development instance; defaults to port 1420 |
-| `pnpm test` | Run frontend unit tests |
-| `pnpm check` | Run Svelte, TypeScript, and formatting checks |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust unit tests |
-| `pnpm build` | Build the frontend assets |
-| `pnpm tauri build` | Build installable desktop bundles |
+| Command                                           | Description                                                            |
+| ------------------------------------------------- | ---------------------------------------------------------------------- |
+| `pnpm dev`                                        | Run the desktop app with sccache                                       |
+| `pnpm frontend:dev`                               | Run only the Vite frontend                                             |
+| `pnpm format`                                     | Format frontend files with Prettier and Rust files with rustfmt        |
+| `pnpm lint`                                       | Check frontend lint rules with Biome                                   |
+| `pnpm lint:fix`                                   | Apply Biome safe lint fixes                                            |
+| `pnpm tauri dev [port]`                           | Run an independent desktop development instance; defaults to port 1420 |
+| `pnpm frontend:test`                              | Run frontend unit tests                                                |
+| `pnpm check`                                      | Run Svelte, TypeScript, and formatting checks                          |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust unit tests                                                    |
+| `pnpm frontend:build`                             | Build the frontend assets                                              |
+| `pnpm tauri build`                                | Build installable desktop bundles                                      |
 
 Desktop bundles are generated under `src-tauri/target/release/bundle/` and are deliberately excluded from Git.
 

@@ -1,114 +1,124 @@
 <script lang="ts">
-import PencilIcon from "@lucide/svelte/icons/pencil";
-import PlusIcon from "@lucide/svelte/icons/plus";
-import SearchIcon from "@lucide/svelte/icons/search";
-import Trash2Icon from "@lucide/svelte/icons/trash-2";
-import UsersIcon from "@lucide/svelte/icons/users";
-import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-import { Button } from "$lib/components/ui/button/index.js";
-import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-import * as Dialog from "$lib/components/ui/dialog/index.js";
-import { Input } from "$lib/components/ui/input/index.js";
-import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-import type { BoardRole } from "../../board.svelte";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import PlusIcon from "@lucide/svelte/icons/plus";
+  import SearchIcon from "@lucide/svelte/icons/search";
+  import Trash2Icon from "@lucide/svelte/icons/trash-2";
+  import UsersIcon from "@lucide/svelte/icons/users";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import type { BoardRole } from "../../board.svelte";
 
-export interface BoardItem {
-  id: number;
-  name: string;
-  task_count: number;
-  shared_role: BoardRole;
-  sync_status: string;
-  sync_revision: number;
-}
-let {
-  boards,
-  active_board_id,
-  open = $bindable(),
-  onSwitch,
-  onCreate,
-  onRename,
-  onDelete,
-}: {
-  boards: BoardItem[];
-  active_board_id: number | null;
-  open: boolean;
-  onSwitch: (id: number) => void;
-  onCreate: (name: string) => Promise<boolean>;
-  onRename: (id: number, name: string) => Promise<boolean>;
-  onDelete: (id: number) => Promise<boolean>;
-} = $props();
+  export interface BoardItem {
+    id: number;
+    name: string;
+    task_count: number;
+    shared_role: BoardRole;
+    sync_status: string;
+    sync_revision: number;
+  }
+  let {
+    boards,
+    active_board_id,
+    open = $bindable(),
+    onSwitch,
+    onCreate,
+    onRename,
+    onDelete,
+  }: {
+    boards: BoardItem[];
+    active_board_id: number | null;
+    open: boolean;
+    onSwitch: (id: number) => void;
+    onCreate: (name: string) => Promise<boolean>;
+    onRename: (id: number, name: string) => Promise<boolean>;
+    onDelete: (id: number) => Promise<boolean>;
+  } = $props();
 
-let create_open = $state(false);
-let rename_open = $state(false);
-let delete_open = $state(false);
-let new_name = $state("");
-let rename_name = $state("");
-let search = $state("");
-let selected_board = $state<BoardItem | null>(null);
-let saving = $state(false);
-const filtered_boards = $derived(
-  boards.filter((item) =>
-    item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
-  ),
-);
-function open_create_dialog() {
-  new_name = "";
-  create_open = true;
-}
-function open_rename_dialog(item: BoardItem) {
-  selected_board = item;
-  rename_name = item.name;
-  rename_open = true;
-}
-function open_delete_dialog(item: BoardItem) {
-  selected_board = item;
-  delete_open = true;
-}
-function select_board(id: number) {
-  onSwitch(id);
-  open = false;
-}
-function handle_keydown(event: KeyboardEvent) {
-  if (
-    event.key === "Escape" &&
-    open &&
-    !create_open &&
-    !rename_open &&
-    !delete_open
-  )
+  let create_open = $state(false);
+  let rename_open = $state(false);
+  let delete_open = $state(false);
+  let new_name = $state("");
+  let rename_name = $state("");
+  let search = $state("");
+  let selected_board = $state<BoardItem | null>(null);
+  let saving = $state(false);
+  const filtered_boards = $derived(
+    boards.filter((item) =>
+      item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+    ),
+  );
+  function open_create_dialog() {
+    new_name = "";
+    create_open = true;
+  }
+  function open_rename_dialog(item: BoardItem) {
+    selected_board = item;
+    rename_name = item.name;
+    rename_open = true;
+  }
+  function open_delete_dialog(item: BoardItem) {
+    selected_board = item;
+    delete_open = true;
+  }
+  function select_board(id: number) {
+    onSwitch(id);
     open = false;
-}
-async function create() {
-  if (!new_name.trim() || saving) return;
-  saving = true;
-  try {
-    if (await onCreate(new_name.trim())) {
-      create_open = false;
+  }
+  function handle_keydown(event: KeyboardEvent) {
+    if (
+      event.key === "Escape" &&
+      open &&
+      !create_open &&
+      !rename_open &&
+      !delete_open
+    ) {
       open = false;
     }
-  } finally {
-    saving = false;
   }
-}
-async function rename() {
-  if (!selected_board || !rename_name.trim() || saving) return;
-  saving = true;
-  try {
-    if (await onRename(selected_board.id, rename_name.trim()))
-      rename_open = false;
-  } finally {
-    saving = false;
+  async function create() {
+    if (!new_name.trim() || saving) {
+      return;
+    }
+    saving = true;
+    try {
+      if (await onCreate(new_name.trim())) {
+        create_open = false;
+        open = false;
+      }
+    } finally {
+      saving = false;
+    }
   }
-}
-async function remove() {
-  if (!selected_board || saving) return;
-  saving = true;
-  try {
-    if (await onDelete(selected_board.id)) delete_open = false;
-  } finally {
-    saving = false;
+  async function rename() {
+    if (!selected_board || !rename_name.trim() || saving) {
+      return;
+    }
+    saving = true;
+    try {
+      if (await onRename(selected_board.id, rename_name.trim())) {
+        rename_open = false;
+      }
+    } finally {
+      saving = false;
+    }
   }
-}
+  async function remove() {
+    if (!selected_board || saving) {
+      return;
+    }
+    saving = true;
+    try {
+      if (await onDelete(selected_board.id)) {
+        delete_open = false;
+      }
+    } finally {
+      saving = false;
+    }
+  }
 </script>
 
 <svelte:window onkeydown={handle_keydown} />
@@ -118,7 +128,7 @@ async function remove() {
     <button
       class="absolute inset-0 cursor-default bg-black/10"
       aria-label="Close boards"
-      onclick={() => open = false}
+      onclick={() => (open = false)}
     ></button>
     <section
       id="board-drawer"
@@ -156,8 +166,12 @@ async function remove() {
                       type="button"
                       class={`relative flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${item.id === active_board_id ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
                       onclick={() => select_board(item.id)}
-                      aria-current={item.id === active_board_id ? "page" : undefined}
-                      title={item.shared_role === "owner" ? item.name : `${item.name} — Shared with me, ${item.shared_role === "viewer" ? "read only" : "can edit"}`}
+                      aria-current={item.id === active_board_id
+                        ? "page"
+                        : undefined}
+                      title={item.shared_role === "owner"
+                        ? item.name
+                        : `${item.name} — Shared with me, ${item.shared_role === "viewer" ? "read only" : "can edit"}`}
                     >
                       {#if item.shared_role !== "owner"}
                         <UsersIcon
@@ -172,7 +186,9 @@ async function remove() {
                             class="block truncate text-[11px] font-normal leading-4 text-muted-foreground"
                           >
                             Shared with me ·
-                            {item.shared_role === "viewer" ? "Read only" : "Can edit"}
+                            {item.shared_role === "viewer"
+                              ? "Read only"
+                              : "Can edit"}
                           </span>
                         {/if}
                       </span>
@@ -225,14 +241,16 @@ async function remove() {
 <Dialog.Root bind:open={create_open}
   ><Dialog.Content class="sm:max-w-sm"
     ><Dialog.Header
-      ><Dialog.Title>Create board</Dialog.Title
-      ><Dialog.Description
+      ><Dialog.Title>Create board</Dialog.Title><Dialog.Description
         >Give the new board a name.</Dialog.Description
       ></Dialog.Header
     >
     <form
       class="grid gap-4"
-      onsubmit={(event) => { event.preventDefault(); void create(); }}
+      onsubmit={(event) => {
+        event.preventDefault();
+        void create();
+      }}
     >
       <Input
         bind:value={new_name}
@@ -245,8 +263,7 @@ async function remove() {
         <Button
           type="button"
           variant="outline"
-          onclick={() => create_open = false}
-          >Cancel</Button
+          onclick={() => (create_open = false)}>Cancel</Button
         ><Button type="submit" disabled={!new_name.trim() || saving}
           >Create</Button
         >
@@ -257,14 +274,16 @@ async function remove() {
 <Dialog.Root bind:open={rename_open}
   ><Dialog.Content class="sm:max-w-sm"
     ><Dialog.Header
-      ><Dialog.Title>Rename board</Dialog.Title
-      ><Dialog.Description
+      ><Dialog.Title>Rename board</Dialog.Title><Dialog.Description
         >Choose a new name for this board.</Dialog.Description
       ></Dialog.Header
     >
     <form
       class="grid gap-4"
-      onsubmit={(event) => { event.preventDefault(); void rename(); }}
+      onsubmit={(event) => {
+        event.preventDefault();
+        void rename();
+      }}
     >
       <Input
         bind:value={rename_name}
@@ -276,8 +295,7 @@ async function remove() {
         <Button
           type="button"
           variant="outline"
-          onclick={() => rename_open = false}
-          >Cancel</Button
+          onclick={() => (rename_open = false)}>Cancel</Button
         ><Button type="submit" disabled={!rename_name.trim() || saving}
           >Save</Button
         >

@@ -22,8 +22,12 @@ const languages = { ...bundledLanguages, ...bundledLanguagesAlias };
 export function loadHighlightLanguage(
   language: string,
 ): Promise<void> | undefined {
-  if (highlighter.getLoadedLanguages().includes(language)) return;
-  if (!Object.hasOwn(languages, language)) return;
+  if (highlighter.getLoadedLanguages().includes(language)) {
+    return;
+  }
+  if (!Object.hasOwn(languages, language)) {
+    return;
+  }
   let pending = language_loads.get(language);
   if (!pending) {
     const loader = languages[language as keyof typeof languages];

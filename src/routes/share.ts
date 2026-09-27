@@ -80,7 +80,9 @@ export function resolve_share_selection(
 
 function numeric_id(value: string, prefix: string): number {
   const match = value.match(new RegExp(`^${prefix}_(\\d+)$`));
-  if (!match) throw new Error(`Invalid ${prefix} ID: ${value}`);
+  if (!match) {
+    throw new Error(`Invalid ${prefix} ID: ${value}`);
+  }
   return Number.parseInt(match[1], 10);
 }
 
@@ -92,7 +94,9 @@ export function build_share_snapshot(
   now = new Date(),
 ): ShareSnapshot {
   const normalized_title = title.trim();
-  if (!normalized_title) throw new Error("Enter a name for the shared board");
+  if (!normalized_title) {
+    throw new Error("Enter a name for the shared board");
+  }
   if (normalized_title.length > MAX_SHARE_TITLE_LENGTH) {
     throw new Error(
       `Board name must be ${MAX_SHARE_TITLE_LENGTH} characters or fewer`,
@@ -112,8 +116,9 @@ export function build_share_snapshot(
         .map(serialize_task),
     }));
 
-  if (shared_columns.length === 0)
+  if (shared_columns.length === 0) {
     throw new Error("Select at least one column to share");
+  }
   if (shared_columns.length > MAX_SHARED_COLUMNS) {
     throw new Error(
       `A share can contain at most ${MAX_SHARED_COLUMNS} columns`,
@@ -155,7 +160,9 @@ export function share_content_signature(
 function create_share_id(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
   return btoa(binary)
     .replaceAll("+", "-")
     .replaceAll("/", "_")
@@ -196,7 +203,9 @@ export function parse_requested_share_link(value: string): RequestedShareLink {
 }
 
 function existing_share_port(share: ManagedShare | null): number | null {
-  if (!share) return null;
+  if (!share) {
+    return null;
+  }
   try {
     const port = Number.parseInt(new URL(share.url).port, 10);
     return Number.isInteger(port) && port >= 1 && port <= 65_535 ? port : null;
@@ -214,8 +223,9 @@ export function group_enabled_shares_by_board(
 ): Map<number, ManagedShare[]> {
   const grouped = new Map<number, ManagedShare[]>();
   for (const share of shares) {
-    if (!is_managed_share_enabled(share) || share.board_id === undefined)
+    if (!is_managed_share_enabled(share) || share.board_id === undefined) {
       continue;
+    }
     grouped.set(share.board_id, [
       ...(grouped.get(share.board_id) ?? []),
       share,

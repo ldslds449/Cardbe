@@ -1,33 +1,35 @@
 <script lang="ts">
-import * as Dialog from "$lib/components/ui/dialog/index.js";
-import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-import { Separator } from "$lib/components/ui/separator/index.js";
-import { Button } from "$lib/components/ui/button/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
 
-import CalendarIcon from "@lucide/svelte/icons/calendar";
-import TagIcon from "@lucide/svelte/icons/tag";
-import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
+  import CalendarIcon from "@lucide/svelte/icons/calendar";
+  import TagIcon from "@lucide/svelte/icons/tag";
+  import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
 
-import { recurrence_label, type Task } from "../../type/task.svelte";
-import { display_task_color } from "../../utils/task-color";
-import Markdown from "../markdown.svelte";
-import ChecklistDisplay from "../task/checklist_display.svelte";
-import LabelBadge from "../label_badge.svelte";
+  import { recurrence_label, type Task } from "../../type/task.svelte";
+  import { display_task_color } from "../../utils/task-color";
+  import Markdown from "../markdown.svelte";
+  import ChecklistDisplay from "../task/checklist_display.svelte";
+  import LabelBadge from "../label_badge.svelte";
 
-let {
-  open = $bindable(false),
-  task,
-  onEdit,
-}: {
-  open: boolean;
-  task: Task | null;
-  onEdit?: () => void;
-} = $props();
+  let {
+    open = $bindable(false),
+    task,
+    onEdit,
+  }: {
+    open: boolean;
+    task: Task | null;
+    onEdit?: () => void;
+  } = $props();
 
-function formatDate(date: Date | undefined): string {
-  if (!date) return "Not set";
-  return date.toLocaleDateString() + " " + date.toLocaleTimeString();
-}
+  function formatDate(date: Date | undefined): string {
+    if (!date) {
+      return "Not set";
+    }
+    return date.toLocaleDateString() + " " + date.toLocaleTimeString();
+  }
 </script>
 
 <Dialog.Root bind:open>
@@ -119,9 +121,9 @@ function formatDate(date: Date | undefined): string {
           <Button
             class="min-w-40"
             onclick={() => {
-							open = false;
-							onEdit?.();
-						}}
+              open = false;
+              onEdit?.();
+            }}
           >
             Edit
           </Button>

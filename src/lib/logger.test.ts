@@ -37,7 +37,9 @@ describe("frontend logger", () => {
   });
 
   it("records error messages and stacks", async () => {
-    const error = new Error('sqlite busy at C:/Users/Alice/private-board.db token=secret-value for board "Private Board"');
+    const error = new Error(
+      'sqlite busy at C:/Users/Alice/private-board.db token=secret-value for board "Private Board"',
+    );
     error.stack = "at C:/Users/Alice/private-board.ts:12:4";
     logger.error("share.sync.failed", error);
 
@@ -52,8 +54,13 @@ describe("frontend logger", () => {
   });
 
   it("records error codes and wrapped causes", async () => {
-    const cause = Object.assign(new Error("filesystem is busy"), { code: "E_BUSY" });
-    logger.error("calendar.export.failed", new Error("Couldn't load PDF font", { cause }));
+    const cause = Object.assign(new Error("filesystem is busy"), {
+      code: "E_BUSY",
+    });
+    logger.error(
+      "calendar.export.failed",
+      new Error("Couldn't load PDF font", { cause }),
+    );
 
     await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce());
     const message = invoke.mock.calls[0][1].message as string;
@@ -62,7 +69,10 @@ describe("frontend logger", () => {
   });
 
   it("records native error strings", async () => {
-    logger.error("share.sync.failed", "connection refused https://share.example/invite/private-ticket");
+    logger.error(
+      "share.sync.failed",
+      "connection refused https://share.example/invite/private-ticket",
+    );
 
     await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce());
     const message = invoke.mock.calls[0][1].message as string;

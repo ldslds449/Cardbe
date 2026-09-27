@@ -1,291 +1,312 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button/index.js";
-import { Badge } from "$lib/components/ui/badge/index.js";
-import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
-import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
-import ClockIcon from "@lucide/svelte/icons/clock";
-import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
-import PencilIcon from "@lucide/svelte/icons/pencil";
-import CopyIcon from "@lucide/svelte/icons/copy";
-import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
-import ArchiveIcon from "@lucide/svelte/icons/archive";
-import TrashIcon from "@lucide/svelte/icons/trash-2";
-import PlusIcon from "@lucide/svelte/icons/plus";
-import UndoIcon from "@lucide/svelte/icons/undo-2";
-import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
-import SlidersHorizontalIcon from "@lucide/svelte/icons/sliders-horizontal";
-import Share2Icon from "@lucide/svelte/icons/share-2";
-import DownloadIcon from "@lucide/svelte/icons/download";
-import { onMount } from "svelte";
-import { DragDropProvider } from "@dnd-kit-svelte/svelte";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Badge } from "$lib/components/ui/badge/index.js";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
+  import ClockIcon from "@lucide/svelte/icons/clock";
+  import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
+  import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import CopyIcon from "@lucide/svelte/icons/copy";
+  import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
+  import ArchiveIcon from "@lucide/svelte/icons/archive";
+  import TrashIcon from "@lucide/svelte/icons/trash-2";
+  import PlusIcon from "@lucide/svelte/icons/plus";
+  import UndoIcon from "@lucide/svelte/icons/undo-2";
+  import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
+  import SlidersHorizontalIcon from "@lucide/svelte/icons/sliders-horizontal";
+  import Share2Icon from "@lucide/svelte/icons/share-2";
+  import DownloadIcon from "@lucide/svelte/icons/download";
+  import { onMount } from "svelte";
+  import { DragDropProvider } from "@dnd-kit-svelte/svelte";
 
-import type { Column } from "../../type/column.svelte";
-import type { Archive } from "../../type/archive.svelte";
-import type { Task } from "../../type/task.svelte";
-import { display_task_color } from "../../utils/task-color";
-import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
-import UnarchiveTaskDialog from "../archive/unarchive_task_dialog.svelte";
-import CalendarDayDropZone from "./calendar_day_drop_zone.svelte";
-import CalendarTaskDraggable from "./calendar_task_draggable.svelte";
-import CalendarExportDialog from "../dialog/calendar_export_dialog.svelte";
-import {
-  build_calendar_days,
-  count_due_tasks,
-  date_key,
-  reschedule_due_time,
-  start_of_day,
-  type CalendarViewMode,
-} from "./calendar";
+  import type { Column } from "../../type/column.svelte";
+  import type { Archive } from "../../type/archive.svelte";
+  import type { Task } from "../../type/task.svelte";
+  import { display_task_color } from "../../utils/task-color";
+  import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
+  import UnarchiveTaskDialog from "../archive/unarchive_task_dialog.svelte";
+  import CalendarDayDropZone from "./calendar_day_drop_zone.svelte";
+  import CalendarTaskDraggable from "./calendar_task_draggable.svelte";
+  import CalendarExportDialog from "../dialog/calendar_export_dialog.svelte";
+  import {
+    build_calendar_days,
+    count_due_tasks,
+    date_key,
+    reschedule_due_time,
+    start_of_day,
+    type CalendarViewMode,
+  } from "./calendar";
 
-const initial_today = start_of_day(new Date());
+  const initial_today = start_of_day(new Date());
 
-interface CalendarViewProps {
-  columns: Column[];
-  archives?: Archive[];
-  search_text?: string;
-  search_task_ids?: ReadonlySet<string> | null;
-  visible_date?: Date;
-  view_mode?: CalendarViewMode;
-  show_archived?: boolean;
-  show_recurring_previews?: boolean;
-  onViewTask?: (task: Task) => void;
-  onViewArchivedTask?: (task: Task) => void;
-  onEditTask?: (task: Task) => void;
-  onDuplicateTask?: (task: Task) => void;
-  onSaveAsTemplate?: (task: Task) => void;
-  onExportTask?: (task: Task) => void;
-  onAddTask?: (date: Date) => void;
-  onArchiveTask?: (task: Task) => void;
-  onUnarchiveTask?: (column_id: string, task_id: string) => void;
-  onDeleteTask?: (task: Task) => void;
-  onRescheduleTask?: (task: Task, due_time: Date) => void;
-  read_only?: boolean;
-}
+  interface CalendarViewProps {
+    columns: Column[];
+    archives?: Archive[];
+    search_text?: string;
+    search_task_ids?: ReadonlySet<string> | null;
+    visible_date?: Date;
+    view_mode?: CalendarViewMode;
+    show_archived?: boolean;
+    show_recurring_previews?: boolean;
+    onViewTask?: (task: Task) => void;
+    onViewArchivedTask?: (task: Task) => void;
+    onEditTask?: (task: Task) => void;
+    onDuplicateTask?: (task: Task) => void;
+    onSaveAsTemplate?: (task: Task) => void;
+    onExportTask?: (task: Task) => void;
+    onAddTask?: (date: Date) => void;
+    onArchiveTask?: (task: Task) => void;
+    onUnarchiveTask?: (column_id: string, task_id: string) => void;
+    onDeleteTask?: (task: Task) => void;
+    onRescheduleTask?: (task: Task, due_time: Date) => void;
+    read_only?: boolean;
+  }
 
-let {
-  columns,
-  archives = [],
-  search_text = "",
-  search_task_ids = null,
-  visible_date = $bindable(new Date(initial_today)),
-  view_mode = $bindable("month"),
-  show_archived = $bindable(false),
-  show_recurring_previews = $bindable(true),
-  onViewTask = () => {},
-  onViewArchivedTask = () => {},
-  onEditTask = () => {},
-  onDuplicateTask = () => {},
-  onSaveAsTemplate = () => {},
-  onExportTask = () => {},
-  onAddTask = () => {},
-  onArchiveTask = () => {},
-  onUnarchiveTask = () => {},
-  onDeleteTask = () => {},
-  onRescheduleTask = () => {},
-  read_only = false,
-}: CalendarViewProps = $props();
+  let {
+    columns,
+    archives = [],
+    search_text = "",
+    search_task_ids = null,
+    visible_date = $bindable(new Date(initial_today)),
+    view_mode = $bindable("month"),
+    show_archived = $bindable(false),
+    show_recurring_previews = $bindable(true),
+    onViewTask = () => {},
+    onViewArchivedTask = () => {},
+    onEditTask = () => {},
+    onDuplicateTask = () => {},
+    onSaveAsTemplate = () => {},
+    onExportTask = () => {},
+    onAddTask = () => {},
+    onArchiveTask = () => {},
+    onUnarchiveTask = () => {},
+    onDeleteTask = () => {},
+    onRescheduleTask = () => {},
+    read_only = false,
+  }: CalendarViewProps = $props();
 
-const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-let today = $state(initial_today);
-let delete_confirm_open = $state(false);
-let delete_target = $state<Task | null>(null);
-let unarchive_dialog_open = $state(false);
-let unarchive_target = $state<Task | null>(null);
-let archive_focus_restore_target: string | null = null;
-let dragged_task = $state<Task | null>(null);
-let export_dialog_open = $state(false);
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  let today = $state(initial_today);
+  let delete_confirm_open = $state(false);
+  let delete_target = $state<Task | null>(null);
+  let unarchive_dialog_open = $state(false);
+  let unarchive_target = $state<Task | null>(null);
+  let archive_focus_restore_target: string | null = null;
+  let dragged_task = $state<Task | null>(null);
+  let export_dialog_open = $state(false);
 
-function format_time(date: Date): string {
-  return date.toLocaleTimeString("en", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
+  function format_time(date: Date): string {
+    return date.toLocaleTimeString("en", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  }
 
-function has_time(date: Date): boolean {
-  return (
-    date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0
-  );
-}
-
-function change_period(offset: number) {
-  if (view_mode === "week") {
-    const next = new Date(visible_date);
-    next.setDate(next.getDate() + offset * 7);
-    visible_date = next;
-  } else {
-    visible_date = new Date(
-      visible_date.getFullYear(),
-      visible_date.getMonth() + offset,
-      1,
+  function has_time(date: Date): boolean {
+    return (
+      date.getHours() !== 0 ||
+      date.getMinutes() !== 0 ||
+      date.getSeconds() !== 0
     );
   }
-}
 
-function set_view_mode(mode: CalendarViewMode) {
-  if (mode === view_mode) return;
-  if (
-    mode === "week" &&
-    visible_date.getFullYear() === today.getFullYear() &&
-    visible_date.getMonth() === today.getMonth()
-  ) {
-    visible_date = new Date(today);
+  function change_period(offset: number) {
+    if (view_mode === "week") {
+      const next = new Date(visible_date);
+      next.setDate(next.getDate() + offset * 7);
+      visible_date = next;
+    } else {
+      visible_date = new Date(
+        visible_date.getFullYear(),
+        visible_date.getMonth() + offset,
+        1,
+      );
+    }
   }
-  view_mode = mode;
-}
 
-function go_to_today() {
-  const current_today = start_of_day(new Date());
-  today = current_today;
-  visible_date = new Date(current_today);
-}
+  function set_view_mode(mode: CalendarViewMode) {
+    if (mode === view_mode) {
+      return;
+    }
+    if (
+      mode === "week" &&
+      visible_date.getFullYear() === today.getFullYear() &&
+      visible_date.getMonth() === today.getMonth()
+    ) {
+      visible_date = new Date(today);
+    }
+    view_mode = mode;
+  }
 
-function refresh_today() {
-  const current_today = start_of_day(new Date());
-  if (date_key(current_today) !== date_key(today)) today = current_today;
-}
+  function go_to_today() {
+    const current_today = start_of_day(new Date());
+    today = current_today;
+    visible_date = new Date(current_today);
+  }
 
-onMount(() => {
-  let midnight_timeout: number | undefined;
+  function refresh_today() {
+    const current_today = start_of_day(new Date());
+    if (date_key(current_today) !== date_key(today)) {
+      today = current_today;
+    }
+  }
 
-  function schedule_midnight_refresh() {
-    const now = new Date();
-    const next_day = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() + 1,
-    );
-    midnight_timeout = window.setTimeout(
-      () => {
+  onMount(() => {
+    let midnight_timeout: number | undefined;
+
+    function schedule_midnight_refresh() {
+      const now = new Date();
+      const next_day = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+      );
+      midnight_timeout = window.setTimeout(
+        () => {
+          refresh_today();
+          schedule_midnight_refresh();
+        },
+        next_day.getTime() - now.getTime() + 1000,
+      );
+    }
+
+    function handle_visibility_change() {
+      if (!document.hidden) {
         refresh_today();
-        schedule_midnight_refresh();
-      },
-      next_day.getTime() - now.getTime() + 1000,
-    );
+      }
+    }
+
+    window.addEventListener("focus", refresh_today);
+    document.addEventListener("visibilitychange", handle_visibility_change);
+    schedule_midnight_refresh();
+
+    return () => {
+      window.removeEventListener("focus", refresh_today);
+      document.removeEventListener(
+        "visibilitychange",
+        handle_visibility_change,
+      );
+      if (midnight_timeout !== undefined) {
+        window.clearTimeout(midnight_timeout);
+      }
+    };
+  });
+
+  function ask_to_delete(task: Task) {
+    delete_target = task;
+    delete_confirm_open = true;
   }
 
-  function handle_visibility_change() {
-    if (!document.hidden) refresh_today();
+  function confirm_delete() {
+    if (delete_target) {
+      onDeleteTask(delete_target);
+    }
+    delete_target = null;
   }
 
-  window.addEventListener("focus", refresh_today);
-  document.addEventListener("visibilitychange", handle_visibility_change);
-  schedule_midnight_refresh();
-
-  return () => {
-    window.removeEventListener("focus", refresh_today);
-    document.removeEventListener("visibilitychange", handle_visibility_change);
-    if (midnight_timeout !== undefined) window.clearTimeout(midnight_timeout);
-  };
-});
-
-function ask_to_delete(task: Task) {
-  delete_target = task;
-  delete_confirm_open = true;
-}
-
-function confirm_delete() {
-  if (delete_target) onDeleteTask(delete_target);
-  delete_target = null;
-}
-
-function ask_to_unarchive(task: Task) {
-  unarchive_target = task;
-  unarchive_dialog_open = true;
-}
-
-function handle_drag_start(event: any) {
-  const source = event.operation?.source;
-  if (source?.type !== "calendar-task") return;
-  const source_id = source.id?.toString() ?? "";
-  const task_id = source_id.startsWith("calendar-task:")
-    ? source_id.slice("calendar-task:".length).split(":", 1)[0]
-    : "";
-  dragged_task =
-    columns
-      .flatMap((column) => column.tasks)
-      .find((task) => task.id === task_id) ?? null;
-}
-
-function handle_drag_end(event: any) {
-  const task = dragged_task;
-  dragged_task = null;
-  const target_id = event.operation?.target?.id?.toString();
-  if (!task?.due_time || !target_id?.startsWith("calendar-day:")) return;
-  const target_key = target_id.slice("calendar-day:".length);
-  const target_day = calendar_days.find((day) => day.key === target_key);
-  if (!target_day || date_key(task.due_time) === target_key) return;
-  onRescheduleTask(task, reschedule_due_time(task.due_time, target_day.date));
-}
-
-function format_period_label(date: Date, mode: CalendarViewMode): string {
-  if (mode === "month") {
-    return date.toLocaleDateString("en", { year: "numeric", month: "long" });
+  function ask_to_unarchive(task: Task) {
+    unarchive_target = task;
+    unarchive_dialog_open = true;
   }
-  const start = start_of_day(date);
-  start.setDate(start.getDate() - start.getDay());
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-  if (start.getFullYear() !== end.getFullYear()) {
-    return `${start.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })} - ${end.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })}`;
+
+  function handle_drag_start(event: any) {
+    const source = event.operation?.source;
+    if (source?.type !== "calendar-task") {
+      return;
+    }
+    const source_id = source.id?.toString() ?? "";
+    const task_id = source_id.startsWith("calendar-task:")
+      ? source_id.slice("calendar-task:".length).split(":", 1)[0]
+      : "";
+    dragged_task =
+      columns
+        .flatMap((column) => column.tasks)
+        .find((task) => task.id === task_id) ?? null;
   }
-  if (start.getMonth() !== end.getMonth()) {
-    return `${start.toLocaleDateString("en", { month: "long", day: "numeric" })} - ${end.toLocaleDateString("en", { month: "long", day: "numeric", year: "numeric" })}`;
+
+  function handle_drag_end(event: any) {
+    const task = dragged_task;
+    dragged_task = null;
+    const target_id = event.operation?.target?.id?.toString();
+    if (!task?.due_time || !target_id?.startsWith("calendar-day:")) {
+      return;
+    }
+    const target_key = target_id.slice("calendar-day:".length);
+    const target_day = calendar_days.find((day) => day.key === target_key);
+    if (!target_day || date_key(task.due_time) === target_key) {
+      return;
+    }
+    onRescheduleTask(task, reschedule_due_time(task.due_time, target_day.date));
   }
-  return `${start.toLocaleDateString("en", { month: "long", day: "numeric" })}-${end.getDate()}, ${end.getFullYear()}`;
-}
 
-let visible_period_label = $derived(
-  format_period_label(visible_date, view_mode),
-);
+  function format_period_label(date: Date, mode: CalendarViewMode): string {
+    if (mode === "month") {
+      return date.toLocaleDateString("en", { year: "numeric", month: "long" });
+    }
+    const start = start_of_day(date);
+    start.setDate(start.getDate() - start.getDay());
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    if (start.getFullYear() !== end.getFullYear()) {
+      return `${start.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })} - ${end.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })}`;
+    }
+    if (start.getMonth() !== end.getMonth()) {
+      return `${start.toLocaleDateString("en", { month: "long", day: "numeric" })} - ${end.toLocaleDateString("en", { month: "long", day: "numeric", year: "numeric" })}`;
+    }
+    return `${start.toLocaleDateString("en", { month: "long", day: "numeric" })}-${end.getDate()}, ${end.getFullYear()}`;
+  }
 
-let due_task_count = $derived(
-  count_due_tasks(
-    columns,
-    search_text,
-    archives,
-    show_archived,
-    search_task_ids,
-  ),
-);
+  let visible_period_label = $derived(
+    format_period_label(visible_date, view_mode),
+  );
 
-let calendar_days = $derived(
-  build_calendar_days(
-    columns,
-    visible_date,
-    today,
-    search_text,
-    archives,
-    show_archived,
-    show_recurring_previews,
-    view_mode,
-    search_task_ids,
-  ),
-);
+  let due_task_count = $derived(
+    count_due_tasks(
+      columns,
+      search_text,
+      archives,
+      show_archived,
+      search_task_ids,
+    ),
+  );
 
-let current_period_task_count = $derived(
-  calendar_days.reduce(
-    (count, day) => count + (day.in_current_month ? day.tasks.length : 0),
-    0,
-  ),
-);
-let current_period_preview_count = $derived(
-  calendar_days.reduce(
-    (count, day) =>
-      count +
-      (day.in_current_month
-        ? day.tasks.filter((entry) => entry.preview).length
-        : 0),
-    0,
-  ),
-);
-let enabled_display_option_count = $derived(
-  Number(show_recurring_previews) + Number(show_archived),
-);
+  let calendar_days = $derived(
+    build_calendar_days(
+      columns,
+      visible_date,
+      today,
+      search_text,
+      archives,
+      show_archived,
+      show_recurring_previews,
+      view_mode,
+      search_task_ids,
+    ),
+  );
+
+  let current_period_task_count = $derived(
+    calendar_days.reduce(
+      (count, day) => count + (day.in_current_month ? day.tasks.length : 0),
+      0,
+    ),
+  );
+  let current_period_preview_count = $derived(
+    calendar_days.reduce(
+      (count, day) =>
+        count +
+        (day.in_current_month
+          ? day.tasks.filter((entry) => entry.preview).length
+          : 0),
+      0,
+    ),
+  );
+  let enabled_display_option_count = $derived(
+    Number(show_recurring_previews) + Number(show_archived),
+  );
 </script>
 
 <section
@@ -303,8 +324,8 @@ let enabled_display_option_count = $derived(
         </h2>
       </div>
       <p class="mt-1 text-sm text-muted-foreground">
-        {due_task_count} {due_task_count === 1 ? "task" : "tasks"} with due
-        dates
+        {due_task_count}
+        {due_task_count === 1 ? "task" : "tasks"} with due dates
         <span class="mx-1.5" aria-hidden="true">·</span>
         <span class="font-medium text-foreground">
           {current_period_task_count}
@@ -350,7 +371,9 @@ let enabled_display_option_count = $derived(
           variant="outline"
           size="sm"
           class="gap-1.5"
-          onclick={() => { export_dialog_open = true; }}
+          onclick={() => {
+            export_dialog_open = true;
+          }}
         >
           <DownloadIcon class="size-3.5" />
           Export
@@ -390,16 +413,14 @@ let enabled_display_option_count = $derived(
           size="sm"
           class="rounded-none border-r"
           aria-pressed={view_mode === "month"}
-          onclick={() => set_view_mode("month")}
-          >Month</Button
+          onclick={() => set_view_mode("month")}>Month</Button
         >
         <Button
           variant={view_mode === "week" ? "secondary" : "ghost"}
           size="sm"
           class="rounded-none"
           aria-pressed={view_mode === "week"}
-          onclick={() => set_view_mode("week")}
-          >Week</Button
+          onclick={() => set_view_mode("week")}>Week</Button
         >
       </div>
       {#if !read_only}
@@ -457,16 +478,22 @@ let enabled_display_option_count = $derived(
           day_key={day.key}
           disabled={read_only}
           class={`group/day flex min-h-0 flex-col overflow-hidden bg-background p-2 ${
-          day.in_current_month ? "" : "bg-muted/30 text-muted-foreground/50"
-        } ${day.is_today ? "ring-2 ring-inset ring-primary/35" : ""}`}
-          title={read_only ? undefined : "Double-click empty space to add a task"}
-          ondblclick={read_only ? undefined : () => onAddTask(new Date(day.date))}
+            day.in_current_month ? "" : "bg-muted/30 text-muted-foreground/50"
+          } ${day.is_today ? "ring-2 ring-inset ring-primary/35" : ""}`}
+          title={read_only
+            ? undefined
+            : "Double-click empty space to add a task"}
+          ondblclick={read_only
+            ? undefined
+            : () => onAddTask(new Date(day.date))}
         >
           <div class="mb-1.5 flex items-center justify-between">
             <span
               class={`flex size-7 items-center justify-center rounded-full text-sm tabular-nums ${
-              day.is_today ? "bg-primary font-semibold text-primary-foreground" : ""
-            }`}
+                day.is_today
+                  ? "bg-primary font-semibold text-primary-foreground"
+                  : ""
+              }`}
             >
               {day.date.getDate()}
             </span>
@@ -481,16 +508,19 @@ let enabled_display_option_count = $derived(
                   variant="ghost"
                   size="icon-sm"
                   class="size-6 opacity-0 transition-opacity group-hover/day:opacity-100 focus-visible:opacity-100"
-                  aria-label={`Add task due ${day.date.toLocaleDateString("en", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}`}
+                  aria-label={`Add task due ${day.date.toLocaleDateString(
+                    "en",
+                    {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    },
+                  )}`}
                   title="Add task"
                   onclick={(event) => {
-                event.stopPropagation();
-                onAddTask(new Date(day.date));
-              }}
+                    event.stopPropagation();
+                    onAddTask(new Date(day.date));
+                  }}
                   ondblclick={(event) => event.stopPropagation()}
                 >
                   <PlusIcon />
@@ -510,16 +540,20 @@ let enabled_display_option_count = $derived(
                   instance_key={`${entry.task.due_time?.getTime()}-${entry.archived}-${entry.preview}`}
                   disabled={read_only || entry.archived || entry.preview}
                   class={`group relative overflow-hidden rounded-md text-xs transition-[border-color,background-color,box-shadow,opacity] ${
-                  entry.archived
-                    ? "border border-dotted border-muted-foreground/40 bg-muted/30 opacity-55 shadow-none hover:opacity-70"
-                    : entry.preview
-                      ? "border border-dashed border-muted-foreground/45 bg-transparent opacity-70 shadow-none hover:opacity-85"
-                      : "border-2 border-foreground/30 bg-card shadow-sm hover:border-foreground/50 hover:shadow-md"
-                } ${!entry.archived && !entry.preview ? (read_only ? "cursor-pointer" : "cursor-grab active:cursor-grabbing select-none touch-none") : ""}`}
-                  oncontextmenu={read_only ? undefined : (event) => {
-                  event.preventDefault();
-                  if (!entry.archived && !entry.preview) onEditTask(entry.task);
-                }}
+                    entry.archived
+                      ? "border border-dotted border-muted-foreground/40 bg-muted/30 opacity-55 shadow-none hover:opacity-70"
+                      : entry.preview
+                        ? "border border-dashed border-muted-foreground/45 bg-transparent opacity-70 shadow-none hover:opacity-85"
+                        : "border-2 border-foreground/30 bg-card shadow-sm hover:border-foreground/50 hover:shadow-md"
+                  } ${!entry.archived && !entry.preview ? (read_only ? "cursor-pointer" : "cursor-grab active:cursor-grabbing select-none touch-none") : ""}`}
+                  oncontextmenu={read_only
+                    ? undefined
+                    : (event) => {
+                        event.preventDefault();
+                        if (!entry.archived && !entry.preview) {
+                          onEditTask(entry.task);
+                        }
+                      }}
                 >
                   <button
                     type="button"
@@ -527,31 +561,31 @@ let enabled_display_option_count = $derived(
                     title={`${entry.task.title} · ${entry.column.name}`}
                     onpointerup={(event) => event.currentTarget.blur()}
                     onclick={() =>
-                    entry.archived
-                      ? onViewArchivedTask(entry.task)
-                      : onViewTask(entry.task)}
+                      entry.archived
+                        ? onViewArchivedTask(entry.task)
+                        : onViewTask(entry.task)}
                     ondblclick={(event) => event.stopPropagation()}
                   >
                     <span
                       class="w-1 shrink-0 self-stretch rounded-full"
                       style={`background-color: ${
-                      entry.archived
-                        ? "var(--muted-foreground)"
-                        : entry.preview
+                        entry.archived
                           ? "var(--muted-foreground)"
-                          : display_task_color(entry.task.color) || "var(--muted-foreground)"
-                    }`}
+                          : entry.preview
+                            ? "var(--muted-foreground)"
+                            : display_task_color(entry.task.color) ||
+                              "var(--muted-foreground)"
+                      }`}
                     ></span>
                     <span class="flex min-w-0 flex-1 flex-col justify-center">
                       <span
                         class={`min-w-0 truncate ${
-                        entry.archived
-                          ? "font-normal text-muted-foreground line-through"
-                          : entry.preview
-                            ? "font-normal text-muted-foreground"
-                            : "font-semibold"
-                      }`}
-                        >{entry.task.title}</span
+                          entry.archived
+                            ? "font-normal text-muted-foreground line-through"
+                            : entry.preview
+                              ? "font-normal text-muted-foreground"
+                              : "font-semibold"
+                        }`}>{entry.task.title}</span
                       >
                       {#if entry.archived}
                         <Badge
@@ -606,17 +640,19 @@ let enabled_display_option_count = $derived(
                           align="end"
                           class="min-w-36"
                           onCloseAutoFocus={(event) => {
-                        if (archive_focus_restore_target === entry.task.id) {
-                          event.preventDefault();
-                        }
-                        archive_focus_restore_target = null;
-                      }}
+                            if (
+                              archive_focus_restore_target === entry.task.id
+                            ) {
+                              event.preventDefault();
+                            }
+                            archive_focus_restore_target = null;
+                          }}
                         >
                           <DropdownMenu.Item
                             onclick={() =>
-                          entry.archived
-                            ? onViewArchivedTask(entry.task)
-                            : onViewTask(entry.task)}
+                              entry.archived
+                                ? onViewArchivedTask(entry.task)
+                                : onViewTask(entry.task)}
                           >
                             <FullscreenIcon />
                             View Details
@@ -655,9 +691,9 @@ let enabled_display_option_count = $derived(
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                               onSelect={() => {
-                            archive_focus_restore_target = entry.task.id;
-                            onArchiveTask(entry.task);
-                          }}
+                                archive_focus_restore_target = entry.task.id;
+                                onArchiveTask(entry.task);
+                              }}
                             >
                               <ArchiveIcon />
                               Archive Task

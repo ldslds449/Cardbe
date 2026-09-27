@@ -1,27 +1,27 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button/index.js";
-import * as Dialog from "$lib/components/ui/dialog/index.js";
-import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { Textarea } from "$lib/components/ui/textarea/index.js";
 
-let {
-  export_open = $bindable(),
-  import_open = $bindable(),
-  share_text,
-  import_text = $bindable(),
-  import_error,
-  import_target_column,
-  onCopy,
-  onImport,
-}: {
-  export_open: boolean;
-  import_open: boolean;
-  share_text: string;
-  import_text: string;
-  import_error?: string;
-  import_target_column?: string;
-  onCopy: () => void | Promise<void>;
-  onImport: () => void;
-} = $props();
+  let {
+    export_open = $bindable(),
+    import_open = $bindable(),
+    share_text,
+    import_text = $bindable(),
+    import_error,
+    import_target_column,
+    onCopy,
+    onImport,
+  }: {
+    export_open: boolean;
+    import_open: boolean;
+    share_text: string;
+    import_text: string;
+    import_error?: string;
+    import_target_column?: string;
+    onCopy: () => void | Promise<void>;
+    onImport: () => void;
+  } = $props();
 </script>
 
 <Dialog.Root bind:open={export_open}>
@@ -40,8 +40,11 @@ let {
       onclick={(event) => event.currentTarget.select()}
     />
     <Dialog.Footer>
-      <Button variant="outline" onclick={() => { export_open = false; }}
-        >Close</Button
+      <Button
+        variant="outline"
+        onclick={() => {
+          export_open = false;
+        }}>Close</Button
       >
       <Button onclick={() => void onCopy()}>Copy Text</Button>
     </Dialog.Footer>
@@ -80,7 +83,9 @@ let {
         <Button
           type="button"
           variant="outline"
-          onclick={() => { import_open = false; }}
+          onclick={() => {
+            import_open = false;
+          }}
         >
           Cancel
         </Button>

@@ -1,36 +1,38 @@
 <script lang="ts">
-import { logger } from "$lib/logger";
-import { onMount } from "svelte";
-import type { Component } from "svelte";
-import { render_card_references } from "../utils/card-reference";
+  import { logger } from "$lib/logger";
+  import { onMount } from "svelte";
+  import type { Component } from "svelte";
+  import { render_card_references } from "../utils/card-reference";
 
-let {
-  md,
-  compact = false,
-}: {
-  md: string;
-  compact?: boolean;
-} = $props();
+  let {
+    md,
+    compact = false,
+  }: {
+    md: string;
+    compact?: boolean;
+  } = $props();
 
-let Renderer = $state<Component<{ md: string; compact?: boolean }> | null>(
-  null,
-);
-const rendered_md = $derived(render_card_references(md));
+  let Renderer = $state<Component<{ md: string; compact?: boolean }> | null>(
+    null,
+  );
+  const rendered_md = $derived(render_card_references(md));
 
-onMount(() => {
-  let active = true;
-  void import("./markdown_renderer.svelte")
-    .then((module) => {
-      if (active) Renderer = module.default;
-    })
-    .catch((error) => {
-      logger.warn("markdown.renderer_load.failed", error);
-      console.error("Couldn't load the Markdown renderer", error);
-    });
-  return () => {
-    active = false;
-  };
-});
+  onMount(() => {
+    let active = true;
+    void import("./markdown_renderer.svelte")
+      .then((module) => {
+        if (active) {
+          Renderer = module.default;
+        }
+      })
+      .catch((error) => {
+        logger.warn("markdown.renderer_load.failed", error);
+        console.error("Couldn't load the Markdown renderer", error);
+      });
+    return () => {
+      active = false;
+    };
+  });
 </script>
 
 {#if Renderer}

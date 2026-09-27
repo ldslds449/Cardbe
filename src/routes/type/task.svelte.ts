@@ -12,7 +12,9 @@ export interface Recurrence {
 }
 
 export function recurrence_label(recurrence: Recurrence | undefined): string {
-  if (!recurrence) return "Does not repeat";
+  if (!recurrence) {
+    return "Does not repeat";
+  }
   const unit =
     recurrence.frequency === "daily"
       ? "day"
@@ -145,7 +147,9 @@ export function set_task_id(task: Task, id: number): void {
 export function get_task_id(task: Task | string): number {
   const value = typeof task === "string" ? task : task.id;
   const match = value.match(/^task_(\d+)$/);
-  if (!match) throw new Error(`Invalid task ID: ${value}`);
+  if (!match) {
+    throw new Error(`Invalid task ID: ${value}`);
+  }
   return Number.parseInt(match[1], 10);
 }
 

@@ -1,38 +1,38 @@
 <script lang="ts">
-import { Time } from "@internationalized/date";
-import { Label } from "$lib/components/ui/label";
-import TimePickerInput from "./time-picker-input.svelte";
-import { cn } from "$lib/utils";
-import TimePeriodSelect from "./time-period-select.svelte";
-import type { Period } from "./time-picker-utils";
+  import { Time } from "@internationalized/date";
+  import { Label } from "$lib/components/ui/label";
+  import TimePickerInput from "./time-picker-input.svelte";
+  import { cn } from "$lib/utils";
+  import TimePeriodSelect from "./time-period-select.svelte";
+  import type { Period } from "./time-picker-utils";
 
-let {
-  time = $bindable(new Time(0, 0)),
-  period = $bindable("AM"),
+  let {
+    time = $bindable(new Time(0, 0)),
+    period = $bindable("AM"),
 
-  view = "labels",
+    view = "labels",
 
-  setTime,
-  setPeriod,
-}: {
-  time: Time | undefined;
-  period?: Period;
+    setTime,
+    setPeriod,
+  }: {
+    time: Time | undefined;
+    period?: Period;
 
-  view?: "labels" | "dotted";
+    view?: "labels" | "dotted";
 
-  setTime?: (time: Time) => void;
-  setPeriod?: (period: Period) => void;
-} = $props();
+    setTime?: (time: Time) => void;
+    setPeriod?: (period: Period) => void;
+  } = $props();
 
-let minuteRef = $state<HTMLInputElement | null>(null);
-let hourRef = $state<HTMLInputElement | null>(null);
-let secondRef = $state<HTMLInputElement | null>(null);
-let periodRef = $state<HTMLInputElement | null>(null);
+  let minuteRef = $state<HTMLInputElement | null>(null);
+  let hourRef = $state<HTMLInputElement | null>(null);
+  let secondRef = $state<HTMLInputElement | null>(null);
+  let periodRef = $state<HTMLInputElement | null>(null);
 </script>
 
-<div class={cn('flex items-center gap-2', view === 'dotted' && 'gap-1')}>
+<div class={cn("flex items-center gap-2", view === "dotted" && "gap-1")}>
   <div class="grid gap-1 text-center">
-    {#if view === 'labels'}
+    {#if view === "labels"}
       <Label for="hours" class="text-xs">Hours</Label>
     {/if}
 
@@ -46,12 +46,12 @@ let periodRef = $state<HTMLInputElement | null>(null);
     />
   </div>
 
-  {#if view === 'dotted'}
+  {#if view === "dotted"}
     <span class="-translate-y-[2px]">:</span>
   {/if}
 
   <div class="grid gap-1 text-center">
-    {#if view === 'labels'}
+    {#if view === "labels"}
       <Label for="minutes" class="text-xs">Minutes</Label>
     {/if}
 
@@ -65,12 +65,12 @@ let periodRef = $state<HTMLInputElement | null>(null);
     />
   </div>
 
-  {#if view === 'dotted'}
+  {#if view === "dotted"}
     <span class="-translate-y-[2px]">:</span>
   {/if}
 
   <div class="grid gap-1 text-center">
-    {#if view === 'labels'}
+    {#if view === "labels"}
       <Label for="seconds" class="text-xs">Seconds</Label>
     {/if}
 
@@ -85,7 +85,7 @@ let periodRef = $state<HTMLInputElement | null>(null);
   </div>
 
   <div class="grid gap-1 text-center">
-    {#if view === 'labels'}
+    {#if view === "labels"}
       <Label for="period" class="text-xs">Period</Label>
     {/if}
 

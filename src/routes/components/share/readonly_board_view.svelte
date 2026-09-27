@@ -1,32 +1,34 @@
 <script lang="ts">
-import { DragDropProvider } from "@dnd-kit-svelte/svelte";
-import * as Card from "$lib/components/ui/card/index.js";
-import { Badge } from "$lib/components/ui/badge/index.js";
+  import { DragDropProvider } from "@dnd-kit-svelte/svelte";
+  import * as Card from "$lib/components/ui/card/index.js";
+  import { Badge } from "$lib/components/ui/badge/index.js";
 
-import type { Column } from "../../type/column.svelte";
-import type { Task } from "../../type/task.svelte";
-import CardItem from "../task/card_item.svelte";
+  import type { Column } from "../../type/column.svelte";
+  import type { Task } from "../../type/task.svelte";
+  import CardItem from "../task/card_item.svelte";
 
-let {
-  columns,
-  search_text = "",
-  onViewTask = () => {},
-}: {
-  columns: Column[];
-  search_text?: string;
-  onViewTask?: (task: Task) => void;
-} = $props();
+  let {
+    columns,
+    search_text = "",
+    onViewTask = () => {},
+  }: {
+    columns: Column[];
+    search_text?: string;
+    onViewTask?: (task: Task) => void;
+  } = $props();
 
-function task_matches_search(task: Task): boolean {
-  const search = search_text.trim().toLocaleLowerCase();
-  if (!search) return true;
-  return [
-    task.title,
-    task.description,
-    ...task.labels,
-    ...task.items.map((item) => item.text),
-  ].some((value) => value.toLocaleLowerCase().includes(search));
-}
+  function task_matches_search(task: Task): boolean {
+    const search = search_text.trim().toLocaleLowerCase();
+    if (!search) {
+      return true;
+    }
+    return [
+      task.title,
+      task.description,
+      ...task.labels,
+      ...task.items.map((item) => item.text),
+    ].some((value) => value.toLocaleLowerCase().includes(search));
+  }
 </script>
 
 <DragDropProvider>

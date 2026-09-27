@@ -1,128 +1,130 @@
 <script lang="ts">
-import { toggleMode } from "mode-watcher";
-import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
-import { toast } from "svelte-sonner";
+  import { toggleMode } from "mode-watcher";
+  import { invoke } from "@tauri-apps/api/core";
+  import { save } from "@tauri-apps/plugin-dialog";
+  import { toast } from "svelte-sonner";
 
-import ArchiveIcon from "@lucide/svelte/icons/archive";
-import BellIcon from "@lucide/svelte/icons/bell";
-import BellOffIcon from "@lucide/svelte/icons/bell-off";
-import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-import ClockIcon from "@lucide/svelte/icons/clock";
-import EyeIcon from "@lucide/svelte/icons/eye";
-import EyeClosedIcon from "@lucide/svelte/icons/eye-closed";
-import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
-import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
-import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
-import LinkIcon from "@lucide/svelte/icons/link";
-import MoonIcon from "@lucide/svelte/icons/moon";
-import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
-import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
-import RadioTowerIcon from "@lucide/svelte/icons/radio-tower";
-import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
-import SearchIcon from "@lucide/svelte/icons/search";
-import XIcon from "@lucide/svelte/icons/x";
-import SunIcon from "@lucide/svelte/icons/sun";
+  import ArchiveIcon from "@lucide/svelte/icons/archive";
+  import BellIcon from "@lucide/svelte/icons/bell";
+  import BellOffIcon from "@lucide/svelte/icons/bell-off";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import ClockIcon from "@lucide/svelte/icons/clock";
+  import EyeIcon from "@lucide/svelte/icons/eye";
+  import EyeClosedIcon from "@lucide/svelte/icons/eye-closed";
+  import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
+  import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
+  import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
+  import LinkIcon from "@lucide/svelte/icons/link";
+  import MoonIcon from "@lucide/svelte/icons/moon";
+  import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
+  import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
+  import RadioTowerIcon from "@lucide/svelte/icons/radio-tower";
+  import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
+  import SearchIcon from "@lucide/svelte/icons/search";
+  import XIcon from "@lucide/svelte/icons/x";
+  import SunIcon from "@lucide/svelte/icons/sun";
 
-import { Button } from "$lib/components/ui/button/index.js";
-import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-import * as InputGroup from "$lib/components/ui/input-group/index.js";
-import * as Kbd from "$lib/components/ui/kbd/index.js";
-import * as Menubar from "$lib/components/ui/menubar/index.js";
-import { cn } from "$lib/utils";
-import { logger } from "$lib/logger";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+  import * as InputGroup from "$lib/components/ui/input-group/index.js";
+  import * as Kbd from "$lib/components/ui/kbd/index.js";
+  import * as Menubar from "$lib/components/ui/menubar/index.js";
+  import { cn } from "$lib/utils";
+  import { logger } from "$lib/logger";
 
-import { board } from "../../board.svelte";
-import type { WorkspaceView } from "./workspace";
+  import { board } from "../../board.svelte";
+  import type { WorkspaceView } from "./workspace";
 
-let {
-  board_panel_open = $bindable(),
-  search_text = $bindable(),
-  search_pending = false,
-  search_error = false,
-  archive_open = $bindable(),
-  expired_open = $bindable(),
-  recurring_open = $bindable(),
-  note_open = $bindable(),
-  task_expand_mode = $bindable(),
-  selected_view,
-  update_check_in_progress,
-  read_only = false,
-  web_publish_count = 0,
-  web_publish_status = "idle",
-  web_publish_detail = "",
-  pending_device_count = 0,
-  removed_access_count = 0,
-  onOpenDeviceRequests,
-  onOpenRemovedAccess,
-  onPrepareImport,
-  onExportAllBoards,
-  onImportAllBoards,
-  onPrepareTaskImport,
-  onOpenBoardShare,
-  onOpenIrohShare,
-  onOpenTaskTemplates,
-  onAddTask,
-  onAddColumn,
-  onCheckForUpdates,
-}: {
-  board_panel_open: boolean;
-  search_text: string;
-  search_pending?: boolean;
-  search_error?: boolean;
-  archive_open: boolean;
-  expired_open: boolean;
-  recurring_open: boolean;
-  note_open: boolean;
-  task_expand_mode: boolean;
-  selected_view: WorkspaceView;
-  update_check_in_progress: boolean;
-  read_only?: boolean;
-  web_publish_count?: number;
-  web_publish_status?: "idle" | "updating" | "error";
-  web_publish_detail?: string;
-  pending_device_count?: number;
-  removed_access_count?: number;
-  onOpenDeviceRequests: () => void;
-  onOpenRemovedAccess: () => void;
-  onPrepareImport: () => void | Promise<void>;
-  onExportAllBoards: () => void | Promise<void>;
-  onImportAllBoards: () => void | Promise<void>;
-  onPrepareTaskImport: () => void | Promise<void>;
-  onOpenBoardShare: () => void;
-  onOpenIrohShare: () => void;
-  onOpenTaskTemplates: () => void;
-  onAddTask: () => void;
-  onAddColumn: () => void;
-  onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
-} = $props();
-let export_debug_logs_open = $state(false);
+  let {
+    board_panel_open = $bindable(),
+    search_text = $bindable(),
+    search_pending = false,
+    search_error = false,
+    archive_open = $bindable(),
+    expired_open = $bindable(),
+    recurring_open = $bindable(),
+    note_open = $bindable(),
+    task_expand_mode = $bindable(),
+    selected_view,
+    update_check_in_progress,
+    read_only = false,
+    web_publish_count = 0,
+    web_publish_status = "idle",
+    web_publish_detail = "",
+    pending_device_count = 0,
+    removed_access_count = 0,
+    onOpenDeviceRequests,
+    onOpenRemovedAccess,
+    onPrepareImport,
+    onExportAllBoards,
+    onImportAllBoards,
+    onPrepareTaskImport,
+    onOpenBoardShare,
+    onOpenIrohShare,
+    onOpenTaskTemplates,
+    onAddTask,
+    onAddColumn,
+    onCheckForUpdates,
+  }: {
+    board_panel_open: boolean;
+    search_text: string;
+    search_pending?: boolean;
+    search_error?: boolean;
+    archive_open: boolean;
+    expired_open: boolean;
+    recurring_open: boolean;
+    note_open: boolean;
+    task_expand_mode: boolean;
+    selected_view: WorkspaceView;
+    update_check_in_progress: boolean;
+    read_only?: boolean;
+    web_publish_count?: number;
+    web_publish_status?: "idle" | "updating" | "error";
+    web_publish_detail?: string;
+    pending_device_count?: number;
+    removed_access_count?: number;
+    onOpenDeviceRequests: () => void;
+    onOpenRemovedAccess: () => void;
+    onPrepareImport: () => void | Promise<void>;
+    onExportAllBoards: () => void | Promise<void>;
+    onImportAllBoards: () => void | Promise<void>;
+    onPrepareTaskImport: () => void | Promise<void>;
+    onOpenBoardShare: () => void;
+    onOpenIrohShare: () => void;
+    onOpenTaskTemplates: () => void;
+    onAddTask: () => void;
+    onAddColumn: () => void;
+    onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
+  } = $props();
+  let export_debug_logs_open = $state(false);
 
-async function openLogFolder() {
-  try {
-    await invoke("open_log_folder");
-  } catch (error) {
-    logger.error("diagnostics.open_log_folder.failed", error);
-    toast.error("Couldn't open the log folder");
+  async function openLogFolder() {
+    try {
+      await invoke("open_log_folder");
+    } catch (error) {
+      logger.error("diagnostics.open_log_folder.failed", error);
+      toast.error("Couldn't open the log folder");
+    }
   }
-}
 
-async function exportDebugLogs() {
-  try {
-    const date = new Date().toISOString().slice(0, 10);
-    const destination = await save({
-      defaultPath: `cardbe-debug-${date}.zip`,
-      filters: [{ name: "ZIP archive", extensions: ["zip"] }],
-    });
-    if (!destination) return;
+  async function exportDebugLogs() {
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      const destination = await save({
+        defaultPath: `cardbe-debug-${date}.zip`,
+        filters: [{ name: "ZIP archive", extensions: ["zip"] }],
+      });
+      if (!destination) {
+        return;
+      }
 
-    await invoke("export_debug_logs", { destination });
-    toast.success("Debug logs exported");
-  } catch (error) {
-    logger.error("diagnostics.export.failed", error);
-    toast.error("Couldn't export debug logs");
+      await invoke("export_debug_logs", { destination });
+      toast.success("Debug logs exported");
+    } catch (error) {
+      logger.error("diagnostics.export.failed", error);
+      toast.error("Couldn't export debug logs");
+    }
   }
-}
 </script>
 
 <Menubar.Root class="h-12 shrink-0 rounded-none border-x-0 border-t-0 px-4">
@@ -140,7 +142,10 @@ async function exportDebugLogs() {
       <LayoutDashboardIcon class="size-4" />
       <span>Cardbe</span>
       <ChevronDownIcon
-        class={cn("size-3.5 transition-transform", board_panel_open && "rotate-180")}
+        class={cn(
+          "size-3.5 transition-transform",
+          board_panel_open && "rotate-180",
+        )}
       />
     </Button>
 
@@ -228,7 +233,9 @@ async function exportDebugLogs() {
               Check for Updates
             </Menubar.Item>
             <Menubar.Separator />
-            <Menubar.Item onclick={() => void openLogFolder()}>Open Log Folder</Menubar.Item>
+            <Menubar.Item onclick={() => void openLogFolder()}
+              >Open Log Folder</Menubar.Item
+            >
             <Menubar.Item onclick={() => (export_debug_logs_open = true)}>
               Export Debug Logs...
             </Menubar.Item>
@@ -246,8 +253,7 @@ async function exportDebugLogs() {
         aria-label={`${pending_device_count} device approval requests`}
         title="Review device approval requests"
         ><ShieldCheckIcon class="size-4" />
-        <span class="hidden xl:inline">Device requests</span
-        ><span
+        <span class="hidden xl:inline">Device requests</span><span
           class="rounded-full bg-primary px-1.5 text-xs text-primary-foreground"
           >{pending_device_count}</span
         ></Button
@@ -262,8 +268,8 @@ async function exportDebugLogs() {
         aria-label={`${removed_access_count} shared boards need access`}
         title="Request access to shared boards again"
         ><LinkIcon class="size-4" />
-        <span class="hidden xl:inline">Access removed</span
-        ><span class="rounded-full bg-destructive px-1.5 text-xs text-white"
+        <span class="hidden xl:inline">Access removed</span><span
+          class="rounded-full bg-destructive px-1.5 text-xs text-white"
           >{removed_access_count}</span
         ></Button
       >
@@ -274,7 +280,8 @@ async function exportDebugLogs() {
         size="sm"
         class={cn(
           "shrink-0 gap-1.5",
-          web_publish_status === "error" && "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive",
+          web_publish_status === "error" &&
+            "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive",
         )}
         onclick={onOpenBoardShare}
         aria-label={`Open Web publish. ${web_publish_detail}`}
@@ -284,9 +291,13 @@ async function exportDebugLogs() {
           <RadioTowerIcon class="size-4" />
           <span
             class={cn(
-            "absolute -right-1 -top-1 size-2 rounded-full border border-background",
-            web_publish_status === "error" ? "bg-destructive" : web_publish_status === "updating" ? "animate-pulse bg-amber-500" : "bg-emerald-500",
-          )}
+              "absolute -right-1 -top-1 size-2 rounded-full border border-background",
+              web_publish_status === "error"
+                ? "bg-destructive"
+                : web_publish_status === "updating"
+                  ? "animate-pulse bg-amber-500"
+                  : "bg-emerald-500",
+            )}
           ></span>
         </span>
         <span class="hidden xl:inline">Web publish</span>
@@ -298,7 +309,9 @@ async function exportDebugLogs() {
 
     <InputGroup.Root
       class="ml-auto w-40 shrink-0 bg-muted/40 transition-colors focus-within:bg-background sm:w-48 lg:w-64"
-      title={search_error ? "Search unavailable. Retry or clear the search." : undefined}
+      title={search_error
+        ? "Search unavailable. Retry or clear the search."
+        : undefined}
     >
       <InputGroup.Input
         aria-label="Search tasks"
@@ -337,8 +350,8 @@ async function exportDebugLogs() {
     <div class="flex shrink-0 items-center gap-1">
       <Button
         onclick={() => {
-        note_open = !note_open;
-      }}
+          note_open = !note_open;
+        }}
         variant="outline"
         size="icon"
         class="self-center flex-none"
@@ -362,9 +375,11 @@ async function exportDebugLogs() {
 
       <Button
         onclick={() => {
-        archive_open = !archive_open;
-        if (archive_open) void board.ensure_archives_loaded();
-      }}
+          archive_open = !archive_open;
+          if (archive_open) {
+            void board.ensure_archives_loaded();
+          }
+        }}
         variant="outline"
         size="icon"
         class="self-center flex-none"
@@ -377,9 +392,9 @@ async function exportDebugLogs() {
 
       <Button
         onclick={() => {
-        board.get_expired_tasks();
-        expired_open = !expired_open;
-      }}
+          board.get_expired_tasks();
+          expired_open = !expired_open;
+        }}
         variant="outline"
         size="icon"
         class="self-center flex-none"
@@ -392,79 +407,89 @@ async function exportDebugLogs() {
 
       <Button
         onclick={() => {
-        recurring_open = !recurring_open;
-      }}
+          recurring_open = !recurring_open;
+        }}
         variant="outline"
         size="icon"
         class="self-center flex-none"
         aria-pressed={recurring_open}
-        aria-label={recurring_open ? "Close recurring tasks" : "Open recurring tasks"}
-        title={recurring_open ? "Close recurring tasks" : "Open recurring tasks"}
+        aria-label={recurring_open
+          ? "Close recurring tasks"
+          : "Open recurring tasks"}
+        title={recurring_open
+          ? "Close recurring tasks"
+          : "Open recurring tasks"}
       >
         <Repeat2Icon />
       </Button>
 
       <Button
         onclick={() => {
-        void board.set_notify_enabled(!board.notify_enabled);
-      }}
+          void board.set_notify_enabled(!board.notify_enabled);
+        }}
         variant="outline"
         size="icon"
         class="self-center flex-none"
         disabled={board.notification_setting_updating}
         aria-pressed={board.notify_enabled}
-        aria-label={board.notify_enabled ? "Disable notifications" : "Enable notifications"}
-        title={board.notify_enabled ? "Disable notifications" : "Enable notifications"}
+        aria-label={board.notify_enabled
+          ? "Disable notifications"
+          : "Enable notifications"}
+        title={board.notify_enabled
+          ? "Disable notifications"
+          : "Enable notifications"}
       >
         <BellIcon
           class={cn(
-          "h-[1.2rem] w-[1.2rem] !transition-all ",
-          board.notify_enabled ? "rotate-0 scale-100" : "rotate-90 scale-0",
-        )}
+            "h-[1.2rem] w-[1.2rem] !transition-all ",
+            board.notify_enabled ? "rotate-0 scale-100" : "rotate-90 scale-0",
+          )}
         />
         <BellOffIcon
           class={cn(
-          "absolute h-[1.2rem] w-[1.2rem] !transition-all ",
-          board.notify_enabled ? "rotate-90 scale-0" : "rotate-0 scale-100",
-        )}
+            "absolute h-[1.2rem] w-[1.2rem] !transition-all ",
+            board.notify_enabled ? "rotate-90 scale-0" : "rotate-0 scale-100",
+          )}
         />
       </Button>
 
       <div
         class="size-9 flex-none"
-        title={selected_view !== "board" ? "Available in Board view" : undefined}
+        title={selected_view !== "board"
+          ? "Available in Board view"
+          : undefined}
       >
         <Button
           onclick={() => {
-          task_expand_mode = !task_expand_mode;
-        }}
+            task_expand_mode = !task_expand_mode;
+          }}
           variant="outline"
           size="icon"
           class="self-center"
           disabled={selected_view !== "board"}
           aria-pressed={task_expand_mode}
           aria-label={selected_view !== "board"
-          ? "Task detail expansion is available in Board view"
-          : task_expand_mode
-            ? "Hide task details"
-            : "Show task details"}
+            ? "Task detail expansion is available in Board view"
+            : task_expand_mode
+              ? "Hide task details"
+              : "Show task details"}
           title={selected_view !== "board"
-          ? undefined
-          : task_expand_mode
-            ? "Hide task details"
-            : "Show task details"}
+            ? undefined
+            : task_expand_mode
+              ? "Hide task details"
+              : "Show task details"}
         >
           <EyeIcon
             class={cn(
-            "h-[1.2rem] w-[1.2rem] !transition-all ",
-            task_expand_mode ? "rotate-0 scale-100" : "rotate-90 scale-0",
-          )}
+              "h-[1.2rem] w-[1.2rem] !transition-all ",
+              task_expand_mode ? "rotate-0 scale-100" : "rotate-90 scale-0",
+            )}
           />
           <EyeClosedIcon
             class={cn(
-            "absolute h-[1.2rem] w-[1.2rem] !transition-all ",
-            task_expand_mode ? "rotate-90 scale-0" : "rotate-0 scale-100",
-          )}
+              "absolute h-[1.2rem] w-[1.2rem] !transition-all ",
+              task_expand_mode ? "rotate-90 scale-0" : "rotate-0 scale-100",
+            )}
           />
         </Button>
       </div>
@@ -493,8 +518,8 @@ async function exportDebugLogs() {
     <AlertDialog.Header>
       <AlertDialog.Title>Export Debug Logs?</AlertDialog.Title>
       <AlertDialog.Description>
-        Debug logs may contain error text, file paths, or other private information.
-        Review the ZIP before sharing it.
+        Debug logs may contain error text, file paths, or other private
+        information. Review the ZIP before sharing it.
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>

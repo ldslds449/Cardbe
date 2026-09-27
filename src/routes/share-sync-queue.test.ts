@@ -15,7 +15,9 @@ describe("LatestShareSyncQueue", () => {
   it("waits for a request queued behind an in-flight publish", async () => {
     const first = deferred<void>();
     const run = vi.fn(async (_id: string, value: string) => {
-      if (value === "first") await first.promise;
+      if (value === "first") {
+        await first.promise;
+      }
     });
     const queue = new LatestShareSyncQueue(run, vi.fn(), vi.fn());
 
@@ -53,7 +55,9 @@ describe("LatestShareSyncQueue", () => {
   it("settles waiters and drops queued work when a share is retired", async () => {
     const first = deferred<void>();
     const run = vi.fn(async (_id: string, value: string) => {
-      if (value === "first") await first.promise;
+      if (value === "first") {
+        await first.promise;
+      }
     });
     const queue = new LatestShareSyncQueue(run, vi.fn(), vi.fn());
     const initial = queue.request("share", "first");

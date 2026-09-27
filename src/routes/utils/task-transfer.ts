@@ -112,26 +112,31 @@ function encode_task(task: Task): Uint8Array {
           ? 3
           : 0;
   writer.byte(recurrence_code);
-  if (task.recurrence) writer.uint32(task.recurrence.interval);
+  if (task.recurrence) {
+    writer.uint32(task.recurrence.interval);
+  }
   return writer.finish();
 }
 
 function decode_task(bytes: Uint8Array): Task {
   const reader = new BinaryReader(bytes);
-  if (reader.byte() !== BINARY_VERSION)
+  if (reader.byte() !== BINARY_VERSION) {
     throw new Error("Unsupported task sharing version");
+  }
   const title = reader.string();
   const description = reader.string();
   const color = reader.string();
   const start_timestamp = reader.float64();
   const due_timestamp = reader.float64();
   const label_count = reader.uint32();
-  if (label_count > MAX_COLLECTION_ITEMS)
+  if (label_count > MAX_COLLECTION_ITEMS) {
     throw new Error("Invalid task label count");
+  }
   const labels = Array.from({ length: label_count }, () => reader.string());
   const item_count = reader.uint32();
-  if (item_count > MAX_COLLECTION_ITEMS)
+  if (item_count > MAX_COLLECTION_ITEMS) {
     throw new Error("Invalid task checklist count");
+  }
   const items = Array.from({ length: item_count }, () => {
     const item = create_task_item(reader.string());
     item.completed = reader.byte() === 1;
@@ -148,13 +153,18 @@ function decode_task(bytes: Uint8Array): Task {
           : recurrence_code === 3
             ? "monthly"
             : undefined;
-    if (!frequency) throw new Error("Invalid task recurrence");
+    if (!frequency) {
+      throw new Error("Invalid task recurrence");
+    }
     const interval = reader.uint32();
-    if (interval < 1) throw new Error("Invalid task recurrence");
+    if (interval < 1) {
+      throw new Error("Invalid task recurrence");
+    }
     recurrence = { frequency, interval };
   }
-  if (!reader.done())
+  if (!reader.done()) {
     throw new Error("The task sharing text contains unexpected data");
+  }
 
   return create_task(
     "",
@@ -186,7 +196,9 @@ async function gunzip(data: Uint8Array): Promise<Uint8Array> {
     let length = 0;
     while (true) {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
       length += value.length;
       if (length > MAX_DECOMPRESSED_BYTES) {
         await reader.cancel();
@@ -220,8 +232,9 @@ function to_base64url(bytes: Uint8Array): string {
 }
 
 function from_base64url(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]+$/.test(value))
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) {
     throw new Error("Invalid task sharing text");
+  }
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
@@ -233,8 +246,9 @@ export async function serialize_portable_task(task: Task): Promise<string> {
 
 export async function parse_portable_task(shared_text: string): Promise<Task> {
   const input = shared_text.trim();
-  if (input.length > MAX_SHARED_TEXT_LENGTH)
+  if (input.length > MAX_SHARED_TEXT_LENGTH) {
     throw new Error("Task sharing text is too large");
+  }
   if (!input.startsWith(BINARY_PREFIX)) {
     throw new Error("This is not supported Cardbe task sharing text");
   }
@@ -243,8 +257,9 @@ export async function parse_portable_task(shared_text: string): Promise<Task> {
       await gunzip(from_base64url(input.slice(BINARY_PREFIX.length))),
     );
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Invalid task"))
+    if (error instanceof Error && error.message.startsWith("Invalid task")) {
       throw error;
+    }
     throw new Error("Invalid or damaged task sharing text");
   }
 }
