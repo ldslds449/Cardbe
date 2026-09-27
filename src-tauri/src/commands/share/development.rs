@@ -53,7 +53,7 @@ pub(super) fn vite_origin(protocol: &str) -> String {
     let host = std::env::var("TAURI_DEV_HOST")
         .ok()
         .filter(|host| !host.is_empty())
-        .unwrap_or_else(|| "localhost".into());
+        .unwrap_or_else(|| "127.0.0.1".into());
     let host = host.parse().map(format_host).unwrap_or(host);
     let port = vite_port();
     format!("{protocol}://{host}:{port}")

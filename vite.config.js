@@ -29,13 +29,13 @@ export default defineConfig(async () => ({
   server: {
     port,
     strictPort: true,
-    host: host || false,
+    host: host || "127.0.0.1",
     // Let the HMR client use the origin serving /@vite/client, including the
     // LAN share proxy. HTTP and WebSocket use the same upstream port.
     hmr: { timeout: 30000 },
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
-      ignored: (filePath) => {
+      ignored: /** @param {string} filePath */ (filePath) => {
         const normalizedPath = filePath.replaceAll("\\", "/");
         return (
           normalizedPath.includes("/src-tauri/") ||

@@ -6,6 +6,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const cli = path.join(root, "node_modules", "@tauri-apps", "cli", "tauri.js");
 const args = process.argv.slice(2);
 const env = { ...process.env };
+const devHost = process.env.TAURI_DEV_HOST || "127.0.0.1";
 
 if (args[0] === "dev") {
   const hasPort = args[1] && /^\d+$/.test(args[1]);
@@ -25,7 +26,11 @@ if (args[0] === "dev") {
   }
   args.push(
     "--config",
-    JSON.stringify({ build: { devUrl: `http://localhost:${port}` } }),
+    JSON.stringify({
+      build: {
+        devUrl: `http://${devHost.includes(":") ? `[${devHost}]` : devHost}:${port}`,
+      },
+    }),
   );
 }
 
