@@ -98,6 +98,14 @@ jobs:
           CARDBE_BUILD_COMMIT: ${{ steps.tag.outputs.commit }}
         run: pnpm tauri build
 
+      - name: Verify portable executable for manual run
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'src-tauri/target/release/Cardbe.exe')) {
+            throw 'Tauri build did not produce the portable executable.'
+          }
+
       - uses: tauri-apps/tauri-action@v1
         if: ${{ github.event_name == 'push' || inputs.publish }}
         env:
@@ -109,3 +117,17 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.content }}
           releaseDraft: true
           args: ${{ matrix.args }}
+
+      - name: Upload portable release
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $binary = 'src-tauri/target/release/Cardbe.exe'
+          if (-not (Test-Path $binary)) {
+            throw 'Tauri build did not produce the portable executable.'
+          }
+          $asset = Join-Path $env:RUNNER_TEMP "Cardbe-$env:RELEASE_TAG-portable.exe"
+          Copy-Item -LiteralPath $binary -Destination $asset
+          gh release upload $env:RELEASE_TAG $asset --clobber
