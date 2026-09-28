@@ -606,10 +606,8 @@ impl Database {
         )?;
         // Snapshot bytes can differ after re-export even when the Loro
         // operation history is unchanged. Use its version vector for retries.
-        let unchanged = crate::loro_board::state_vector(Some(&existing))
-            .map_err(|e| format!("Invalid stored Loro document: {e}"))?
-            == crate::loro_board::state_vector(Some(&merged))
-                .map_err(|e| format!("Invalid merged Loro document: {e}"))?;
+        let unchanged = crate::loro_board::same_state_vector(&existing, &merged)
+            .map_err(|e| format!("Invalid Loro version vector: {e}"))?;
         if unchanged {
             tx.commit()?;
             return Ok((false, revision, previous));

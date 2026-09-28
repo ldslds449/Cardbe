@@ -26,6 +26,10 @@ pub fn state_vector(update: Option<&[u8]>) -> Result<Vec<u8>, String> {
     Ok(doc_from_update(update)?.oplog_vv().encode())
 }
 
+pub fn same_state_vector(left: &[u8], right: &[u8]) -> Result<bool, String> {
+    Ok(doc_from_update(Some(left))?.oplog_vv() == doc_from_update(Some(right))?.oplog_vv())
+}
+
 pub fn diff(update: Option<&[u8]>, remote_state_vector: &[u8]) -> Result<Vec<u8>, String> {
     let remote = VersionVector::decode(remote_state_vector).map_err(|e| e.to_string())?;
     doc_from_update(update)?
