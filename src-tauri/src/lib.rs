@@ -177,6 +177,16 @@ pub fn run() {
     #[cfg(desktop)]
     {
         builder = desktop::configure(builder);
+        builder = builder.plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .with_denylist(&["quick-task", "quick-note"])
+                .build(),
+        );
         #[cfg(not(debug_assertions))]
         {
             builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
