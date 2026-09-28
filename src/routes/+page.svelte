@@ -88,6 +88,7 @@
   let calendar_show_archived = $state(false);
   let calendar_show_recurring_previews = $state(true);
   let startup_error = $state<string | null>(null);
+  let startup_check_finished = $state(false);
   let app_name = $state("");
   let app_name_promise: Promise<string> | undefined;
   let update_check_in_progress = $state(false);
@@ -709,6 +710,7 @@
     let device_request_timer: number | undefined;
     void invoke<string | null>("get_startup_error")
       .then((error) => {
+        startup_check_finished = true;
         if (error) {
           startup_error = error;
           requestAnimationFrame(() =>
@@ -730,6 +732,7 @@
       })
       .catch((error) => {
         startup_error = `Could not check local data startup status: ${String(error)}`;
+        startup_check_finished = true;
         requestAnimationFrame(() =>
           window.dispatchEvent(new Event("cardbe:workspace-ready")),
         );
@@ -1431,6 +1434,8 @@
         </Card.Content>
       </Card.Root>
     </main>
+  {:else if !startup_check_finished}
+    <div class="flex min-h-0 flex-1" aria-hidden="true"></div>
   {:else if board.column_fetch_error}
     <Empty.Root class="w-full">
       <Empty.Header>

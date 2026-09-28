@@ -44,6 +44,9 @@ export default defineConfig(async () => ({
         );
       },
     },
+    warmup: {
+      clientFiles: ["./src/routes/+layout.svelte", "./src/routes/+page.svelte"],
+    },
   },
   resolve: {
     alias: {
