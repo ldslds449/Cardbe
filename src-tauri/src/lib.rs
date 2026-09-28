@@ -186,6 +186,7 @@ pub fn run() {
             app.manage(debug_data_lock);
             app.manage(share::LanShareState::default());
             app.manage(iroh_share::IrohShareState::default());
+            app.manage(StartupError(Mutex::new(None)));
 
             let startup_result = storage::load(&app_data_dir)
                 .map_err(|error| {
@@ -210,7 +211,6 @@ pub fn run() {
                 });
             match startup_result {
                 Ok((data, database_path)) => {
-                    app.manage(StartupError(Mutex::new(None)));
                     app.manage(Mutex::new(data));
                     let iroh_app = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
@@ -221,7 +221,9 @@ pub fn run() {
                 }
                 Err(error) => {
                     log::error!(target: "storage", "Could not load application data: {error}");
-                    app.manage(StartupError(Mutex::new(Some(error))));
+                    if let Ok(mut startup_error) = app.state::<StartupError>().0.lock() {
+                        *startup_error = Some(error);
+                    }
                 }
             }
             #[cfg(desktop)]
