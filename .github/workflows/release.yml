@@ -128,6 +128,6 @@ jobs:
           if (-not (Test-Path $binary)) {
             throw 'Tauri build did not produce the portable executable.'
           }
-          $asset = Join-Path $env:RUNNER_TEMP "Cardbe-$env:RELEASE_TAG-portable.exe"
+          $asset = Join-Path $env:RUNNER_TEMP "Cardbe_$env:RELEASE_TAG-portable.exe"
           Copy-Item -LiteralPath $binary -Destination $asset
           gh release upload $env:RELEASE_TAG $asset --clobber
