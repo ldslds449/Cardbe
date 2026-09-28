@@ -20,16 +20,29 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
+use tokio::sync::watch;
 
-struct StartupError(Mutex<Option<String>>);
+struct StartupError {
+    sender: watch::Sender<Option<Result<(), String>>>,
+    receiver: watch::Receiver<Option<Result<(), String>>>,
+}
 
 #[tauri::command]
-fn get_startup_error(state: tauri::State<'_, StartupError>) -> Result<Option<String>, String> {
-    state
-        .0
-        .lock()
-        .map(|error| error.clone())
-        .map_err(|_| "Startup error state lock is poisoned".to_string())
+async fn get_startup_error(
+    state: tauri::State<'_, StartupError>,
+) -> Result<Option<String>, String> {
+    let mut status = state.receiver.clone();
+    loop {
+        let current = status.borrow().clone();
+        match current {
+            Some(Ok(())) => return Ok(None),
+            Some(Err(error)) => return Ok(Some(error)),
+            None => status
+                .changed()
+                .await
+                .map_err(|_| "Startup status unavailable".to_string())?,
+        }
+    }
 }
 
 #[cfg(all(debug_assertions, desktop))]
@@ -138,7 +151,12 @@ pub fn run() {
         context.config_mut().identifier = identifier;
     }
 
+    let (startup_sender, startup_receiver) = watch::channel::<Option<Result<(), String>>>(None);
     let mut builder = tauri::Builder::default()
+        .manage(StartupError {
+            sender: startup_sender,
+            receiver: startup_receiver,
+        })
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(if cfg!(debug_assertions) {
@@ -186,8 +204,6 @@ pub fn run() {
             app.manage(debug_data_lock);
             app.manage(share::LanShareState::default());
             app.manage(iroh_share::IrohShareState::default());
-            app.manage(StartupError(Mutex::new(None)));
-
             let startup_result = storage::load(&app_data_dir)
                 .map_err(|error| {
                     format!(
@@ -212,6 +228,7 @@ pub fn run() {
             match startup_result {
                 Ok((data, database_path)) => {
                     app.manage(Mutex::new(data));
+                    let _ = app.state::<StartupError>().sender.send(Some(Ok(())));
                     let iroh_app = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
                         let network = iroh_app.state::<iroh_share::IrohShareState>();
@@ -221,9 +238,7 @@ pub fn run() {
                 }
                 Err(error) => {
                     log::error!(target: "storage", "Could not load application data: {error}");
-                    if let Ok(mut startup_error) = app.state::<StartupError>().0.lock() {
-                        *startup_error = Some(error);
-                    }
+                    let _ = app.state::<StartupError>().sender.send(Some(Err(error)));
                 }
             }
             #[cfg(desktop)]
