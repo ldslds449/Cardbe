@@ -1,9 +1,5 @@
 <script lang="ts">
   import { toggleMode } from "mode-watcher";
-  import { invoke } from "@tauri-apps/api/core";
-  import { save } from "@tauri-apps/plugin-dialog";
-  import { toast } from "svelte-sonner";
-
   import ArchiveIcon from "@lucide/svelte/icons/archive";
   import BellIcon from "@lucide/svelte/icons/bell";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
@@ -25,12 +21,11 @@
   import SunIcon from "@lucide/svelte/icons/sun";
 
   import { Button } from "$lib/components/ui/button/index.js";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
   import * as InputGroup from "$lib/components/ui/input-group/index.js";
   import * as Kbd from "$lib/components/ui/kbd/index.js";
   import * as Menubar from "$lib/components/ui/menubar/index.js";
   import { cn } from "$lib/utils";
-  import { logger } from "$lib/logger";
+  import HelpDialogs from "./help_dialogs.svelte";
 
   import { board } from "../../board.svelte";
   import type { WorkspaceView } from "./workspace";
@@ -96,35 +91,8 @@
     onAddColumn: () => void;
     onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
   } = $props();
-  let export_debug_logs_open = $state(false);
-
-  async function openLogFolder() {
-    try {
-      await invoke("open_log_folder");
-    } catch (error) {
-      logger.error("diagnostics.open_log_folder.failed", error);
-      toast.error("Couldn't open the log folder");
-    }
-  }
-
-  async function exportDebugLogs() {
-    try {
-      const date = new Date().toISOString().slice(0, 10);
-      const destination = await save({
-        defaultPath: `cardbe-debug-${date}.zip`,
-        filters: [{ name: "ZIP archive", extensions: ["zip"] }],
-      });
-      if (!destination) {
-        return;
-      }
-
-      await invoke("export_debug_logs", { destination });
-      toast.success("Debug logs exported");
-    } catch (error) {
-      logger.error("diagnostics.export.failed", error);
-      toast.error("Couldn't export debug logs");
-    }
-  }
+  let about_open = $state(false);
+  let diagnostics_open = $state(false);
 </script>
 
 <Menubar.Root class="h-12 shrink-0 rounded-none border-x-0 border-t-0 px-4">
@@ -226,18 +194,12 @@
         <Menubar.Menu>
           <Menubar.Trigger>Help</Menubar.Trigger>
           <Menubar.Content>
-            <Menubar.Item
-              disabled={update_check_in_progress}
-              onclick={() => void onCheckForUpdates(true)}
-            >
-              Check for Updates
+            <Menubar.Item onclick={() => (about_open = true)}>
+              About Cardbe
             </Menubar.Item>
             <Menubar.Separator />
-            <Menubar.Item onclick={() => void openLogFolder()}
-              >Open Log Folder</Menubar.Item
-            >
-            <Menubar.Item onclick={() => (export_debug_logs_open = true)}>
-              Export Debug Logs...
+            <Menubar.Item onclick={() => (diagnostics_open = true)}>
+              Diagnostics…
             </Menubar.Item>
           </Menubar.Content>
         </Menubar.Menu>
@@ -513,20 +475,9 @@
   </div>
 </Menubar.Root>
 
-<AlertDialog.Root bind:open={export_debug_logs_open}>
-  <AlertDialog.Content class="sm:max-w-md">
-    <AlertDialog.Header>
-      <AlertDialog.Title>Export Debug Logs?</AlertDialog.Title>
-      <AlertDialog.Description>
-        Debug logs may contain error text, file paths, or other private
-        information. Review the ZIP before sharing it.
-      </AlertDialog.Description>
-    </AlertDialog.Header>
-    <AlertDialog.Footer>
-      <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-      <AlertDialog.Action onclick={() => void exportDebugLogs()}>
-        Export logs
-      </AlertDialog.Action>
-    </AlertDialog.Footer>
-  </AlertDialog.Content>
-</AlertDialog.Root>
+<HelpDialogs
+  bind:about_open
+  bind:diagnostics_open
+  {update_check_in_progress}
+  {onCheckForUpdates}
+/>

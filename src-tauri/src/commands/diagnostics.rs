@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::{
     fs::{self, File},
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
 };
 use tauri::{AppHandle, Manager};
@@ -14,13 +14,42 @@ const MAX_FRONTEND_MESSAGE_BYTES: usize = 16 * 1024;
 #[serde(rename_all = "camelCase")]
 struct SystemInfo<'a> {
     app_version: String,
+    build_commit: Option<String>,
     os: &'a str,
     architecture: &'a str,
     exported_at: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticInfo {
+    app_version: String,
+    build_commit: Option<String>,
+    os: &'static str,
+    architecture: &'static str,
+    log_directory: String,
+}
+
 fn log_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path().app_log_dir().map_err(|error| error.to_string())
+}
+
+fn build_commit() -> Option<String> {
+    option_env!("CARDBE_BUILD_COMMIT").and_then(|commit| {
+        let commit = commit.trim();
+        (!commit.is_empty()).then(|| commit.chars().take(7).collect())
+    })
+}
+
+#[tauri::command]
+pub fn get_diagnostics(app: AppHandle) -> Result<DiagnosticInfo, String> {
+    Ok(DiagnosticInfo {
+        app_version: app.package_info().version.to_string(),
+        build_commit: build_commit(),
+        os: std::env::consts::OS,
+        architecture: std::env::consts::ARCH,
+        log_directory: log_dir(&app)?.to_string_lossy().into_owned(),
+    })
 }
 
 #[tauri::command]
@@ -80,25 +109,145 @@ fn log_files(directory: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
-fn add_file(zip: &mut ZipWriter<File>, source: &Path, name: &str) -> Result<(), String> {
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    zip.start_file(name, options)
-        .map_err(|error| error.to_string())?;
-    let mut input = File::open(source).map_err(|error| error.to_string())?;
-    let mut buffer = [0_u8; 16 * 1024];
-    loop {
-        let read = input.read(&mut buffer).map_err(|error| error.to_string())?;
-        if read == 0 {
+fn redact_diagnostic_logs(mut text: String) -> String {
+    for home in [std::env::var("USERPROFILE"), std::env::var("HOME")]
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        let home = home.trim();
+        if home.len() >= 4 {
+            text = text.replace(home, "[user-path]");
+            text = text.replace(&home.replace('\\', "/"), "[user-path]");
+        }
+    }
+
+    text = redact_user_paths(&text);
+    text = redact_urls(&text);
+    redact_sensitive_values(&text)
+}
+
+fn redact_user_paths(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some((start, _)) = ["C:/Users/", "C:\\Users\\", "/Users/", "/home/"]
+        .iter()
+        .filter_map(|marker| rest.find(marker).map(|start| (start, *marker)))
+        .min_by_key(|(start, _)| *start)
+    {
+        result.push_str(&rest[..start]);
+        let end = rest[start..]
+            .find(|character: char| character.is_whitespace() || "\"',;)]}".contains(character))
+            .map(|offset| start + offset)
+            .unwrap_or(rest.len());
+        result.push_str("[user-path]");
+        rest = &rest[end..];
+        if rest.is_empty() {
             break;
         }
-        zip.write_all(&buffer[..read])
-            .map_err(|error| error.to_string())?;
     }
-    Ok(())
+    result.push_str(rest);
+    result
+}
+
+fn redact_urls(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some((start, marker)) = ["https://", "http://"]
+        .iter()
+        .filter_map(|marker| rest.find(marker).map(|start| (start, *marker)))
+        .min_by_key(|(start, _)| *start)
+    {
+        result.push_str(&rest[..start]);
+        let end = rest[start + marker.len()..]
+            .find(|character: char| character.is_whitespace() || "\"'<>,)]}".contains(character))
+            .map(|offset| start + marker.len() + offset)
+            .unwrap_or(rest.len());
+        result.push_str("[url]");
+        rest = &rest[end..];
+    }
+    result.push_str(rest);
+    result
+}
+
+fn redact_sensitive_values(text: &str) -> String {
+    const KEYS: [&str; 17] = [
+        "token",
+        "password",
+        "secret",
+        "credential",
+        "authorization",
+        "api_key",
+        "apikey",
+        "bearer",
+        "title",
+        "description",
+        "content",
+        "body",
+        "text",
+        "document",
+        "board",
+        "task",
+        "note",
+    ];
+
+    let lower = text.to_ascii_lowercase();
+    let mut result = String::with_capacity(text.len());
+    let mut index = 0;
+    while index < text.len() {
+        let key = KEYS.iter().find(|key| {
+            lower[index..].starts_with(**key)
+                && (index == 0 || !lower.as_bytes()[index - 1].is_ascii_alphanumeric())
+                && (index + key.len() == text.len()
+                    || !lower.as_bytes()[index + key.len()].is_ascii_alphanumeric())
+        });
+        let Some(key) = key else {
+            let character = text[index..].chars().next().unwrap();
+            result.push(character);
+            index += character.len_utf8();
+            continue;
+        };
+
+        let key_end = index + key.len();
+        let mut value_start = key_end;
+        if matches!(text.as_bytes().get(value_start), Some(b'"' | b'\'')) {
+            value_start += 1;
+        }
+        while value_start < text.len() && text.as_bytes()[value_start].is_ascii_whitespace() {
+            value_start += 1;
+        }
+        if value_start >= text.len() || !matches!(text.as_bytes()[value_start], b'=' | b':') {
+            result.push_str(&text[index..key_end]);
+            index = key_end;
+            continue;
+        }
+        value_start += 1;
+        while value_start < text.len() && text.as_bytes()[value_start].is_ascii_whitespace() {
+            value_start += 1;
+        }
+        let quoted = text.as_bytes().get(value_start).copied() == Some(b'"')
+            || text.as_bytes().get(value_start).copied() == Some(b'\'');
+        if quoted {
+            value_start += 1;
+        }
+        let value_end = text[value_start..]
+            .find(|character: char| {
+                if quoted {
+                    character == '"' || character == '\''
+                } else {
+                    character.is_whitespace() || ",;}]\")".contains(character)
+                }
+            })
+            .map(|offset| value_start + offset)
+            .unwrap_or(text.len());
+        result.push_str(&text[index..value_start]);
+        result.push_str("[redacted]");
+        index = value_end;
+    }
+    result
 }
 
 #[tauri::command]
-pub fn export_debug_logs(app: AppHandle, destination: String) -> Result<(), String> {
+pub fn export_debug_information(app: AppHandle, destination: String) -> Result<(), String> {
     let destination = PathBuf::from(destination);
     if destination.file_name().is_none()
         || !destination
@@ -112,12 +261,20 @@ pub fn export_debug_logs(app: AppHandle, destination: String) -> Result<(), Stri
     let mut zip = ZipWriter::new(output);
     for source in log_files(&log_dir(&app)?)? {
         if let Some(name) = source.file_name().and_then(|name| name.to_str()) {
-            add_file(&mut zip, &source, &format!("logs/{name}"))?;
+            let contents = fs::read_to_string(&source).map_err(|error| error.to_string())?;
+            zip.start_file(
+                format!("logs/{name}"),
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
+            )
+            .map_err(|error| error.to_string())?;
+            zip.write_all(redact_diagnostic_logs(contents).as_bytes())
+                .map_err(|error| error.to_string())?;
         }
     }
 
     let info = SystemInfo {
         app_version: app.package_info().version.to_string(),
+        build_commit: build_commit(),
         os: std::env::consts::OS,
         architecture: std::env::consts::ARCH,
         exported_at: chrono::Local::now().to_rfc3339(),
@@ -134,6 +291,26 @@ pub fn export_debug_logs(app: AppHandle, destination: String) -> Result<(), Stri
     )
     .map_err(|error| error.to_string())?;
     zip.finish().map_err(|error| error.to_string())?;
-    log::info!(target: "diagnostics", "Exported debug logs");
+    log::info!(target: "diagnostics", "Exported debug information");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_diagnostic_logs;
+
+    #[test]
+    fn redacts_paths_urls_and_secret_values() {
+        let redacted = redact_diagnostic_logs(
+            "failed C:/Users/Alice/private-board.ts token=secret-value https://private.example/invite {\"title\":\"Private board\"}"
+                .into(),
+        );
+        assert!(!redacted.contains("Alice"));
+        assert!(!redacted.contains("secret-value"));
+        assert!(!redacted.contains("private.example"));
+        assert!(!redacted.contains("Private board"));
+        assert!(redacted.contains("[user-path]"));
+        assert!(redacted.contains("[redacted]"));
+        assert!(redacted.contains("[url]"));
+    }
 }

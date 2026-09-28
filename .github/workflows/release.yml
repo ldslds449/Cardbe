@@ -50,6 +50,7 @@ jobs:
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARDBE_BUILD_COMMIT: ${{ github.sha }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Cardbe ${{ github.ref_name }}

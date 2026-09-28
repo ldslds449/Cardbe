@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -7,6 +7,18 @@ const cli = path.join(root, "node_modules", "@tauri-apps", "cli", "tauri.js");
 const args = process.argv.slice(2);
 const env = { ...process.env };
 const devHost = process.env.TAURI_DEV_HOST || "127.0.0.1";
+
+if (!env.CARDBE_BUILD_COMMIT) {
+  try {
+    env.CARDBE_BUILD_COMMIT = execFileSync(
+      "git",
+      ["-c", `safe.directory=${root}`, "rev-parse", "HEAD"],
+      { cwd: root, encoding: "utf8" },
+    ).trim();
+  } catch {
+    // Source archives may not contain the git executable or metadata.
+  }
+}
 
 if (args[0] === "dev") {
   const hasPort = args[1] && /^\d+$/.test(args[1]);
