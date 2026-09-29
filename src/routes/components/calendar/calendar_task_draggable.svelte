@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { useDraggable } from "@dnd-kit-svelte/svelte";
+  import {
+    KeyboardSensor,
+    PointerSensor,
+    useDraggable,
+  } from "@dnd-kit-svelte/svelte";
   import type { Snippet } from "svelte";
 
   interface CalendarTaskDraggableProps {
@@ -20,10 +24,16 @@
     children,
   }: CalendarTaskDraggableProps = $props();
 
+  const dnd_sensors = [
+    PointerSensor.configure({ preventActivation: () => false }),
+    KeyboardSensor,
+  ];
+
   const { ref, isDragging } = useDraggable({
     id: () => `calendar-task:${task_id}:${instance_key}`,
     type: "calendar-task",
     disabled: () => disabled,
+    sensors: dnd_sensors,
   });
 </script>
 
