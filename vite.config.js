@@ -2,6 +2,8 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 import path from "path";
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 const host = process.env.TAURI_DEV_HOST;
 const port = Number(process.env.CARDBE_DEV_PORT ?? "1420");
@@ -11,14 +13,23 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 const isCustomPort = port !== 1420;
 const ownGeneratedDir = `/.svelte-kit-dev-${port}/`;
 
+// Keep the editor's base config available when only a custom-port instance runs.
+if (isCustomPort && !existsSync(".svelte-kit/tsconfig.json")) {
+  execFileSync(
+    process.execPath,
+    [path.resolve("node_modules/@sveltejs/kit/svelte-kit.js"), "sync"],
+    { stdio: "inherit", env: { ...process.env, CARDBE_DEV_PORT: "1420" } },
+  );
+}
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [tailwindcss(), sveltekit()],
-  // ponytail: custom ports skip the fixed root tsconfig; SvelteKit owns the generated config.
+  // Custom ports use their own generated config and dependency cache.
   ...(isCustomPort
     ? {
         cacheDir: `node_modules/.vite-cardbe-${port}`,
-        esbuild: { tsconfigRaw: JSON.stringify({ compilerOptions: {} }) },
+        tsconfig: path.resolve(`.svelte-kit-dev-${port}/tsconfig.json`),
       }
     : {}),
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
