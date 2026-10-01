@@ -1,5 +1,5 @@
 import { Time } from "@internationalized/date";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import {
   convert12HourTo24Hour,

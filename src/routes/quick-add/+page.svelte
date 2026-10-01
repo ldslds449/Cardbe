@@ -236,13 +236,12 @@
       console.error(caught);
       error = "Couldn't load your data. Please try again.";
     } finally {
-      if (generation !== column_load_generation) {
-        return;
+      if (generation === column_load_generation) {
+        loading = false;
+        await tick();
+        schedule_window_resize();
+        title_input?.focus();
       }
-      loading = false;
-      await tick();
-      schedule_window_resize();
-      title_input?.focus();
     }
   }
 

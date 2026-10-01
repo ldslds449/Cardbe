@@ -2,7 +2,7 @@ const CARD_REFERENCE_PATTERN = /\[\[([^\]\n|]+)\|(task_\d+)\]\]/g;
 const CARD_REFERENCE_HREF_PATTERN = /^#card-(task_\d+)$/;
 
 function escape_markdown_label(label: string): string {
-  return label.replace(/([\\\[\]])/g, "\\$1");
+  return label.replace(/([\\[\]])/g, "\\$1");
 }
 
 export function create_card_reference(title: string, task_id: string): string {

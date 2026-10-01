@@ -43,3 +43,4 @@ vite.config.ts.timestamp-*
 !.vscode/settings.json
 !.vscode/extensions.json
 .idea/
+.vitest/

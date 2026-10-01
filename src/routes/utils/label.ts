@@ -1,5 +1,10 @@
 export type LabelKind =
-  "owner" | "category" | "priority" | "status" | "effort" | "general";
+  | "owner"
+  | "category"
+  | "priority"
+  | "status"
+  | "effort"
+  | "general";
 
 export interface ParsedLabel {
   kind: LabelKind;

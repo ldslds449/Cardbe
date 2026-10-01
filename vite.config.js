@@ -1,5 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vite";
+import { defineConfig, lazyPlugins } from "vite-plus";
 import { sveltekit } from "@sveltejs/kit/vite";
 import path from "path";
 import { execFileSync } from "node:child_process";
@@ -23,8 +23,25 @@ if (isCustomPort && !existsSync(".svelte-kit/tsconfig.json")) {
 }
 
 // https://vite.dev/config/
-export default defineConfig(async () => ({
-  plugins: [tailwindcss(), sveltekit()],
+export default defineConfig({
+  lint: {
+    categories: { correctness: "error" },
+    rules: { curly: "error", "typescript/no-this-alias": "off" },
+  },
+  fmt: {
+    printWidth: 80,
+    sortPackageJson: false,
+    svelte: {},
+    ignorePatterns: ["pnpm-lock.yaml"],
+  },
+  test: {
+    // Vitest v4 compatibility: preserve mock call history.
+    // Remove after tests no longer rely on calls from setup or earlier tests.
+    // https://viteplus.dev/guide/vitest-v5#remove-unneeded-compatibility-settings
+    // https://vitest.dev/guide/migration/#clearmocks-is-enabled-by-default
+    clearMocks: false,
+  },
+  plugins: lazyPlugins(() => [tailwindcss(), sveltekit()]),
   // Custom ports use their own generated config and dependency cache.
   ...(isCustomPort
     ? {
@@ -69,4 +86,4 @@ export default defineConfig(async () => ({
     // Vite's default 500 kB advisory threshold.
     chunkSizeWarningLimit: 800,
   },
-}));
+});

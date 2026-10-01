@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { create_task, create_task_item } from "../type/task.svelte";
 import { parse_portable_task, serialize_portable_task } from "./task-transfer";

@@ -3,7 +3,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { exists, writeFile } from "@tauri-apps/plugin-fs";
 import { invoke } from "@tauri-apps/api/core";
 import type { Color, PDFFont, PDFPage } from "pdf-lib";
-import type { CalendarDay, CalendarTask, CalendarViewMode } from "./calendar";
+import type { CalendarDay, CalendarTask } from "./calendar";
 
 type FontkitModule = typeof import("@pdf-lib/fontkit");
 type FontkitFont = ReturnType<FontkitModule["create"]>;
@@ -1473,6 +1473,8 @@ function load_calendar_pdf_font(): Promise<ArrayBuffer> {
 }
 
 function calendar_pdf_needs_outlines(pages: PreparedCalendarPage[]): boolean {
+  // Non-ASCII text needs font outlines; the ASCII range includes control characters.
+  /* oxlint-disable no-control-regex */
   return pages.some(
     (page) =>
       /[^\x00-\x7f]/.test(page.title) ||
@@ -1484,6 +1486,7 @@ function calendar_pdf_needs_outlines(pages: PreparedCalendarPage[]): boolean {
         ),
       ),
   );
+  /* oxlint-enable no-control-regex */
 }
 
 export async function render_calendar_export(
@@ -1551,6 +1554,8 @@ function safe_filename_stem(filename: string): string {
   const without_extension = filename.trim().replace(/\.(png|pdf)$/i, "");
   return (
     without_extension
+      // Windows filenames cannot contain ASCII control characters.
+      // oxlint-disable-next-line no-control-regex
       .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
       .replace(/\s+/g, " ") || "calendar"
   );

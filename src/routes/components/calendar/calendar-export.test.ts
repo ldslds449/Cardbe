@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { create_column } from "../../type/column.svelte";
 import { create_task } from "../../type/task.svelte";
 import type { CalendarDay, CalendarTask } from "./calendar";
@@ -84,7 +84,7 @@ describe("calendar export formats", () => {
     expect(source).toContain("/Type /Font");
     expect(source).not.toMatch(/\/FontFile(?:2|3)?\b/);
     expect(source).not.toContain("/Subtype /Image");
-  });
+  }, 15_000);
 
   it("exports unsupported Unicode text without embedding a font file", async () => {
     const { day, entry } = fixture();

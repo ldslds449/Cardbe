@@ -5,16 +5,16 @@
   "type": "module",
   "scripts": {
     "prepare": "git config core.hooksPath .githooks",
-    "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
-    "format:check": "prettier --check . && cargo fmt --check --manifest-path src-tauri/Cargo.toml",
-    "lint": "biome lint --only=style/useBlockStatements . && cargo clippy --manifest-path src-tauri/Cargo.toml --locked",
-    "lint:fix": "biome lint --only=style/useBlockStatements --write . && cargo clippy --fix --allow-dirty --manifest-path src-tauri/Cargo.toml --locked",
+    "format": "vp fmt && cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format:check": "vp fmt --check && cargo fmt --check --manifest-path src-tauri/Cargo.toml",
+    "lint": "vp lint && cargo clippy --manifest-path src-tauri/Cargo.toml --locked",
+    "lint:fix": "vp lint --fix && cargo clippy --fix --allow-dirty --manifest-path src-tauri/Cargo.toml --locked",
     "dev": "node scripts/dev.mjs",
-    "frontend:dev": "vite dev",
-    "frontend:build": "vite build",
-    "frontend:preview": "vite preview",
-    "frontend:test": "vitest run",
-    "frontend:test:watch": "vitest",
+    "frontend:dev": "vp dev",
+    "frontend:build": "vp build",
+    "frontend:preview": "vp preview",
+    "frontend:test": "vp test run",
+    "frontend:test:watch": "vp test",
     "test": "pnpm frontend:test && cargo test --manifest-path src-tauri/Cargo.toml --locked",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && pnpm format:check && pnpm lint",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -39,7 +39,6 @@
     "svelte-exmarkdown": "^5.0.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.14",
     "@internationalized/date": "^3.10.1",
     "@shikijs/rehype": "^3.17.0",
     "@sveltejs/adapter-static": "^3.0.6",
@@ -50,8 +49,6 @@
     "@types/node": "^24.3.3",
     "bits-ui": "^2.14.4",
     "clsx": "^2.1.1",
-    "prettier": "^3.5.3",
-    "prettier-plugin-svelte": "^3.4.0",
     "shiki": "^3.17.0",
     "svelte": "^5.55.7",
     "svelte-check": "^4.0.0",
@@ -61,7 +58,14 @@
     "tailwindcss": "^4.0.0",
     "tw-animate-css": "^1.3.8",
     "typescript": "~5.6.2",
-    "vite": "^8.3.1",
-    "vitest": "^4.1.11"
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.8.1",
+      "onFail": "download"
+    }
   }
 }

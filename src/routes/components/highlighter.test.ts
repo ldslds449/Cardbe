@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import rehypeShikiFromHighlighter from "@shikijs/rehype/core";
 import { createParser } from "svelte-exmarkdown/utils";
 import { getHighlighter, loadHighlightLanguage } from "./highlighter.svelte";

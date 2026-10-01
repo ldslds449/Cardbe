@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import type { Column } from "../../type/column.svelte";
 import { create_task } from "../../type/task.svelte";

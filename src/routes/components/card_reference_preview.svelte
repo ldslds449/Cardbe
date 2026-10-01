@@ -18,7 +18,7 @@
   function preview_description(description: string): string {
     return description
       .replace(/\[\[([^\]|]+)\|task_\d+\]\]/g, "$1")
-      .replace(/[*_`>#\[\]()~-]/g, "")
+      .replace(/[*_`>#[\]()~-]/g, "")
       .replace(/\s+/g, " ")
       .trim();
   }

@@ -2,8 +2,7 @@
 
 set -eu
 
-pnpm format:check
-pnpm lint
+pnpm check
 
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "gitleaks is required for the pre-commit secret scan." >&2

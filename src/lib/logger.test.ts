@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const invoke = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));

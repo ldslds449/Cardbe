@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { create_note_queue } from "./note-queue";
 
 describe("note persistence queue", () => {

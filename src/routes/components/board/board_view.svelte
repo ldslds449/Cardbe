@@ -200,7 +200,8 @@
     let origin: { x: number; y: number } | undefined;
     return {
       controller: undefined as
-        { activate: (event: PointerEvent) => void } | undefined,
+        | { activate: (event: PointerEvent) => void }
+        | undefined,
       onEvent(event: PointerEvent) {
         if (event.type === "pointerdown") {
           if (
