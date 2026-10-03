@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { formatNumber } from "$lib/i18n";
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import { toggleMode } from "mode-watcher";
   import BellIcon from "@lucide/svelte/icons/bell";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
@@ -24,6 +27,7 @@
   import * as Menubar from "$lib/components/ui/menubar/index.js";
   import { cn } from "$lib/utils";
   import HelpDialogs from "./help_dialogs.svelte";
+  import LanguageSettings from "./language_settings.svelte";
 
   import { board } from "../../board.svelte";
   import type { WorkspaceView } from "./workspace";
@@ -86,6 +90,7 @@
     onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
   } = $props();
   let about_open = $state(false);
+  let settings_open = $state(false);
   let diagnostics_open = $state(false);
 </script>
 
@@ -96,10 +101,10 @@
       size="sm"
       class="h-8 shrink-0 gap-1.5 px-2.5 text-sm font-semibold"
       onclick={() => (board_panel_open = !board_panel_open)}
-      aria-label={board_panel_open ? "Close boards" : "Open boards"}
+      aria-label={board_panel_open ? m.board_close() : m.board_open()}
       aria-expanded={board_panel_open}
       aria-controls="board-drawer"
-      title={board_panel_open ? "Close boards" : "Open boards"}
+      title={board_panel_open ? m.board_close() : m.board_open()}
     >
       <LayoutDashboardIcon class="size-4" />
       <span>Cardbe</span>
@@ -116,34 +121,34 @@
         class="flex flex-row items-center gap-0.5 rounded-md border bg-muted/30 p-0.5"
       >
         <Menubar.Menu>
-          <Menubar.Trigger>File</Menubar.Trigger>
+          <Menubar.Trigger>{m.menu_file()}</Menubar.Trigger>
           <Menubar.Content>
             <Menubar.Item onclick={() => void onPrepareTaskImport()}
-              >Import Task</Menubar.Item
+              >{m.task_import()}</Menubar.Item
             >
             <Menubar.Item onclick={() => void board.export_to_file()}
-              >Export This Board…</Menubar.Item
+              >{m.menu_export_board()}</Menubar.Item
             >
             <Menubar.Item onclick={() => void onPrepareImport()}
-              >Import Board as New…</Menubar.Item
+              >{m.menu_import_board()}</Menubar.Item
             >
             <Menubar.Separator />
             <Menubar.Item onclick={() => void onExportAllBoards()}
-              >Back Up Everything…</Menubar.Item
+              >{m.menu_backup()}</Menubar.Item
             >
             <Menubar.Item onclick={() => void onImportAllBoards()}
-              >Restore Everything…</Menubar.Item
+              >{m.menu_restore()}</Menubar.Item
             >
           </Menubar.Content>
         </Menubar.Menu>
         <Menubar.Menu>
-          <Menubar.Trigger>Edit</Menubar.Trigger>
+          <Menubar.Trigger>{m.common_edit()}</Menubar.Trigger>
           <Menubar.Content>
             <Menubar.Item
               disabled={!board.can_undo || board.undo_in_progress}
               onclick={() => void board.undo()}
             >
-              Undo
+              {m.menu_undo()}
               <Menubar.Shortcut>
                 <Kbd.Group>
                   <Kbd.Root>Ctrl</Kbd.Root>
@@ -154,11 +159,11 @@
           </Menubar.Content>
         </Menubar.Menu>
         <Menubar.Menu>
-          <Menubar.Trigger>Board</Menubar.Trigger>
+          <Menubar.Trigger>{m.board_title()}</Menubar.Trigger>
           <Menubar.Content>
             {#if !read_only}
               <Menubar.Item onclick={onAddTask}>
-                New Task
+                {m.task_new()}
                 <Menubar.Shortcut>
                   <Kbd.Group>
                     <Kbd.Root>Ctrl</Kbd.Root>
@@ -168,7 +173,7 @@
                 </Menubar.Shortcut>
               </Menubar.Item>
               <Menubar.Item onclick={onAddColumn}>
-                New Column
+                {m.column_new()}
                 <Menubar.Shortcut>
                   <Kbd.Group>
                     <Kbd.Root>Ctrl</Kbd.Root>
@@ -180,23 +185,31 @@
               <Menubar.Separator />
             {/if}
             <Menubar.Item onclick={onOpenIrohShare}
-              >Board sharing...</Menubar.Item
+              >{m.board_sharing()}</Menubar.Item
             >
             <Menubar.Item onclick={onOpenBoardShare}
-              >Web publish...</Menubar.Item
+              >{m.board_publish_open()}</Menubar.Item
             >
           </Menubar.Content>
         </Menubar.Menu>
         <Menubar.Menu>
-          <Menubar.Trigger>Help</Menubar.Trigger>
+          <Menubar.Trigger>{m.menu_help()}</Menubar.Trigger>
           <Menubar.Content>
             <Menubar.Item onclick={() => (about_open = true)}>
-              About Cardbe
+              {m.menu_about()}
             </Menubar.Item>
             <Menubar.Separator />
             <Menubar.Item onclick={() => (diagnostics_open = true)}>
-              Diagnostics…
+              {m.menu_diagnostics()}
             </Menubar.Item>
+          </Menubar.Content>
+        </Menubar.Menu>
+        <Menubar.Menu>
+          <Menubar.Trigger>{m.settings_title()}</Menubar.Trigger>
+          <Menubar.Content>
+            <Menubar.Item onclick={() => (settings_open = true)}
+              >{m.settings_language()}</Menubar.Item
+            >
           </Menubar.Content>
         </Menubar.Menu>
       </div>
@@ -209,9 +222,9 @@
         class="shrink-0 gap-1.5 border-primary/40 bg-primary/5 text-primary"
         onclick={onOpenDeviceRequests}
         aria-label={`${pending_device_count} device approval requests`}
-        title="Review device approval requests"
+        title={m.ui_review_device_approval_requests()}
         ><ShieldCheckIcon class="size-4" />
-        <span class="hidden xl:inline">Device requests</span><span
+        <span class="hidden xl:inline">{m.ui_device_requests()}</span><span
           class="rounded-full bg-primary px-1.5 text-xs text-primary-foreground"
           >{pending_device_count}</span
         ></Button
@@ -223,12 +236,14 @@
         size="sm"
         class="shrink-0 gap-1.5 border-destructive/40 bg-destructive/5 text-destructive"
         onclick={onOpenRemovedAccess}
-        aria-label={`${removed_access_count} shared boards need access`}
-        title="Request access to shared boards again"
+        aria-label={m.share_boards_need_access({
+          count: formatNumber(removed_access_count),
+        })}
+        title={m.ui_request_access_to_shared_boards_again()}
         ><LinkIcon class="size-4" />
-        <span>Request access again</span><span
+        <span>{m.share_request_access_again()}</span><span
           class="rounded-full bg-destructive px-1.5 text-xs text-white"
-          >{removed_access_count}</span
+          >{formatNumber(removed_access_count)}</span
         ></Button
       >
     {/if}
@@ -242,7 +257,7 @@
             "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive",
         )}
         onclick={onOpenBoardShare}
-        aria-label={`Open Web publish. ${web_publish_detail}`}
+        aria-label={m.share_open_publish({ detail: web_publish_detail })}
         title={web_publish_detail}
       >
         <span class="relative">
@@ -258,7 +273,7 @@
             )}
           ></span>
         </span>
-        <span class="hidden xl:inline">Web publish</span>
+        <span class="hidden xl:inline">{m.board_publish()}</span>
         <span class="text-xs tabular-nums text-muted-foreground"
           >{web_publish_count}</span
         >
@@ -271,23 +286,21 @@
         size="sm"
         class="shrink-0 gap-1.5"
         onclick={onOpenAllTasks}
-        aria-label="Open Task Explorer"
-        title="Open Task Explorer"
+        aria-label={m.task_explorer_open()}
+        title={m.task_explorer_open()}
       >
         <ListTodoIcon class="size-4" />
-        <span class="hidden lg:inline">Task Explorer</span>
+        <span class="hidden lg:inline">{m.task_explorer()}</span>
       </Button>
 
       <InputGroup.Root
         class="min-w-0 w-36 shrink bg-muted/40 transition-colors focus-within:bg-background sm:w-44 lg:w-60"
-        title={search_error
-          ? "Search unavailable. Retry or clear the search."
-          : undefined}
+        title={search_error ? m.board_search_error() : undefined}
       >
         <InputGroup.Input
-          aria-label="Search this board"
+          aria-label={m.board_search_tasks()}
           aria-busy={search_pending}
-          placeholder="Search this board"
+          placeholder={m.board_search_tasks()}
           bind:value={search_text}
         />
         <InputGroup.Addon>
@@ -300,8 +313,8 @@
         {#if search_text.length > 0}
           <InputGroup.Addon align="inline-end">
             <InputGroup.Button
-              aria-label="Clear search"
-              title="Clear search"
+              aria-label={m.board_clear_search()}
+              title={m.board_clear_search()}
               size="icon-xs"
               onclick={() => (search_text = "")}
             >
@@ -311,9 +324,9 @@
         {/if}
         <span class="sr-only" aria-live="polite">
           {#if search_pending}
-            Searching tasks
+            {m.board_searching()}
           {:else if search_error}
-            Search unavailable. Retry or clear the search.
+            {m.board_search_error()}
           {/if}
         </span>
       </InputGroup.Root>
@@ -328,8 +341,8 @@
         size="icon-sm"
         class="flex-none"
         aria-pressed={note_open}
-        aria-label={note_open ? "Close notes" : "Open notes"}
-        title={note_open ? "Close notes" : "Open notes"}
+        aria-label={note_open ? m.notes_close() : m.notes_open()}
+        title={note_open ? m.notes_close() : m.notes_open()}
       >
         <StickyNoteIcon />
       </Button>
@@ -339,8 +352,8 @@
         variant="outline"
         size="icon-sm"
         class="flex-none"
-        aria-label="Open task templates"
-        title="Open task templates"
+        aria-label={m.task_template_open()}
+        title={m.task_template_open()}
       >
         <LayoutTemplateIcon />
       </Button>
@@ -355,11 +368,11 @@
         disabled={board.notification_setting_updating}
         aria-pressed={board.notify_enabled}
         aria-label={board.notify_enabled
-          ? "Disable notifications"
-          : "Enable notifications"}
+          ? m.settings_notify_disable()
+          : m.settings_notify_enable()}
         title={board.notify_enabled
-          ? "Disable notifications"
-          : "Enable notifications"}
+          ? m.settings_notify_disable()
+          : m.settings_notify_enable()}
       >
         <BellIcon
           class={cn(
@@ -377,9 +390,7 @@
 
       <div
         class="size-8 flex-none"
-        title={selected_view !== "board"
-          ? "Available in Board view"
-          : undefined}
+        title={selected_view !== "board" ? m.workspace_board_only() : undefined}
       >
         <Button
           onclick={() => {
@@ -390,15 +401,15 @@
           disabled={selected_view !== "board"}
           aria-pressed={task_expand_mode}
           aria-label={selected_view !== "board"
-            ? "Task detail expansion is available in Board view"
+            ? m.task_details_board()
             : task_expand_mode
-              ? "Hide task details"
-              : "Show task details"}
+              ? m.task_details_hide()
+              : m.task_details_show()}
           title={selected_view !== "board"
             ? undefined
             : task_expand_mode
-              ? "Hide task details"
-              : "Show task details"}
+              ? m.task_details_hide()
+              : m.task_details_show()}
         >
           <EyeIcon
             class={cn(
@@ -420,8 +431,8 @@
         variant="outline"
         size="icon-sm"
         class="flex-none"
-        aria-label="Toggle color theme"
-        title="Toggle color theme"
+        aria-label={m.settings_theme_toggle()}
+        title={m.settings_theme_toggle()}
       >
         <SunIcon
           class="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 !transition-all dark:-rotate-90 dark:scale-0"
@@ -440,3 +451,4 @@
   {update_check_in_progress}
   {onCheckForUpdates}
 />
+<LanguageSettings bind:open={settings_open} />

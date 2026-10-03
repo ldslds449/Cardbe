@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { formatNumber } from "$lib/i18n";
+  import { getLocale } from "$lib/i18n";
+  import * as m from "$lib/paraglide/messages.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -88,7 +91,13 @@
     read_only = false,
   }: CalendarViewProps = $props();
 
-  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const weekdays = $derived(
+    Array.from({ length: 7 }, (_, day) =>
+      new Date(2024, 0, 7 + day).toLocaleDateString(getLocale(), {
+        weekday: "short",
+      }),
+    ),
+  );
   let today = $state(initial_today);
   let delete_confirm_open = $state(false);
   let delete_target = $state<Task | null>(null);
@@ -99,7 +108,7 @@
   let export_dialog_open = $state(false);
 
   function format_time(date: Date): string {
-    return date.toLocaleTimeString("en", {
+    return date.toLocaleTimeString(getLocale(), {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -245,19 +254,26 @@
 
   function format_period_label(date: Date, mode: CalendarViewMode): string {
     if (mode === "month") {
-      return date.toLocaleDateString("en", { year: "numeric", month: "long" });
+      return date.toLocaleDateString(getLocale(), {
+        year: "numeric",
+        month: "long",
+      });
     }
     const start = start_of_day(date);
     start.setDate(start.getDate() - start.getDay());
     const end = new Date(start);
     end.setDate(end.getDate() + 6);
     if (start.getFullYear() !== end.getFullYear()) {
-      return `${start.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })} - ${end.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })}`;
+      return `${start.toLocaleDateString(getLocale(), { month: "short", day: "numeric", year: "numeric" })} - ${end.toLocaleDateString(getLocale(), { month: "short", day: "numeric", year: "numeric" })}`;
     }
     if (start.getMonth() !== end.getMonth()) {
-      return `${start.toLocaleDateString("en", { month: "long", day: "numeric" })} - ${end.toLocaleDateString("en", { month: "long", day: "numeric", year: "numeric" })}`;
+      return `${start.toLocaleDateString(getLocale(), { month: "long", day: "numeric" })} - ${end.toLocaleDateString(getLocale(), { month: "long", day: "numeric", year: "numeric" })}`;
     }
-    return `${start.toLocaleDateString("en", { month: "long", day: "numeric" })}-${end.getDate()}, ${end.getFullYear()}`;
+    return new Intl.DateTimeFormat(getLocale(), {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }).formatRange(start, end);
   }
 
   let visible_period_label = $derived(
@@ -311,7 +327,7 @@
 
 <section
   class="flex min-w-[820px] flex-col gap-4 p-5"
-  aria-label="Task due date calendar"
+  aria-label={m.calendar_label()}
 >
   <header
     class="sticky top-0 z-20 -mx-5 -mt-5 flex items-center justify-between gap-4 border-b bg-background/95 px-5 py-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/85"
@@ -324,43 +340,42 @@
         </h2>
       </div>
       <p class="mt-1 text-sm text-muted-foreground">
-        {due_task_count}
-        {due_task_count === 1 ? "task" : "tasks"} with due dates
+        {m.calendar_due_summary({ count: due_task_count })}
         <span class="mx-1.5" aria-hidden="true">·</span>
         <span class="font-medium text-foreground">
-          {current_period_task_count}
-          {current_period_task_count === 1 ? "entry" : "entries"}
-          this {view_mode}
+          {view_mode === "week"
+            ? m.calendar_week_summary({ count: current_period_task_count })
+            : m.calendar_month_summary({ count: current_period_task_count })}
           {#if current_period_preview_count > 0}
             <span class="font-normal text-muted-foreground">
-              ({current_period_preview_count}
-              recurring
-              {current_period_preview_count === 1 ? "preview" : "previews"})
+              ({m.calendar_recurring_summary({
+                count: current_period_preview_count,
+              })})
             </span>
           {/if}
         </span>
       </p>
       <div
         class="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground"
-        aria-label="Calendar item legend"
+        aria-label={m.calendar_legend()}
       >
         <span class="inline-flex items-center gap-1.5">
           <span
             class="size-2.5 rounded-sm border-2 border-foreground/60 bg-card shadow-xs"
           ></span>
-          Active
+          {m.explorer_active()}
         </span>
         <span class="inline-flex items-center gap-1.5 opacity-70">
           <span
             class="size-2.5 rounded-sm border border-dashed border-muted-foreground/60 bg-transparent"
           ></span>
-          Recurring preview
+          {m.calendar_recurring_preview()}
         </span>
         <span class="inline-flex items-center gap-1.5 opacity-55">
           <span
             class="size-2.5 rounded-sm border border-dotted border-muted-foreground/50 bg-muted/30"
           ></span>
-          Archived
+          {m.explorer_archived()}
         </span>
       </div>
     </div>
@@ -376,10 +391,12 @@
           }}
         >
           <DownloadIcon class="size-3.5" />
-          Export
+          {m.calendar_export()}
         </Button>
       {/if}
-      <Button variant="outline" size="sm" onclick={go_to_today}>Today</Button>
+      <Button variant="outline" size="sm" onclick={go_to_today}
+        >{m.calendar_go_today()}</Button
+      >
       <div
         class="flex overflow-hidden rounded-md border bg-background shadow-xs"
       >
@@ -387,8 +404,12 @@
           variant="ghost"
           size="icon-sm"
           class="rounded-none border-r"
-          aria-label={`Previous ${view_mode}`}
-          title={`Previous ${view_mode}`}
+          aria-label={view_mode === "week"
+            ? m.calendar_previous_week()
+            : m.calendar_previous_month()}
+          title={view_mode === "week"
+            ? m.calendar_previous_week()
+            : m.calendar_previous_month()}
           onclick={() => change_period(-1)}
         >
           <ChevronLeftIcon />
@@ -397,8 +418,12 @@
           variant="ghost"
           size="icon-sm"
           class="rounded-none"
-          aria-label={`Next ${view_mode}`}
-          title={`Next ${view_mode}`}
+          aria-label={view_mode === "week"
+            ? m.calendar_next_week()
+            : m.calendar_next_month()}
+          title={view_mode === "week"
+            ? m.calendar_next_week()
+            : m.calendar_next_month()}
           onclick={() => change_period(1)}
         >
           <ChevronRightIcon />
@@ -406,21 +431,21 @@
       </div>
       <div
         class="flex overflow-hidden rounded-md border bg-background shadow-xs"
-        aria-label="Calendar view"
+        aria-label={m.calendar_view()}
       >
         <Button
           variant={view_mode === "month" ? "secondary" : "ghost"}
           size="sm"
           class="rounded-none border-r"
           aria-pressed={view_mode === "month"}
-          onclick={() => set_view_mode("month")}>Month</Button
+          onclick={() => set_view_mode("month")}>{m.calendar_month()}</Button
         >
         <Button
           variant={view_mode === "week" ? "secondary" : "ghost"}
           size="sm"
           class="rounded-none"
           aria-pressed={view_mode === "week"}
-          onclick={() => set_view_mode("week")}>Week</Button
+          onclick={() => set_view_mode("week")}>{m.calendar_week()}</Button
         >
       </div>
       {#if !read_only}
@@ -429,29 +454,29 @@
             {#snippet child({ props })}
               <Button {...props} variant="outline" size="sm" class="gap-1.5">
                 <SlidersHorizontalIcon class="size-3.5" />
-                Display
+                {m.calendar_display()}
                 <Badge
                   variant="secondary"
                   class="ml-0.5 h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px] tabular-nums"
-                  >{enabled_display_option_count}</Badge
+                  >{formatNumber(enabled_display_option_count)}</Badge
                 >
               </Button>
             {/snippet}
           </DropdownMenu.Trigger>
           <DropdownMenu.Content align="end" class="min-w-48">
-            <DropdownMenu.Label>Calendar items</DropdownMenu.Label>
+            <DropdownMenu.Label>{m.calendar_items()}</DropdownMenu.Label>
             <DropdownMenu.Separator />
             <DropdownMenu.CheckboxItem
               bind:checked={show_recurring_previews}
               closeOnSelect={false}
             >
-              Show recurring previews
+              {m.calendar_show_recurring()}
             </DropdownMenu.CheckboxItem>
             <DropdownMenu.CheckboxItem
               bind:checked={show_archived}
               closeOnSelect={false}
             >
-              Show archived tasks
+              {m.calendar_show_archived()}
             </DropdownMenu.CheckboxItem>
           </DropdownMenu.Content>
         </DropdownMenu.Root>
@@ -480,9 +505,7 @@
           class={`group/day flex min-h-0 flex-col overflow-hidden bg-background p-2 ${
             day.in_current_month ? "" : "bg-muted/30 text-muted-foreground/50"
           } ${day.is_today ? "ring-2 ring-inset ring-primary/35" : ""}`}
-          title={read_only
-            ? undefined
-            : "Double-click empty space to add a task"}
+          title={read_only ? undefined : m.calendar_add_hint()}
           ondblclick={read_only
             ? undefined
             : () => onAddTask(new Date(day.date))}
@@ -500,7 +523,7 @@
             <div class="flex items-center gap-1">
               {#if day.tasks.length > 0}
                 <span class="text-[11px] tabular-nums text-muted-foreground"
-                  >{day.tasks.length}</span
+                  >{formatNumber(day.tasks.length)}</span
                 >
               {/if}
               {#if !read_only}
@@ -508,15 +531,14 @@
                   variant="ghost"
                   size="icon-sm"
                   class="size-6 opacity-0 transition-opacity group-hover/day:opacity-100 focus-visible:opacity-100"
-                  aria-label={`Add task due ${day.date.toLocaleDateString(
-                    "en",
-                    {
+                  aria-label={m.calendar_add_due({
+                    date: day.date.toLocaleDateString(getLocale(), {
                       year: "numeric",
                       month: "long",
                       day: "numeric",
-                    },
-                  )}`}
-                  title="Add task"
+                    }),
+                  })}
+                  title={m.calendar_add()}
                   onclick={(event) => {
                     event.stopPropagation();
                     onAddTask(new Date(day.date));
@@ -593,7 +615,7 @@
                           class="mt-0.5 h-4 w-fit gap-1 border border-foreground/20 bg-muted px-1 text-[9px] font-normal text-muted-foreground"
                         >
                           <ArchiveIcon class="size-2.5" />
-                          Archived
+                          {m.explorer_archived()}
                         </Badge>
                       {:else if entry.preview}
                         <Badge
@@ -601,7 +623,7 @@
                           class="mt-0.5 h-4 w-fit gap-1 border border-dashed border-muted-foreground/30 bg-transparent px-1 text-[9px] font-normal text-muted-foreground"
                         >
                           <Repeat2Icon class="size-2.5" />
-                          Preview
+                          {m.common_preview()}
                         </Badge>
                       {/if}
                       {#if entry.task.due_time && has_time(entry.task.due_time)}
@@ -629,8 +651,10 @@
                               variant="ghost"
                               size="icon-sm"
                               class="size-6 bg-card/90 text-muted-foreground shadow-sm hover:text-foreground"
-                              aria-label={`Actions for ${entry.task.title}`}
-                              title="Task actions"
+                              aria-label={m.explorer_actions_named({
+                                name: entry.task.title,
+                              })}
+                              title={m.task_menu()}
                             >
                               <EllipsisIcon class="size-3.5" />
                             </Button>
@@ -655,39 +679,39 @@
                                 : onViewTask(entry.task)}
                           >
                             <FullscreenIcon />
-                            View Details
+                            {m.task_view_details()}
                           </DropdownMenu.Item>
                           {#if entry.archived}
                             <DropdownMenu.Item
                               onclick={() => ask_to_unarchive(entry.task)}
                             >
                               <UndoIcon />
-                              Unarchive Task
+                              {m.calendar_unarchive()}
                             </DropdownMenu.Item>
                           {:else if !entry.preview}
                             <DropdownMenu.Item
                               onclick={() => onEditTask(entry.task)}
                             >
                               <PencilIcon />
-                              Edit Task
+                              {m.task_edit_action()}
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                               onclick={() => onDuplicateTask(entry.task)}
                             >
                               <CopyIcon />
-                              Duplicate Task
+                              {m.task_duplicate_action()}
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                               onclick={() => onSaveAsTemplate(entry.task)}
                             >
                               <LayoutTemplateIcon />
-                              Save as Template
+                              {m.task_template_save()}
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                               onclick={() => onExportTask(entry.task)}
                             >
                               <Share2Icon />
-                              Share Task
+                              {m.task_share()}
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                               onSelect={() => {
@@ -696,7 +720,7 @@
                               }}
                             >
                               <ArchiveIcon />
-                              Archive Task
+                              {m.task_archive_action()}
                             </DropdownMenu.Item>
                             <DropdownMenu.Separator />
                             <DropdownMenu.Item
@@ -704,7 +728,7 @@
                               onclick={() => ask_to_delete(entry.task)}
                             >
                               <TrashIcon />
-                              Delete Task
+                              {m.task_delete()}
                             </DropdownMenu.Item>
                           {/if}
                         </DropdownMenu.Content>

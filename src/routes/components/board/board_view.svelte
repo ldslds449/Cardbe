@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import {
     DragDropProvider,
     KeyboardSensor,
@@ -252,15 +254,14 @@
       <Empty.Media variant="icon">
         <SquirrelIcon />
       </Empty.Media>
-      <Empty.Title>No Column</Empty.Title>
+      <Empty.Title>{m.board_columns_empty()}</Empty.Title>
       <Empty.Description>
-        You haven't added any column yet. Get started by adding your first
-        column!
+        {m.board_columns_empty_description()}
       </Empty.Description>
     </Empty.Header>
     <Empty.Content>
       {#if !read_only}
-        <Button onclick={onAddColumn}>Add Column</Button>
+        <Button onclick={onAddColumn}>{m.column_create()}</Button>
       {/if}
     </Empty.Content>
   </Empty.Root>
@@ -273,7 +274,7 @@
   >
     {#if search_text.trim() && search_task_ids?.size === 0}
       <p class="mb-4 text-sm text-muted-foreground" role="status">
-        No cards match “{search_text.trim()}”.
+        {m.board_search_empty({ query: search_text.trim() })}
       </p>
     {/if}
     <div class="flex min-h-full flex-row space-x-4">

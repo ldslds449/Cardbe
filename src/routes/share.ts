@@ -1,4 +1,6 @@
-import type { Column } from "./type/column.svelte";
+import * as m from "$lib/paraglide/messages.js";
+import { formatNumber } from "$lib/i18n";
+import { get_column_id, type Column } from "./type/column.svelte";
 import { serialize_task, type TaskSerialized } from "./type/task.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { managed_share_state } from "./share-state.svelte";
@@ -78,14 +80,6 @@ export function resolve_share_selection(
   };
 }
 
-function numeric_id(value: string, prefix: string): number {
-  const match = value.match(new RegExp(`^${prefix}_(\\d+)$`));
-  if (!match) {
-    throw new Error(`Invalid ${prefix} ID: ${value}`);
-  }
-  return Number.parseInt(match[1], 10);
-}
-
 export function build_share_snapshot(
   columns: Column[],
   selected_column_ids: string[],
@@ -95,11 +89,11 @@ export function build_share_snapshot(
 ): ShareSnapshot {
   const normalized_title = title.trim();
   if (!normalized_title) {
-    throw new Error("Enter a name for the shared board");
+    throw new Error(m.share_name_required());
   }
   if (normalized_title.length > MAX_SHARE_TITLE_LENGTH) {
     throw new Error(
-      `Board name must be ${MAX_SHARE_TITLE_LENGTH} characters or fewer`,
+      m.share_name_limit({ count: formatNumber(MAX_SHARE_TITLE_LENGTH) }),
     );
   }
 
@@ -108,7 +102,7 @@ export function build_share_snapshot(
   const shared_columns = columns
     .filter((column) => selected.has(column.id))
     .map((column) => ({
-      id: numeric_id(column.id, "column"),
+      id: get_column_id(column.id),
       name: column.name,
       color: column.color,
       tasks: column.tasks
@@ -117,11 +111,11 @@ export function build_share_snapshot(
     }));
 
   if (shared_columns.length === 0) {
-    throw new Error("Select at least one column to share");
+    throw new Error(m.share_column_required());
   }
   if (shared_columns.length > MAX_SHARED_COLUMNS) {
     throw new Error(
-      `A share can contain at most ${MAX_SHARED_COLUMNS} columns`,
+      m.share_column_limit({ count: formatNumber(MAX_SHARED_COLUMNS) }),
     );
   }
   const task_count = shared_columns.reduce(
@@ -129,7 +123,9 @@ export function build_share_snapshot(
     0,
   );
   if (task_count > MAX_SHARED_TASKS) {
-    throw new Error(`A share can contain at most ${MAX_SHARED_TASKS} tasks`);
+    throw new Error(
+      m.share_task_limit({ count: formatNumber(MAX_SHARED_TASKS) }),
+    );
   }
 
   return {
@@ -180,7 +176,7 @@ export function parse_requested_share_link(value: string): RequestedShareLink {
   try {
     url = new URL(normalized);
   } catch {
-    throw new Error("Enter a valid Cardbe share link or share ID");
+    throw new Error(m.share_link_invalid());
   }
 
   const match = url.pathname.match(/^\/share\/([A-Za-z0-9_-]{22,64})$/);
@@ -196,7 +192,7 @@ export function parse_requested_share_link(value: string): RequestedShareLink {
     port < 1 ||
     port > 65_535
   ) {
-    throw new Error("Enter a valid Cardbe share link or share ID");
+    throw new Error(m.share_link_invalid());
   }
 
   return { id: match[1], preferred_port: port };

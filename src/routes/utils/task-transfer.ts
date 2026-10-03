@@ -1,3 +1,4 @@
+import * as m from "$lib/paraglide/messages.js";
 import {
   create_task,
   create_task_item,
@@ -59,7 +60,7 @@ class BinaryReader {
 
   private take(length: number): Uint8Array {
     if (length < 0 || this.offset + length > this.bytes.length) {
-      throw new Error("The task sharing text is incomplete");
+      throw new Error(m.task_transfer_incomplete());
     }
     const result = this.bytes.subarray(this.offset, this.offset + length);
     this.offset += length;
@@ -121,7 +122,7 @@ function encode_task(task: Task): Uint8Array {
 function decode_task(bytes: Uint8Array): Task {
   const reader = new BinaryReader(bytes);
   if (reader.byte() !== BINARY_VERSION) {
-    throw new Error("Unsupported task sharing version");
+    throw new Error(m.task_transfer_version());
   }
   const title = reader.string();
   const description = reader.string();
@@ -130,12 +131,12 @@ function decode_task(bytes: Uint8Array): Task {
   const due_timestamp = reader.float64();
   const label_count = reader.uint32();
   if (label_count > MAX_COLLECTION_ITEMS) {
-    throw new Error("Invalid task label count");
+    throw new Error(m.task_transfer_labels_invalid());
   }
   const labels = Array.from({ length: label_count }, () => reader.string());
   const item_count = reader.uint32();
   if (item_count > MAX_COLLECTION_ITEMS) {
-    throw new Error("Invalid task checklist count");
+    throw new Error(m.task_transfer_checklist_invalid());
   }
   const items = Array.from({ length: item_count }, () => {
     const item = create_task_item(reader.string());
@@ -154,16 +155,16 @@ function decode_task(bytes: Uint8Array): Task {
             ? "monthly"
             : undefined;
     if (!frequency) {
-      throw new Error("Invalid task recurrence");
+      throw new Error(m.task_transfer_recurrence_invalid());
     }
     const interval = reader.uint32();
     if (interval < 1) {
-      throw new Error("Invalid task recurrence");
+      throw new Error(m.task_transfer_recurrence_invalid());
     }
     recurrence = { frequency, interval };
   }
   if (!reader.done()) {
-    throw new Error("The task sharing text contains unexpected data");
+    throw new Error(m.task_transfer_unexpected());
   }
 
   return create_task(
@@ -202,7 +203,7 @@ async function gunzip(data: Uint8Array): Promise<Uint8Array> {
       length += value.length;
       if (length > MAX_DECOMPRESSED_BYTES) {
         await reader.cancel();
-        throw new Error("Task sharing text is too large");
+        throw new Error(m.task_transfer_large());
       }
       chunks.push(value);
     }
@@ -233,7 +234,7 @@ function to_base64url(bytes: Uint8Array): string {
 
 function from_base64url(value: string): Uint8Array {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) {
-    throw new Error("Invalid task sharing text");
+    throw new Error(m.task_transfer_invalid());
   }
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
@@ -247,19 +248,27 @@ export async function serialize_portable_task(task: Task): Promise<string> {
 export async function parse_portable_task(shared_text: string): Promise<Task> {
   const input = shared_text.trim();
   if (input.length > MAX_SHARED_TEXT_LENGTH) {
-    throw new Error("Task sharing text is too large");
+    throw new Error(m.task_transfer_large());
   }
   if (!input.startsWith(BINARY_PREFIX)) {
-    throw new Error("This is not supported Cardbe task sharing text");
+    throw new Error(m.task_transfer_unsupported());
   }
   try {
     return decode_task(
       await gunzip(from_base64url(input.slice(BINARY_PREFIX.length))),
     );
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Invalid task")) {
+    if (
+      error instanceof Error &&
+      [
+        m.task_transfer_labels_invalid(),
+        m.task_transfer_checklist_invalid(),
+        m.task_transfer_recurrence_invalid(),
+        m.task_transfer_invalid(),
+      ].some((message) => message === error.message)
+    ) {
       throw error;
     }
-    throw new Error("Invalid or damaged task sharing text");
+    throw new Error(m.task_transfer_damaged());
   }
 }

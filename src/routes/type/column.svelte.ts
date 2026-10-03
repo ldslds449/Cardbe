@@ -1,3 +1,4 @@
+import * as m from "$lib/paraglide/messages.js";
 import {
   type Task,
   type TaskSerialized,
@@ -46,7 +47,7 @@ export function get_column_id(column: Column | string): number {
   const value = typeof column === "string" ? column : column.id;
   const match = value.match(/^column_(\d+)$/);
   if (!match) {
-    throw new Error(`Invalid column ID: ${value}`);
+    throw new Error(m.column_id_invalid({ value }));
   }
   return Number.parseInt(match[1], 10);
 }

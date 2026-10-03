@@ -256,6 +256,8 @@ impl Default for IrohNetworkSettings {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
     #[serde(default)]
+    pub language: LanguagePreference,
+    #[serde(default)]
     pub notify_enabled: bool,
     #[serde(default = "default_true")]
     pub global_shortcuts_enabled: bool,
@@ -270,11 +272,23 @@ fn default_true() -> bool {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            language: LanguagePreference::default(),
             notify_enabled: false,
             global_shortcuts_enabled: true,
             iroh_network: IrohNetworkSettings::default(),
         }
     }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
+pub enum LanguagePreference {
+    #[default]
+    #[serde(rename = "system")]
+    System,
+    #[serde(rename = "en")]
+    English,
+    #[serde(rename = "zh-TW")]
+    TraditionalChinese,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
@@ -667,4 +681,29 @@ pub struct AllBoardsExport {
 pub struct AllBoardsExportBoard {
     pub name: String,
     pub data: ExportData,
+}
+
+#[cfg(test)]
+mod language_tests {
+    use super::{LanguagePreference, Settings};
+
+    #[test]
+    fn old_settings_default_to_system_language() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"notify_enabled":true,"global_shortcuts_enabled":false}"#)
+                .unwrap();
+        assert_eq!(settings.language, LanguagePreference::System);
+        assert!(settings.notify_enabled);
+        assert!(!settings.global_shortcuts_enabled);
+    }
+
+    #[test]
+    fn language_preferences_roundtrip_and_reject_unsupported_values() {
+        for value in ["system", "en", "zh-TW"] {
+            let json = format!("\"{value}\"");
+            let preference: LanguagePreference = serde_json::from_str(&json).unwrap();
+            assert_eq!(serde_json::to_string(&preference).unwrap(), json);
+        }
+        assert!(serde_json::from_str::<LanguagePreference>(r#""ja""#).is_err());
+    }
 }

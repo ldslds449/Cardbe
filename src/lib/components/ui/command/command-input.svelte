@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Command as CommandPrimitive } from "bits-ui";
   import SearchIcon from "@lucide/svelte/icons/search";
+  import * as m from "$lib/paraglide/messages.js";
   import { cn } from "$lib/utils.js";
 
   let {
@@ -18,7 +19,7 @@
   <SearchIcon class="size-4 shrink-0 opacity-50" />
   <CommandPrimitive.Input
     data-slot="command-input"
-    aria-label="Search"
+    aria-label={m.common_search()}
     class={cn(
       "placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
       className,

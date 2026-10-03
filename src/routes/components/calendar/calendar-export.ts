@@ -1,3 +1,5 @@
+import * as m from "$lib/paraglide/messages.js";
+import { getLocale, formatNumber } from "$lib/i18n";
 import { join } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { exists, writeFile } from "@tauri-apps/plugin-fs";
@@ -52,7 +54,6 @@ const LOGICAL_DPI = 96;
 const MAX_CANVAS_DIMENSION = 16_384;
 const MAX_CANVAS_AREA = 30_000_000;
 const PDF_MARGIN = 24;
-const EXPORT_LOCALE = "en-US";
 
 export const DEFAULT_CALENDAR_EXPORT_OPTIONS: CalendarExportOptions = {
   theme: "light",
@@ -276,9 +277,9 @@ function task_title(entry: CalendarTask): string {
   const due_time = entry.task.due_time;
   const time =
     due_time && has_time(due_time)
-      ? `${due_time.toLocaleTimeString(EXPORT_LOCALE, { hour: "2-digit", minute: "2-digit", hour12: false })}  `
+      ? `${due_time.toLocaleTimeString(getLocale(), { hour: "2-digit", minute: "2-digit", hour12: false })}  `
       : "";
-  return `${time}${entry.task.title || "Untitled task"}`;
+  return `${time}${entry.task.title || m.task_untitled()}`;
 }
 
 function build_task_layouts(
@@ -313,7 +314,7 @@ function measure_calendar(
   const grid_width = CELL_WIDTH * 7;
   context.font = "700 36px system-ui, sans-serif";
   const title_lines = options.show_title
-    ? wrap_text(context, title.trim() || "Calendar", grid_width)
+    ? wrap_text(context, title.trim() || m.workspace_calendar(), grid_width)
     : [];
   const layouts = build_task_layouts(context, days);
   const row_count = Math.max(1, Math.ceil(days.length / 7));
@@ -375,7 +376,7 @@ function measure_for_export(
   const measurement_canvas = document.createElement("canvas");
   const context = measurement_canvas.getContext("2d");
   if (!context) {
-    throw new Error("Canvas rendering is unavailable");
+    throw new Error(m.export_canvas_error());
   }
   return measure_calendar(context, days, title, options);
 }
@@ -536,7 +537,7 @@ function localized_weekdays(): string[] {
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(sunday);
     date.setDate(sunday.getDate() + index);
-    return date.toLocaleDateString(EXPORT_LOCALE, { weekday: "short" });
+    return date.toLocaleDateString(getLocale(), { weekday: "short" });
   });
 }
 
@@ -563,9 +564,7 @@ async function render_calendar_canvas(
     dpi,
   );
   if (exceeds_canvas_limit(pixel_width, pixel_height)) {
-    throw new Error(
-      "This calendar is too large at the selected DPI. Lower the DPI or export fewer months.",
-    );
+    throw new Error(m.export_dpi_error());
   }
 
   await next_frame();
@@ -574,7 +573,7 @@ async function render_calendar_canvas(
   canvas.height = pixel_height;
   const context = canvas.getContext("2d");
   if (!context) {
-    throw new Error("Canvas rendering is unavailable");
+    throw new Error(m.export_canvas_error());
   }
   context.scale(scale, scale);
   const palette = PALETTES[options.theme];
@@ -597,7 +596,10 @@ async function render_calendar_canvas(
     context.fillStyle = palette.secondary_text;
     context.font = "16px system-ui, sans-serif";
     context.fillText(
-      `${entry_count} ${entry_count === 1 ? "entry" : "entries"} · ${new Date().toLocaleString(EXPORT_LOCALE)}`,
+      m.export_entries_date({
+        count: entry_count,
+        date: new Date().toLocaleString(getLocale()),
+      }),
       PAGE_PADDING,
       PAGE_PADDING + measured.title_lines.length * 44 + 24,
     );
@@ -714,9 +716,9 @@ async function render_calendar_canvas(
           context.fillText(line, text_x, task_top + 18 + index * 18),
         );
         const status = entry.archived
-          ? " · Archived"
+          ? ` · ${m.explorer_archived()}`
           : entry.preview
-            ? " · Recurring preview"
+            ? ` · ${m.calendar_recurring_preview()}`
             : "";
         context.fillStyle = palette.secondary_text;
         context.font = "12px system-ui, sans-serif";
@@ -743,9 +745,7 @@ function canvas_blob(
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) =>
-        blob
-          ? resolve(blob)
-          : reject(new Error("Couldn't create the exported file")),
+        blob ? resolve(blob) : reject(new Error(m.export_create_error())),
       type,
       quality,
     );
@@ -797,7 +797,7 @@ export function add_png_dpi_metadata(png: Uint8Array, dpi: number): Uint8Array {
     png.length < 33 ||
     !signature.every((byte, index) => png[index] === byte)
   ) {
-    throw new Error("Invalid PNG data");
+    throw new Error(m.export_png_data_error());
   }
   const chunks: Uint8Array[] = [];
   let offset = 8;
@@ -806,7 +806,7 @@ export function add_png_dpi_metadata(png: Uint8Array, dpi: number): Uint8Array {
     const length = read_u32(png, offset);
     const end = offset + 12 + length;
     if (end > png.length) {
-      throw new Error("Invalid PNG chunk data");
+      throw new Error(m.export_png_chunk_error());
     }
     const type = new TextDecoder().decode(png.slice(offset + 4, offset + 8));
     if (type !== "pHYs") {
@@ -827,7 +827,7 @@ export function add_png_dpi_metadata(png: Uint8Array, dpi: number): Uint8Array {
     offset = end;
   }
   if (!inserted || offset !== png.length) {
-    throw new Error("Invalid PNG structure");
+    throw new Error(m.export_png_structure_error());
   }
   return concat_bytes([signature, ...chunks]);
 }
@@ -843,7 +843,7 @@ function pdf_color(value: string): Color {
             .join("")
         : hex[1];
     if (!pdf_rgb) {
-      throw new Error("PDF color support is not initialized");
+      throw new Error(m.export_pdf_color_error());
     }
     return pdf_rgb(
       Number.parseInt(expanded.slice(0, 2), 16) / 255,
@@ -853,7 +853,7 @@ function pdf_color(value: string): Color {
   }
   const channels = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(value);
   if (!pdf_rgb) {
-    throw new Error("PDF color support is not initialized");
+    throw new Error(m.export_pdf_color_error());
   }
   if (channels) {
     return pdf_rgb(
@@ -1019,7 +1019,7 @@ function measure_pdf_calendar(
   const grid_width = CELL_WIDTH * 7;
   const title_lines = options.show_title
     ? wrap_calendar_text(
-        pdf_safe_text(fonts, title.trim() || "Calendar"),
+        pdf_safe_text(fonts, title.trim() || m.workspace_calendar()),
         grid_width,
         (value) => pdf_text_width(fonts, value, 36),
       )
@@ -1229,7 +1229,10 @@ function draw_vector_calendar_page(
       0,
     );
     draw_text(
-      `${entry_count} ${entry_count === 1 ? "entry" : "entries"} - ${new Date().toLocaleString(EXPORT_LOCALE)}`,
+      m.export_entries_date({
+        count: entry_count,
+        date: new Date().toLocaleString(getLocale()),
+      }),
       PAGE_PADDING,
       PAGE_PADDING + measured.title_lines.length * 44 + 24,
       16,
@@ -1366,9 +1369,9 @@ function draw_vector_calendar_page(
           ),
         );
         const status = entry.archived
-          ? " - Archived"
+          ? ` - ${m.explorer_archived()}`
           : entry.preview
-            ? " - Recurring preview"
+            ? ` - ${m.calendar_recurring_preview()}`
             : "";
         draw_text(
           fit_pdf_text(
@@ -1395,7 +1398,7 @@ export async function build_vector_calendar_pdf(
   outline_font?: CalendarPdfOutlineFont,
 ): Promise<Uint8Array> {
   if (pages.length === 0) {
-    throw new Error("A PDF needs at least one page");
+    throw new Error(m.export_pdf_page_error());
   }
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   pdf_rgb = rgb;
@@ -1414,7 +1417,7 @@ export async function build_vector_calendar_pdf(
     ),
     outline: outline_font,
   };
-  document.setTitle("Calendar export");
+  document.setTitle(m.export_document_title());
   document.setCreator("Cardbe");
   for (const prepared of pages) {
     const page = document.addPage();
@@ -1450,7 +1453,7 @@ async function create_calendar_outline_font(
   );
   const selected = preferred ?? loaded.fonts[0];
   if (!selected) {
-    throw new Error("The system font collection is empty");
+    throw new Error(m.export_font_empty());
   }
   return selected as unknown as CalendarPdfOutlineFont;
 }
@@ -1462,9 +1465,7 @@ function load_calendar_pdf_font(): Promise<ArrayBuffer> {
     (error) => {
       calendar_pdf_font = undefined;
       throw new Error(
-        typeof error === "string"
-          ? error
-          : "Couldn't load a system font for PDF export",
+        typeof error === "string" ? error : m.export_font_error(),
         { cause: error },
       );
     },
@@ -1475,16 +1476,19 @@ function load_calendar_pdf_font(): Promise<ArrayBuffer> {
 function calendar_pdf_needs_outlines(pages: PreparedCalendarPage[]): boolean {
   // Non-ASCII text needs font outlines; the ASCII range includes control characters.
   /* oxlint-disable no-control-regex */
-  return pages.some(
-    (page) =>
-      /[^\x00-\x7f]/.test(page.title) ||
-      page.days.some((day) =>
-        day.tasks.some(
-          (entry) =>
-            /[^\x00-\x7f]/.test(task_title(entry)) ||
-            /[^\x00-\x7f]/.test(entry.column.name),
+  return (
+    getLocale() === "zh-TW" ||
+    pages.some(
+      (page) =>
+        /[^\x00-\x7f]/.test(page.title) ||
+        page.days.some((day) =>
+          day.tasks.some(
+            (entry) =>
+              /[^\x00-\x7f]/.test(task_title(entry)) ||
+              /[^\x00-\x7f]/.test(entry.column.name),
+          ),
         ),
-      ),
+    )
   );
   /* oxlint-enable no-control-regex */
 }
@@ -1497,7 +1501,7 @@ export async function render_calendar_export(
 ): Promise<Blob> {
   const prepared = prepare_calendar_pages(periods, title, format, options);
   if (prepared.length === 0) {
-    throw new Error("Select at least one month to export");
+    throw new Error(m.export_select_month());
   }
   if (format === "pdf") {
     const outline_font = calendar_pdf_needs_outlines(prepared)
@@ -1516,16 +1520,14 @@ export async function render_calendar_export(
     png_layout: "combined",
   });
   if (estimate.too_large) {
-    throw new Error(
-      "This multi-month image is too large. Lower the DPI or export fewer months.",
-    );
+    throw new Error(m.export_large_error());
   }
   const output = document.createElement("canvas");
   output.width = estimate.width;
   output.height = estimate.height;
   const output_context = output.getContext("2d");
   if (!output_context) {
-    throw new Error("Canvas rendering is unavailable");
+    throw new Error(m.export_canvas_error());
   }
   output_context.fillStyle = PALETTES[options.theme].page;
   output_context.fillRect(0, 0, output.width, output.height);
@@ -1576,9 +1578,7 @@ async function available_png_path(
       return file_path;
     }
   }
-  throw new Error(
-    "Couldn't find an available file name in the selected folder",
-  );
+  throw new Error(m.export_filename_error());
 }
 
 export async function save_split_calendar_png_export(
@@ -1591,7 +1591,7 @@ export async function save_split_calendar_png_export(
     directory: true,
     multiple: false,
     recursive: false,
-    title: "Choose a folder for calendar images",
+    title: m.export_choose_folder(),
   });
   if (!directory) {
     return null;
@@ -1599,7 +1599,7 @@ export async function save_split_calendar_png_export(
 
   const pages = prepare_calendar_pages(periods, title, "png", options);
   if (pages.length === 0) {
-    throw new Error("Select at least one month to export");
+    throw new Error(m.export_select_month());
   }
   const number_width = String(pages.length).length;
   on_progress?.(0, pages.length);
@@ -1617,7 +1617,8 @@ export async function save_split_calendar_png_export(
     rendered.canvas.width = 1;
     rendered.canvas.height = 1;
     const label = safe_filename_stem(
-      periods[index]?.label ?? `Month ${index + 1}`,
+      periods[index]?.label ??
+        m.export_month_label({ month: formatNumber(index + 1) }),
     );
     const order = String(index + 1).padStart(number_width, "0");
     const file_path = await available_png_path(
@@ -1643,7 +1644,7 @@ export async function save_calendar_export(
   const file_path = await save({
     filters: [
       {
-        name: format === "pdf" ? "PDF document" : "PNG image",
+        name: format === "pdf" ? m.export_pdf_document() : m.export_png_image(),
         extensions: [format],
       },
     ],

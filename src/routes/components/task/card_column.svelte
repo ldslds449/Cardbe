@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
@@ -105,7 +107,7 @@
             <div class="flex-grow min-w-0 h-full">
               <EditableLabel
                 value={column.name}
-                placeholder="Name"
+                placeholder={m.common_name()}
                 disabled={read_only}
                 onupdate={(new_value: string) => {
                   onUpdateColumnName?.(new_value);
@@ -117,16 +119,17 @@
                 type="button"
                 class="mr-1 inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-normal text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
                 title={column.sort_order === "due_date_asc"
-                  ? "Due date: earliest first. Click to switch to Custom."
-                  : "Due date: latest first. Click to switch to Custom."}
+                  ? m.column_due_asc_hint()
+                  : m.column_due_desc_hint()}
                 aria-label={column.sort_order === "due_date_asc"
-                  ? "Due date: earliest first. Switch to Custom sorting."
-                  : "Due date: latest first. Switch to Custom sorting."}
+                  ? m.column_due_asc_accessible()
+                  : m.column_due_desc_accessible()}
                 onpointerdown={(event) => event.stopPropagation()}
                 onclick={() => onUpdateSort("custom")}
               >
                 <ArrowUpDownIcon class="size-3" />
-                Due {column.sort_order === "due_date_asc" ? "↑" : "↓"}
+                {m.task_due_date()}
+                {column.sort_order === "due_date_asc" ? "↑" : "↓"}
               </button>
             {/if}
             {#if !read_only}
@@ -135,8 +138,8 @@
                 size="icon-sm"
                 class="mx-0 size-8"
                 onclick={onAddTask}
-                aria-label={`Add task to ${column.name}`}
-                title={`Add task to ${column.name}`}
+                aria-label={m.column_add_named_task({ name: column.name })}
+                title={m.column_add_named_task({ name: column.name })}
               >
                 <CirclePlus />
               </Button>
@@ -158,22 +161,22 @@
       <ContextMenu.Content>
         <ContextMenu.Item onclick={onAddTask}>
           <CirclePlus />
-          Add Task
+          {m.task_create()}
         </ContextMenu.Item>
         <ContextMenu.Item onclick={onImportTask}>
           <ClipboardPasteIcon />
-          Import Task
+          {m.task_import()}
         </ContextMenu.Item>
         {#if numberTasks > 0}
           <ContextMenu.Item onclick={onArchiveAllTasks}>
             <ArchiveIcon />
-            Archive All Tasks
+            {m.column_archive_tasks()}
           </ContextMenu.Item>
         {/if}
         <ContextMenu.Sub>
           <ContextMenu.SubTrigger>
             <ArrowUpDownIcon />
-            Sort
+            {m.common_sort()}
           </ContextMenu.SubTrigger>
           <ContextMenu.SubContent>
             <ContextMenu.RadioGroup
@@ -181,13 +184,13 @@
               onValueChange={(value) => onUpdateSort(value as ColumnSort)}
             >
               <ContextMenu.RadioItem value="custom"
-                >Custom</ContextMenu.RadioItem
+                >{m.common_custom()}</ContextMenu.RadioItem
               >
               <ContextMenu.RadioItem value="due_date_asc"
-                >Due date: earliest first</ContextMenu.RadioItem
+                >{m.column_due_asc()}</ContextMenu.RadioItem
               >
               <ContextMenu.RadioItem value="due_date_desc"
-                >Due date: latest first</ContextMenu.RadioItem
+                >{m.column_due_desc()}</ContextMenu.RadioItem
               >
             </ContextMenu.RadioGroup>
           </ContextMenu.SubContent>
@@ -204,7 +207,7 @@
           }}
         >
           <TrashIcon />
-          Delete Column</ContextMenu.Item
+          {m.column_delete()}</ContextMenu.Item
         >
       </ContextMenu.Content>
     {/if}
@@ -213,18 +216,18 @@
   <AlertDialog.Root bind:open={delete_confirm_open}>
     <AlertDialog.Content>
       <AlertDialog.Header>
-        <AlertDialog.Title>Delete Column</AlertDialog.Title>
+        <AlertDialog.Title>{m.column_delete()}</AlertDialog.Title>
         <AlertDialog.Description>
-          Do you want to delete the column and all contained tasks?
+          {m.column_delete_confirm()}
         </AlertDialog.Description>
       </AlertDialog.Header>
       <AlertDialog.Footer>
-        <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+        <AlertDialog.Cancel>{m.common_cancel()}</AlertDialog.Cancel>
         <AlertDialog.Action
           onclick={() => {
             delete_confirm_open = false;
             onDeleteColumn();
-          }}>Confirm</AlertDialog.Action
+          }}>{m.common_confirm()}</AlertDialog.Action
         >
       </AlertDialog.Footer>
     </AlertDialog.Content>

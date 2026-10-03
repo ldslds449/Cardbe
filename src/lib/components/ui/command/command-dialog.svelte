@@ -3,6 +3,7 @@
     Command as CommandPrimitive,
     Dialog as DialogPrimitive,
   } from "bits-ui";
+  import * as m from "$lib/paraglide/messages.js";
   import type { Snippet } from "svelte";
   import Command from "./command.svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -12,8 +13,8 @@
     open = $bindable(false),
     ref = $bindable(null),
     value = $bindable(""),
-    title = "Command Palette",
-    description = "Search for a command to run",
+    title,
+    description,
     portalProps,
     children,
     ...restProps
@@ -28,8 +29,10 @@
 
 <Dialog.Root bind:open {...restProps}>
   <Dialog.Header class="sr-only">
-    <Dialog.Title>{title}</Dialog.Title>
-    <Dialog.Description>{description}</Dialog.Description>
+    <Dialog.Title>{title ?? m.command_title()}</Dialog.Title>
+    <Dialog.Description
+      >{description ?? m.command_description()}</Dialog.Description
+    >
   </Dialog.Header>
   <Dialog.Content class="overflow-hidden p-0" {portalProps}>
     <Command

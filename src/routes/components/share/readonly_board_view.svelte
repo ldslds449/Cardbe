@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { formatNumber } from "$lib/i18n";
+  import * as m from "$lib/paraglide/messages.js";
   import { DragDropProvider } from "@dnd-kit-svelte/svelte";
   import * as Card from "$lib/components/ui/card/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
@@ -42,7 +44,7 @@
           <Card.Title class="flex items-center justify-between gap-3 text-base">
             <span class="truncate">{column.name}</span>
             <Badge variant="secondary" class="font-normal tabular-nums">
-              {visible_tasks.length}
+              {formatNumber(visible_tasks.length)}
             </Badge>
           </Card.Title>
         </Card.Header>
@@ -66,7 +68,7 @@
             <div
               class="rounded-lg border border-dashed bg-background/60 px-4 py-8 text-center text-sm text-muted-foreground"
             >
-              {search_text.trim() ? "No matching tasks" : "No tasks"}
+              {search_text.trim() ? m.explorer_no_matching() : m.ui_no_tasks()}
             </div>
           {/if}
         </Card.Content>

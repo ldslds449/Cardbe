@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { formatNumber } from "$lib/i18n";
+  import { getLocale } from "$lib/i18n";
+  import * as m from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
@@ -127,8 +130,8 @@
   function invitation_date(value: string) {
     const date = new Date(value);
     return Number.isNaN(date.getTime())
-      ? "Creation date unavailable"
-      : `Created ${sync_time.format(date)}`;
+      ? m.share_creation_date_unavailable()
+      : m.share_created_date({ date: sync_time.format(date) });
   }
   async function load_connection_details() {
     try {
@@ -142,8 +145,7 @@
       connection_details_error = null;
     } catch (error) {
       logger.warn("iroh.connection_details.failed", error);
-      connection_details_error =
-        "Connection details are unavailable. They will update on the next check.";
+      connection_details_error = m.share_connection_details_unavailable();
     }
   }
   let network_settings = $state<IrohNetworkSettings>({
@@ -190,12 +192,12 @@
   );
   const network_mode_label = $derived(
     network_mode === "automatic"
-      ? "Automatic (recommended)"
+      ? m.share_network_automatic()
       : network_mode === "direct"
-        ? "Direct only"
+        ? m.share_network_direct()
         : network_mode === "relay"
-          ? "Relay only"
-          : "Choose a connection mode",
+          ? m.share_network_relay()
+          : m.share_network_choose(),
   );
   function set_network_mode(mode: string) {
     if (!["automatic", "direct", "relay"].includes(mode)) {
@@ -254,10 +256,12 @@
   let revoke_open = $state(false);
   let received_pending = $state<Record<number, string>>({});
   let received_waiting_id = $state<number | null>(null);
-  const sync_time = new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  const sync_time = $derived(
+    new Intl.DateTimeFormat(getLocale(), {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+  );
   let received_requesting = new Set<number>();
   let received_retry_request = new Set<number>();
   let stopped_waiting = new Set<number>();
@@ -380,7 +384,7 @@
     network_settings_error = null;
   }
   async function set_network_settings_error(error: unknown) {
-    const message = error_message(error, "Couldn't save connection settings");
+    const message = error_message(error, m.share_network_save_error());
     clear_network_settings_error();
     if (message.startsWith("Invalid listening port:")) {
       network_settings_field_errors.listen_port = message;
@@ -432,7 +436,7 @@
       }
     } catch (e) {
       logger.error("iroh.network_settings_load.failed", e);
-      toast.error(error_message(e, "Couldn't load connection settings"));
+      toast.error(error_message(e, m.share_network_load_error()));
     } finally {
       loading_network_settings = false;
     }
@@ -451,9 +455,7 @@
       settings.listen_port < 0 ||
       settings.listen_port > 65535
     ) {
-      await set_network_settings_error(
-        "Invalid listening port: enter a whole number from 0 to 65535.",
-      );
+      await set_network_settings_error(m.share_network_port_error());
       return;
     }
     saving_network_settings = true;
@@ -497,7 +499,7 @@
       generated = {
         ticket: created,
         qr: await invoke<string>("iroh_invite_qr_svg", { ticket: created }),
-        board_name: selected_board?.name ?? "Board",
+        board_name: selected_board?.name ?? m.board_title(),
         permission,
       };
       let copied = false;
@@ -509,11 +511,13 @@
         /* The visible link can still be copied later. */
       }
       await load();
-      toast.success(copied ? "Invitation copied" : "Invitation created");
+      toast.success(
+        copied ? m.ui_invitation_copied() : m.ui_invitation_created(),
+      );
     } catch (e) {
       logger.error("iroh.invite_create.failed", e);
       toast.error(
-        e instanceof Error ? e.message : "Couldn't create invitation",
+        e instanceof Error ? e.message : m.ui_couldn_t_create_invitation(),
       );
     } finally {
       creating = false;
@@ -525,10 +529,10 @@
     }
     try {
       await navigator.clipboard.writeText(generated.ticket);
-      toast.success("Invitation copied");
+      toast.success(m.ui_invitation_copied());
     } catch (e) {
       logger.warn("iroh.invite_copy.failed", e);
-      toast.error("Couldn't copy invitation");
+      toast.error(m.ui_couldn_t_copy_invitation());
     }
   }
   async function join(silent = false) {
@@ -553,7 +557,7 @@
         await load_connection_details();
       } else if (
         silent &&
-        board.iroh_last_error.startsWith("Access was declined or revoked")
+        board.iroh_last_error.startsWith(m.ui_access_was_declined_or_revoked())
       ) {
         waiting_device_id = null;
       }
@@ -582,10 +586,10 @@
       await load_connection_details();
     } catch (e) {
       logger.error("iroh.invite_list_load.failed", e);
-      manage_error = error_message(e, "Couldn't load sharing. Try again.");
+      manage_error = error_message(e, m.share_load_retry());
       if (!silent) {
         toast.error(
-          e instanceof Error ? e.message : "Couldn't load invitations",
+          e instanceof Error ? e.message : m.ui_couldn_t_load_invitations(),
         );
       }
     } finally {
@@ -611,16 +615,18 @@
       approval_open = false;
       toast.success(
         approved
-          ? "Device approved"
+          ? m.ui_device_approved()
           : invite.devices.find((device) => device.node_id === node_id)
                 ?.status === IrohDeviceStatus.Pending
-            ? "Request rejected"
-            : "Device access revoked",
+            ? m.ui_request_rejected()
+            : m.ui_device_access_revoked(),
       );
       return true;
     } catch (e) {
       logger.error("iroh.device_approval.failed", e);
-      toast.error(e instanceof Error ? e.message : "Couldn't update device");
+      toast.error(
+        e instanceof Error ? e.message : m.ui_couldn_t_update_device(),
+      );
       return false;
     } finally {
       device_action_pending = false;
@@ -677,7 +683,7 @@
         received_pending[board_id] = device_id;
         await load_connection_details();
         if (request_approval) {
-          toast.success("Access request sent");
+          toast.success(m.ui_access_request_sent());
         }
       }
     } catch (e) {
@@ -715,10 +721,10 @@
   async function copy_device_id(id: string) {
     try {
       await navigator.clipboard.writeText(id);
-      toast.success("Device ID copied");
+      toast.success(m.ui_device_id_copied());
     } catch (e) {
       logger.warn("iroh.device_id_copy.failed", e);
-      toast.error("Couldn't copy Device ID");
+      toast.error(m.ui_couldn_t_copy_device_id());
     }
   }
   async function update(
@@ -740,15 +746,15 @@
       invite_access = next;
       await load();
       if (change.enabled === true && host_error) {
-        toast.error("Invitation saved, but sharing is offline");
+        toast.error(m.ui_invitation_saved_but_sharing_is_offline());
       } else {
-        toast.success("Invitation updated");
+        toast.success(m.ui_invitation_updated());
       }
     } catch (e) {
       logger.error("iroh.invite_update.failed", e);
       await load();
       toast.error(
-        e instanceof Error ? e.message : "Couldn't update invitation",
+        e instanceof Error ? e.message : m.ui_couldn_t_update_invitation(),
       );
     } finally {
       updating_invite_id = null;
@@ -764,11 +770,11 @@
       });
       await board.get_boards();
       await load();
-      toast.success("Invitation deleted");
+      toast.success(m.ui_invitation_deleted());
     } catch (e) {
       logger.error("iroh.invite_delete.failed", e);
       toast.error(
-        e instanceof Error ? e.message : "Couldn't delete invitation",
+        e instanceof Error ? e.message : m.ui_couldn_t_delete_invitation(),
       );
     } finally {
       pending_delete = null;
@@ -788,7 +794,9 @@
       return value;
     } catch (e) {
       logger.error("iroh.invite_access_load.failed", e);
-      toast.error(e instanceof Error ? e.message : "Couldn't load invitation");
+      toast.error(
+        e instanceof Error ? e.message : m.ui_couldn_t_load_invitation(),
+      );
       return null;
     } finally {
       loading_access_id = null;
@@ -801,10 +809,10 @@
     }
     try {
       await navigator.clipboard.writeText(value.ticket);
-      toast.success("Invitation copied");
+      toast.success(m.ui_invitation_copied());
     } catch (e) {
       logger.warn("iroh.invite_copy.failed", e);
-      toast.error("Couldn't copy invitation");
+      toast.error(m.ui_couldn_t_copy_invitation());
     }
   }
   async function toggle_qr(invite: Invite) {
@@ -823,14 +831,18 @@
     <Collapsible.Trigger
       class="group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span>Last used connection</span>
+      <span>{m.share_connection_last()}</span>
       <span class="flex items-center gap-2">
         {#if info && info.paths.length > 0}
           <Badge variant="outline"
             >{[
               ...new Set(
                 info.paths.map((path) =>
-                  path.kind === "Direct" ? "Direct IP" : path.kind,
+                  path.kind === "Direct"
+                    ? m.share_direct_ip()
+                    : path.kind === "Relay"
+                      ? m.share_relay_servers()
+                      : m.share_custom_transport(),
                 ),
               ),
             ].join(" + ")}</Badge
@@ -844,18 +856,19 @@
     <Collapsible.Content class="space-y-2 border-t px-3 py-3 text-xs">
       {#if info}
         <p class="text-muted-foreground">
-          Observed at {sync_time.format(new Date(info.observed_at))}. This is
-          the path used for the last connection, and may change on the next
-          sync. Enabled connection options do not indicate which path was used.{#if waiting_device_id || received_waiting_id !== null}
-            Approval checks reconnect automatically, so temporary ports and
-            network paths can change.{/if}
+          {m.share_connection_observed({
+            time: sync_time.format(new Date(info.observed_at)),
+          })}{#if waiting_device_id || received_waiting_id !== null}
+            {m.share_approval_reconnect()}{/if}
         </p>
         {#if info.paths.length > 0}
           <Collapsible.Root>
             <Collapsible.Trigger
               class="group flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Technical details ({info.paths.length} network paths)
+              {m.share_connection_paths({
+                count: formatNumber(info.paths.length),
+              })}
               <ChevronDownIcon
                 class="size-3.5 transition-transform group-data-[state=open]:rotate-180"
               />
@@ -865,10 +878,10 @@
                 <div class="space-y-1">
                   <p class="font-medium">
                     {kind === "Direct"
-                      ? "Direct IP addresses"
+                      ? m.share_direct_addresses()
                       : kind === "Relay"
-                        ? "Relay servers"
-                        : "Custom transport"}
+                        ? m.share_relay_servers()
+                        : m.share_custom_transport()}
                   </p>
                   <code
                     class="block whitespace-pre-wrap break-all rounded-md bg-muted px-2 py-1 select-all"
@@ -950,39 +963,35 @@
         size="icon"
         class="absolute right-3 top-3 size-7"
         disabled={saving_network_settings}
-        aria-label="Back to board sharing"
-        title="Back to board sharing"
+        aria-label={m.share_back_to_sharing()}
+        title={m.share_back_to_sharing()}
         onclick={() => leave_network()}><XIcon class="size-4" /></Button
       >
     {/if}
     <Dialog.Header class={flow === "network" ? "pr-6" : ""}>
       <Dialog.Title
         >{received_waiting_id !== null
-          ? "Waiting for approval"
+          ? m.ui_waiting_for_approval()
           : flow === "home"
-            ? "Board sharing"
+            ? m.ui_board_sharing()
             : flow === "share"
-              ? "Share a board"
+              ? m.ui_share_a_board()
               : flow === "join"
-                ? "Join a shared board"
+                ? m.ui_join_a_shared_board()
                 : flow === "network"
-                  ? "Connection settings"
-                  : "Manage board sharing"}</Dialog.Title
+                  ? m.share_connection_settings()
+                  : m.ui_manage_board_sharing()}</Dialog.Title
       >
       {#if flow === "home"}
         <Dialog.Description
-          >Collaborate in Cardbe with read-only or editing access.</Dialog.Description
+          >{m.ui_collaborate_in_cardbe_with_read_only_or_editing_access()}</Dialog.Description
         >
       {:else if flow === "manage" && received_waiting_id === null}
         <Dialog.Description
-          >Manage boards you share and boards shared with you.</Dialog.Description
+          >{m.ui_manage_boards_you_share_and_boards_shared_with_you()}</Dialog.Description
         >
       {:else if flow === "network"}
-        <Dialog.Description
-          >Applies to all board sharing on this device. Applying changes may
-          briefly interrupt connections. Received boards reconnect
-          automatically; their local changes are kept.</Dialog.Description
-        >
+        <Dialog.Description>{m.share_network_description()}</Dialog.Description>
       {/if}
     </Dialog.Header>
     <div
@@ -1001,8 +1010,7 @@
           disabled={saving_network_settings}
           onclick={() =>
             flow === "network" ? leave_network() : (flow = "home")}
-          ><ArrowLeftIcon />
-          Back to sharing</Button
+          ><ArrowLeftIcon />{m.share_back_to_sharing()}</Button
         >
       {/if}
       {#if received_waiting_id !== null || waiting_device_id}
@@ -1017,15 +1025,15 @@
             <LoaderCircleIcon class="size-6 animate-spin" />
           </div>
           <div class="space-y-1">
-            <Card.Title>Waiting for approval</Card.Title><Card.Description
-              >The owner needs to approve this device. This screen checks
-              automatically.</Card.Description
+            <Card.Title>{m.ui_waiting_for_approval()}</Card.Title
+            ><Card.Description
+              >{m.share_device_wait_description()}</Card.Description
             >
           </div>
           {#if device_id}
             <div class="w-full rounded-lg border bg-background p-3 text-left">
               <p class="mb-2 text-xs font-medium text-muted-foreground">
-                Your device ID · compare this with the owner
+                {m.ui_your_device_id_compare_this_with_the_owner()}
               </p>
               <code class="block break-all text-sm leading-relaxed select-all"
                 >{verification_id(device_id)}</code
@@ -1035,7 +1043,7 @@
               variant="outline"
               onclick={() => void copy_device_id(device_id)}
               ><ClipboardIcon />
-              Copy device ID</Button
+              {m.ui_copy_device_id()}</Button
             >
           {/if}
           <div class="w-full text-left">
@@ -1063,7 +1071,7 @@
               waiting_device_id = null;
               board.iroh_last_error = "";
             }
-          }}>Cancel waiting</Button
+          }}>{m.ui_cancel_waiting()}</Button
         >
       {:else if flow === "home"}
         <div class="grid gap-3 sm:grid-cols-2">
@@ -1074,9 +1082,9 @@
             <Card.Root
               class="h-full gap-2 p-4 transition-colors hover:bg-accent"
               ><UsersIcon class="size-5 text-primary" />
-              <Card.Title class="text-base">Share a board</Card.Title
+              <Card.Title class="text-base">{m.ui_share_a_board()}</Card.Title
               ><Card.Description
-                >Choose a board and give people viewing or editing access.</Card.Description
+                >{m.ui_choose_a_board_and_give_people_viewing_or_editing_access()}</Card.Description
               ></Card.Root
             >
           </button><button
@@ -1086,9 +1094,10 @@
             <Card.Root
               class="h-full gap-2 p-4 transition-colors hover:bg-accent"
               ><LinkIcon class="size-5 text-primary" />
-              <Card.Title class="text-base">Join a shared board</Card.Title
+              <Card.Title class="text-base"
+                >{m.ui_join_a_shared_board()}</Card.Title
               ><Card.Description
-                >Paste an invitation link to join.</Card.Description
+                >{m.ui_paste_an_invitation_link_to_join()}</Card.Description
               ></Card.Root
             >
           </button>
@@ -1100,7 +1109,7 @@
             flow = "manage";
           }}
           ><Settings2Icon />
-          Manage sharing</Button
+          {m.ui_manage_sharing()}</Button
         >
         <Button
           variant="outline"
@@ -1108,8 +1117,8 @@
           onclick={() => void open_network_settings()}
           ><Settings2Icon />
           {loading_network_settings
-            ? "Loading settings..."
-            : "Connection settings"}</Button
+            ? m.share_loading_settings()
+            : m.share_connection_settings()}</Button
         >
       {:else if flow === "network"}
         <ScrollArea
@@ -1124,14 +1133,15 @@
           >
             <Card.Root class="gap-0 p-0 shadow-none">
               <Card.Header class="px-4 py-3">
-                <Card.Title class="text-base">Connection method</Card.Title>
+                <Card.Title class="text-base"
+                  >{m.share_network_method()}</Card.Title
+                >
                 <Card.Description
-                  >Applies to this device. Both devices need a compatible
-                  connection method.</Card.Description
+                  >{m.share_network_compatibility()}</Card.Description
                 >
               </Card.Header>
               <Card.Content class="grid gap-2 px-4 pb-4">
-                <Label for="network-mode">Connection mode</Label>
+                <Label for="network-mode">{m.share_network_mode()}</Label>
                 <Select.Root
                   type="single"
                   value={network_mode}
@@ -1145,27 +1155,25 @@
                   >
                   <Select.Content>
                     <Select.Item value="automatic"
-                      >Automatic (recommended)</Select.Item
+                      >{m.share_network_automatic()}</Select.Item
                     >
-                    <Select.Item value="direct">Direct only</Select.Item>
-                    <Select.Item value="relay">Relay only</Select.Item>
+                    <Select.Item value="direct"
+                      >{m.share_network_direct()}</Select.Item
+                    >
+                    <Select.Item value="relay"
+                      >{m.share_network_relay()}</Select.Item
+                    >
                   </Select.Content>
                 </Select.Root>
                 <p id="network-mode-help" class="text-sm text-muted-foreground">
                   {#if network_mode === "automatic"}
-                    Allows direct connections or encrypted relay connections
-                    when needed. Recommended on both devices.
+                    {m.share_network_automatic_help()}
                   {:else if network_mode === "direct"}
-                    Transfers data directly between devices. Both devices must
-                    allow direct connections; firewalls and some networks can
-                    block them. No relay fallback.
+                    {m.share_network_direct_help()}
                   {:else if network_mode === "relay"}
-                    Transfers encrypted data through a relay. The owner must
-                    allow relay connections and their relay must be reachable.
-                    Direct connections are disabled.
+                    {m.share_network_relay_help()}
                   {:else}
-                    Connections are disabled in your saved settings. Choose a
-                    mode to allow devices to connect.
+                    {m.share_network_disabled_help()}
                   {/if}
                 </p>
               </Card.Content>
@@ -1177,9 +1185,9 @@
               <Collapsible.Trigger
                 class="group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span class="flex-1">Advanced addresses and services</span>
+                <span class="flex-1">{m.share_network_advanced()}</span>
                 {#if network_customized}<Badge variant="secondary"
-                    >Customized</Badge
+                    >{m.share_network_customized()}</Badge
                   >{/if}
                 <ChevronDownIcon
                   class="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
@@ -1188,7 +1196,9 @@
               <Collapsible.Content class="border-t p-4">
                 <div class="grid gap-5">
                   <div class="grid gap-2">
-                    <Label for="network-discovery">Device addresses</Label>
+                    <Label for="network-discovery"
+                      >{m.share_network_addresses()}</Label
+                    >
                     <Select.Root
                       type="single"
                       value={network_settings.discovery_enabled
@@ -1205,15 +1215,15 @@
                         class="w-full"
                         aria-describedby="network-discovery-help"
                         >{network_settings.discovery_enabled
-                          ? "Find automatically (recommended)"
-                          : "Use invitation and manual addresses"}</Select.Trigger
+                          ? m.share_network_find()
+                          : m.share_network_manual()}</Select.Trigger
                       >
                       <Select.Content>
                         <Select.Item value="automatic"
-                          >Find automatically (recommended)</Select.Item
+                          >{m.share_network_find()}</Select.Item
                         >
                         <Select.Item value="manual"
-                          >Use invitation and manual addresses</Select.Item
+                          >{m.share_network_manual()}</Select.Item
                         >
                       </Select.Content>
                     </Select.Root>
@@ -1221,14 +1231,12 @@
                       id="network-discovery-help"
                       class="text-sm text-muted-foreground"
                     >
-                      Automatic discovery finds updated addresses after a device
-                      restarts or changes settings. Without it, you may need a
-                      new invitation or updated manual addresses to reconnect.
+                      {m.share_network_discovery_help()}
                     </p>
                   </div>
 
                   <label class="grid gap-2 text-sm font-medium">
-                    Listening UDP port
+                    {m.share_network_port()}
                     <Input
                       id="network-listen-port"
                       type="number"
@@ -1251,8 +1259,7 @@
                       id="network-listen-port-help"
                       class="font-normal text-muted-foreground"
                     >
-                      Use 0 for an automatic port. For port forwarding, set a
-                      fixed port and forward UDP traffic to it.
+                      {m.share_network_port_help()}
                     </span>
                     {#if network_settings_field_errors.listen_port}
                       <span
@@ -1264,7 +1271,7 @@
                     {/if}
                   </label>
                   <label class="grid gap-2 text-sm font-medium">
-                    This device's fixed addresses
+                    {m.share_network_fixed_addresses()}
                     <Textarea
                       id="network-direct-addresses"
                       aria-describedby={"network-direct-addresses-help" +
@@ -1284,15 +1291,10 @@
                     <span
                       id="network-direct-addresses-help"
                       class="font-normal text-muted-foreground"
-                      >Enter the IP:port other devices can reach, one per line.
-                      Set a listening UDP port above; if your router uses a
-                      different external port, enter that port here. Leave empty
-                      for automatic addresses.</span
+                      >{m.share_network_fixed_help()}</span
                     >
                     <span class="text-xs font-normal text-muted-foreground"
-                      >{#if !network_settings.direct_ip_enabled}Enable direct
-                        connection to edit this field.{:else if !direct_addresses_text.trim()}Using
-                        automatic addresses.{/if}</span
+                      >{#if !network_settings.direct_ip_enabled}{m.share_network_enable_direct()}{:else if !direct_addresses_text.trim()}{m.share_network_auto_addresses()}{/if}</span
                     >
                     {#if network_settings_field_errors.direct_addresses}
                       <span
@@ -1304,7 +1306,7 @@
                     {/if}
                   </label>
                   <label class="grid gap-2 text-sm font-medium">
-                    Relay service URLs
+                    {m.share_network_relay_urls()}
                     <Textarea
                       id="network-relay-urls"
                       aria-describedby={"network-relay-urls-help" +
@@ -1323,13 +1325,10 @@
                     <span
                       id="network-relay-urls-help"
                       class="font-normal text-muted-foreground"
-                      >One URL per line. Leave empty for the default service.
-                      Custom URLs replace the default relay service.</span
+                      >{m.share_network_relay_help_urls()}</span
                     >
                     <span class="text-xs font-normal text-muted-foreground"
-                      >{#if !network_settings.relay_enabled}Enable relay
-                        connection to edit this field.{:else if !relay_urls_text.trim()}Using
-                        the default service.{/if}</span
+                      >{#if !network_settings.relay_enabled}{m.share_network_enable_relay()}{:else if !relay_urls_text.trim()}{m.share_network_default_service()}{/if}</span
                     >
                     {#if network_settings_field_errors.relay_urls}
                       <span
@@ -1341,7 +1340,7 @@
                     {/if}
                   </label>
                   <label class="grid gap-2 text-sm font-medium">
-                    Discovery service URLs
+                    {m.share_network_discovery_urls()}
                     <Textarea
                       id="network-discovery-urls"
                       aria-describedby={"network-discovery-urls-help" +
@@ -1361,14 +1360,10 @@
                     <span
                       id="network-discovery-urls-help"
                       class="font-normal text-muted-foreground"
-                      >One compatible service URL per line. Leave empty for the
-                      default service. Custom URLs replace the default discovery
-                      service.</span
+                      >{m.share_network_discovery_help_urls()}</span
                     >
                     <span class="text-xs font-normal text-muted-foreground"
-                      >{#if !network_settings.discovery_enabled}Enable automatic
-                        device discovery to edit this field.{:else if !discovery_urls_text.trim()}Using
-                        the default service.{/if}</span
+                      >{#if !network_settings.discovery_enabled}{m.share_network_enable_discovery()}{:else if !discovery_urls_text.trim()}{m.share_network_default_service()}{/if}</span
                     >
                     {#if network_settings_field_errors.discovery_urls}
                       <span
@@ -1387,7 +1382,7 @@
         <div class="shrink-0 space-y-3 border-t pt-3">
           {#if !network_has_transport}
             <p class="text-sm text-destructive" role="alert">
-              Enable direct or relay connections so devices can transfer data.
+              {m.share_network_enable_transport()}
             </p>
           {/if}
           {#if network_settings_error}
@@ -1400,27 +1395,28 @@
           {/if}
           <p class="text-xs text-muted-foreground" role="status">
             {saving_network_settings
-              ? "Applying changes…"
+              ? m.share_network_applying_changes()
               : network_dirty
-                ? "Changes not applied"
+                ? m.share_network_unapplied()
                 : network_restart_failed
-                  ? "Settings saved. Retry to activate them."
+                  ? m.share_network_retry_activate()
                   : network_settings_applied
-                    ? "Settings applied. Received boards are reconnecting automatically."
-                    : "No unapplied changes"}
+                    ? m.share_network_applied()
+                    : m.share_network_no_changes()}
           </p>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <Button
               variant="outline"
               disabled={saving_network_settings}
-              onclick={reset_network_settings}>Restore defaults</Button
+              onclick={reset_network_settings}
+              >{m.share_network_defaults()}</Button
             >
             <div class="flex gap-2">
               <Button
                 variant="outline"
                 class="min-w-24"
                 disabled={saving_network_settings}
-                onclick={() => leave_network(true)}>Cancel</Button
+                onclick={() => leave_network(true)}>{m.common_cancel()}</Button
               >
               <Button
                 class="min-w-24"
@@ -1431,10 +1427,10 @@
                   (!network_dirty && !network_restart_failed)}
               >
                 {saving_network_settings
-                  ? "Applying…"
+                  ? m.share_network_applying()
                   : network_restart_failed && !network_dirty
-                    ? "Retry"
-                    : "Apply"}
+                    ? m.common_retry()
+                    : m.share_network_apply()}
               </Button>
             </div>
           </div>
@@ -1442,7 +1438,7 @@
       {:else if flow === "share"}
         <div class="grid gap-4">
           <label class="grid gap-2 text-sm font-medium"
-            >Board<Select.Root
+            >{m.board_title()}<Select.Root
               type="single"
               value={selected_board_id?.toString() ?? ""}
               onValueChange={(v) => {
@@ -1450,7 +1446,7 @@
                 invalidate();
               }}
               ><Select.Trigger class="w-full"
-                >{selected_board?.name ?? "Choose a board"}</Select.Trigger
+                >{selected_board?.name ?? m.ui_choose_a_board()}</Select.Trigger
               ><Select.Content
                 >{#each owned_boards as item}
                   <Select.Item value={item.id.toString()}
@@ -1460,7 +1456,7 @@
               ></Select.Root
             ></label
           ><label class="grid gap-2 text-sm font-medium"
-            >Permission<Select.Root
+            >{m.ui_permission()}<Select.Root
               type="single"
               value={permission}
               onValueChange={(v) => {
@@ -1469,11 +1465,11 @@
               }}
               ><Select.Trigger class="w-full"
                 >{permission === "viewer"
-                  ? "Read only"
-                  : "Can edit"}</Select.Trigger
+                  ? m.board_read_only()
+                  : m.board_can_edit()}</Select.Trigger
               ><Select.Content
-                ><Select.Item value="viewer">Read only</Select.Item><Select.Item
-                  value="editor">Can edit</Select.Item
+                ><Select.Item value="viewer">{m.board_read_only()}</Select.Item
+                ><Select.Item value="editor">{m.board_can_edit()}</Select.Item
                 ></Select.Content
               ></Select.Root
             ></label
@@ -1484,8 +1480,8 @@
                 <Card.Title class="text-base">{generated.board_name}</Card.Title
                 ><Badge variant="secondary"
                   >{generated.permission === "viewer"
-                    ? "Read only"
-                    : "Can edit"}</Badge
+                    ? m.board_read_only()
+                    : m.board_can_edit()}</Badge
                 >
               </div>
               <div
@@ -1494,10 +1490,9 @@
                 {@html generated.qr}
               </div>
               <Button variant="outline" onclick={() => void copy()}
-                >Copy invitation link</Button
+                >{m.ui_copy_invitation_link()}</Button
               ><Card.Description
-                >Approve each device in Manage sharing before it can join.
-                Create another invitation to manage access separately.</Card.Description
+                >{m.share_device_invite_description()}</Card.Description
               ></Card.Root
             >
           {/if}
@@ -1505,10 +1500,10 @@
             onclick={() => void create()}
             disabled={creating || selected_board_id === null}
             >{creating
-              ? "Creating..."
+              ? m.ui_creating()
               : generated
-                ? "Create new invitation"
-                : "Create invitation"}</Button
+                ? m.ui_create_new_invitation()
+                : m.ui_create_invitation()}</Button
           >
         </div>
       {:else if flow === "join"}
@@ -1519,16 +1514,16 @@
               ><LinkIcon class="size-5" /></span
             >
             <div>
-              <Card.Title class="text-base">Invitation link</Card.Title
+              <Card.Title class="text-base">{m.ui_invitation_link()}</Card.Title
               ><Card.Description
-                >Paste the link from the board owner.</Card.Description
+                >{m.ui_paste_the_link_from_the_board_owner()}</Card.Description
               >
             </div>
           </div>
           <Input
             bind:value={ticket}
             placeholder="cardbe://share/..."
-            aria-label="Invitation link"
+            aria-label={m.ui_invitation_link()}
             oninput={() => (board.iroh_last_error = "")}
           /></Card.Root
         >
@@ -1541,26 +1536,26 @@
           </p>
         {/if}
         <Button onclick={() => void join()} disabled={!ticket.trim() || joining}
-          >{joining ? "Connecting..." : "Request access"}</Button
+          >{joining ? m.ui_connecting() : m.ui_request_access()}</Button
         >
       {:else}
         <ButtonGroup.Root
           class="grid grid-cols-2"
           role="group"
-          aria-label="Sharing management views"
+          aria-label={m.ui_sharing_management_views()}
         >
           <Button
             bind:ref={manage_view_button}
             variant={manage_view === "mine" ? "secondary" : "outline"}
             aria-pressed={manage_view === "mine"}
             onclick={() => (manage_view = "mine")}
-            >My invitations ({invites.length})</Button
+            >{m.share_owned_count({ count: invites.length })}</Button
           >
           <Button
             variant={manage_view === "received" ? "secondary" : "outline"}
             aria-pressed={manage_view === "received"}
             onclick={() => (manage_view = "received")}
-            >Joined boards ({received_boards.length})</Button
+            >{m.share_received_count({ count: received_boards.length })}</Button
           >
         </ButtonGroup.Root>
         <div
@@ -1570,15 +1565,17 @@
             <div class="flex items-center gap-2">
               <Checkbox id="pending-devices-only" bind:checked={pending_only} />
               <Label for="pending-devices-only" class="text-xs"
-                >With pending device requests ({pending_count})</Label
+                >{m.share_pending_filter({
+                  count: formatNumber(pending_count),
+                })}</Label
               >
             </div>
-          {:else}<span>Each board syncs with its owner.</span>{/if}
+          {:else}<span>{m.share_owner_sync()}</span>{/if}
         </div>
         <p class="text-xs text-muted-foreground">
           {manage_view === "mine"
-            ? "New devices need your approval before accessing a board. "
-            : ""}This list updates automatically.
+            ? m.share_manage_auto_help()
+            : m.share_received_auto_help()}
         </p>
         <ScrollArea
           class="min-h-0 flex-1"
@@ -1598,7 +1595,9 @@
                   disabled={loading_invites}
                   onclick={() => void load()}
                 >
-                  {loading_invites ? "Retrying..." : "Retry"}
+                  {loading_invites
+                    ? m.share_network_retrying()
+                    : m.common_retry()}
                 </Button>
               </div>
             {/if}
@@ -1612,14 +1611,14 @@
                 class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
                 role="alert"
               >
-                Sharing service could not start: {host_error}
+                {m.share_service_error({ error: host_error })}
               </p>
             {/if}
             {#if manage_view === "received"}
               {#if received_boards.length === 0}
                 <Card.Root class="p-4 shadow-none"
                   ><Card.Description
-                    >No boards have been shared with you.</Card.Description
+                    >{m.ui_no_boards_have_been_shared_with_you()}</Card.Description
                   ></Card.Root
                 >
               {:else}
@@ -1633,35 +1632,38 @@
                         ><Card.Description
                           >{board.iroh_access_removed[shared.id]
                             ? (board.iroh_access_error[shared.id] ??
-                              "Access is no longer available.")
+                              m.share_access_unavailable())
                             : shared.sync_status === "syncing"
-                              ? "Syncing with owner..."
+                              ? m.ui_syncing_with_owner()
                               : shared.sync_status === "conflict"
-                                ? "Sync conflict: both versions are saved"
+                                ? m.ui_sync_conflict_both_versions_are_saved()
                                 : shared.sync_status === "pending"
-                                  ? "Local changes are waiting to sync"
+                                  ? m.ui_local_changes_are_waiting_to_sync()
                                   : shared.sync_status === "error"
-                                    ? "Sync needs attention"
-                                    : "Background sync enabled"}</Card.Description
+                                    ? m.ui_sync_needs_attention()
+                                    : m.ui_background_sync_enabled()}</Card.Description
                         >
                         <p class="mt-1 text-xs text-muted-foreground">
                           {board.iroh_last_synced_at[shared.id]
-                            ? `Last synced this session: ${sync_time.format(new Date(board.iroh_last_synced_at[shared.id]))}`
-                            : "No sync yet this session"}
+                            ? m.share_last_synced({
+                                time: sync_time.format(
+                                  new Date(
+                                    board.iroh_last_synced_at[shared.id],
+                                  ),
+                                ),
+                              })
+                            : m.ui_no_sync_yet_this_session()}
                         </p>
                       </div>
                       <Badge variant="secondary"
                         >{shared.shared_role === "viewer"
-                          ? "Read only"
-                          : "Can edit"}</Badge
+                          ? m.board_read_only()
+                          : m.board_can_edit()}</Badge
                       >
                     </div>
                     {#if shared.sync_status === "conflict"}
                       <p class="text-xs text-muted-foreground">
-                        Open the board to review your local version. Using the
-                        owner's version saves your local version as a separate
-                        board first. Keeping yours will replace the owner's
-                        changes if their version has not changed again.
+                        {m.share_conflict_description()}
                       </p>
                     {/if}
                     <div class="flex flex-wrap gap-2">
@@ -1670,21 +1672,21 @@
                         onclick={() => {
                           void board.switch_board(shared.id);
                           open = false;
-                        }}>Open board</Button
+                        }}>{m.ui_open_board()}</Button
                       >
                       {#if shared.sync_status === "conflict"}
                         <Button
                           variant="outline"
                           onclick={() =>
                             void board.resolve_iroh_conflict(shared.id, false)}
-                          >Use owner version</Button
+                          >{m.ui_use_owner_version()}</Button
                         >
                         {#if shared.shared_role === "editor"}
                           <Button
                             variant="outline"
                             onclick={() =>
                               void board.resolve_iroh_conflict(shared.id, true)}
-                            >Keep my version</Button
+                            >{m.ui_keep_my_version()}</Button
                           >
                         {/if}
                       {:else}
@@ -1696,9 +1698,9 @@
                           onclick={() => void board.sync_iroh_board(shared.id)}
                           >{#if shared.sync_status === "syncing"}
                             <LoaderCircleIcon class="animate-spin" />
-                            Syncing...
+                            {m.share_syncing()}
                           {:else}
-                            Sync now
+                            {m.share_sync()}
                           {/if}</Button
                         >
                       {/if}
@@ -1708,7 +1710,7 @@
                         variant="secondary"
                         class="w-full"
                         onclick={() => (received_waiting_id = shared.id)}
-                        >Waiting for approval · View device ID</Button
+                        >{m.ui_waiting_for_approval_view_device_id()}</Button
                       >
                     {:else if board.iroh_access_removed[shared.id]}
                       <div
@@ -1716,15 +1718,13 @@
                       >
                         <span
                           >{board.iroh_access_error[shared.id] ??
-                            "Access is no longer available."} Your local board is
-                          safe. Request access again; the owner must approve it. If
-                          the invitation was deleted or disabled, ask the owner for
-                          a new invitation or to enable sharing.</span
+                            m.share_access_unavailable()}
+                          {m.share_access_removed_help()}</span
                         ><Button
                           class="w-full"
                           onclick={() =>
                             void request_received_access(shared.id, true)}
-                          >Request access again</Button
+                          >{m.ui_request_access_again()}</Button
                         >
                       </div>
                     {/if}
@@ -1750,11 +1750,10 @@
             {:else if invites.length === 0}
               <Card.Root class="p-4 shadow-none"
                 ><Card.Title class="text-base"
-                  >Share your first board</Card.Title
+                  >{m.share_first_board()}</Card.Title
                 >
                 <Card.Description
-                  >Create an invitation, send it to someone you trust, then
-                  approve their device here.</Card.Description
+                  >{m.share_first_board_description()}</Card.Description
                 ></Card.Root
               >
             {:else}
@@ -1764,16 +1763,14 @@
                 >
                   <ShieldCheckIcon class="size-5 text-primary" />
                   <span class="flex-1"
-                    >{pending_count}
-                    {pending_count === 1 ? "access request" : "access requests"}
-                    waiting for review</span
+                    >{m.share_waiting_count({ count: pending_count })}</span
                   >
                 </div>
               {/if}
               {#if visible_invites.length === 0}<p
                   class="rounded-md border p-4 text-sm text-muted-foreground"
                 >
-                  No devices are waiting for approval.
+                  {m.share_no_pending()}
                 </p>{/if}
               {#each visible_invites as invite (invite.invite_id)}
                 <Card.Root class="gap-3 p-4 shadow-none">
@@ -1788,7 +1785,9 @@
                       >
                     </div>
                     <Badge variant={invite.enabled ? "secondary" : "outline"}
-                      >{invite.enabled ? "Active" : "Disabled"}</Badge
+                      >{invite.enabled
+                        ? m.explorer_active()
+                        : m.ui_disabled()}</Badge
                     >
                   </div>
                   <Collapsible.Root class="rounded-md border">
@@ -1797,8 +1796,8 @@
                     >
                       <span
                         >Invitation settings · {invite.permission === "viewer"
-                          ? "Read only"
-                          : "Can edit"}</span
+                          ? m.board_read_only()
+                          : m.board_can_edit()}</span
                       >
                       <ChevronDownIcon
                         class="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
@@ -1817,14 +1816,18 @@
                         >
                           <Select.Trigger
                             class="w-36"
-                            aria-label={`Access permission for ${invite.board_name}`}
+                            aria-label={m.share_permission_for({
+                              name: invite.board_name,
+                            })}
                             >{invite.permission === "viewer"
-                              ? "Read only"
-                              : "Can edit"}</Select.Trigger
+                              ? m.board_read_only()
+                              : m.board_can_edit()}</Select.Trigger
                           >
                           <Select.Content
-                            ><Select.Item value="viewer">Read only</Select.Item
-                            ><Select.Item value="editor">Can edit</Select.Item
+                            ><Select.Item value="viewer"
+                              >{m.board_read_only()}</Select.Item
+                            ><Select.Item value="editor"
+                              >{m.board_can_edit()}</Select.Item
                             ></Select.Content
                           >
                         </Select.Root>
@@ -1837,13 +1840,12 @@
                               void update(invite, { enabled: checked })}
                           />
                           <Label for={`invite-active-${invite.invite_id}`}
-                            >Sharing enabled</Label
+                            >{m.share_enabled()}</Label
                           >
                         </div>
                       </div>
                       <p class="text-xs text-muted-foreground">
-                        Changes apply immediately. Turning sharing off stops
-                        sync for every device using this invitation.
+                        {m.share_settings_help()}
                       </p>
                     </Collapsible.Content>
                   </Collapsible.Root>
@@ -1852,7 +1854,8 @@
                       variant="outline"
                       disabled={!invite.enabled ||
                         loading_access_id === invite.invite_id}
-                      onclick={() => void copy_invite(invite)}>Copy link</Button
+                      onclick={() => void copy_invite(invite)}
+                      >{m.ui_copy_link()}</Button
                     >
                     <Button
                       variant="outline"
@@ -1860,8 +1863,8 @@
                         loading_access_id === invite.invite_id}
                       onclick={() => void toggle_qr(invite)}
                       >{visible_qr_id === invite.invite_id
-                        ? "Hide QR"
-                        : "Show QR"}</Button
+                        ? m.ui_hide_qr()
+                        : m.ui_show_qr()}</Button
                     >
                     <Button
                       class="ml-auto"
@@ -1869,7 +1872,7 @@
                       onclick={() => {
                         pending_delete = invite;
                         delete_confirm_open = true;
-                      }}>Delete</Button
+                      }}>{m.common_delete()}</Button
                     >
                   </div>
                   {#if invite.devices.length > 0}
@@ -1891,18 +1894,19 @@
                       >
                         <ShieldCheckIcon class="size-4 text-muted-foreground" />
                         <span class="flex-1"
-                          >Devices
+                          >{m.ui_devices()}
                           <span class="text-muted-foreground"
-                            >({invite.devices.length})</span
+                            >({formatNumber(invite.devices.length)})</span
                           ></span
                         >
                         {#if invite.devices.some((device) => device.status === IrohDeviceStatus.Pending)}
                           <Badge variant="secondary"
-                            >{invite.devices.filter(
-                              (device) =>
-                                device.status === IrohDeviceStatus.Pending,
-                            ).length}
-                            pending</Badge
+                            >{m.share_pending_count({
+                              count: invite.devices.filter(
+                                (device) =>
+                                  device.status === IrohDeviceStatus.Pending,
+                              ).length,
+                            })}</Badge
                           >
                         {/if}
                         <ChevronDownIcon
@@ -1923,11 +1927,11 @@
                                 <div class="min-w-0 flex-1">
                                   <div class="font-medium">
                                     {device.status === IrohDeviceStatus.Pending
-                                      ? "Approval requested"
+                                      ? m.ui_approval_requested()
                                       : device.status ===
                                           IrohDeviceStatus.Approved
-                                        ? "Approved device"
-                                        : "Access revoked"}
+                                        ? m.ui_approved_device()
+                                        : m.share_access_revoked()}
                                   </div>
                                   <div
                                     class="font-mono text-xs text-muted-foreground"
@@ -1949,7 +1953,8 @@
                                       device_id_verified = false;
                                       approval_open = true;
                                     }}
-                                    aria-haspopup="dialog">Review</Button
+                                    aria-haspopup="dialog"
+                                    >{m.ui_review()}</Button
                                   >
                                 {:else if device.status === IrohDeviceStatus.Approved}
                                   <Button
@@ -1961,7 +1966,7 @@
                                         node_id: device.node_id,
                                       };
                                       revoke_open = true;
-                                    }}>Revoke</Button
+                                    }}>{m.ui_revoke()}</Button
                                   >
                                 {/if}
                               </div>
@@ -1979,7 +1984,7 @@
                   {#if visible_qr_id === invite.invite_id && invite_access[invite.invite_id]}
                     <div
                       class="qr mx-auto aspect-square w-full max-w-56 overflow-hidden rounded-md bg-white p-2"
-                      aria-label="Board invitation QR code"
+                      aria-label={m.ui_board_invitation_qr_code()}
                     >
                       {@html invite_access[invite.invite_id].qr_svg}
                     </div>
@@ -1998,13 +2003,13 @@
     <AlertDialog.Header>
       <AlertDialog.Title>Discard unapplied changes?</AlertDialog.Title>
       <AlertDialog.Description
-        >Your connection settings will keep their previously saved values.</AlertDialog.Description
+        >{m.share_network_discard_help()}</AlertDialog.Description
       >
     </AlertDialog.Header>
     <AlertDialog.Footer>
       <AlertDialog.Cancel>Keep editing</AlertDialog.Cancel>
       <AlertDialog.Action onclick={() => leave_network(true)}
-        >Discard changes</AlertDialog.Action
+        >{m.share_network_discard()}</AlertDialog.Action
       >
     </AlertDialog.Footer>
   </AlertDialog.Content>
@@ -2012,19 +2017,18 @@
 <AlertDialog.Root bind:open={delete_confirm_open}
   ><AlertDialog.Content
     ><AlertDialog.Header
-      ><AlertDialog.Title>Delete invitation?</AlertDialog.Title
+      ><AlertDialog.Title>{m.ui_delete_invitation()}</AlertDialog.Title
       ><AlertDialog.Description
-        >People can no longer use this invitation to sync. Boards they already
-        received stay on their devices.</AlertDialog.Description
+        >{m.share_invite_delete_description()}</AlertDialog.Description
       ></AlertDialog.Header
     ><AlertDialog.Footer
       ><AlertDialog.Cancel
         onclick={() => {
           pending_delete = null;
           delete_confirm_open = false;
-        }}>Cancel</AlertDialog.Cancel
+        }}>{m.common_cancel()}</AlertDialog.Cancel
       ><AlertDialog.Action onclick={() => void remove()}
-        >Delete invitation</AlertDialog.Action
+        >{m.ui_delete_invitation()}</AlertDialog.Action
       ></AlertDialog.Footer
     ></AlertDialog.Content
   ></AlertDialog.Root
@@ -2041,14 +2045,14 @@
       }
     }}
     ><AlertDialog.Header
-      ><AlertDialog.Title>Review device request</AlertDialog.Title
+      ><AlertDialog.Title>{m.ui_review_device_request()}</AlertDialog.Title
       ><AlertDialog.Description
-        >Confirm this ID with the person requesting access through a trusted
-        channel. Approval grants this invitation's
-        {approval_candidate?.invite.permission === "editor"
-          ? "editing"
-          : "viewing"}
-        permission. Rejected devices may request again later.</AlertDialog.Description
+        >{m.share_review_description({
+          permission:
+            approval_candidate?.invite.permission === "editor"
+              ? m.board_can_edit()
+              : m.board_read_only(),
+        })}</AlertDialog.Description
       ></AlertDialog.Header
     >
     {#if approval_candidate}
@@ -2056,8 +2060,8 @@
         <span class="font-medium">{approval_candidate.invite.board_name}</span>
         <Badge variant="secondary"
           >{approval_candidate.invite.permission === "viewer"
-            ? "Read only"
-            : "Can edit"}</Badge
+            ? m.board_read_only()
+            : m.board_can_edit()}</Badge
         >
       </div>
       {#if !approval_candidate.invite.enabled}
@@ -2068,7 +2072,7 @@
       {/if}
       <div class="rounded-lg border bg-muted/30 p-3">
         <div class="mb-2 text-xs font-medium text-muted-foreground">
-          Device ID
+          {m.ui_device_id()}
         </div>
         <code class="block break-all text-sm leading-relaxed select-all"
           >{verification_id(approval_candidate.node_id)}</code
@@ -2078,7 +2082,7 @@
           class="mt-3"
           onclick={() => void copy_device_id(approval_candidate!.node_id)}
           ><ClipboardIcon />
-          Copy ID</Button
+          {m.ui_copy_id()}</Button
         >
       </div>
     {/if}
@@ -2098,7 +2102,7 @@
     <AlertDialog.Footer
       ><AlertDialog.Cancel
         class="disabled:opacity-100"
-        disabled={device_action_pending}>Back</AlertDialog.Cancel
+        disabled={device_action_pending}>{m.ui_back()}</AlertDialog.Cancel
       ><Button
         variant="destructive"
         class="disabled:opacity-100"
@@ -2111,7 +2115,7 @@
               false,
             );
           }
-        }}>Reject</Button
+        }}>{m.ui_reject()}</Button
       ><Button
         class={device_id_verified
           ? "min-w-36 disabled:opacity-100"
@@ -2126,7 +2130,7 @@
               true,
             );
           }
-        }}>Approve device</Button
+        }}>{m.ui_approve_device()}</Button
       ></AlertDialog.Footer
     ></AlertDialog.Content
   ></AlertDialog.Root
@@ -2139,11 +2143,11 @@
       }
     }}
     ><AlertDialog.Header
-      ><AlertDialog.Title>Revoke device access?</AlertDialog.Title
+      ><AlertDialog.Title>{m.ui_revoke_device_access()}</AlertDialog.Title
       ><AlertDialog.Description
-        >This device will no longer be able to sync
-        {revoke_candidate?.invite.board_name ?? "this board"}. Its local copy
-        stays on the device, and it can request access again later.</AlertDialog.Description
+        >{m.share_revoke_description({
+          name: revoke_candidate?.invite.board_name ?? m.ui_this_board(),
+        })}</AlertDialog.Description
       ></AlertDialog.Header
     >
     {#if revoke_candidate}
@@ -2155,12 +2159,12 @@
     <AlertDialog.Footer
       ><AlertDialog.Cancel
         class="disabled:opacity-100"
-        disabled={device_action_pending}>Cancel</AlertDialog.Cancel
+        disabled={device_action_pending}>{m.common_cancel()}</AlertDialog.Cancel
       ><Button
         variant="destructive"
         class="disabled:opacity-100"
         disabled={device_action_pending}
-        onclick={() => void revoke_device()}>Revoke access</Button
+        onclick={() => void revoke_device()}>{m.ui_revoke_access()}</Button
       ></AlertDialog.Footer
     ></AlertDialog.Content
   ></AlertDialog.Root

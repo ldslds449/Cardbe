@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
   import ChartNoAxesCombinedIcon from "@lucide/svelte/icons/chart-no-axes-combined";
   import Columns3Icon from "@lucide/svelte/icons/columns-3";
@@ -8,6 +10,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import type { WorkspaceView } from "./workspace";
   import type { BoardRole } from "../../board.svelte";
+  import { formatDateTime } from "$lib/i18n";
 
   let {
     selected_view,
@@ -27,29 +30,31 @@
     onSwitchView: (view: WorkspaceView) => void;
   } = $props();
 
-  const views: {
-    id: WorkspaceView;
-    label: string;
-    icon: typeof SparklesIcon;
-  }[] = [
-    { id: "focus", label: "Today", icon: SparklesIcon },
-    { id: "board", label: "Board", icon: Columns3Icon },
-    { id: "calendar", label: "Calendar", icon: CalendarDaysIcon },
-    { id: "statistics", label: "Statistics", icon: ChartNoAxesCombinedIcon },
-  ];
-  const time_formatter = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const views = $derived<
+    {
+      id: WorkspaceView;
+      label: string;
+      icon: typeof SparklesIcon;
+    }[]
+  >([
+    { id: "focus", label: m.workspace_today(), icon: SparklesIcon },
+    { id: "board", label: m.board_title(), icon: Columns3Icon },
+    { id: "calendar", label: m.workspace_calendar(), icon: CalendarDaysIcon },
+    {
+      id: "statistics",
+      label: m.workspace_statistics(),
+      icon: ChartNoAxesCombinedIcon,
+    },
+  ]);
 </script>
 
 <div
   class="flex h-10 shrink-0 items-end border-b px-4"
-  aria-label="Workspace navigation"
+  aria-label={m.workspace_navigation()}
 >
   <div
     class="flex h-full shrink-0 items-end"
-    aria-label="Workspace views"
+    aria-label={m.workspace_views()}
     role="tablist"
   >
     {#each views as view (view.id)}
@@ -69,7 +74,7 @@
 
   <div
     class="ml-auto flex min-w-0 max-w-[45%] self-center items-center gap-2 text-sm"
-    aria-label={`Current board: ${active_board_name}`}
+    aria-label={m.workspace_current_board({ name: active_board_name })}
   >
     <span class="truncate font-medium text-foreground" title={active_board_name}
       >{active_board_name}</span
@@ -77,22 +82,29 @@
     {#if shared_role !== "owner"}
       <Badge variant="secondary" class="hidden shrink-0 sm:inline-flex"
         >{shared_role === "viewer"
-          ? "Shared - read only"
-          : "Shared - can edit"}</Badge
+          ? m.share_read_only()
+          : m.share_can_edit()}</Badge
       >
       {#if sync_status === "conflict"}
-        <Badge variant="destructive" class="shrink-0">Conflict</Badge>
+        <Badge variant="destructive" class="shrink-0"
+          >{m.share_conflict()}</Badge
+        >
       {:else}
         <span class="hidden shrink-0 text-xs text-muted-foreground lg:inline">
           {sync_status === "syncing"
-            ? "Syncing..."
+            ? m.share_syncing()
             : sync_status === "pending"
-              ? "Pending"
+              ? m.share_pending()
               : sync_status === "error"
-                ? "Sync error"
+                ? m.share_sync_error()
                 : last_synced_at
-                  ? `Synced ${time_formatter.format(new Date(last_synced_at))}`
-                  : "Background sync"}
+                  ? m.share_synced_at({
+                      time: formatDateTime(last_synced_at, {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      }),
+                    })
+                  : m.share_background()}
         </span>
       {/if}
       {#if onSync}
@@ -101,10 +113,10 @@
           variant="ghost"
           disabled={sync_status === "syncing" || sync_status === "conflict"}
           onclick={onSync}
-          aria-label="Sync shared board now"
+          aria-label={m.share_sync_board()}
           title={sync_status === "conflict"
-            ? "Resolve conflict in Board sharing"
-            : "Sync now"}
+            ? m.share_resolve_conflict()
+            : m.share_sync()}
           ><RefreshCwIcon
             class={sync_status === "syncing" ? "animate-spin" : ""}
           /></Button

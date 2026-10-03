@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { formatNumber } from "$lib/i18n";
+  import { getLocale } from "$lib/i18n";
+  import * as m from "$lib/paraglide/messages.js";
   import { onMount } from "svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -83,10 +86,10 @@
 
   function due_label(task: Task): string {
     if (!task.due_time) {
-      return "No due date";
+      return m.task_due_none();
     }
     const include_year = task.due_time.getFullYear() !== now.getFullYear();
-    const date = task.due_time.toLocaleDateString("en", {
+    const date = task.due_time.toLocaleDateString(getLocale(), {
       month: "short",
       day: "numeric",
       year: include_year ? "numeric" : undefined,
@@ -96,7 +99,7 @@
       task.due_time.getMinutes() !== 0 ||
       task.due_time.getSeconds() !== 0;
     return has_time
-      ? `${date}, ${task.due_time.toLocaleTimeString("en", {
+      ? `${date}, ${task.due_time.toLocaleTimeString(getLocale(), {
           hour: "2-digit",
           minute: "2-digit",
           hour12: false,
@@ -170,8 +173,11 @@
           {#if checklist_label(entry.task)}
             <span class="inline-flex items-center gap-1">
               <CircleCheckIcon class="size-3.5" />
-              {checklist_label(entry.task)}
-              checklist
+              {m.task_checklist_progress({
+                completed: entry.task.items.filter((item) => item.completed)
+                  .length,
+                total: entry.task.items.length,
+              })}
             </span>
           {/if}
           {#if entry.task.labels.length > 0}
@@ -196,8 +202,8 @@
               variant="ghost"
               size="icon-sm"
               class="bg-card/90 text-muted-foreground shadow-sm"
-              aria-label={`Actions for ${entry.task.title}`}
-              title="Task actions"
+              aria-label={m.explorer_actions_named({ name: entry.task.title })}
+              title={m.task_menu()}
             >
               <EllipsisIcon />
             </Button>
@@ -215,23 +221,23 @@
         >
           <DropdownMenu.Item onclick={() => onViewTask(entry.task)}>
             <FullscreenIcon />
-            View Details
+            {m.task_view_details()}
           </DropdownMenu.Item>
           <DropdownMenu.Item onclick={() => onEditTask(entry.task)}>
             <PencilIcon />
-            Edit Task
+            {m.task_edit_action()}
           </DropdownMenu.Item>
           <DropdownMenu.Item onclick={() => onDuplicateTask(entry.task)}>
             <CopyIcon />
-            Duplicate Task
+            {m.task_duplicate_action()}
           </DropdownMenu.Item>
           <DropdownMenu.Item onclick={() => onSaveAsTemplate(entry.task)}>
             <LayoutTemplateIcon />
-            Save as Template
+            {m.task_template_save()}
           </DropdownMenu.Item>
           <DropdownMenu.Item onclick={() => onExportTask(entry.task)}>
             <Share2Icon />
-            Share Task
+            {m.task_share()}
           </DropdownMenu.Item>
           <DropdownMenu.Item
             onSelect={() => {
@@ -240,7 +246,7 @@
             }}
           >
             <ArchiveIcon />
-            Archive Task
+            {m.task_archive_action()}
           </DropdownMenu.Item>
           <DropdownMenu.Separator />
           <DropdownMenu.Item
@@ -248,7 +254,7 @@
             onclick={() => ask_to_delete(entry.task)}
           >
             <TrashIcon />
-            Delete Task
+            {m.task_delete()}
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>
@@ -276,7 +282,7 @@
           ? "border-warning/30 bg-warning/10 text-warning"
           : ""}
       >
-        {entries.length}
+        {formatNumber(entries.length)}
       </Badge>
     </header>
     {#if entries.length > 0}
@@ -289,16 +295,13 @@
       <div
         class="flex min-h-24 items-center justify-center rounded-lg border border-dashed bg-background/60 px-4 text-center text-sm text-muted-foreground"
       >
-        Nothing here
+        {m.focus_nothing()}
       </div>
     {/if}
   </section>
 {/snippet}
 
-<div
-  class="mx-auto w-full max-w-6xl space-y-5 p-1"
-  aria-label="Today focus view"
->
+<div class="mx-auto w-full max-w-6xl space-y-5 p-1" aria-label={m.focus_view()}>
   <header
     class="overflow-hidden rounded-2xl border bg-background p-5 shadow-sm"
   >
@@ -309,10 +312,10 @@
         </div>
         <div>
           <p class="text-sm font-medium text-primary">
-            {now.toLocaleDateString("en", { weekday: "long" })}
+            {now.toLocaleDateString(getLocale(), { weekday: "long" })}
           </p>
           <h1 class="text-2xl font-semibold tracking-tight">
-            {now.toLocaleDateString("en", {
+            {now.toLocaleDateString(getLocale(), {
               month: "long",
               day: "numeric",
               year: "numeric",
@@ -320,11 +323,9 @@
           </h1>
           <p class="mt-1 text-sm text-muted-foreground">
             {#if attention_count === 0}
-              You're clear for today.
+              {m.focus_today_clear()}
             {:else}
-              {attention_count}
-              {attention_count === 1 ? "task needs" : "tasks need"}
-              your attention.
+              {m.focus_attention({ count: attention_count })}
             {/if}
           </p>
         </div>
@@ -334,25 +335,27 @@
     <div class="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
       <div class="rounded-lg border bg-background/80 p-3">
         <div class="text-2xl font-semibold tabular-nums text-destructive">
-          {groups.overdue.length}
+          {formatNumber(groups.overdue.length)}
         </div>
-        <div class="text-xs text-muted-foreground">Overdue</div>
+        <div class="text-xs text-muted-foreground">{m.explorer_overdue()}</div>
       </div>
       <div class="rounded-lg border bg-background/80 p-3">
         <div class="text-2xl font-semibold tabular-nums text-warning">
-          {groups.today.length}
+          {formatNumber(groups.today.length)}
         </div>
-        <div class="text-xs text-muted-foreground">Today</div>
+        <div class="text-xs text-muted-foreground">{m.workspace_today()}</div>
       </div>
       <div class="rounded-lg border bg-background/80 p-3">
         <div class="text-2xl font-semibold tabular-nums">
-          {groups.upcoming.length}
+          {formatNumber(groups.upcoming.length)}
         </div>
-        <div class="text-xs text-muted-foreground">Upcoming</div>
+        <div class="text-xs text-muted-foreground">{m.focus_upcoming()}</div>
       </div>
       <div class="rounded-lg border bg-background/80 p-3">
-        <div class="text-2xl font-semibold tabular-nums">{total_count}</div>
-        <div class="text-xs text-muted-foreground">Visible tasks</div>
+        <div class="text-2xl font-semibold tabular-nums">
+          {formatNumber(total_count)}
+        </div>
+        <div class="text-xs text-muted-foreground">{m.focus_visible()}</div>
       </div>
     </div>
   </header>
@@ -362,19 +365,19 @@
       <Empty.Header>
         <Empty.Media variant="icon"><CircleCheckIcon /></Empty.Media>
         <Empty.Title
-          >{search_text.trim() ? "No matching tasks" : "All clear"}</Empty.Title
+          >{search_text.trim()
+            ? m.explorer_no_matching()
+            : m.focus_clear()}</Empty.Title
         >
         <Empty.Description>
-          {search_text.trim()
-            ? "Try another search."
-            : "There are no active tasks in your workspace."}
+          {search_text.trim() ? m.focus_try_search() : m.focus_empty()}
         </Empty.Description>
       </Empty.Header>
       {#if !search_text.trim()}
         <Empty.Content>
           {#if !read_only}
             <Button onclick={() => onAddTask(new Date(now))}
-              >Add today's first task</Button
+              >{m.focus_add()}</Button
             >
           {/if}
         </Empty.Content>
@@ -384,28 +387,28 @@
     <div class="grid items-start gap-5 lg:grid-cols-2">
       <div class="space-y-5">
         {@render group_section(
-          "Today",
-          "Tasks due before the day ends",
+          m.workspace_today(),
+          m.focus_today_help(),
           groups.today,
           "today",
         )}
         {@render group_section(
-          "Overdue",
-          "Past due tasks that need a decision",
+          m.explorer_overdue(),
+          m.focus_overdue_help(),
           groups.overdue,
           "overdue",
         )}
       </div>
       <div class="space-y-5">
         {@render group_section(
-          "Upcoming",
-          "Everything scheduled after today",
+          m.focus_upcoming(),
+          m.focus_upcoming_help(),
           groups.upcoming,
           "normal",
         )}
         {@render group_section(
-          "No schedule",
-          "Tasks waiting for a due date",
+          m.focus_unscheduled(),
+          m.focus_unscheduled_help(),
           groups.unscheduled,
           "normal",
         )}

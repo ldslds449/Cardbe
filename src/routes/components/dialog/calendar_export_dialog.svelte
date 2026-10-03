@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { getLocale, formatNumber } from "$lib/i18n";
+  import * as m from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import { toast } from "svelte-sonner";
   import DownloadIcon from "@lucide/svelte/icons/download";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
@@ -36,7 +38,6 @@
   } from "../calendar/calendar-export";
 
   const PREFERENCES_KEY = "cardbe-calendar-export-preferences-v1";
-  const EXPORT_LOCALE = "en-US";
 
   let {
     open = $bindable(),
@@ -196,7 +197,7 @@
             "month",
           ).map((day) => (day.in_current_month ? day : { ...day, tasks: [] }));
     return {
-      label: month.toLocaleDateString(EXPORT_LOCALE, {
+      label: month.toLocaleDateString(getLocale(), {
         year: "numeric",
         month: "long",
       }),
@@ -270,6 +271,13 @@
       preparing_periods = false;
       calculating_estimate = false;
       initialized_for_open = false;
+    }
+  });
+
+  $effect(() => {
+    getLocale();
+    if (open && initialized_for_open) {
+      untrack(() => schedule_period_rebuild());
     }
   });
 
@@ -360,7 +368,7 @@
         })
         .catch((error) => {
           logger.warn("calendar.export_estimate.failed", error);
-          console.error("Couldn't estimate calendar export", error);
+          console.error(m.ui_couldn_t_estimate_calendar_export(), error);
         })
         .finally(() => {
           if (generation === estimate_generation) {
@@ -400,7 +408,7 @@
     ) {
       return "";
     }
-    return date.toLocaleTimeString(EXPORT_LOCALE, {
+    return date.toLocaleTimeString(getLocale(), {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -496,12 +504,12 @@
           (completed, total) => {
             export_progress =
               completed === 0
-                ? `Preparing ${total} images...`
-                : `Saving ${completed} of ${total}...`;
+                ? m.export_preparing_images({ total })
+                : m.export_saving_images({ completed, total });
           },
         );
         if (count !== null) {
-          toast.success(`${count} calendar PNGs exported`);
+          toast.success(m.export_png_success({ count }));
           open = false;
         }
         return;
@@ -513,14 +521,16 @@
         current_options(),
       );
       if (await save_calendar_export(blob, default_filename, format)) {
-        toast.success(`Calendar ${format.toUpperCase()} exported`);
+        toast.success(m.export_success({ format: format.toUpperCase() }));
         open = false;
       }
     } catch (error) {
       logger.error("calendar.export.failed", error);
-      console.error("Couldn't export calendar", error);
+      console.error(m.ui_couldn_t_export_calendar(), error);
       toast.error(
-        error instanceof Error ? error.message : "Couldn't export the calendar",
+        error instanceof Error
+          ? error.message
+          : m.ui_couldn_t_export_the_calendar(),
       );
     } finally {
       exporting = false;
@@ -534,10 +544,9 @@
     class="flex h-[94vh] max-h-[94vh] flex-col gap-0 overflow-hidden p-0 sm:h-[min(94vh,56rem)] sm:max-w-3xl"
   >
     <Dialog.Header class="shrink-0 px-6 pb-4 pt-6">
-      <Dialog.Title>Export calendar</Dialog.Title>
+      <Dialog.Title>{m.ui_export_calendar()}</Dialog.Title>
       <Dialog.Description>
-        Choose the content, appearance, resolution, and page layout for this
-        {view_mode}.
+        {m.export_description()}
       </Dialog.Description>
     </Dialog.Header>
 
@@ -550,7 +559,7 @@
         >
           <div class="grid flex-1 gap-3 sm:grid-cols-2">
             <label class="grid gap-1.5 text-sm font-medium">
-              Start month
+              {m.ui_start_month()}
               <MonthPicker
                 bind:value={start_month}
                 onValueChange={schedule_period_rebuild}
@@ -558,7 +567,7 @@
               />
             </label>
             <label class="grid gap-1.5 text-sm font-medium">
-              End month
+              {m.ui_end_month()}
               <MonthPicker
                 bind:value={end_month}
                 onValueChange={schedule_period_rebuild}
@@ -567,15 +576,15 @@
             </label>
           </div>
           <p class="pb-2 text-xs text-muted-foreground">
-            {month_count}
-            {month_count === 1 ? "month" : "months"} · Maximum 12 months
+            {m.export_month_count({ count: month_count })}
+            {m.export_max_months()}
           </p>
         </div>
       {/if}
 
       <div class="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:grid-cols-3">
         <fieldset class="grid gap-2">
-          <legend class="text-sm font-medium">Format</legend>
+          <legend class="text-sm font-medium">{m.ui_format()}</legend>
           <div
             class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
           >
@@ -600,7 +609,7 @@
           </div>
         </fieldset>
         <fieldset class="grid gap-2">
-          <legend class="text-sm font-medium">Theme</legend>
+          <legend class="text-sm font-medium">{m.ui_theme()}</legend>
           <div
             class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
           >
@@ -611,7 +620,7 @@
               aria-pressed={theme === "light"}
               onclick={() => {
                 theme = "light";
-              }}>Light</Button
+              }}>{m.ui_light()}</Button
             >
             <Button
               variant={theme === "dark" ? "secondary" : "ghost"}
@@ -620,7 +629,7 @@
               aria-pressed={theme === "dark"}
               onclick={() => {
                 theme = "dark";
-              }}>Dark</Button
+              }}>{m.ui_dark()}</Button
             >
           </div>
         </fieldset>
@@ -640,7 +649,7 @@
 
         {#if format === "png" && view_mode === "month"}
           <fieldset class="grid gap-2 sm:col-span-3">
-            <legend class="text-sm font-medium">PNG layout</legend>
+            <legend class="text-sm font-medium">{m.ui_png_layout()}</legend>
             <div
               class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
             >
@@ -651,7 +660,7 @@
                 aria-pressed={png_layout === "combined"}
                 onclick={() => {
                   png_layout = "combined";
-                }}>Single image</Button
+                }}>{m.ui_single_image()}</Button
               >
               <Button
                 variant={png_layout === "separate" ? "secondary" : "ghost"}
@@ -660,12 +669,12 @@
                 aria-pressed={png_layout === "separate"}
                 onclick={() => {
                   png_layout = "separate";
-                }}>Separate images</Button
+                }}>{m.ui_separate_images()}</Button
               >
             </div>
             {#if png_layout === "separate"}
               <p class="text-xs text-muted-foreground">
-                Saves one PNG per month in a folder you choose.
+                {m.ui_saves_one_png_per_month_in_a_folder_you_choose()}
               </p>
             {/if}
           </fieldset>
@@ -673,11 +682,11 @@
 
         {#if format === "pdf"}
           <fieldset class="grid gap-2 sm:col-span-2">
-            <legend class="text-sm font-medium">PDF page size</legend>
+            <legend class="text-sm font-medium">{m.ui_pdf_page_size()}</legend>
             <div
               class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
             >
-              {#each [["fit", "Fit content"], ["a4", "A4 landscape"], ["a3", "A3 landscape"]] as [value, label]}
+              {#each [["fit", m.ui_fit_content()], ["a4", m.export_a4_landscape()], ["a3", m.export_a3_landscape()]] as [value, label]}
                 <Button
                   variant={pdf_paper === value ? "secondary" : "ghost"}
                   size="sm"
@@ -691,7 +700,7 @@
             </div>
           </fieldset>
           <fieldset class="grid gap-2">
-            <legend class="text-sm font-medium">Pagination</legend>
+            <legend class="text-sm font-medium">{m.ui_pagination()}</legend>
             <div
               class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
             >
@@ -702,7 +711,10 @@
                 aria-pressed={pdf_pagination === "single"}
                 onclick={() => {
                   pdf_pagination = "single";
-                }}>{view_mode === "month" ? "Months" : "One page"}</Button
+                }}
+                >{view_mode === "month"
+                  ? m.ui_months()
+                  : m.ui_one_page()}</Button
               >
               <Button
                 variant={pdf_pagination === "weeks" ? "secondary" : "ghost"}
@@ -711,7 +723,7 @@
                 aria-pressed={pdf_pagination === "weeks"}
                 onclick={() => {
                   pdf_pagination = "weeks";
-                }}>Weeks</Button
+                }}>{m.ui_weeks()}</Button
               >
             </div>
           </fieldset>
@@ -725,7 +737,7 @@
                 show_details = checked === true;
               }}
             />
-            Show entry count and date
+            {m.ui_show_entry_count_and_date()}
           </label>
         </div>
       </div>
@@ -739,7 +751,7 @@
             role="status"
           >
             <LoaderCircleIcon class="size-3.5 animate-spin" />
-            Calculating output size...
+            {m.ui_calculating_output_size()}
           </div>
         {:else}
           <div
@@ -747,11 +759,10 @@
           >
             {#if format === "pdf"}
               <span class="text-muted-foreground"
-                >Vector PDF · Scalable text and graphics</span
+                >{m.ui_vector_pdf_scalable_text_and_graphics()}</span
               >
               <span class="text-muted-foreground"
-                >{estimate.page_count}
-                {estimate.page_count === 1 ? "page" : "pages"}</span
+                >{m.export_page_count({ count: estimate.page_count })}</span
               >
             {:else}
               <span
@@ -759,16 +770,20 @@
                   ? "font-medium text-destructive"
                   : "text-muted-foreground"}
               >
-                {estimate.width.toLocaleString()}
-                × {estimate.height.toLocaleString()} px ·
-                {estimate.megapixels.toFixed(1)}
-                MP · ~{estimate.memory_mb.toFixed(0)}
-                MB canvas
+                {estimate.width.toLocaleString(getLocale())}
+                × {estimate.height.toLocaleString(getLocale())} px ·
+                {formatNumber(estimate.megapixels, {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })}
+                MP · ~{formatNumber(estimate.memory_mb, {
+                  maximumFractionDigits: 0,
+                })}
+                {m.export_canvas_memory()}
               </span>
               {#if png_layout === "separate"}
                 <span class="text-muted-foreground"
-                  >{estimate.page_count}
-                  {estimate.page_count === 1 ? "image" : "images"}</span
+                  >{m.export_image_count({ count: estimate.page_count })}</span
                 >
               {/if}
             {/if}
@@ -779,8 +794,8 @@
             {format === "pdf"
               ? "A PDF page is too large. Lower the DPI or export one page per week."
               : png_layout === "separate"
-                ? "A monthly image is too large. Lower the DPI, hide empty first/last weeks, or use PDF."
-                : "Output is too large. Lower the DPI, hide empty first/last weeks, use separate PNG images, or use PDF."}
+                ? m.ui_a_monthly_image_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_or_use_pdf()
+                : m.ui_output_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_use_separate_png_images_or_use_pdf()}
           </p>
         {/if}
       </div>
@@ -788,7 +803,7 @@
       <div
         class="relative isolate shrink-0 rounded-lg border p-3 shadow-inner"
         style={`background:${theme === "dark" ? "#0f172a" : "#f8fafc"};color:${theme === "dark" ? "#f8fafc" : "#0f172a"};`}
-        aria-label="Export preview"
+        aria-label={m.ui_export_preview()}
         aria-busy={preparing_periods || calculating_estimate}
       >
         {#if preparing_periods || calculating_estimate}
@@ -800,7 +815,7 @@
               class="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm"
             >
               <LoaderCircleIcon class="size-4 animate-spin" />
-              Updating preview
+              {m.ui_updating_preview()}
             </span>
           </div>
         {/if}
@@ -811,13 +826,15 @@
             </div>
             {#if show_details}
               <div class="mt-0.5 text-[10px] opacity-60">
-                {valid_selected_entry_keys.length}
-                entries · {new Date().toLocaleDateString(EXPORT_LOCALE)}
+                {m.export_entries_date({
+                  count: valid_selected_entry_keys.length,
+                  date: new Date().toLocaleDateString(getLocale()),
+                })}
               </div>
             {/if}
           </div>
           <span class="shrink-0 text-[10px] uppercase tracking-wide opacity-50"
-            >Preview</span
+            >{m.common_preview()}</span
           >
         </div>
         <div
@@ -835,7 +852,7 @@
                 <div
                   class="mt-1 line-clamp-3 break-words rounded border border-current/15 px-1 py-0.5 text-[8px] leading-tight"
                 >
-                  {day.tasks[0].task.title || "Untitled task"}
+                  {day.tasks[0].task.title || m.task_untitled()}
                 </div>
               {/if}
             </div>
@@ -843,7 +860,8 @@
         </div>
         {#if preview_entry}
           <div class="mt-2 truncate text-[9px] opacity-55">
-            Sample: {preview_entry.column.name}
+            {m.export_sample()}
+            {preview_entry.column.name}
           </div>
         {/if}
       </div>
@@ -851,10 +869,12 @@
       <div class="grid gap-2">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <div class="text-sm font-medium">Entries to include</div>
+            <div class="text-sm font-medium">{m.ui_entries_to_include()}</div>
             <div class="text-xs text-muted-foreground">
-              {valid_selected_entry_keys.length}
-              of {all_entry_keys.length} entries selected
+              {m.export_entries_selected({
+                selected: valid_selected_entry_keys.length,
+                total: all_entry_keys.length,
+              })}
             </div>
           </div>
         </div>
@@ -865,28 +885,32 @@
           <Input
             class="pl-9"
             bind:value={search}
-            placeholder="Search tasks, columns, descriptions, or labels"
-            aria-label="Search calendar entries"
+            placeholder={m.ui_search_tasks_columns_descriptions_or_labels()}
+            aria-label={m.ui_search_calendar_entries()}
           />
         </div>
         <div class="flex items-center justify-between gap-3">
           <span class="text-xs tabular-nums text-muted-foreground"
-            >{visible_entry_keys.length}
-            {search.trim() ? "matching" : "available"}
-            entries</span
+            >{search.trim()
+              ? m.export_matching_entries({ count: visible_entry_keys.length })
+              : m.export_available_entries({
+                  count: visible_entry_keys.length,
+                })}</span
           >
           <div class="flex gap-1">
             <Button
               variant="ghost"
               size="sm"
               disabled={visible_entry_keys.length === 0 || all_visible_selected}
-              onclick={() => set_visible_selected(true)}>Select all</Button
+              onclick={() => set_visible_selected(true)}
+              >{m.ui_select_all()}</Button
             >
             <Button
               variant="ghost"
               size="sm"
               disabled={visible_entry_keys.length === 0 || no_visible_selected}
-              onclick={() => set_visible_selected(false)}>Clear all</Button
+              onclick={() => set_visible_selected(false)}
+              >{m.ui_clear_all()}</Button
             >
           </div>
         </div>
@@ -911,7 +935,7 @@
                     set_day_selected(day, checked === true)}
                 />
                 <span class="min-w-0 flex-1 truncate text-sm font-medium"
-                  >{day.date.toLocaleDateString(EXPORT_LOCALE, {
+                  >{day.date.toLocaleDateString(getLocale(), {
                     weekday: "short",
                     year: "numeric",
                     month: "short",
@@ -919,7 +943,7 @@
                   })}</span
                 >
                 <span class="text-xs tabular-nums text-muted-foreground"
-                  >{selected_in_day}/{day_keys.length}</span
+                  >{selected_in_day}/{formatNumber(day_keys.length)}</span
                 >
               </label>
               <div class="border-t px-2 py-1">
@@ -941,7 +965,7 @@
                             >{format_time(entry.task.due_time)}</span
                           >
                         {/if}
-                        {entry.task.title || "Untitled task"}</span
+                        {entry.task.title || m.task_untitled()}</span
                       >
                       <span class="block truncate text-xs text-muted-foreground"
                         >{entry.column.name}{entry.archived
@@ -957,7 +981,7 @@
             </div>
           {:else}
             <p class="p-5 text-center text-sm text-muted-foreground">
-              No matching calendar entries
+              {m.ui_no_matching_calendar_entries()}
             </p>
           {/each}
         </div>
@@ -970,7 +994,7 @@
       <Dialog.Close>
         {#snippet child({ props })}
           <Button {...props} variant="outline" disabled={exporting}
-            >Cancel</Button
+            >{m.common_cancel()}</Button
           >
         {/snippet}
       </Dialog.Close>
@@ -988,14 +1012,14 @@
           <DownloadIcon />
         {/if}
         {exporting
-          ? export_progress || "Rendering..."
+          ? export_progress || m.ui_rendering()
           : preparing_periods || calculating_estimate
-            ? "Preparing..."
+            ? m.ui_preparing()
             : format === "png" &&
                 png_layout === "separate" &&
                 selected_periods.length > 1
-              ? "Export PNGs"
-              : `Export ${format.toUpperCase()}`}
+              ? m.ui_export_pngs()
+              : m.export_action({ format: format.toUpperCase() })}
       </Button>
     </Dialog.Footer>
   </Dialog.Content>

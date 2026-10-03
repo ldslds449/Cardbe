@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { formatNumber } from "$lib/i18n";
+  import { getLocale } from "$lib/i18n";
+  import * as m from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
@@ -120,21 +123,26 @@
   );
   function board_name(board_id: number | undefined): string {
     return (
-      boards.find((board) => board.id === board_id)?.name ?? "Unknown board"
+      boards.find((board) => board.id === board_id)?.name ??
+      m.ui_unknown_board()
     );
   }
-  const share_date_formatter = new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-  const share_datetime_formatter = new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  const share_date_formatter = $derived(
+    new Intl.DateTimeFormat(getLocale(), {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }),
+  );
+  const share_datetime_formatter = $derived(
+    new Intl.DateTimeFormat(getLocale(), {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }),
+  );
 
   async function load_board_content(board_id: number | null): Promise<boolean> {
     if (board_id === null) {
@@ -164,8 +172,8 @@
       if (generation !== board_content_generation) {
         return false;
       }
-      console.error("Couldn't load shared board content", error);
-      toast.error("Couldn't load this board's share settings");
+      console.error(m.ui_couldn_t_load_shared_board_content(), error);
+      toast.error(m.ui_couldn_t_load_this_board_s_share_settings());
       return false;
     } finally {
       if (generation === board_content_generation) {
@@ -392,7 +400,7 @@
       return;
     }
     if (!owned_boards.some((board) => board.id === selected_board_id)) {
-      toast.error("Only boards you own can be published");
+      toast.error(m.ui_only_boards_you_own_can_be_published());
       return;
     }
     publishing = true;
@@ -435,18 +443,18 @@
       load_share(updated_share, false);
       toast.success(
         was_update
-          ? "Published view updated"
+          ? m.ui_published_view_updated()
           : was_reused
-            ? "Previous web address reused"
-            : "Web view published",
+            ? m.ui_previous_web_address_reused()
+            : m.ui_web_view_published(),
       );
     } catch (error) {
       logger.error("share.publish.failed", error);
-      console.error("Couldn't publish board share", error);
+      console.error(m.ui_couldn_t_publish_board_share(), error);
       toast.error(
         error instanceof Error
           ? error.message
-          : "Couldn't publish the web view",
+          : m.ui_couldn_t_publish_the_web_view(),
       );
     } finally {
       publishing = false;
@@ -459,10 +467,10 @@
     }
     try {
       await navigator.clipboard.writeText(target.url);
-      toast.success("Web address copied");
+      toast.success(m.ui_web_address_copied());
     } catch (error) {
       logger.warn("share.link_copy.failed", error);
-      toast.error("Couldn't copy the link");
+      toast.error(m.ui_couldn_t_copy_the_link());
     }
   }
 
@@ -479,15 +487,17 @@
       if (share?.id === target.id) {
         load_share(disabled_share);
       }
-      toast.success("Published view disabled. You can enable it again later.");
+      toast.success(
+        m.ui_published_view_disabled_you_can_enable_it_again_later(),
+      );
     } catch (error) {
       logger.error("share.disable.failed", error);
-      console.error("Couldn't disable board share", error);
+      console.error(m.ui_couldn_t_disable_board_share(), error);
       onShareRevokeError?.(target.id, error);
       toast.error(
         error instanceof Error
           ? error.message
-          : "Couldn't disable the published view",
+          : m.ui_couldn_t_disable_the_published_view(),
       );
     } finally {
       revoking = false;
@@ -541,14 +551,14 @@
       if (share?.id === target.id) {
         load_share(enabled_share);
       }
-      toast.success("Published view enabled");
+      toast.success(m.ui_published_view_enabled());
     } catch (error) {
       logger.error("share.enable.failed", error);
-      console.error("Couldn't enable board share", error);
+      console.error(m.ui_couldn_t_enable_board_share(), error);
       toast.error(
         error instanceof Error
           ? error.message
-          : "Couldn't enable the published view",
+          : m.ui_couldn_t_enable_the_published_view(),
       );
     } finally {
       publishing = false;
@@ -571,15 +581,15 @@
       share = null;
       await select_share(remaining[0] ?? null);
       delete_confirm_open = false;
-      toast.success("Published view deleted");
+      toast.success(m.ui_published_view_deleted());
     } catch (error) {
       logger.error("share.delete.failed", error);
-      console.error("Couldn't delete board share", error);
+      console.error(m.ui_couldn_t_delete_board_share(), error);
       onShareRevokeError?.(deleted_id, error);
       toast.error(
         error instanceof Error
           ? error.message
-          : "Couldn't delete the published view",
+          : m.ui_couldn_t_delete_the_published_view(),
       );
     } finally {
       revoking = false;
@@ -592,10 +602,9 @@
     class="flex h-[min(90vh,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
   >
     <Dialog.Header class="shrink-0 px-6 pb-4 pt-6">
-      <Dialog.Title>Web publish</Dialog.Title>
+      <Dialog.Title>{m.board_publish()}</Dialog.Title>
       <Dialog.Description>
-        Publish a read-only web view of a board, or manage existing published
-        views. Addresses resume when Cardbe starts again.
+        {m.share_web_description()}
       </Dialog.Description>
     </Dialog.Header>
 
@@ -604,17 +613,17 @@
     >
       <aside
         class="flex max-h-52 min-h-0 flex-col gap-3 overflow-y-auto border-b bg-muted/20 p-4 md:max-h-none md:border-b-0 md:border-r"
-        aria-label="Published web views"
+        aria-label={m.ui_published_web_views()}
       >
         <section class="grid gap-2.5" aria-labelledby="existing-shares-heading">
           <div class="flex items-center gap-2">
             <h3 id="existing-shares-heading" class="text-sm font-semibold">
-              Published views
+              {m.ui_published_views()}
             </h3>
             <span
               class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
             >
-              {all_managed_shares.length}
+              {formatNumber(all_managed_shares.length)}
             </span>
           </div>
           {#if legacy_share_count > 0}
@@ -623,11 +632,7 @@
               role="status"
             >
               <p>
-                {legacy_share_count}
-                older published view{legacy_share_count === 1
-                  ? " has"
-                  : "s have"}
-                no board assigned.
+                {m.share_legacy_count({ count: legacy_share_count })}
               </p>
               {#each legacy_shares as legacy (legacy.id)}
                 <div class="flex min-w-0 items-center justify-between gap-2">
@@ -640,12 +645,12 @@
                     onclick={() =>
                       active_board_id !== null &&
                       rebind_managed_share(legacy.id, active_board_id)}
-                    >Assign to this board</Button
+                    >{m.ui_assign_to_this_board()}</Button
                   >
                 </div>
               {/each}
               <p class="text-muted-foreground">
-                Review and enable it after assigning.
+                {m.ui_review_and_enable_it_after_assigning()}
               </p>
             </div>
           {/if}
@@ -689,7 +694,7 @@
                           <span
                             class={`size-1.5 shrink-0 rounded-full ${candidate_enabled ? "bg-success" : "bg-muted-foreground/50"}`}
                             aria-label={candidate_enabled
-                              ? "Active"
+                              ? m.explorer_active()
                               : "Disabled"}
                           ></span>
                         </span>
@@ -699,7 +704,9 @@
                               ? "text-success"
                               : undefined}
                           >
-                            {candidate_enabled ? "Active" : "Disabled"}
+                            {candidate_enabled
+                              ? m.explorer_active()
+                              : m.ui_disabled()}
                           </span>
                           <span aria-hidden="true">·</span>
                           <span class="truncate"
@@ -707,8 +714,12 @@
                           >
                           {" · "}
                           {candidate.expires_at
-                            ? `Expires ${share_date_formatter.format(new Date(candidate.expires_at))}`
-                            : "No expiration"}
+                            ? m.share_expires_date({
+                                date: share_date_formatter.format(
+                                  new Date(candidate.expires_at),
+                                ),
+                              })
+                            : m.ui_no_expiration()}
                         </span>
                       </button>
                     {/snippet}
@@ -720,14 +731,14 @@
                       onclick={() => void select_share(candidate, true)}
                     >
                       <PencilIcon class="size-4 text-muted-foreground" />
-                      Edit settings
+                      {m.ui_edit_settings()}
                     </ContextMenu.Item>
                     <ContextMenu.Item
                       class="h-9 gap-2.5 rounded-md px-2.5"
                       onclick={() => void copy_link(candidate)}
                     >
                       <CopyIcon class="size-4 text-muted-foreground" />
-                      Copy address
+                      {m.ui_copy_address()}
                     </ContextMenu.Item>
                     <ContextMenu.Separator class="my-1" />
                     <ContextMenu.Item
@@ -743,7 +754,9 @@
                           ? "size-4 text-success"
                           : "size-4 text-muted-foreground"}
                       />
-                      {candidate_enabled ? "Disable view" : "Enable view"}
+                      {candidate_enabled
+                        ? m.ui_disable_view()
+                        : m.ui_enable_view()}
                     </ContextMenu.Item>
                     <ContextMenu.Separator class="my-1" />
                     <ContextMenu.Item
@@ -759,7 +772,7 @@
                       }}
                     >
                       <Trash2Icon />
-                      Delete view
+                      {m.ui_delete_view()}
                     </ContextMenu.Item>
                   </ContextMenu.Content>
                 </ContextMenu.Root>
@@ -768,7 +781,7 @@
           {:else}
             <div class="px-2 py-3 text-center">
               <p class="text-xs text-muted-foreground">
-                No published views yet.
+                {m.ui_no_published_views_yet()}
               </p>
             </div>
           {/if}
@@ -784,7 +797,9 @@
           >
             <PlusIcon />
             <span id="new-share-heading"
-              >{share ? "New published view" : "Creating published view"}</span
+              >{share
+                ? m.ui_new_published_view()
+                : m.ui_creating_published_view()}</span
             >
           </Button>
         </section>
@@ -809,12 +824,14 @@
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
                     <h3 class="font-semibold">
-                      {editing ? "Edit published view" : share.title}
+                      {editing ? m.ui_edit_published_view() : share.title}
                     </h3>
                     <span
                       class={`inline-flex min-w-16 justify-center rounded-full px-2 py-0.5 text-xs font-medium ${is_managed_share_enabled(share) ? "bg-success/15 text-success" : "border border-border bg-muted text-muted-foreground"}`}
                     >
-                      {is_managed_share_enabled(share) ? "Active" : "Disabled"}
+                      {is_managed_share_enabled(share)
+                        ? m.explorer_active()
+                        : m.ui_disabled()}
                     </span>
                   </div>
                   <p
@@ -824,14 +841,16 @@
                       class="size-3.5 text-muted-foreground"
                       aria-hidden="true"
                     />
-                    <span class="text-muted-foreground">Source board:</span>
+                    <span class="text-muted-foreground"
+                      >{m.ui_source_board()}</span
+                    >
                     <span class="font-medium">{board_name(share.board_id)}</span
                     >
                   </p>
                   <p class="mt-1 text-sm text-muted-foreground">
                     {is_managed_share_enabled(share)
-                      ? "Anyone on this local network with the link can view the selected content."
-                      : "This address and its settings are saved, but nobody can open it."}
+                      ? m.ui_anyone_on_this_local_network_with_the_link_can_view_the_selected_content()
+                      : m.ui_this_address_and_its_settings_are_saved_but_nobody_can_open_it()}
                   </p>
                 </div>
               </div>
@@ -846,7 +865,7 @@
                       onclick={() => void disable()}
                     >
                       <PowerIcon />
-                      {revoking ? "Disabling..." : "Disable"}
+                      {revoking ? m.ui_disabling() : m.ui_disable()}
                     </Button>
                   {:else}
                     <Button
@@ -856,7 +875,7 @@
                       onclick={() => void enable()}
                     >
                       <PowerIcon />
-                      {publishing ? "Enabling..." : "Enable"}
+                      {publishing ? m.ui_enabling() : m.ui_enable()}
                     </Button>
                   {/if}
                   <Button
@@ -866,18 +885,18 @@
                     onclick={() => load_share(share, true)}
                   >
                     <PencilIcon />
-                    Edit
+                    {m.common_edit()}
                   </Button>
                 </div>
               {/if}
             </div>
             <div class="grid gap-2">
-              <span class="text-sm font-medium">Web address</span>
+              <span class="text-sm font-medium">{m.ui_web_address()}</span>
               <div class="flex gap-2">
                 <Input
                   value={share.url}
                   readonly
-                  aria-label="Web address"
+                  aria-label={m.ui_web_address()}
                   class={!is_managed_share_enabled(share)
                     ? "text-muted-foreground"
                     : ""}
@@ -886,17 +905,17 @@
                   variant="outline"
                   size="icon"
                   onclick={() => void copy_link()}
-                  aria-label="Copy web address"
-                  title="Copy web address"
+                  aria-label={m.ui_copy_web_address()}
+                  title={m.ui_copy_web_address()}
                 >
                   <CopyIcon />
                 </Button>
               </div>
               <p class="text-xs text-muted-foreground">
-                Last published
+                {m.ui_last_published()}
                 {share_datetime_formatter.format(new Date(share.updated_at))}
                 {share.expires_at
-                  ? ` · Expires ${share_date_formatter.format(new Date(share.expires_at))}`
+                  ? ` · ${m.share_expires_date({ date: share_date_formatter.format(new Date(share.expires_at)) })}`
                   : " · No expiration"}
               </p>
             </div>
@@ -904,17 +923,20 @@
         {/if}
 
         {#if share && !editing}
-          <section class="grid gap-3" aria-label="Shared content settings">
+          <section
+            class="grid gap-3"
+            aria-label={m.ui_shared_content_settings()}
+          >
             <div>
-              <h3 class="text-sm font-semibold">Share settings</h3>
+              <h3 class="text-sm font-semibold">{m.ui_share_settings()}</h3>
               <p class="text-xs text-muted-foreground">
-                These settings control what visitors can see.
+                {m.ui_these_settings_control_what_visitors_can_see()}
               </p>
             </div>
             <div class="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
               <div>
                 <div class="text-xs font-medium text-muted-foreground">
-                  Source board
+                  {m.ui_source_board()}
                 </div>
                 <p class="mt-1 text-sm font-medium">
                   {board_name(share.board_id)}
@@ -922,26 +944,28 @@
               </div>
               <div>
                 <div class="text-xs font-medium text-muted-foreground">
-                  Expiration
+                  {m.ui_expiration()}
                 </div>
                 <p class="mt-1 text-sm font-medium">
                   {share.expires_at
                     ? share_date_formatter.format(new Date(share.expires_at))
-                    : "No expiration"}
+                    : m.ui_no_expiration()}
                 </p>
               </div>
               <div>
                 <div class="text-xs font-medium text-muted-foreground">
-                  Shared content
+                  {m.ui_shared_content()}
                 </div>
                 <p class="mt-1 text-sm font-medium">
-                  {effective_selection.selected_column_ids.length}
-                  columns · {effective_selection.selected_task_ids.length} tasks
+                  {m.share_content_count({
+                    columns: effective_selection.selected_column_ids.length,
+                    tasks: effective_selection.selected_task_ids.length,
+                  })}
                 </p>
               </div>
               <div>
                 <div class="text-xs font-medium text-muted-foreground">
-                  Automatic labels
+                  {m.ui_automatic_labels()}
                 </div>
                 {#if selected_labels.length > 0}
                   <div class="mt-1 flex flex-wrap gap-1.5">
@@ -952,7 +976,9 @@
                     {/each}
                   </div>
                 {:else}
-                  <p class="mt-1 text-sm text-muted-foreground">None</p>
+                  <p class="mt-1 text-sm text-muted-foreground">
+                    {m.ui_none()}
+                  </p>
                 {/if}
               </div>
             </div>
@@ -962,7 +988,7 @@
         {#if !share || editing}
           {#if !share}
             <label class="grid gap-1.5 text-sm font-medium">
-              Board to share
+              {m.ui_board_to_share()}
               <select
                 value={selected_board_id === null
                   ? ""
@@ -979,32 +1005,32 @@
                 {/each}
               </select>
               <span class="text-xs font-normal text-muted-foreground"
-                >The new link will publish content from this board.</span
+                >{m.ui_the_new_link_will_publish_content_from_this_board()}</span
               >
             </label>
           {:else}
             <p class="text-sm text-muted-foreground">
-              Sharing from
+              {m.ui_sharing_from()}
               <span class="font-medium text-foreground"
                 >{board_name(selected_board_id ?? undefined)}</span
               >
             </p>
           {/if}
           <label class="grid gap-1.5 text-sm font-medium">
-            Published view title
+            {m.ui_published_view_title()}
             <Input
               bind:value={title}
               maxlength={120}
-              placeholder="Team roadmap"
+              placeholder={m.ui_team_roadmap()}
             />
           </label>
 
           {#if !share}
             <div class="grid gap-2">
               <div>
-                <div class="text-sm font-medium">Web address</div>
+                <div class="text-sm font-medium">{m.ui_web_address()}</div>
                 <p class="text-xs text-muted-foreground">
-                  Create a new address, or restore one you shared before.
+                  {m.ui_create_a_new_address_or_restore_one_you_shared_before()}
                 </p>
               </div>
               <div class="grid gap-2 sm:grid-cols-2">
@@ -1020,9 +1046,11 @@
                     class={`mt-0.5 size-4 shrink-0 ${!reuse_link_open ? "text-primary" : "text-muted-foreground"}`}
                   />
                   <span>
-                    <span class="block text-sm font-medium">New address</span>
+                    <span class="block text-sm font-medium"
+                      >{m.ui_new_address()}</span
+                    >
                     <span class="mt-0.5 block text-xs text-muted-foreground"
-                      >Best for a new audience</span
+                      >{m.ui_best_for_a_new_audience()}</span
                     >
                   </span>
                 </button>
@@ -1036,10 +1064,10 @@
                   />
                   <span>
                     <span class="block text-sm font-medium"
-                      >Reuse previous address</span
+                      >{m.ui_reuse_previous_address()}</span
                     >
                     <span class="mt-0.5 block text-xs text-muted-foreground"
-                      >Reconnect an old shared URL</span
+                      >{m.ui_reconnect_an_old_shared_url()}</span
                     >
                   </span>
                 </button>
@@ -1050,18 +1078,17 @@
                   class="grid gap-2 rounded-lg border bg-muted/20 p-3"
                 >
                   <label for="previous-share-link" class="text-sm font-medium"
-                    >Previous address or share ID</label
+                    >{m.ui_previous_address_or_share_id()}</label
                   >
                   <Input
                     id="previous-share-link"
                     bind:value={requested_link}
                     autocomplete="off"
                     spellcheck={false}
-                    placeholder="Paste the link you shared before"
+                    placeholder={m.ui_paste_the_link_you_shared_before()}
                   />
                   <p class="text-xs text-muted-foreground">
-                    Paste the complete old address when possible. Cardbe will
-                    restore its share ID and try to use the same port.
+                    {m.share_reuse_description()}
                   </p>
                 </div>
               {/if}
@@ -1078,7 +1105,7 @@
                 }}
               />
               <label for="share-expiration-enabled" class="text-sm font-medium"
-                >Set web address expiration</label
+                >{m.ui_set_web_address_expiration()}</label
               >
             </div>
             {#if expiration_enabled}
@@ -1117,31 +1144,36 @@
               </Popover.Root>
             {:else}
               <p class="text-xs text-muted-foreground">
-                The web address remains active until you disable it.
+                {m.ui_the_web_address_remains_active_until_you_disable_it()}
               </p>
             {/if}
           </div>
 
           <div class="grid gap-1.5">
-            <div class="text-sm font-medium">Automatically include labels</div>
+            <div class="text-sm font-medium">
+              {m.ui_automatically_include_labels()}
+            </div>
             <TagInput
               bind:tags={selected_labels}
               suggestions={available_labels}
-              placeholder="Add label"
+              placeholder={m.ui_add_label()}
             />
             <p class="text-xs text-muted-foreground">
-              Cards with any of these labels are included automatically,
-              including cards created later.
+              {m.share_labels_description()}
             </p>
           </div>
 
           <div class="grid gap-2">
             <div class="flex items-center justify-between">
               <div>
-                <div class="text-sm font-medium">Content to include</div>
+                <div class="text-sm font-medium">
+                  {m.ui_content_to_include()}
+                </div>
                 <div class="text-xs text-muted-foreground">
-                  {effective_selection.selected_column_ids.length}
-                  columns · {effective_selection.selected_task_ids.length} tasks selected
+                  {m.share_selected_count({
+                    columns: effective_selection.selected_column_ids.length,
+                    tasks: effective_selection.selected_task_ids.length,
+                  })}
                 </div>
               </div>
             </div>
@@ -1152,15 +1184,15 @@
               <Input
                 class="pl-9"
                 bind:value={task_search}
-                placeholder="Search columns, tasks, descriptions, or labels"
-                aria-label="Search shareable tasks"
+                placeholder={m.ui_search_columns_tasks_descriptions_or_labels()}
+                aria-label={m.ui_search_shareable_tasks()}
               />
             </div>
             <div class="flex items-center justify-between gap-3">
               <span class="text-xs tabular-nums text-muted-foreground">
-                {visible_task_ids.length}
-                {task_search.trim() ? "matching" : "available"}
-                tasks
+                {task_search.trim()
+                  ? m.share_matching_tasks({ count: visible_task_ids.length })
+                  : m.share_available_tasks({ count: visible_task_ids.length })}
               </span>
               <div class="flex gap-1">
                 <Button
@@ -1170,7 +1202,7 @@
                     all_visible_tasks_selected}
                   onclick={() => set_visible_tasks_selected(true)}
                 >
-                  Select all
+                  {m.ui_select_all()}
                 </Button>
                 <Button
                   variant="ghost"
@@ -1179,7 +1211,7 @@
                     no_visible_tasks_selected}
                   onclick={() => set_visible_tasks_selected(false)}
                 >
-                  Clear all
+                  {m.ui_clear_all()}
                 </Button>
               </div>
             </div>
@@ -1211,7 +1243,9 @@
                       >{column.name}</span
                     >
                     <span class="text-xs tabular-nums text-muted-foreground">
-                      {selected_in_column}/{all_column_task_ids.length}
+                      {selected_in_column}/{formatNumber(
+                        all_column_task_ids.length,
+                      )}
                     </span>
                   </label>
                   {#if column.tasks.length > 0}
@@ -1232,7 +1266,7 @@
                           />
                           <span class="min-w-0 flex-1">
                             <span class="block truncate text-sm"
-                              >{task.title || "Untitled task"}</span
+                              >{task.title || m.task_untitled()}</span
                             >
                             {#if task.labels.length > 0}
                               <span
@@ -1248,7 +1282,7 @@
                 </div>
               {:else}
                 <p class="p-5 text-center text-sm text-muted-foreground">
-                  No matching columns or tasks
+                  {m.ui_no_matching_columns_or_tasks()}
                 </p>
               {/each}
             </div>
@@ -1269,14 +1303,14 @@
             onclick={() => (delete_confirm_open = true)}
           >
             <Trash2Icon />
-            Delete view
+            {m.ui_delete_view()}
           </Button>
         {/if}
         {#if share && editing}
           <Button
             variant="outline"
             disabled={publishing || revoking}
-            onclick={cancel_editing}>Cancel</Button
+            onclick={cancel_editing}>{m.common_cancel()}</Button
           >
           <Button
             disabled={publishing ||
@@ -1285,7 +1319,7 @@
             onclick={() => void publish()}
           >
             <RefreshCwIcon />
-            {publishing ? "Saving..." : "Save changes"}
+            {publishing ? m.common_saving() : m.ui_save_changes()}
           </Button>
         {:else if !share}
           <Button
@@ -1295,10 +1329,10 @@
             onclick={() => void publish()}
           >
             {publishing
-              ? "Publishing..."
+              ? m.ui_publishing()
               : requested_link.trim()
-                ? "Reuse address"
-                : "Publish web view"}
+                ? m.ui_reuse_address()
+                : m.ui_publish_web_view()}
           </Button>
         {/if}
       </div>
@@ -1309,22 +1343,22 @@
 <AlertDialog.Root bind:open={delete_confirm_open}>
   <AlertDialog.Content class="sm:max-w-md">
     <AlertDialog.Header>
-      <AlertDialog.Title>Delete this published view?</AlertDialog.Title>
+      <AlertDialog.Title>{m.ui_delete_this_published_view()}</AlertDialog.Title>
       <AlertDialog.Description>
-        This permanently removes the published view and disables its web
-        address. This action cannot be undone. Use Disable instead if you may
-        want to publish it again.
+        {m.share_delete_description()}
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>
-      <AlertDialog.Cancel disabled={revoking}>Keep view</AlertDialog.Cancel>
+      <AlertDialog.Cancel disabled={revoking}
+        >{m.ui_keep_view()}</AlertDialog.Cancel
+      >
       <Button
         variant="destructive"
         disabled={revoking}
         onclick={() => void delete_share()}
       >
         <Trash2Icon />
-        {revoking ? "Deleting..." : "Delete view"}
+        {revoking ? m.ui_deleting() : m.ui_delete_view()}
       </Button>
     </AlertDialog.Footer>
   </AlertDialog.Content>

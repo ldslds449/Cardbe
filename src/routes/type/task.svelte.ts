@@ -1,3 +1,6 @@
+import { m } from "$lib/paraglide/messages.js";
+import "$lib/i18n/locale.svelte";
+
 export interface TaskItem {
   id: string;
   text: string;
@@ -13,17 +16,14 @@ export interface Recurrence {
 
 export function recurrence_label(recurrence: Recurrence | undefined): string {
   if (!recurrence) {
-    return "Does not repeat";
+    return m.task_repeat_none();
   }
-  const unit =
-    recurrence.frequency === "daily"
-      ? "day"
-      : recurrence.frequency === "weekly"
-        ? "week"
-        : "month";
-  return recurrence.interval === 1
-    ? `Every ${unit}`
-    : `Every ${recurrence.interval} ${unit}s`;
+  const inputs = { count: recurrence.interval };
+  return recurrence.frequency === "daily"
+    ? m.task_repeat_day_count(inputs)
+    : recurrence.frequency === "weekly"
+      ? m.task_repeat_week_count(inputs)
+      : m.task_repeat_month_count(inputs);
 }
 
 export interface Task {
@@ -173,7 +173,7 @@ export function get_task_id(task: Task | string): number {
   const value = typeof task === "string" ? task : task.id;
   const match = value.match(/^task_(\d+)$/);
   if (!match) {
-    throw new Error(`Invalid task ID: ${value}`);
+    throw new Error(m.task_id_invalid({ value }));
   }
   return Number.parseInt(match[1], 10);
 }

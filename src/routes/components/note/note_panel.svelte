@@ -1,4 +1,5 @@
-﻿<script lang="ts">
+<script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -155,7 +156,7 @@
     } catch (error) {
       logger.error("note.load.failed", error);
       console.error(error);
-      toast.error("Couldn't load notes");
+      toast.error(m.ui_couldn_t_load_notes());
     } finally {
       loading = false;
     }
@@ -179,7 +180,7 @@
     } catch (error) {
       logger.error("note.create.failed", error);
       console.error(error);
-      toast.error("Couldn't create note");
+      toast.error(m.ui_couldn_t_create_note());
     } finally {
       creating = false;
     }
@@ -219,7 +220,7 @@
     } catch (error) {
       logger.error("note.save.failed", error);
       console.error(error);
-      toast.error("Couldn't save note");
+      toast.error(m.ui_couldn_t_save_note());
     }
   }
 
@@ -237,7 +238,11 @@
     if (deleting_id !== null) {
       return;
     }
-    if (!window.confirm(`Delete “${note.title.trim() || "Untitled note"}”?`)) {
+    if (
+      !window.confirm(
+        m.note_delete_confirm({ name: note.title.trim() || m.note_untitled() }),
+      )
+    ) {
       return;
     }
     const timer = save_timers.get(note.id);
@@ -258,11 +263,11 @@
       if (selected_id === note.id) {
         selected_id = notes[Math.min(index, notes.length - 1)]?.id ?? null;
       }
-      toast.success("Note deleted");
+      toast.success(m.ui_note_deleted());
     } catch (error) {
       logger.error("note.delete.failed", error);
       console.error(error);
-      toast.error("Couldn't delete note");
+      toast.error(m.ui_couldn_t_delete_note());
     } finally {
       deleting_id = null;
     }
@@ -295,11 +300,9 @@
         <div>
           <Sheet.Title class="flex items-center gap-2">
             <StickyNoteIcon class="size-5 text-primary" />
-            Notes
+            {m.note_title()}
           </Sheet.Title>
-          <Sheet.Description
-            >Ideas and reminders, saved automatically.</Sheet.Description
-          >
+          <Sheet.Description>{m.note_description()}</Sheet.Description>
         </div>
         <Button
           size="sm"
@@ -307,7 +310,7 @@
           disabled={creating || loading || !loaded}
         >
           <PlusIcon />
-          New note
+          {m.note_new()}
         </Button>
       </div>
     </Sheet.Header>
@@ -317,8 +320,8 @@
         <div class="p-3">
           <InputGroup.Root>
             <InputGroup.Input
-              placeholder="Search notes"
-              aria-label="Search notes"
+              placeholder={m.note_search()}
+              aria-label={m.note_search()}
               bind:value={search_text}
             />
             <InputGroup.Addon><SearchIcon /></InputGroup.Addon>
@@ -326,7 +329,7 @@
               <InputGroup.Addon align="inline-end">
                 <InputGroup.Button
                   size="icon-xs"
-                  aria-label="Clear search"
+                  aria-label={m.board_clear_search()}
                   onclick={() => (search_text = "")}
                 >
                   <XIcon />
@@ -340,11 +343,11 @@
           <div class="space-y-2 px-3 pb-3">
             {#if loading}
               <p class="py-8 text-center text-sm text-muted-foreground">
-                Loading notes…
+                {m.note_loading()}
               </p>
             {:else if !loaded}
               <Button variant="outline" onclick={load_notes}
-                >Retry loading notes</Button
+                >{m.note_retry()}</Button
               >
             {:else}
               {#each filtered_notes as note (note.id)}
@@ -362,7 +365,7 @@
                 >
                   <div class="flex items-start gap-2">
                     <span class="min-w-0 flex-1 truncate text-sm font-semibold">
-                      {note.title.trim() || "Untitled note"}
+                      {note.title.trim() || m.note_untitled()}
                     </span>
                     {#if note.pinned}
                       <PinIcon class="mt-0.5 size-3.5 shrink-0 fill-current" />
@@ -375,12 +378,14 @@
                       <Markdown md={note.content} compact />
                     </div>
                   {:else}
-                    <p class="mt-1 text-xs text-muted-foreground">Empty note</p>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                      {m.note_empty()}
+                    </p>
                   {/if}
                 </div>
               {:else}
                 <p class="py-8 text-center text-sm text-muted-foreground">
-                  {search_text.trim() ? "No matching notes" : "No notes yet"}
+                  {search_text.trim() ? m.note_no_matching() : m.note_none()}
                 </p>
               {/each}
             {/if}
@@ -394,8 +399,8 @@
             <Textarea
               rows={1}
               class="min-h-9 min-w-24 flex-1 resize-none border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
-              placeholder="Note title"
-              aria-label="Note title"
+              placeholder={m.note_name()}
+              aria-label={m.note_name()}
               disabled={deleting_id === selected_note.id}
               value={selected_note.title}
               onkeydown={(event) => {
@@ -431,8 +436,8 @@
               <Button
                 size="icon-sm"
                 variant="ghost"
-                aria-label="Expand note editor"
-                title="Expand note editor"
+                aria-label={m.note_expand_editor()}
+                title={m.note_expand_editor()}
                 onclick={() => (note_expanded = true)}
               >
                 <Maximize2Icon />
@@ -440,8 +445,10 @@
               <Button
                 size="icon-sm"
                 variant={selected_note.pinned ? "secondary" : "ghost"}
-                aria-label={selected_note.pinned ? "Unpin note" : "Pin note"}
-                title={selected_note.pinned ? "Unpin note" : "Pin note"}
+                aria-label={selected_note.pinned
+                  ? m.note_unpin()
+                  : m.note_pin()}
+                title={selected_note.pinned ? m.note_unpin() : m.note_pin()}
                 disabled={deleting_id === selected_note.id}
                 onclick={() => toggle_pinned(selected_note)}
               >
@@ -451,8 +458,8 @@
                 size="icon-sm"
                 variant="ghost"
                 class="text-destructive hover:text-destructive"
-                aria-label="Delete note"
-                title="Delete note"
+                aria-label={m.note_delete()}
+                title={m.note_delete()}
                 disabled={deleting_id !== null}
                 onclick={() => delete_note(selected_note)}
               >
@@ -469,8 +476,8 @@
                 showControls={false}
                 containerClass="flex min-h-0 flex-1 flex-col"
                 class="min-h-0 flex-1 overflow-y-auto border-0 bg-transparent px-0 font-sans text-base leading-6 shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
-                placeholder="Write Markdown…"
-                aria-label="Note content"
+                placeholder={m.note_write()}
+                aria-label={m.note_content()}
                 disabled={deleting_id === selected_note.id}
                 value={selected_note.content}
                 onvaluechange={handle_note_change}
@@ -482,7 +489,7 @@
             class="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground"
           >
             <StickyNoteIcon class="size-10 opacity-50" />
-            <p class="text-sm">Select a note or create a new one.</p>
+            <p class="text-sm">{m.note_choose()}</p>
           </div>
         {/if}
       </main>
@@ -508,8 +515,8 @@
           <Textarea
             rows={1}
             class="min-h-9 min-w-0 resize-none border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
-            placeholder="Note title"
-            aria-label="Note title"
+            placeholder={m.note_name()}
+            aria-label={m.note_name()}
             disabled={deleting_id === selected_note.id}
             value={selected_note.title}
             onkeydown={(event) => {
@@ -555,7 +562,7 @@
           </div>
         </div>
         <Dialog.Description class="sr-only"
-          >Expanded rich text editor</Dialog.Description
+          >{m.editor_expanded_description()}</Dialog.Description
         >
       </Dialog.Header>
       <div class="min-h-0 flex-1 p-3 sm:p-5">
@@ -567,9 +574,9 @@
             showControls={false}
             containerClass="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background"
             class="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
-            placeholder="Write Markdown…"
+            placeholder={m.note_write()}
             showToolbar
-            aria-label="Note content"
+            aria-label={m.note_content()}
             disabled={deleting_id === selected_note.id}
             value={selected_note.content}
             onvaluechange={handle_note_change}

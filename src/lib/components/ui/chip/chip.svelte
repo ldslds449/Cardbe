@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { cn } from "$lib/utils";
   import XIcon from "@lucide/svelte/icons/x";
   import type { Snippet } from "svelte";
@@ -137,7 +138,7 @@
         size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4",
       )}
       onclick={handleRemove}
-      aria-label="Remove"
+      aria-label={m.chip_remove()}
     >
       <XIcon class="h-3 w-3" />
     </button>

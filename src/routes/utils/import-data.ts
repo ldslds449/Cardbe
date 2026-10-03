@@ -1,3 +1,4 @@
+import * as m from "$lib/paraglide/messages.js";
 export interface ImportSummary {
   columns: number;
   tasks: number;
@@ -8,7 +9,7 @@ export interface ImportSummary {
 export function parse_import_summary(json_data: string): ImportSummary {
   const parsed: unknown = JSON.parse(json_data);
   if (typeof parsed !== "object" || parsed === null) {
-    throw new Error("The import file must contain a JSON object");
+    throw new Error(m.import_object_required());
   }
 
   const candidate = parsed as {
@@ -17,7 +18,7 @@ export function parse_import_summary(json_data: string): ImportSummary {
     templates?: unknown;
   };
   if (!Array.isArray(candidate.columns) || !Array.isArray(candidate.archives)) {
-    throw new Error("The import file must contain columns and archives arrays");
+    throw new Error(m.import_collections_required());
   }
 
   const tasks = candidate.columns.reduce<number>((count, column) => {

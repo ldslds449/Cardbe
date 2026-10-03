@@ -1,6 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, lazyPlugins } from "vite-plus";
 import { sveltekit } from "@sveltejs/kit/vite";
+import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import path from "path";
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -32,7 +33,7 @@ export default defineConfig({
     printWidth: 80,
     sortPackageJson: false,
     svelte: {},
-    ignorePatterns: ["pnpm-lock.yaml"],
+    ignorePatterns: ["pnpm-lock.yaml", "src/lib/paraglide/**"],
   },
   test: {
     // Vitest v4 compatibility: preserve mock call history.
@@ -41,7 +42,16 @@ export default defineConfig({
     // https://vitest.dev/guide/migration/#clearmocks-is-enabled-by-default
     clearMocks: false,
   },
-  plugins: lazyPlugins(() => [tailwindcss(), sveltekit()]),
+  plugins: lazyPlugins(() => [
+    tailwindcss(),
+    paraglideVitePlugin({
+      project: "./project.inlang",
+      outdir: "./src/lib/paraglide",
+      emitTsDeclarations: true,
+      strategy: ["custom-cardbe", "baseLocale"],
+    }),
+    sveltekit(),
+  ]),
   optimizeDeps: {
     include: ["@tauri-apps/api/dpi", "@tauri-apps/api/window"],
   },

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { cn } from "$lib/utils";
   import { Button } from "$lib/components/ui/button";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
@@ -419,7 +420,7 @@
     class="relative h-56 w-full cursor-crosshair rounded-md shadow-sm overflow-hidden touch-none"
     style:background-color={`hsl(${h}, 100%, 50%)`}
     role="slider"
-    aria-label="Saturation and Brightness"
+    aria-label={m.color_saturation_brightness()}
     aria-valuenow={s}
     tabindex="0"
     onmousedown={(e) => handleDragStart(e, handleSbChange)}

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
+  import { formatDate, getLocale } from "$lib/i18n";
   import Calendar from "$lib/components/ui/calendar/calendar.svelte";
   import * as Popover from "$lib/components/ui/popover/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -133,10 +136,10 @@
 
   function due_date_label(): string {
     if (!value || mode === "none") {
-      return "No due date";
+      return m.task_due_none();
     }
 
-    return date.toDate(getLocalTimeZone()).toLocaleDateString();
+    return formatDate(date.toDate(getLocalTimeZone()));
   }
 </script>
 
@@ -164,6 +167,7 @@
     </Popover.Trigger>
     <Popover.Content class="w-auto overflow-hidden p-0" align="start">
       <Calendar
+        locale={getLocale()}
         type="single"
         bind:value={date}
         onValueChange={set_date}
@@ -195,7 +199,9 @@
             <ClockIcon
               class={`size-4 ${mode === "datetime" ? "text-primary" : "text-muted-foreground"}`}
             />
-            {mode === "datetime" ? time.toString().slice(0, 5) : "No time"}
+            {mode === "datetime"
+              ? time.toString().slice(0, 5)
+              : m.task_time_none()}
           </Button>
         {/snippet}
       </Popover.Trigger>
@@ -213,7 +219,7 @@
               size="sm"
               onclick={() => {
                 time_open = false;
-              }}>Done</Button
+              }}>{m.common_done()}</Button
             >
           </div>
         </div>
@@ -224,7 +230,7 @@
       variant="ghost"
       size="icon"
       class="text-muted-foreground"
-      aria-label="Clear due date"
+      aria-label={m.task_due_clear()}
       onclick={() => set_due_date_mode("none")}
     >
       <XIcon class="size-4" />

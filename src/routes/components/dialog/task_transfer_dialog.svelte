@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Textarea } from "$lib/components/ui/textarea/index.js";
@@ -27,15 +28,15 @@
 <Dialog.Root bind:open={export_open}>
   <Dialog.Content class="sm:max-w-2xl">
     <Dialog.Header>
-      <Dialog.Title>Share Task</Dialog.Title>
+      <Dialog.Title>{m.task_share()}</Dialog.Title>
       <Dialog.Description>
-        Copy this text and send it to another Cardbe user.
+        {m.ui_copy_this_text_and_send_it_to_another_cardbe_user()}
       </Dialog.Description>
     </Dialog.Header>
     <Textarea
       value={share_text}
       readonly
-      aria-label="Task share text"
+      aria-label={m.ui_task_share_text()}
       class="min-h-40 resize-y break-all font-mono text-xs"
       onclick={(event) => event.currentTarget.select()}
     />
@@ -44,9 +45,9 @@
         variant="outline"
         onclick={() => {
           export_open = false;
-        }}>Close</Button
+        }}>{m.common_close()}</Button
       >
-      <Button onclick={() => void onCopy()}>Copy Text</Button>
+      <Button onclick={() => void onCopy()}>{m.ui_copy_text()}</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
@@ -54,12 +55,12 @@
 <Dialog.Root bind:open={import_open}>
   <Dialog.Content class="sm:max-w-2xl">
     <Dialog.Header>
-      <Dialog.Title>Import Task</Dialog.Title>
+      <Dialog.Title>{m.task_import()}</Dialog.Title>
       <Dialog.Description>
         {#if import_target_column}
-          Paste task sharing text to import it into “{import_target_column}”.
+          {m.import_task_column_description({ name: import_target_column })}
         {:else}
-          Paste task sharing text from another Cardbe user.
+          {m.ui_paste_task_sharing_text_from_another_cardbe_user()}
         {/if}
       </Dialog.Description>
     </Dialog.Header>
@@ -72,7 +73,7 @@
     >
       <Textarea
         bind:value={import_text}
-        aria-label="Task sharing text"
+        aria-label={m.ui_task_sharing_text()}
         placeholder="cardbe-task:v1:..."
         class="min-h-40 resize-y break-all font-mono text-xs"
       />
@@ -87,9 +88,11 @@
             import_open = false;
           }}
         >
-          Cancel
+          {m.common_cancel()}
         </Button>
-        <Button type="submit" disabled={!import_text.trim()}>Continue</Button>
+        <Button type="submit" disabled={!import_text.trim()}
+          >{m.ui_continue()}</Button
+        >
       </Dialog.Footer>
     </form>
   </Dialog.Content>

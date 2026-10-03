@@ -30,6 +30,8 @@
 </script>
 
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import { Dialog as SheetPrimitive } from "bits-ui";
   import XIcon from "@lucide/svelte/icons/x";
   import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
@@ -289,8 +291,8 @@
         type="button"
         class={cn("resize-handle", side === "left" && "resize-handle-end")}
         class:resize-handle-active={resizing}
-        aria-label="Resize panel"
-        title="Drag to resize. Double-click to reset."
+        aria-label={m.common_resize_panel()}
+        title={m.common_resize_panel_hint()}
         onmousedown={startResize}
         onkeydown={resizeWithKeyboard}
         ondblclick={resetWidth}
@@ -303,7 +305,7 @@
       class="ring-offset-background focus-visible:ring-ring absolute end-4 top-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-hidden disabled:pointer-events-none"
     >
       <XIcon class="size-4" />
-      <span class="sr-only">Close</span>
+      <span class="sr-only">{m.common_close()}</span>
     </SheetPrimitive.Close>
   </SheetPrimitive.Content>
 </SheetPortal>

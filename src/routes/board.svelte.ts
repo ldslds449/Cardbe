@@ -1,3 +1,5 @@
+import { m } from "$lib/paraglide/messages.js";
+import { applyLanguagePreference, type LanguagePreference } from "$lib/i18n";
 import type { TaskExplorerQuery } from "./utils/task-explorer";
 import { logger } from "$lib/logger";
 import { invoke } from "@tauri-apps/api/core";
@@ -239,7 +241,7 @@ export class BoardStore {
           ? error.message
           : typeof error === "string"
             ? error
-            : "Couldn't join shared board";
+            : m.share_join_error();
       if (!silent && !this.iroh_last_error.startsWith("APPROVAL_REQUIRED:")) {
         toast.error(this.iroh_last_error);
       }
@@ -313,7 +315,7 @@ export class BoardStore {
         void this.fetch_all_task_page(true);
       }
       if (!silent) {
-        toast.success("Shared board synced");
+        toast.success(m.share_synced());
       }
       return true;
     } catch (error) {
@@ -329,7 +331,7 @@ export class BoardStore {
           ? error.message
           : typeof error === "string"
             ? error
-            : "Couldn't sync shared board";
+            : m.share_sync_error();
       const access_error =
         /^(ACCESS_REVOKED|INVITATION_DISABLED|INVITATION_DELETED|APPROVAL_REQUIRED):/.test(
           raw_message,
@@ -427,9 +429,7 @@ export class BoardStore {
         void this.fetch_all_task_page(true);
       }
       toast.success(
-        keep_local
-          ? "Local version ready to sync"
-          : "Owner version restored; local copy saved",
+        keep_local ? m.share_local_ready() : m.share_owner_restored(),
       );
       if (keep_local) {
         this.trigger_iroh_background_sync();
@@ -437,9 +437,7 @@ export class BoardStore {
       return true;
     } catch (error) {
       logger.error("iroh.conflict_resolve.failed", error);
-      toast.error(
-        typeof error === "string" ? error : "Couldn't resolve sync conflict",
-      );
+      toast.error(typeof error === "string" ? error : m.share_conflict_error());
       return false;
     }
   }
@@ -565,7 +563,7 @@ export class BoardStore {
   private show_data_fetch_error(message: string, retry: () => void) {
     toast.error(message, {
       action: {
-        label: "Retry",
+        label: m.common_retry(),
         onClick: retry,
       },
     });
@@ -579,7 +577,7 @@ export class BoardStore {
     }
     toast.success(message, {
       action: {
-        label: "Undo",
+        label: m.common_undo(),
         onClick: () => void this.undo(),
       },
     });
@@ -608,12 +606,12 @@ export class BoardStore {
       this.get_task_templates();
       this.get_expired_tasks();
       this.update_labels();
-      toast.success("Last action undone");
+      toast.success(m.common_undone());
       return true;
     } catch (e: unknown) {
       logger.error("board.undo.failed", e);
       console.log(e);
-      toast.error("Couldn't undo the last action");
+      toast.error(m.common_undo_error());
       return false;
     } finally {
       this.undo_in_progress = false;
@@ -650,7 +648,7 @@ export class BoardStore {
       .catch((e) => {
         logger.error("board.labels_load.failed", e);
         console.log(e);
-        board.show_data_fetch_error("Couldn't load labels", () =>
+        board.show_data_fetch_error(m.board_labels_load_error(), () =>
           board.update_labels(),
         );
       });
@@ -700,7 +698,7 @@ export class BoardStore {
           board.column_fetch_error = true;
           board.column_fetch_finish = true;
         } else {
-          board.show_data_fetch_error("Couldn't refresh columns", () =>
+          board.show_data_fetch_error(m.board_columns_refresh_error(), () =>
             board.get_columns(),
           );
         }
@@ -812,7 +810,7 @@ export class BoardStore {
         logger.error("board.archives_load.failed", e);
         console.log(e);
         if (generation === board.board_generation) {
-          board.show_data_fetch_error("Couldn't load archives", () =>
+          board.show_data_fetch_error(m.task_archives_load_error(), () =>
             board.get_archives(),
           );
         }
@@ -893,7 +891,7 @@ export class BoardStore {
       .catch((error) => {
         logger.error("board.archive_page_load.failed", error);
         if (request === this.archive_list_request) {
-          this.show_data_fetch_error("Couldn't load archives", () =>
+          this.show_data_fetch_error(m.task_archives_load_error(), () =>
             this.fetch_archive_page(reset),
           );
         }
@@ -1014,7 +1012,7 @@ export class BoardStore {
       .catch((error) => {
         logger.error("board.expired_tasks_load.failed", error);
         if (request === this.expired_list_request) {
-          this.show_data_fetch_error("Couldn't load expired tasks", () =>
+          this.show_data_fetch_error(m.task_expired_load_error(), () =>
             this.fetch_expired_page(reset),
           );
         }
@@ -1089,7 +1087,7 @@ export class BoardStore {
         logger.error("board.all_task_page_load.failed", error);
         if (request === this.all_task_list_request) {
           this.all_task_items_error = true;
-          this.show_data_fetch_error("Couldn't load all tasks", () =>
+          this.show_data_fetch_error(m.task_explorer_load_error(), () =>
             this.fetch_all_task_page(reset),
           );
         }
@@ -1140,9 +1138,7 @@ export class BoardStore {
       const permission_granted = await this.enable_expired_task_notifications();
       if (!permission_granted) {
         await this.set_notify_enabled(false);
-        toast.warning(
-          "Notifications disabled because permission wasn't granted",
-        );
+        toast.warning(m.settings_notify_permission_disabled());
       }
     }
   }
@@ -1196,7 +1192,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.create.failed", e);
       console.log(e);
-      toast.error("Couldn't create board");
+      toast.error(m.board_create_error());
       return false;
     }
   }
@@ -1215,7 +1211,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.rename.failed", e);
       console.log(e);
-      toast.error("Couldn't rename board");
+      toast.error(m.board_rename_error());
       return false;
     }
   }
@@ -1270,7 +1266,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.switch.failed", e);
       console.log(e);
-      toast.error("Couldn't switch board");
+      toast.error(m.board_switch_error());
       return false;
     }
   }
@@ -1287,17 +1283,19 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.delete.failed", e);
       console.log(e);
-      toast.error("Couldn't delete board");
+      toast.error(m.board_delete_error());
       return false;
     }
   }
 
   private async load_settings() {
     try {
-      const settings = await invoke<{ notify_enabled: boolean }>(
-        "get_settings",
-      );
+      const settings = await invoke<{
+        notify_enabled: boolean;
+        language?: LanguagePreference;
+      }>("get_settings");
       this.notify_enabled = settings.notify_enabled;
+      applyLanguagePreference(settings.language);
     } catch (e) {
       logger.warn("settings.load.failed", e);
       console.log("Couldn't load settings:", e);
@@ -1312,7 +1310,7 @@ export class BoardStore {
 
     try {
       if (enabled && !(await this.request_notification_permission())) {
-        toast.error("Notification permission wasn't granted");
+        toast.error(m.settings_notify_permission_error());
         return;
       }
 
@@ -1327,7 +1325,7 @@ export class BoardStore {
         }
       });
       if (!saved) {
-        toast.error("Couldn't save notification settings");
+        toast.error(m.settings_notify_save_error());
         return;
       }
 
@@ -1340,6 +1338,22 @@ export class BoardStore {
     } finally {
       this.notification_setting_updating = false;
     }
+  }
+
+  async set_language(preference: LanguagePreference): Promise<boolean> {
+    const saved = await addMission(async () => {
+      try {
+        await invoke("set_language", { language: preference });
+        return true;
+      } catch (error) {
+        logger.error("settings.language_save.failed", error);
+        return false;
+      }
+    });
+    if (saved) {
+      applyLanguagePreference(preference);
+    }
+    return saved;
   }
 
   private async request_notification_permission(): Promise<boolean> {
@@ -1375,7 +1389,10 @@ export class BoardStore {
         return;
       }
       try {
-        await invoke("check_expired_tasks");
+        await invoke("check_expired_tasks", {
+          titleTemplate: m.notification_expired_title({ board: "{board}" }),
+          bodyTemplate: m.notification_expired_body({ task: "{task}" }),
+        });
       } catch (e: unknown) {
         logger.warn("notifications.expired_task_check.failed", e);
         console.log("Couldn't check expired tasks:", e);
@@ -1442,7 +1459,7 @@ export class BoardStore {
         logger.error("template.load.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error("Couldn't load task templates");
+          toast.error(m.task_template_load_error());
         }
       });
   }
@@ -1471,14 +1488,14 @@ export class BoardStore {
           ...this.templates,
           { id: template.id, name: template.name, task },
         ];
-        this.show_success_with_undo("Template saved");
+        this.show_success_with_undo(m.task_template_saved());
         return true;
       })
       .catch((e: unknown) => {
         logger.error("template.create.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error("Couldn't save template");
+          toast.error(m.task_template_save_error());
         }
         return false;
       });
@@ -1513,14 +1530,14 @@ export class BoardStore {
             ? { id: template.id, name: template.name, task: updated_task }
             : candidate,
         );
-        this.show_success_with_undo("Template updated");
+        this.show_success_with_undo(m.task_template_updated());
         return true;
       })
       .catch((e: unknown) => {
         logger.error("template.update.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error("Couldn't update template");
+          toast.error(m.task_template_update_error());
         }
         return false;
       });
@@ -1545,14 +1562,14 @@ export class BoardStore {
         this.templates = this.templates.filter(
           (template) => template.id !== template_id,
         );
-        this.show_success_with_undo("Template deleted");
+        this.show_success_with_undo(m.task_template_deleted());
         return true;
       })
       .catch((e: unknown) => {
         logger.error("template.delete.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error("Couldn't delete template");
+          toast.error(m.task_template_delete_error());
         }
         return false;
       });
@@ -1647,7 +1664,7 @@ export class BoardStore {
     const pending_task_id = new_task.id;
     const column = this.columns.find((candidate) => candidate.id === column_id);
     if (!column) {
-      toast.error("Column no longer exists");
+      toast.error(m.column_missing());
       return Promise.resolve(false);
     }
     const after_task_idx =
@@ -1658,7 +1675,7 @@ export class BoardStore {
               candidate.id === this.resolve_task_alias(after_task_id),
           );
     if (after_task_id !== null && after_task_idx === -1) {
-      toast.error("Original task no longer exists");
+      toast.error(m.task_original_missing());
       return Promise.resolve(false);
     }
     const after_task_resolution =
@@ -1697,7 +1714,7 @@ export class BoardStore {
         }
         this.columns = [...this.columns];
         this.update_labels();
-        this.show_success_with_undo("Task added");
+        this.show_success_with_undo(m.task_added());
         const persisted_task_id = `task_${new_id}`;
         this.resolved_task_ids.set(pending_task_id, persisted_task_id);
         this.rekey_task_move_timer(pending_task_id, persisted_task_id);
@@ -1715,7 +1732,7 @@ export class BoardStore {
           this.columns = [...this.columns];
         }
         this.refresh_labels_from_columns();
-        toast.error("Couldn't add task");
+        toast.error(m.task_add_error());
         throw e;
       });
     this.pending_task_creations.set(pending_task_id, creation);
@@ -1729,7 +1746,7 @@ export class BoardStore {
   duplicate_task(task_id: string): Promise<boolean> {
     const position = this.find_task_position(task_id);
     if (!position) {
-      toast.error("Task no longer exists");
+      toast.error(m.task_missing());
       return Promise.resolve(false);
     }
 
@@ -1777,7 +1794,7 @@ export class BoardStore {
           return false;
         }
         this.search_tasks(this.search_query);
-        this.show_success_with_undo("Task deleted");
+        this.show_success_with_undo(m.task_deleted());
         return true;
       })
       .catch((e: unknown) => {
@@ -1798,7 +1815,7 @@ export class BoardStore {
             this.columns = [...this.columns];
             this.refresh_labels_from_columns();
           }
-          toast.error("Couldn't delete task");
+          toast.error(m.task_delete_error());
         }
         return false;
       });
@@ -1842,7 +1859,7 @@ export class BoardStore {
         }
         board.get_columns();
         board.refresh_archives_if_loaded();
-        this.show_success_with_undo("Task archived");
+        this.show_success_with_undo(m.task_archived());
         return true;
       })
       .catch((e: unknown) => {
@@ -1863,7 +1880,7 @@ export class BoardStore {
             this.columns = [...this.columns];
             this.refresh_labels_from_columns();
           }
-          toast.error("Couldn't archive task");
+          toast.error(m.task_archive_error());
         }
         return false;
       });
@@ -1898,7 +1915,7 @@ export class BoardStore {
           }
           board.get_columns();
           board.refresh_archives_if_loaded();
-          this.show_success_with_undo("Tasks archived");
+          this.show_success_with_undo(m.task_archived_all());
         })
         .catch((e: string) => {
           logger.error("task.archive_all.failed", e);
@@ -1914,7 +1931,7 @@ export class BoardStore {
             board.columns = [...board.columns];
             board.refresh_labels_from_columns();
           }
-          toast.error("Couldn't archive tasks");
+          toast.error(m.task_archive_all_error());
         });
     });
   }
@@ -1958,7 +1975,7 @@ export class BoardStore {
             return;
           }
           board.get_archives();
-          this.show_success_with_undo("Task restored");
+          this.show_success_with_undo(m.task_restored());
         })
         .catch((e: string) => {
           logger.error("task.unarchive.failed", e);
@@ -1983,7 +2000,7 @@ export class BoardStore {
           board.columns = [...board.columns];
           board.archives = [...board.archives];
           board.refresh_labels_from_columns();
-          toast.error("Couldn't restore task");
+          toast.error(m.task_restore_error());
         });
     });
   }
@@ -2010,12 +2027,12 @@ export class BoardStore {
         );
         this.get_columns();
         this.refresh_archives_if_loaded();
-        this.show_success_with_undo("Task restored");
+        this.show_success_with_undo(m.task_restored());
       })
       .catch((error: unknown) => {
         logger.error("task.unarchive_from_list.failed", error);
         if (generation === this.board_generation) {
-          toast.error("Couldn't restore task");
+          toast.error(m.task_restore_error());
         }
       });
   }
@@ -2069,7 +2086,7 @@ export class BoardStore {
         }
         this.update_labels();
         this.search_tasks(this.search_query);
-        this.show_success_with_undo("Task updated");
+        this.show_success_with_undo(m.task_updated());
         if (this.all_task_list_filter) {
           void this.fetch_all_task_page(true);
         }
@@ -2091,7 +2108,7 @@ export class BoardStore {
           board.refresh_labels_from_columns();
         }
         if (task_was_created) {
-          toast.error("Couldn't update task");
+          toast.error(m.task_update_error());
         }
         return false;
       });
@@ -2153,7 +2170,7 @@ export class BoardStore {
     try {
       const messages = await invoke<string[]>("take_recovery_messages");
       if (messages.length > 0) {
-        toast.warning("Application data recovery", {
+        toast.warning(m.backup_recovery(), {
           description: messages.join(" "),
           duration: 15000,
         });
@@ -2213,7 +2230,7 @@ export class BoardStore {
           if (generation !== this.board_generation) {
             return;
           }
-          toast.error("Couldn't move task");
+          toast.error(m.task_move_error());
           this.get_columns();
         });
     }, DRAG_PERSIST_DEBOUNCE_MS);
@@ -2255,14 +2272,14 @@ export class BoardStore {
           void this.fetch_expired_page(true);
         }
       }
-      toast.success("Task moved to another board");
+      toast.success(m.task_moved_board());
       return true;
     } catch (e) {
       logger.error("task.move_to_board.failed", e);
       if (generation === this.board_generation) {
         this.get_columns();
       }
-      toast.error("Couldn't move task", { description: String(e) });
+      toast.error(m.task_move_error(), { description: String(e) });
       return false;
     }
   }
@@ -2286,7 +2303,7 @@ export class BoardStore {
           if (generation !== board.board_generation) {
             return;
           }
-          board.show_success_with_undo("Column added");
+          board.show_success_with_undo(m.column_added());
           const column: Column = {
             id: "",
             name: name,
@@ -2305,7 +2322,7 @@ export class BoardStore {
           if (generation !== board.board_generation) {
             return;
           }
-          toast.error("Couldn't add column");
+          toast.error(m.column_add_error());
         });
     });
   }
@@ -2333,7 +2350,7 @@ export class BoardStore {
           if (generation !== board.board_generation) {
             return;
           }
-          board.show_success_with_undo("Column updated");
+          board.show_success_with_undo(m.column_updated());
           const updated_column = board.columns.find(
             (candidate) => candidate.id === column_id,
           );
@@ -2350,7 +2367,7 @@ export class BoardStore {
           if (generation !== board.board_generation) {
             return;
           }
-          toast.error("Couldn't update column");
+          toast.error(m.column_update_error());
         });
     });
   }
@@ -2420,7 +2437,7 @@ export class BoardStore {
             if (generation !== this.board_generation) {
               return;
             }
-            toast.error("Couldn't move column");
+            toast.error(m.column_move_error());
             this.get_columns();
           });
       });
@@ -2451,7 +2468,7 @@ export class BoardStore {
             this.columns.splice(index, 1);
           }
           this.columns = [...this.columns];
-          this.show_success_with_undo("Column deleted");
+          this.show_success_with_undo(m.column_deleted());
         })
         .catch((e: string) => {
           logger.error("column.delete.failed", e);
@@ -2459,7 +2476,7 @@ export class BoardStore {
           if (generation !== this.board_generation) {
             return;
           }
-          toast.error("Couldn't delete column");
+          toast.error(m.column_delete_error());
         });
     });
   }
@@ -2489,29 +2506,29 @@ export class BoardStore {
       }
       const data = await invoke<string>("export_data", { expectedBoardId });
       await writeTextFile(file_path, data);
-      toast.success("Board exported");
+      toast.success(m.board_exported());
     } catch (e) {
       logger.error("board.export.failed", e);
       console.log(e);
-      toast.error("Couldn't export data");
+      toast.error(m.board_export_error());
     }
   }
 
   async export_all_boards_to_file() {
     try {
       const file_path = await save({
-        filters: [{ name: "Cardbe everything backup", extensions: ["json"] }],
+        filters: [{ name: m.backup_file_type(), extensions: ["json"] }],
         defaultPath: this.timestamped_filename("cardbe-everything-backup"),
       });
       if (!file_path) {
         return;
       }
       await writeTextFile(file_path, await invoke<string>("export_all_boards"));
-      toast.success("Everything backed up");
+      toast.success(m.backup_created());
     } catch (e) {
       logger.error("backup.export.failed", e);
       console.log(e);
-      toast.error("Couldn't back up everything");
+      toast.error(m.backup_create_error());
     }
   }
 
@@ -2538,14 +2555,9 @@ export class BoardStore {
         !Array.isArray(parsed.boards) ||
         parsed.boards.length === 0
       ) {
-        throw new Error("This is not a valid Cardbe everything backup");
+        throw new Error(m.backup_invalid());
       }
-      if (
-        confirm_restore &&
-        !window.confirm(
-          "Restore everything from this backup? This replaces every board and all notes. Existing LAN share links will be permanently revoked and are not restored.",
-        )
-      ) {
+      if (confirm_restore && !window.confirm(m.backup_restore_confirm())) {
         return false;
       }
       await before_restore?.();
@@ -2560,15 +2572,15 @@ export class BoardStore {
       this.get_task_templates();
       this.get_expired_tasks();
       await this.load_settings();
-      toast.success("Everything restored");
+      toast.success(m.backup_restored());
       return true;
     } catch (e) {
       logger.error("backup.restore.failed", e);
       console.log(e);
       toast.error(
         share_links_revoked
-          ? "Restore failed. Existing LAN share links were already revoked; your boards were not replaced."
-          : "Couldn't restore everything",
+          ? m.backup_restore_revoked_error()
+          : m.backup_restore_error(),
       );
       return false;
     }
@@ -2587,9 +2599,9 @@ export class BoardStore {
 
       const data = await readTextFile(file_path as string);
       const filename =
-        String(file_path).split(/[\\/]/).pop() ?? "Imported board";
+        String(file_path).split(/[\\/]/).pop() ?? m.ui_imported_board();
       const board_name =
-        filename.replace(/\.json$/i, "").trim() || "Imported board";
+        filename.replace(/\.json$/i, "").trim() || m.ui_imported_board();
       return {
         json_data: data,
         summary: parse_import_summary(data),
@@ -2598,7 +2610,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.import_file_read.failed", e);
       console.log(e);
-      toast.error("Couldn't read import file");
+      toast.error(m.backup_import_read_error());
       return null;
     }
   }
@@ -2618,12 +2630,12 @@ export class BoardStore {
       this.update_labels();
       this.get_task_templates();
       this.get_expired_tasks();
-      toast.success(`Imported as “${created.name}”`);
+      toast.success(m.board_imported_named({ name: created.name }));
       return true;
     } catch (e) {
       logger.error("board.import_as_new.failed", e);
       console.log(e);
-      toast.error("Couldn't import board");
+      toast.error(m.board_import_error());
       return false;
     }
   }
@@ -2649,13 +2661,13 @@ export class BoardStore {
         this.get_task_templates();
         this.get_expired_tasks();
         this.can_undo = true;
-        toast.success("Data imported", {
+        toast.success(m.backup_imported(), {
           id: "data-import-success",
           description: `Pre-import backup: ${snapshot_path}`,
           duration: 10000,
           action: this.can_undo
             ? {
-                label: "Undo",
+                label: m.common_undo(),
                 onClick: () => void this.undo(),
               }
             : undefined,
@@ -2666,7 +2678,7 @@ export class BoardStore {
         logger.error("board.import_data.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error("Couldn't import data");
+          toast.error(m.backup_import_error());
         }
         return false;
       });

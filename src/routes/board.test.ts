@@ -10,6 +10,7 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { applyLanguagePreference, language } from "$lib/i18n";
 
 import { BoardStore } from "./board.svelte";
 import { create_task } from "./type/task.svelte";
@@ -230,6 +231,33 @@ describe("cross-board task moves", () => {
     ).toHaveLength(initial_list_requests + 1);
     await Promise.resolve();
     await Promise.resolve();
+  });
+});
+
+describe("language persistence", () => {
+  beforeEach(() => {
+    invoke_mock.mockReset();
+    applyLanguagePreference("en");
+  });
+  afterEach(() => applyLanguagePreference("system"));
+
+  it("applies a language only after settings are saved", async () => {
+    const saved = deferred<void>();
+    invoke_mock.mockReturnValue(saved.promise);
+    const store = new BoardStore();
+    const pending = store.set_language("zh-TW");
+    expect(language.preference).toBe("en");
+    saved.resolve();
+    expect(await pending).toBe(true);
+    expect(invoke_mock).toHaveBeenCalledWith("set_language", {
+      language: "zh-TW",
+    });
+    expect(language.preference).toBe("zh-TW");
+  });
+  it("keeps the previous language when persistence fails", async () => {
+    invoke_mock.mockRejectedValue(new Error("disk unavailable"));
+    expect(await new BoardStore().set_language("zh-TW")).toBe(false);
+    expect(language.preference).toBe("en");
   });
 });
 

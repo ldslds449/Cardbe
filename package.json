@@ -16,8 +16,9 @@
     "frontend:test": "vp test run",
     "frontend:test:watch": "vp test",
     "test": "pnpm frontend:test && cargo test --manifest-path src-tauri/Cargo.toml --locked",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && pnpm format:check && pnpm lint",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --emit-ts-declarations --strategy custom-cardbe baseLocale",
+    "check": "pnpm i18n:compile && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && pnpm format:check && pnpm lint",
+    "check:watch": "pnpm i18n:compile && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "node scripts/tauri.mjs"
   },
   "license": "Apache-2.0",
@@ -47,6 +48,8 @@
     "svelte-exmarkdown": "^5.0.2"
   },
   "devDependencies": {
+    "@inlang/paraglide-js": "^2.25.4",
+    "@inlang/plugin-message-format": "^4.4.4",
     "@internationalized/date": "^3.10.1",
     "@shikijs/rehype": "^3.17.0",
     "@sveltejs/adapter-static": "^3.0.6",

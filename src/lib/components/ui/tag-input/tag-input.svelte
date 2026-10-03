@@ -1,10 +1,11 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { cn } from "$lib/utils";
   import * as Chip from "$lib/components/ui/chip";
 
   let {
     tags = $bindable([]),
-    placeholder = "Add tag...",
+    placeholder = m.tag_add(),
     suggestions = [],
     disabled = false,
     maxTags,

@@ -58,10 +58,15 @@ fn notification_key(board_id: i64, task: &Task, now: u128) -> Option<(i64, i64, 
         .then_some((board_id, task.id, due_time))
 }
 
-fn expired_notification(board_name: &str, task_title: &str) -> (String, String) {
+fn expired_notification(
+    board_name: &str,
+    task_title: &str,
+    title_template: &str,
+    body_template: &str,
+) -> (String, String) {
     (
-        format!("Task Expired — {board_name}"),
-        format!("Task \"{task_title}\" has passed its due date"),
+        title_template.replace("{board}", board_name),
+        body_template.replace("{task}", task_title),
     )
 }
 
@@ -168,6 +173,8 @@ pub fn get_task_detail(
 pub fn check_expired_tasks(
     app: tauri::AppHandle,
     state: State<'_, SharedAppData>,
+    title_template: String,
+    body_template: String,
 ) -> Result<(), String> {
     let now = current_time_millis()?;
     let mut guard = state
@@ -207,7 +214,8 @@ pub fn check_expired_tasks(
     drop(guard);
 
     for (board_name, task_title) in titles {
-        let (title, body) = expired_notification(&board_name, &task_title);
+        let (title, body) =
+            expired_notification(&board_name, &task_title, &title_template, &body_template);
         if let Err(error) = app.notification().builder().title(title).body(body).show() {
             log::warn!(target: "notifications", "Could not show an expired-task notification: {error}");
         }
@@ -263,10 +271,27 @@ mod tests {
     #[test]
     fn notification_identifies_the_board() {
         assert_eq!(
-            expired_notification("Work", "Follow up"),
+            expired_notification(
+                "Work",
+                "Follow up",
+                "Task Expired — {board}",
+                "Task \"{task}\" has passed its due date"
+            ),
             (
                 "Task Expired — Work".into(),
                 "Task \"Follow up\" has passed its due date".into()
+            )
+        );
+        assert_eq!(
+            expired_notification(
+                "工作 {board}",
+                "跟進 {task}",
+                "任務已逾期 — {board}",
+                "任務「{task}」已超過截止時間"
+            ),
+            (
+                "任務已逾期 — 工作 {board}".into(),
+                "任務「跟進 {task}」已超過截止時間".into()
             )
         );
     }

@@ -23,6 +23,17 @@
 - Connection settings and language settings are never eligible for Undo and must not enter the Undo history.
 - When implementing Undo, validate operation eligibility both when recording history and when applying an undo. Verify local operations, remote shared-board updates, excluded settings, and conflicts with subsequent remote changes using isolated test data.
 
+## Internationalization
+
+- Keep the existing Paraglide / inlang layout: `project.inlang/settings.json` defines supported locales and the catalog path; `messages/{locale}.json` contains translations; `src/lib/i18n/` owns locale resolution, reactive preference, and display formatting. `project.inlang/` and `messages/` follow the tool's standard project layout.
+- Use flat, descriptive message keys grouped by feature (for example, `task_due_date` or `calendar_go_today`) and import typed messages from `$lib/paraglide/messages`. Generated `src/lib/paraglide/` files are ignored by Git; never edit them. `vite.config.js` integrates compilation into development, tests, and builds; run `vp run i18n:compile` when generated modules are needed before those flows, such as in a fresh checkout's editor.
+- Whenever adding or changing UI text, descriptions, tooltips, accessibility labels, notifications, or displayed values, update **all currently supported languages** (`en` and `zh-TW`) in the same change. Use the existing Paraglide catalogs and typed message functions; do not leave English literals in localized views.
+- Localize **numeric values** as well as words: counts, statistics, percentages, decimals, and units must follow the active locale. Use the existing Intl helpers or Paraglide number formatting, and provide correct plural forms for complete messages. Do not assemble sentences from translated fragments.
+- Dates, times, month/weekday names, calendars, and human-readable export content must follow the selected language and update when it changes. Preserve machine-readable dates, stored values, IDs, and user-authored content.
+- Reuse `getLocale`, `formatDate`, `formatDateTime`, and `formatNumber` from `$lib/i18n`. Keep language preference in the existing reactive locale module and persist it through `set_language`; retain the `system` fallback for old settings. Preserve drafts and focus during language changes without reloading or remounting views. Compilation uses the installed local message-format plugin, and runtime translations must work offline.
+- Prefer natural Taiwanese interface wording for `zh-TW`, chosen for the actual state and action (for example, 「尚未建立欄位」 for an empty board and 「跳至今天」 for calendar navigation), instead of translating English word for word.
+- Verify both languages, including zero/one/multiple-item statistics, empty states, multiline help, and live language switching. Remove one-off catalog migration scripts after use.
+
 ## Dependencies and Lock Files
 
 - **Do not independently edit, delete, regenerate, or format lock files**, including `pnpm-lock.yaml` and `src-tauri/Cargo.lock`. Only update them through the appropriate package manager when the user explicitly requests dependency changes; never edit them manually.

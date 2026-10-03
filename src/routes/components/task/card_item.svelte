@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
+  import { formatDate, formatDateTime } from "$lib/i18n";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Collapsible from "$lib/components/ui/collapsible/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -89,26 +92,30 @@
 
       const now = new Date();
       const include_year = task.due_time.getFullYear() !== now.getFullYear();
-      const date = task.due_time.toLocaleDateString("en", {
+      const options: Intl.DateTimeFormatOptions = {
         month: "short",
         day: "numeric",
         year: include_year ? "numeric" : undefined,
-      });
+      };
       const has_time =
         task.due_time.getHours() !== 0 ||
         task.due_time.getMinutes() !== 0 ||
         task.due_time.getSeconds() !== 0;
-      const time = has_time
-        ? `, ${String(task.due_time.getHours()).padStart(2, "0")}:${String(task.due_time.getMinutes()).padStart(2, "0")}`
-        : "";
+      const date = has_time
+        ? formatDateTime(task.due_time, {
+            ...options,
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : formatDate(task.due_time, options);
       const status = due_status(task.due_time, now);
       return {
         text:
           status === "today"
-            ? `Due today · ${date}${time}`
+            ? m.task_due_today({ date })
             : status === "soon"
-              ? `Due soon · ${date}${time}`
-              : `${date}${time}`,
+              ? m.task_due_soon({ date })
+              : date,
         status,
       };
     })(),
@@ -213,12 +220,8 @@
             variant="ghost"
             size="icon-sm"
             class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-            aria-label={show_content
-              ? "Collapse task content"
-              : "Expand task content"}
-            title={show_content
-              ? "Collapse task content"
-              : "Expand task content"}
+            aria-label={show_content ? m.task_collapse() : m.task_expand()}
+            title={show_content ? m.task_collapse() : m.task_expand()}
             onpointerup={(event) => event.currentTarget.blur()}
             onclick={() => {
               show_content = !show_content;
@@ -240,8 +243,8 @@
                   variant="ghost"
                   size="icon-sm"
                   class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                  aria-label="Task actions"
-                  title="Task actions"
+                  aria-label={m.task_menu()}
+                  title={m.task_menu()}
                 >
                   <EllipsisIcon class="size-4" />
                 </Button>
@@ -259,15 +262,15 @@
             >
               <DropdownMenu.Item onclick={onViewTask}>
                 <FullscreenIcon />
-                View Details
+                {m.task_view_details()}
               </DropdownMenu.Item>
               <DropdownMenu.Item onclick={onEditTask}>
                 <PencilIcon />
-                Edit Task
+                {m.task_edit_action()}
               </DropdownMenu.Item>
               <DropdownMenu.Item onclick={onDuplicateTask}>
                 <CopyIcon />
-                Duplicate Task
+                {m.task_duplicate_action()}
               </DropdownMenu.Item>
               <DropdownMenu.Item
                 onclick={() => {
@@ -275,17 +278,17 @@
                 }}
               >
                 <MoveRightIcon />
-                Move to Board
+                {m.task_move_board()}
               </DropdownMenu.Item>
               {#if onSaveAsTemplate}
                 <DropdownMenu.Item onclick={onSaveAsTemplate}>
                   <LayoutTemplateIcon />
-                  Save as Template
+                  {m.task_template_save()}
                 </DropdownMenu.Item>
               {/if}
               <DropdownMenu.Item onclick={onExportTask}>
                 <Share2Icon />
-                Share Task
+                {m.task_share()}
               </DropdownMenu.Item>
               <DropdownMenu.Item
                 onSelect={() => {
@@ -296,7 +299,7 @@
                 }}
               >
                 <ArchiveIcon />
-                Archive Task
+                {m.task_archive_action()}
               </DropdownMenu.Item>
               <DropdownMenu.Separator />
               <DropdownMenu.Item
@@ -306,7 +309,7 @@
                 }}
               >
                 <TrashIcon />
-                Delete Task
+                {m.task_delete()}
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Root>
@@ -317,9 +320,9 @@
               class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground {task.pinned
                 ? 'opacity-100'
                 : 'opacity-0'} transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-              aria-label={task.pinned ? "Unpin Task" : "Pin Task"}
+              aria-label={task.pinned ? m.task_unpin() : m.task_pin()}
               aria-pressed={task.pinned ?? false}
-              title={task.pinned ? "Unpin Task" : "Pin Task"}
+              title={task.pinned ? m.task_unpin() : m.task_pin()}
               onclick={(event) => {
                 if (event.detail > 0) {
                   event.currentTarget.blur();

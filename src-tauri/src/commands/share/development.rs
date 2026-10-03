@@ -252,6 +252,25 @@ mod tests {
         sync::{Arc, RwLock},
     };
 
+    #[test]
+    fn generated_assets_are_isolated_by_port() {
+        let directory = super::generated_dir();
+        assert!(super::development_target_allowed(&format!(
+            "{directory}/generated/client/nodes/3.js"
+        )));
+        let other_directory = if directory == ".svelte-kit" {
+            ".svelte-kit-dev-1421"
+        } else {
+            ".svelte-kit"
+        };
+        assert!(!super::development_target_allowed(&format!(
+            "{other_directory}/generated/client/nodes/3.js"
+        )));
+        assert!(!super::development_target_allowed(&format!(
+            "{directory}/generated/../secret.txt"
+        )));
+    }
+
     #[tokio::test]
     async fn development_routes_require_an_active_share() {
         use axum::{body::Body, extract::Request, http::StatusCode};

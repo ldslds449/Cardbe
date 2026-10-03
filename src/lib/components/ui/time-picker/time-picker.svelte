@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { Time } from "@internationalized/date";
   import { Label } from "$lib/components/ui/label";
   import TimePickerInput from "./time-picker-input.svelte";
@@ -33,7 +34,7 @@
 <div class={cn("flex items-center gap-2", view === "dotted" && "gap-1")}>
   <div class="grid gap-1 text-center">
     {#if view === "labels"}
-      <Label for="hours" class="text-xs">Hours</Label>
+      <Label for="hours" class="text-xs">{m.time_hours()}</Label>
     {/if}
 
     {#if selectHours}
@@ -61,7 +62,7 @@
 
   <div class="grid gap-1 text-center">
     {#if view === "labels"}
-      <Label for="minutes" class="text-xs">Minutes</Label>
+      <Label for="minutes" class="text-xs">{m.time_minutes()}</Label>
     {/if}
 
     {#if minuteStep > 1}
@@ -93,7 +94,7 @@
 
     <div class="grid gap-1 text-center">
       {#if view === "labels"}
-        <Label for="seconds" class="text-xs">Seconds</Label>
+        <Label for="seconds" class="text-xs">{m.time_seconds()}</Label>
       {/if}
 
       <TimePickerInput

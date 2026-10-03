@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
+  import { getLocale, formatDate } from "$lib/i18n";
   import Calendar from "$lib/components/ui/calendar/calendar.svelte";
   import * as Popover from "$lib/components/ui/popover/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -42,12 +44,19 @@
             aria-describedby={describedby}
           >
             <CalendarIcon class="size-4" />
-            <span class="truncate">{value || "Select date"}</span>
+            <span class="truncate"
+              >{value
+                ? formatDate(new Date(`${value}T00:00:00`), {
+                    dateStyle: "medium",
+                  })
+                : m.date_select()}</span
+            >
           </Button>
         {/snippet}
       </Popover.Trigger>
       <Popover.Content class="w-auto overflow-hidden p-0" align="start">
         <Calendar
+          locale={getLocale()}
           type="single"
           value={value ? parseDate(value) : undefined}
           minValue={min ? parseDate(min) : undefined}
@@ -65,7 +74,7 @@
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label={`Clear ${label.toLowerCase()}`}
+        aria-label={m.date_clear({ name: label })}
         onclick={() => (value = "")}><XIcon class="size-4" /></Button
       >
     {/if}

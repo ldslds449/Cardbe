@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { useSortable } from "@dnd-kit-svelte/svelte/sortable";
   import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
   import type { Snippet } from "svelte";
@@ -32,8 +33,8 @@
   <button
     type="button"
     class="flex size-7 shrink-0 touch-none cursor-grab items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
-    aria-label="Reorder checklist item"
-    title="Drag to reorder"
+    aria-label={m.ui_reorder_checklist_item()}
+    title={m.ui_drag_to_reorder()}
     {@attach handleRef}
   >
     <GripVerticalIcon class="size-4" />

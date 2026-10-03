@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Field from "$lib/components/ui/field/index.js";
@@ -20,7 +22,7 @@
 <Dialog.Root bind:open>
   <Dialog.Content class="sm:max-w-[425px]">
     <Dialog.Header>
-      <Dialog.Title>Add Column</Dialog.Title>
+      <Dialog.Title>{m.column_create()}</Dialog.Title>
     </Dialog.Header>
     <form
       novalidate
@@ -32,10 +34,12 @@
       <Field.Set>
         <Field.Group>
           <Field.Field data-invalid={title_error}>
-            <Field.FieldLabel for="column-name">Name</Field.FieldLabel>
+            <Field.FieldLabel for="column-name"
+              >{m.common_name()}</Field.FieldLabel
+            >
             <Input
               id="column-name"
-              placeholder="Name"
+              placeholder={m.common_name()}
               class="col-span-5"
               bind:value={name}
               required
@@ -44,11 +48,13 @@
               }}
             />
             {#if title_error}
-              <Field.Error>Please enter the name</Field.Error>
+              <Field.Error>{m.column_name_required()}</Field.Error>
             {/if}
           </Field.Field>
           <Field.Field>
-            <Button disabled={name.length === 0} type="submit">Add</Button>
+            <Button disabled={name.length === 0} type="submit"
+              >{m.common_add()}</Button
+            >
           </Field.Field>
         </Field.Group>
       </Field.Set>

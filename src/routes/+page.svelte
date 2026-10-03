@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { getLocale } from "$lib/i18n";
+  import { m } from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
   import { onMount, untrack } from "svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
@@ -137,8 +139,8 @@
   // task edit dialog
   let task_dialog_open = $state(false);
   let dialog_task = $state<Task>(create_task());
-  let dialog_title = $state("");
-  let dialog_button_text = $state("");
+  let dialog_title = $state(m.task_add_card);
+  let dialog_button_text = $state(m.common_add);
   let dialog_callback = $state<() => Promise<boolean>>(async () => false);
   let creating_task = $state(false);
   let dialog_template_id = $state("none");
@@ -190,7 +192,9 @@
     const archive = board.archives.find(
       (candidate) => candidate.task.id === card_reference_preview?.task_id,
     );
-    return archive ? { task: archive.task, location: "Archived" } : undefined;
+    return archive
+      ? { task: archive.task, location: m.explorer_archived() }
+      : undefined;
   });
 
   function view_task_routine(task: Task, onEdit?: () => void) {
@@ -255,11 +259,13 @@
       pending_device_count = 0;
     }
   }
-  const share_time_formatter = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const share_time_formatter = $derived(
+    new Intl.DateTimeFormat(getLocale(), {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+  );
   const share_sync_summary = $derived.by(() => {
     const active_shares = managed_share_state.shares.filter(
       is_managed_share_enabled,
@@ -294,7 +300,7 @@
   function with_share_sync_timeout<T>(operation: Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       const timeout = window.setTimeout(
-        () => reject(new Error("Sharing took too long. Please try again.")),
+        () => reject(new Error(m.ui_sharing_took_too_long_please_try_again())),
         SHARE_SYNC_TIMEOUT_MS,
       );
       void operation.then(
@@ -349,7 +355,7 @@
             "error",
             error instanceof Error
               ? error.message
-              : "Shared content is no longer available",
+              : m.ui_shared_content_is_no_longer_available(),
           ),
         );
         void disable_stale_share(share);
@@ -436,14 +442,14 @@
       ) {
         return;
       }
-      console.error("Couldn't update a board share", error);
+      console.error(m.ui_couldn_t_update_a_board_share(), error);
       logger.error("share.sync.failed", error);
       managed_share_state.set_sync_state(
         share_id,
         "error",
         error instanceof Error
           ? error.message
-          : "Couldn't update the shared board",
+          : m.ui_couldn_t_update_the_shared_board(),
       );
     },
   );
@@ -512,7 +518,7 @@
             await disable_stale_share(share);
           }
           toast.error(
-            "Sharing was stopped for a link whose board no longer exists.",
+            m.ui_sharing_was_stopped_for_a_link_whose_board_no_longer_exists(),
           );
         }
       }),
@@ -531,9 +537,7 @@
         )
       ) {
         managed_share_state.forget(share.id);
-        toast.error(
-          `Sharing stopped for “${share.title}” because its content could not be updated.`,
-        );
+        toast.error(m.share_stopped_named({ name: share.title }));
       }
     } catch (error) {
       logger.error("share.stale_revoke.failed", error);
@@ -545,7 +549,7 @@
         managed_share_state.set_sync_state(
           share.id,
           "error",
-          "Could not disable outdated share content. Close Cardbe to stop sharing.",
+          m.ui_could_not_disable_outdated_share_content_close_cardbe_to_stop_sharing(),
         );
       }
     }
@@ -580,9 +584,7 @@
       .map((share) => managed_share_state.sync_state(share.id))
       .find((state) => state.status === "error");
     if (failed) {
-      throw new Error(
-        `Couldn't update a share before switching boards: ${failed.error}`,
-      );
+      throw new Error(m.share_switch_error({ error: failed.error }));
     }
   }
 
@@ -623,7 +625,7 @@
     } catch (error) {
       logger.error("board.switch_share_sync.failed", error);
       toast.error(
-        error instanceof Error ? error.message : "Couldn't switch board",
+        error instanceof Error ? error.message : m.board_switch_error(),
       );
     }
   }
@@ -651,14 +653,14 @@
           managed_share_state.set_sync_state(
             share.id,
             "error",
-            "Couldn't revoke this share link. Try again before deleting this board.",
+            m.share_revoke_delete(),
           );
         }
       }
       toast.error(
         error instanceof Error
           ? error.message
-          : "Couldn't revoke this board's share links",
+          : m.ui_couldn_t_revoke_this_board_s_share_links(),
       );
       return false;
     }
@@ -692,13 +694,11 @@
         managed_share_state.set_sync_state(
           share.id,
           "error",
-          "Couldn't revoke this share link. Try again before restoring everything.",
+          m.share_revoke_restore(),
         );
       }
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Restore stopped because share links could not be revoked",
+        error instanceof Error ? error.message : m.share_restore_stopped(),
       );
     }
   }
@@ -728,7 +728,7 @@
         });
       })
       .catch((error) => {
-        startup_error = `Could not check local data startup status: ${String(error)}`;
+        startup_error = m.startup_check_error({ error: String(error) });
         startup_check_finished = true;
         requestAnimationFrame(() =>
           window.dispatchEvent(new Event("cardbe:workspace-ready")),
@@ -862,7 +862,7 @@
             ),
           )
           .catch((error) => {
-            console.error("Couldn't sync Quick Add board shares", error);
+            console.error(m.ui_couldn_t_sync_quick_add_board_shares(), error);
             logger.error("share.quick_add_sync.failed", error);
           });
       },
@@ -928,39 +928,45 @@
       markUpdateCheckSuccessful(window.localStorage);
       if (!update) {
         if (manual) {
-          toast.success(`${resolved_app_name} is up to date`);
+          toast.success(m.update_current({ name: resolved_app_name }));
         }
         return;
       }
 
-      toast.info(`${resolved_app_name} ${update.version} is available`, {
-        id: `app-update-${update.version}`,
-        description: "Download the new version from GitHub Releases.",
-        duration: Infinity,
-        closeButton: true,
-        action: {
-          label: "View Release",
-          onClick: () => {
-            void invoke("open_external_url", { url: update.url }).catch(
-              (error) => {
-                logger.warn("update.open_release.failed", error);
-                console.error("Couldn't open the GitHub release:", error);
-                toast.error("Couldn't open GitHub Releases");
-              },
-            );
+      toast.info(
+        m.update_available({
+          name: resolved_app_name,
+          version: update.version,
+        }),
+        {
+          id: `app-update-${update.version}`,
+          description: m.ui_download_the_new_version_from_github_releases(),
+          duration: Infinity,
+          closeButton: true,
+          action: {
+            label: m.ui_view_release(),
+            onClick: () => {
+              void invoke("open_external_url", { url: update.url }).catch(
+                (error) => {
+                  logger.warn("update.open_release.failed", error);
+                  console.error("Couldn't open the GitHub release:", error);
+                  toast.error(m.ui_couldn_t_open_github_releases());
+                },
+              );
+            },
+          },
+          cancel: {
+            label: m.ui_later(),
+            onClick: () => {},
           },
         },
-        cancel: {
-          label: "Later",
-          onClick: () => {},
-        },
-      });
+      );
     } catch (error) {
       logger.warn("update.manual_check.failed", error);
       // Automatic update checks should never interrupt normal app usage.
       console.info("Couldn't check for app updates:", error);
       if (manual) {
-        toast.error("Couldn't check for updates", {
+        toast.error(m.ui_couldn_t_check_for_updates(), {
           description: updateCheckErrorMessage(error),
           duration: 10_000,
           closeButton: true,
@@ -997,8 +1003,8 @@
     creating_task = false;
     dialog_template_id = "none";
     const task_id = board.columns[col_idx].tasks[t_idx].id;
-    dialog_title = "Edit Card";
-    dialog_button_text = "Update";
+    dialog_title = m.task_edit;
+    dialog_button_text = m.common_update;
     dialog_callback = () => board.update_task(task_id, dialog_task);
     dialog_task = clone_task(board.columns[col_idx].tasks[t_idx]);
     task_dialog_open = true;
@@ -1012,8 +1018,8 @@
     creating_task = true;
     dialog_template_id = "none";
     const column_id = board.columns[col_idx].id;
-    dialog_title = "Add Card";
-    dialog_button_text = "Add";
+    dialog_title = m.task_add_card;
+    dialog_button_text = m.common_add;
     dialog_callback = () => board.add_new_task(column_id, dialog_task);
     reset_task(dialog_task);
     dialog_task.due_time = due_time ? new Date(due_time) : undefined;
@@ -1078,8 +1084,8 @@
     creating_task = true;
     dialog_template_id = "none";
     const column_id = board.columns[column_idx].id;
-    dialog_title = "Import Task";
-    dialog_button_text = "Import";
+    dialog_title = m.task_import;
+    dialog_button_text = m.common_import;
     dialog_task = clone_task(task);
     dialog_callback = () => board.add_new_task(column_id, dialog_task);
     task_dialog_open = true;
@@ -1114,8 +1120,8 @@
     creating_task = false;
     dialog_template_id = "none";
     editing_template_name = template.name;
-    dialog_title = "Edit Template";
-    dialog_button_text = "Update Template";
+    dialog_title = m.task_template_edit;
+    dialog_button_text = m.task_template_update;
     dialog_task = clone_task(template.task);
     dialog_callback = () =>
       board.update_task_template(
@@ -1177,8 +1183,8 @@
     editing_template_id = null;
     creating_task = true;
     dialog_template_id = template.id.toString();
-    dialog_title = "Add Card from Template";
-    dialog_button_text = "Add";
+    dialog_title = m.task_template_create_card;
+    dialog_button_text = m.common_add;
     dialog_task = task_from_template(template.task);
     dialog_callback = () => board.add_new_task(column.id, dialog_task);
     templates_dialog_open = false;
@@ -1251,11 +1257,11 @@
 
   async function prepare_task_import(column_id?: string) {
     if (board.columns.length === 0) {
-      toast.error("Create a column before importing a task");
+      toast.error(m.ui_create_a_column_before_importing_a_task());
       return;
     }
     if (column_id && !board.columns.some((column) => column.id === column_id)) {
-      toast.error("Column no longer exists");
+      toast.error(m.column_missing());
       return;
     }
     task_import_target_column_id = column_id ?? null;
@@ -1271,7 +1277,9 @@
     } catch (error) {
       logger.warn("task.share_text_import.failed", error);
       task_import_error =
-        error instanceof Error ? error.message : "Invalid task sharing text";
+        error instanceof Error
+          ? error.message
+          : m.ui_invalid_task_sharing_text();
       return;
     }
     task_import_error = "";
@@ -1304,7 +1312,7 @@
     } catch (error) {
       logger.warn("task.share_text_prepare.failed", error);
       console.log(error);
-      toast.error("Couldn't prepare task sharing text");
+      toast.error(m.ui_couldn_t_prepare_task_sharing_text());
     }
   }
 
@@ -1325,11 +1333,11 @@
           throw new Error("Copy command failed");
         }
       }
-      toast.success("Task sharing text copied");
+      toast.success(m.ui_task_sharing_text_copied());
     } catch (error) {
       logger.warn("task.share_text_copy.failed", error);
       console.log(error);
-      toast.error("Couldn't copy text. Select it and copy manually.");
+      toast.error(m.ui_couldn_t_copy_text_select_it_and_copy_manually());
     }
   }
 
@@ -1351,7 +1359,7 @@
       return;
     }
 
-    toast.error("Referenced card no longer exists");
+    toast.error(m.ui_referenced_card_no_longer_exists());
   }
 
   function stop_task_recurrence(task: Task) {
@@ -1406,17 +1414,16 @@
             <p
               class="text-xs font-medium uppercase tracking-wider text-muted-foreground"
             >
-              Local database
+              {m.ui_local_database()}
             </p>
             <h1
               id="startup-error-title"
               class="text-lg font-semibold tracking-tight"
             >
-              Couldn't open your data
+              {m.ui_couldn_t_open_your_data()}
             </h1>
             <p class="text-sm leading-relaxed text-muted-foreground">
-              Cardbe opened, but couldn't read its local database. The workspace
-              can't load until this issue is resolved.
+              {m.startup_database_description()}
             </p>
           </div>
         </header>
@@ -1425,13 +1432,13 @@
           <div class="flex items-center gap-2 text-sm font-medium">
             <span class="size-2 rounded-full bg-destructive" aria-hidden="true"
             ></span>
-            Error details
+            {m.ui_error_details()}
           </div>
           <pre
             class="max-h-[40vh] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-destructive/20 bg-muted/50 px-4 py-3 font-mono text-xs leading-relaxed text-foreground selection:bg-primary/20"
             role="alert">{startup_error}</pre>
           <p class="text-xs text-muted-foreground">
-            This error is also recorded in the Cardbe app log.
+            {m.ui_this_error_is_also_recorded_in_the_cardbe_app_log()}
           </p>
         </Card.Content>
       </Card.Root>
@@ -1444,11 +1451,11 @@
         <Empty.Media variant="icon">
           <BugIcon />
         </Empty.Media>
-        <Empty.Title>Error</Empty.Title>
-        <Empty.Description>An error occurred during loading</Empty.Description>
+        <Empty.Title>{m.common_error()}</Empty.Title>
+        <Empty.Description>{m.board_load_error()}</Empty.Description>
       </Empty.Header>
       <Empty.Content>
-        <Button onclick={() => board.get_columns()}>Retry</Button>
+        <Button onclick={() => board.get_columns()}>{m.common_retry()}</Button>
       </Empty.Content>
     </Empty.Root>
   {:else if !board.column_fetch_finish}
@@ -1457,8 +1464,8 @@
         <Empty.Media variant="icon">
           <Spinner />
         </Empty.Media>
-        <Empty.Title>Loading Data</Empty.Title>
-        <Empty.Description>Please wait for a while...</Empty.Description>
+        <Empty.Title>{m.board_loading()}</Empty.Title>
+        <Empty.Description>{m.board_loading_description()}</Empty.Description>
       </Empty.Header>
     </Empty.Root>
   {:else}
@@ -1504,10 +1511,15 @@
             ? "updating"
             : "idle"}
         web_publish_detail={share_sync_summary.failed
-          ? `Web publish failed: ${share_sync_summary.failed.error}`
+          ? m.share_sync_failed({ error: share_sync_summary.failed.error })
           : share_sync_summary.updating
-            ? "Updating published views"
-            : `${share_sync_summary.active_count} ${share_sync_summary.active_count === 1 ? "web view" : "web views"} published · Last published ${share_time_formatter.format(new Date(share_sync_summary.latest_update))}`}
+            ? m.ui_updating_published_views()
+            : m.share_sync_summary({
+                count: share_sync_summary.active_count,
+                time: share_time_formatter.format(
+                  new Date(share_sync_summary.latest_update),
+                ),
+              })}
         onPrepareImport={prepare_import}
         onExportAllBoards={() => {
           void board.export_all_boards_to_file();
@@ -1535,7 +1547,7 @@
         {selected_view}
         active_board_name={board.boards.find(
           (item) => item.id === board.active_board_id,
-        )?.name ?? "Board"}
+        )?.name ?? m.board_title()}
         shared_role={active_board_summary?.shared_role}
         sync_status={active_board_summary?.sync_status}
         last_synced_at={active_board_summary
@@ -1600,9 +1612,7 @@
           managed_share_state.set_sync_state(
             share_id,
             "error",
-            error instanceof Error
-              ? error.message
-              : "Couldn't revoke this share link. Try again.",
+            error instanceof Error ? error.message : m.share_revoke_retry(),
           );
         }}
       />
@@ -1620,11 +1630,11 @@
         bind:selection_error={task_column_error}
         column_items={task_column_items}
         onSubmit={handle_task_column_select}
-        title={pending_import_task ? "Import Task" : "Add Card"}
+        title={pending_import_task ? m.task_import() : m.task_add_card()}
         description={pending_import_task
-          ? "Select the column where this task should be imported."
-          : "Select the column for the new card."}
-        submit_label={pending_import_task ? "Import" : "Continue"}
+          ? m.ui_select_the_column_where_this_task_should_be_imported()
+          : m.ui_select_the_column_for_the_new_card()}
+        submit_label={pending_import_task ? m.common_import() : m.ui_continue()}
       />
 
       <TaskTransferDialog
@@ -1663,8 +1673,8 @@
         card_reference_options={board.columns.flatMap((column) =>
           column.tasks.map((task) => ({ task, column_name: column.name })),
         )}
-        {dialog_title}
-        submit_button_text={dialog_button_text}
+        dialog_title={dialog_title()}
+        submit_button_text={dialog_button_text()}
         auto_focus_title={creating_task}
         show_template_name={editing_template_id !== null}
         bind:template_name={editing_template_name}
@@ -1718,20 +1728,20 @@
               class="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground"
               role="status"
             >
-              Searching cards...
+              {m.board_searching_cards()}
             </div>
           {:else if search_text.trim() && board.search_error}
             <div
               class="flex min-h-[50vh] flex-col items-center justify-center gap-2 text-sm text-destructive"
               role="alert"
             >
-              <span>Search unavailable.</span>
+              <span>{m.board_search_unavailable()}</span>
               <Button
                 variant="link"
                 size="sm"
                 onclick={() => board.search_tasks(search_text)}
               >
-                Retry search
+                {m.board_search_retry()}
               </Button>
             </div>
           {:else if active_view === "focus"}

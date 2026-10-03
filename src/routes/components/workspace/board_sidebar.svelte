@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { formatNumber } from "$lib/i18n";
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import SearchIcon from "@lucide/svelte/icons/search";
@@ -124,23 +127,23 @@
 <svelte:window onkeydown={handle_keydown} />
 
 {#if open}
-  <div class="fixed inset-0 z-30" aria-label="Board navigation">
+  <div class="fixed inset-0 z-30" aria-label={m.board_navigation()}>
     <button
       class="absolute inset-0 cursor-default bg-black/10"
-      aria-label="Close boards"
+      aria-label={m.board_close()}
       onclick={() => (open = false)}
     ></button>
     <section
       id="board-drawer"
       class="fixed top-12 left-4 z-40 flex h-[min(60dvh,calc(100dvh-4rem))] w-64 flex-col overflow-hidden rounded-md border bg-background shadow-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150"
       role="navigation"
-      aria-label="Boards"
+      aria-label={m.board_list()}
     >
       <header class="flex h-11 shrink-0 items-center border-b px-3">
         <span class="text-sm font-semibold"
-          >Boards
+          >{m.board_list()}
           <span class="font-normal text-muted-foreground"
-            >· {boards.length}</span
+            >· {formatNumber(boards.length)}</span
           ></span
         >
       </header>
@@ -151,12 +154,12 @@
         <Input
           bind:value={search}
           class="h-8 pl-8"
-          placeholder="Search boards"
-          aria-label="Search boards"
+          placeholder={m.board_search()}
+          aria-label={m.board_search()}
         />
       </div>
       <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="vertical">
-        <nav class="min-w-0 px-2 py-2" aria-label="Board list">
+        <nav class="min-w-0 px-2 py-2" aria-label={m.board_list_navigation()}>
           {#if filtered_boards.length > 0}
             <div class="space-y-0.5">
               {#each filtered_boards as item (item.id)}
@@ -171,7 +174,13 @@
                         : undefined}
                       title={item.shared_role === "owner"
                         ? item.name
-                        : `${item.name} — Shared with me, ${item.shared_role === "viewer" ? "read only" : "can edit"}`}
+                        : m.board_shared_name({
+                            name: item.name,
+                            permission:
+                              item.shared_role === "viewer"
+                                ? m.board_read_only()
+                                : m.board_can_edit(),
+                          })}
                     >
                       {#if item.shared_role !== "owner"}
                         <UsersIcon
@@ -185,15 +194,16 @@
                           <span
                             class="block truncate text-[11px] font-normal leading-4 text-muted-foreground"
                           >
-                            Shared with me ·
+                            {m.board_shared()} ·
                             {item.shared_role === "viewer"
-                              ? "Read only"
-                              : "Can edit"}
+                              ? m.board_read_only()
+                              : m.board_can_edit()}
                           </span>
                         {/if}
                       </span>
                       <span
                         class={`shrink-0 text-xs tabular-nums ${item.task_count === 0 ? "text-muted-foreground/60" : "text-muted-foreground"}`}
+                        title={m.task_count({ count: item.task_count })}
                         >{item.task_count}</span
                       >
                     </button>
@@ -202,7 +212,7 @@
                     {#if item.shared_role === "owner"}
                       <ContextMenu.Item onclick={() => open_rename_dialog(item)}
                         ><PencilIcon />
-                        Rename</ContextMenu.Item
+                        {m.board_rename_action()}</ContextMenu.Item
                       ><ContextMenu.Separator />
                     {/if}
                     <ContextMenu.Item
@@ -210,7 +220,7 @@
                       disabled={boards.length <= 1}
                       onclick={() => open_delete_dialog(item)}
                       ><Trash2Icon />
-                      Delete</ContextMenu.Item
+                      {m.common_delete()}</ContextMenu.Item
                     >
                   </ContextMenu.Content>
                 </ContextMenu.Root>
@@ -218,7 +228,7 @@
             </div>
           {:else}
             <p class="px-3 py-8 text-center text-sm text-muted-foreground">
-              No boards found
+              {m.board_empty()}
             </p>
           {/if}
         </nav>
@@ -228,10 +238,10 @@
           variant="ghost"
           class="w-full justify-start"
           onclick={open_create_dialog}
-          aria-label="Create board"
+          aria-label={m.board_create()}
         >
           <PlusIcon />
-          New board
+          {m.board_new()}
         </Button>
       </footer>
     </section>
@@ -241,8 +251,8 @@
 <Dialog.Root bind:open={create_open}
   ><Dialog.Content class="sm:max-w-sm"
     ><Dialog.Header
-      ><Dialog.Title>Create board</Dialog.Title><Dialog.Description
-        >Give the new board a name.</Dialog.Description
+      ><Dialog.Title>{m.board_create()}</Dialog.Title><Dialog.Description
+        >{m.board_create_description()}</Dialog.Description
       ></Dialog.Header
     >
     <form
@@ -254,8 +264,8 @@
     >
       <Input
         bind:value={new_name}
-        placeholder="Board name"
-        aria-label="Board name"
+        placeholder={m.board_name()}
+        aria-label={m.board_name()}
         maxlength={200}
         autofocus
       />
@@ -263,9 +273,9 @@
         <Button
           type="button"
           variant="outline"
-          onclick={() => (create_open = false)}>Cancel</Button
+          onclick={() => (create_open = false)}>{m.common_cancel()}</Button
         ><Button type="submit" disabled={!new_name.trim() || saving}
-          >Create</Button
+          >{m.common_create()}</Button
         >
       </div>
     </form></Dialog.Content
@@ -274,8 +284,8 @@
 <Dialog.Root bind:open={rename_open}
   ><Dialog.Content class="sm:max-w-sm"
     ><Dialog.Header
-      ><Dialog.Title>Rename board</Dialog.Title><Dialog.Description
-        >Choose a new name for this board.</Dialog.Description
+      ><Dialog.Title>{m.board_rename()}</Dialog.Title><Dialog.Description
+        >{m.board_rename_description()}</Dialog.Description
       ></Dialog.Header
     >
     <form
@@ -287,7 +297,7 @@
     >
       <Input
         bind:value={rename_name}
-        aria-label="Board name"
+        aria-label={m.board_name()}
         maxlength={200}
         autofocus
       />
@@ -295,9 +305,9 @@
         <Button
           type="button"
           variant="outline"
-          onclick={() => (rename_open = false)}>Cancel</Button
+          onclick={() => (rename_open = false)}>{m.common_cancel()}</Button
         ><Button type="submit" disabled={!rename_name.trim() || saving}
-          >Save</Button
+          >{m.common_save()}</Button
         >
       </div>
     </form></Dialog.Content
@@ -307,15 +317,17 @@
   ><AlertDialog.Content
     ><AlertDialog.Header
       ><AlertDialog.Title
-        >Delete {selected_board?.name ?? "board"}?</AlertDialog.Title
+        >{m.board_delete_named_confirm({
+          name: selected_board?.name ?? m.board_title(),
+        })}</AlertDialog.Title
       ><AlertDialog.Description
-        >This permanently deletes the board and all of its contents. This action
-        cannot be undone.</AlertDialog.Description
+        >{m.board_delete_description()}</AlertDialog.Description
       ></AlertDialog.Header
     ><AlertDialog.Footer
-      ><AlertDialog.Cancel disabled={saving}>Cancel</AlertDialog.Cancel
+      ><AlertDialog.Cancel disabled={saving}
+        >{m.common_cancel()}</AlertDialog.Cancel
       ><AlertDialog.Action disabled={saving} onclick={() => void remove()}
-        >Delete</AlertDialog.Action
+        >{m.common_delete()}</AlertDialog.Action
       ></AlertDialog.Footer
     ></AlertDialog.Content
   ></AlertDialog.Root

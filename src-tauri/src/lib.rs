@@ -413,6 +413,8 @@ pub fn run() {
             settings::set_notify_enabled,
             settings::get_iroh_network_settings,
             settings::set_iroh_network_settings,
+            settings::set_language,
+            settings::set_desktop_menu_labels,
             settings::take_recovery_messages,
             get_startup_error,
             share::publish_lan_share,

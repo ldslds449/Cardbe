@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { formatNumber } from "$lib/i18n";
+  import { getLocale } from "$lib/i18n";
+  import * as m from "$lib/paraglide/messages.js";
   import CalendarIcon from "@lucide/svelte/icons/calendar";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
@@ -16,14 +19,16 @@
     onValueChange?: (value: string) => void;
   } = $props();
 
-  const month_names = Array.from({ length: 12 }, (_, month) => ({
-    short: new Date(2024, month, 1).toLocaleDateString("en-US", {
-      month: "short",
-    }),
-    long: new Date(2024, month, 1).toLocaleDateString("en-US", {
-      month: "long",
-    }),
-  }));
+  const month_names = $derived(
+    Array.from({ length: 12 }, (_, month) => ({
+      short: new Date(2024, month, 1).toLocaleDateString(getLocale(), {
+        month: "short",
+      }),
+      long: new Date(2024, month, 1).toLocaleDateString(getLocale(), {
+        month: "long",
+      }),
+    })),
+  );
 
   let open = $state(false);
   let display_year = $state(new Date().getFullYear());
@@ -42,10 +47,18 @@
   }
 
   const selected = $derived(parse_value());
+  function month_date(year: number, month: number): Date {
+    const date = new Date(2024, month, 1);
+    date.setFullYear(year);
+    return date;
+  }
   const display_value = $derived(
     selected
-      ? `${month_names[selected.month].long} ${selected.year}`
-      : "Select month",
+      ? month_date(selected.year, selected.month).toLocaleDateString(
+          getLocale(),
+          { year: "numeric", month: "long" },
+        )
+      : m.calendar_select_month(),
   );
 
   $effect(() => {
@@ -83,7 +96,7 @@
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Previous year"
+        aria-label={m.calendar_previous_year()}
         disabled={display_year <= 1}
         onclick={() => {
           display_year -= 1;
@@ -91,11 +104,13 @@
       >
         <ChevronLeftIcon />
       </Button>
-      <div class="text-sm font-semibold" aria-live="polite">{display_year}</div>
+      <div class="text-sm font-semibold" aria-live="polite">
+        {formatNumber(display_year)}
+      </div>
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Next year"
+        aria-label={m.calendar_next_year()}
         disabled={display_year >= 9999}
         onclick={() => {
           display_year += 1;
@@ -107,16 +122,19 @@
     <div
       class="grid grid-cols-3 gap-1"
       role="grid"
-      aria-label={`Months in ${display_year}`}
+      aria-label={m.calendar_months_year({ year: display_year })}
     >
-      {#each month_names as month, index (month.short)}
+      {#each month_names as month, index (index)}
         <Button
           variant={selected?.year === display_year && selected.month === index
             ? "secondary"
             : "ghost"}
           size="sm"
           class="font-normal"
-          aria-label={`${month.long} ${display_year}`}
+          aria-label={month_date(display_year, index).toLocaleDateString(
+            getLocale(),
+            { year: "numeric", month: "long" },
+          )}
           aria-pressed={selected?.year === display_year &&
             selected.month === index}
           onclick={() => select_month(index)}

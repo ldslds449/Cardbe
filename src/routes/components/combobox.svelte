@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import CheckIcon from "@lucide/svelte/icons/check";
   import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
   import { tick } from "svelte";
@@ -14,8 +15,8 @@
 
   let {
     items,
-    select_placeholder = "Select...",
-    search_placeholder = "Search...",
+    select_placeholder = m.ui_select(),
+    search_placeholder = m.ui_search(),
     search_label,
     selected_value = $bindable(undefined),
     class: className,
@@ -81,7 +82,7 @@
         aria-label={accessibleSearchLabel}
       />
       <Command.List>
-        <Command.Empty>No found</Command.Empty>
+        <Command.Empty>{m.ui_no_found()}</Command.Empty>
         <Command.Group value="items">
           {#each items as item (item.value)}
             <Command.Item

@@ -1,0 +1,1448 @@
+{
+  "common_save": "Save",
+  "common_cancel": "Cancel",
+  "common_confirm": "Confirm",
+  "common_delete": "Delete",
+  "common_edit": "Edit",
+  "common_close": "Close",
+  "common_add": "Add",
+  "common_create": "Create",
+  "common_name": "Name",
+  "common_done": "Done",
+  "common_preview": "Preview",
+  "common_saving": "Saving...",
+  "common_sort": "Sort",
+  "common_custom": "Custom",
+  "board_title": "Board",
+  "board_list": "Boards",
+  "board_navigation": "Board navigation",
+  "board_list_navigation": "Board list",
+  "board_open": "Open boards",
+  "board_close": "Close boards",
+  "board_search": "Search boards",
+  "board_empty": "No boards found",
+  "board_create": "Create board",
+  "board_new": "New board",
+  "board_create_description": "Give the new board a name.",
+  "board_rename": "Rename board",
+  "board_rename_action": "Rename",
+  "board_rename_description": "Choose a new name for this board.",
+  "board_name": "Board name",
+  "board_delete_description": "This permanently deletes the board and all of its contents. This action cannot be undone.",
+  "board_shared": "Shared with me",
+  "board_read_only": "Read only",
+  "board_can_edit": "Can edit",
+  "board_sharing": "Board sharing...",
+  "board_publish": "Web publish",
+  "board_publish_open": "Web publish...",
+  "board_search_tasks": "Search this board",
+  "board_clear_search": "Clear search",
+  "board_searching": "Searching tasks",
+  "board_search_error": "Search unavailable. Retry or clear the search.",
+  "column_create": "Add Column",
+  "column_new": "New Column",
+  "column_delete": "Delete Column",
+  "column_delete_confirm": "Do you want to delete the column and all contained tasks?",
+  "column_name_required": "Please enter the name",
+  "column_archive_tasks": "Archive All Tasks",
+  "column_due_asc": "Due date: earliest first",
+  "column_due_desc": "Due date: latest first",
+  "task_create": "Add Task",
+  "task_new": "New Task",
+  "task_add_card": "Add Card",
+  "task_edit": "Edit Card",
+  "task_delete": "Delete Task",
+  "task_import": "Import Task",
+  "task_title": "Title",
+  "task_title_required": "Please enter the title",
+  "task_color_reset": "Reset task color",
+  "task_quick_colors": "Quick colors",
+  "task_repeat": "Repeat",
+  "task_repeat_every": "Every",
+  "task_repeat_interval": "Repeat interval",
+  "task_repeat_none": "Does not repeat",
+  "task_repeat_days": "Day(s)",
+  "task_repeat_weeks": "Week(s)",
+  "task_repeat_months": "Month(s)",
+  "task_repeat_days_label": "day(s)",
+  "task_repeat_weeks_label": "week(s)",
+  "task_repeat_months_label": "month(s)",
+  "task_repeat_description": "Archiving this task creates the next occurrence.",
+  "task_label": "Label",
+  "task_label_add": "Add Label",
+  "task_label_help": "Label format help",
+  "task_checklist": "Checklist",
+  "task_item": "Item",
+  "task_item_add": "Add item",
+  "task_item_delete": "Delete item",
+  "task_description": "Description",
+  "task_description_placeholder": "Description (Markdown supported)",
+  "task_description_preview": "Description preview",
+  "task_preview_empty": "Nothing to preview",
+  "task_reference": "Reference card",
+  "task_reference_help": "Card reference help",
+  "task_search_cards": "Search cards",
+  "task_search_cards_placeholder": "Search cards...",
+  "task_cards_empty": "No cards found.",
+  "task_due_none": "No due date",
+  "task_due_clear": "Clear due date",
+  "task_time_none": "No time",
+  "task_details_hide": "Hide task details",
+  "task_details_show": "Show task details",
+  "task_details_board": "Task detail expansion is available in Board view",
+  "task_template_open": "Open task templates",
+  "task_template_save": "Save as Template",
+  "task_template_edit": "Edit Template",
+  "task_template_create_card": "Add Card from Template",
+  "task_template_name": "Template name",
+  "task_template_name_required": "Please enter the template name",
+  "task_template_choose": "Choose a template",
+  "task_explorer": "Task Explorer",
+  "task_explorer_open": "Open Task Explorer",
+  "workspace_today": "Today",
+  "workspace_statistics": "Statistics",
+  "task_pin": "Pin Task",
+  "task_unpin": "Unpin Task",
+  "workspace_calendar": "Calendar",
+  "workspace_navigation": "Workspace navigation",
+  "workspace_views": "Workspace views",
+  "workspace_board_only": "Available in Board view",
+  "settings_title": "Settings",
+  "settings_language": "Language",
+  "settings_language_system": "System",
+  "settings_language_save_error": "Couldn't save language settings",
+  "settings_notify_disable": "Disable notifications",
+  "settings_notify_enable": "Enable notifications",
+  "settings_theme_toggle": "Toggle color theme",
+  "notes_open": "Open notes",
+  "notes_close": "Close notes",
+  "menu_file": "File",
+  "menu_help": "Help",
+  "menu_undo": "Undo",
+  "menu_about": "About Cardbe",
+  "menu_diagnostics": "Diagnostics…",
+  "menu_export_board": "Export This Board…",
+  "menu_import_board": "Import Board as New…",
+  "menu_backup": "Back Up Everything…",
+  "menu_restore": "Restore Everything…",
+  "notification_close": "Close notification",
+  "share_read_only": "Shared - read only",
+  "share_can_edit": "Shared - can edit",
+  "share_conflict": "Conflict",
+  "share_syncing": "Syncing...",
+  "share_pending": "Pending",
+  "share_sync_error": "Couldn't sync shared board",
+  "share_background": "Background sync",
+  "share_sync": "Sync now",
+  "share_sync_board": "Sync shared board now",
+  "share_resolve_conflict": "Resolve conflict in Board sharing",
+  "board_delete_named_confirm": "Delete \"{name}\"?",
+  "task_delete_named_confirm": "Delete \"{name}\"?",
+  "task_delete_confirm": "Delete this task?",
+  "column_add_named_task": "Add task to {name}",
+  "workspace_current_board": "Current board: {name}",
+  "share_synced_at": "Synced {time}",
+  "task_due_today": "Due today · {date}",
+  "task_due_soon": "Due soon · {date}",
+  "board_shared_name": "{name} — Shared with me, {permission}",
+  "task_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task",
+        "countPlural=*": "{countFormatted} tasks"
+      }
+    }
+  ],
+  "common_update": "Update",
+  "common_import": "Import",
+  "common_change": "Change",
+  "common_not_set": "Not set",
+  "task_details": "Task Details",
+  "task_details_label": "Task details",
+  "task_start_time": "Start Time",
+  "task_due_time": "Due Time",
+  "task_labels": "Labels",
+  "task_description_empty": "No description",
+  "task_template_back": "Back to card",
+  "task_template_choose_title": "Choose a Template",
+  "task_template_search_description": "Search by template name, card title, or label.",
+  "task_template_search": "Search templates",
+  "task_template_search_placeholder": "Search templates...",
+  "task_template_empty": "No templates found.",
+  "task_template_untitled": "Untitled card",
+  "task_template_method": "Creation method",
+  "task_template_blank_title": "Blank Card",
+  "task_template_from": "From Template",
+  "task_template_update": "Update Template",
+  "task_menu": "Task actions",
+  "task_expand": "Expand task",
+  "task_collapse": "Collapse task",
+  "column_due_asc_hint": "Due date: earliest first. Click to switch to Custom.",
+  "column_due_desc_hint": "Due date: latest first. Click to switch to Custom.",
+  "column_due_asc_accessible": "Due date: earliest first. Switch to Custom sorting.",
+  "column_due_desc_accessible": "Due date: latest first. Switch to Custom sorting.",
+  "board_columns_empty": "No Column",
+  "board_columns_empty_description": "You haven't added any column yet. Get started by adding your first column!",
+  "task_checklist_label": "Task checklist",
+  "task_checklist_completion": "Checklist completion",
+  "task_added": "Task added",
+  "task_deleted": "Task deleted",
+  "task_archived": "Task archived",
+  "task_archived_all": "Tasks archived",
+  "task_restored": "Task restored",
+  "task_updated": "Task updated",
+  "task_add_error": "Couldn't add task",
+  "task_delete_error": "Couldn't delete task",
+  "task_archive_error": "Couldn't archive task",
+  "task_archive_all_error": "Couldn't archive tasks",
+  "task_restore_error": "Couldn't restore task",
+  "task_update_error": "Couldn't update task",
+  "task_move_error": "Couldn't move task",
+  "task_missing": "Task no longer exists",
+  "task_original_missing": "Original task no longer exists",
+  "task_template_load_error": "Couldn't load task templates",
+  "task_template_save_error": "Couldn't save template",
+  "task_template_update_error": "Couldn't update template",
+  "task_template_delete_error": "Couldn't delete template",
+  "column_added": "Column added",
+  "column_updated": "Column updated",
+  "column_deleted": "Column deleted",
+  "column_add_error": "Couldn't add column",
+  "column_update_error": "Couldn't update column",
+  "column_move_error": "Couldn't move column",
+  "column_delete_error": "Couldn't delete column",
+  "column_missing": "Column no longer exists",
+  "board_create_error": "Couldn't create board",
+  "board_rename_error": "Couldn't rename board",
+  "board_switch_error": "Couldn't switch board",
+  "board_delete_error": "Couldn't delete board",
+  "board_exported": "Board exported",
+  "board_export_error": "Couldn't export data",
+  "board_import_error": "Couldn't import board",
+  "backup_created": "Everything backed up",
+  "backup_create_error": "Couldn't back up everything",
+  "backup_restored": "Everything restored",
+  "backup_import_read_error": "Couldn't read import file",
+  "backup_imported": "Data imported",
+  "backup_import_error": "Couldn't import data",
+  "backup_recovery": "Application data recovery",
+  "settings_notify_save_error": "Couldn't save notification settings",
+  "settings_notify_permission_error": "Notification permission wasn't granted",
+  "common_undone": "Last action undone",
+  "common_undo_error": "Couldn't undo the last action",
+  "common_undo": "Undo",
+  "share_synced": "Shared board synced",
+  "board_search_empty": "No cards match \"{query}\".",
+  "board_imported_named": "Imported as \"{name}\"",
+  "task_checklist_progress": [
+    {
+      "declarations": [
+        "input completed",
+        "input total",
+        "local completedFormatted = completed: number",
+        "local totalFormatted = total: number"
+      ],
+      "match": {
+        "completed=*": "{completedFormatted} / {totalFormatted} completed"
+      }
+    }
+  ],
+  "task_checklist_progress_accessible": [
+    {
+      "declarations": [
+        "input completed",
+        "input total",
+        "local completedFormatted = completed: number",
+        "local totalFormatted = total: number"
+      ],
+      "match": {
+        "completed=*": "{completedFormatted} of {totalFormatted} items completed"
+      }
+    }
+  ],
+  "task_item_mark_complete": "Mark {name} as completed",
+  "task_item_mark_incomplete": "Mark {name} as not completed",
+  "task_color_use": "Use {name} ({color})",
+  "task_label_owner_help": "Use {example} for an owner.",
+  "task_label_type_help": "Use {example} for a task category.",
+  "task_label_priority_help": "Use {example} for priority.",
+  "task_label_status_help": "Use {example} for status.",
+  "task_label_effort_help": "Use {example} for effort.",
+  "task_reference_hint": "Type [[ to search for and reference another card.",
+  "task_repeat_day_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Every day",
+        "countPlural=*": "Every {countFormatted} days"
+      }
+    }
+  ],
+  "task_repeat_week_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Every week",
+        "countPlural=*": "Every {countFormatted} weeks"
+      }
+    }
+  ],
+  "task_repeat_month_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Every month",
+        "countPlural=*": "Every {countFormatted} months"
+      }
+    }
+  ],
+  "task_checklist_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} checklist item",
+        "countPlural=*": "{countFormatted} checklist items"
+      }
+    }
+  ],
+  "common_resize_panel": "Resize panel",
+  "common_resize_panel_hint": "Drag to resize. Double-click to reset.",
+  "task_view_details": "View Details",
+  "task_edit_action": "Edit Task",
+  "task_duplicate_action": "Duplicate Task",
+  "task_share": "Share Task",
+  "task_archive_action": "Archive Task",
+  "task_due_date": "Due",
+  "common_retry": "Retry",
+  "board_labels_load_error": "Couldn't load labels",
+  "board_columns_refresh_error": "Couldn't refresh columns",
+  "task_archives_load_error": "Couldn't load archives",
+  "task_expired_load_error": "Couldn't load expired tasks",
+  "task_explorer_load_error": "Couldn't load all tasks",
+  "settings_notify_permission_disabled": "Notifications disabled because permission wasn't granted",
+  "board_loading": "Loading Data",
+  "board_loading_description": "Please wait for a while...",
+  "board_searching_cards": "Searching cards...",
+  "board_search_unavailable": "Search unavailable.",
+  "board_search_retry": "Retry search",
+  "board_load_error": "An error occurred during loading",
+  "common_error": "Error",
+  "explorer_all_boards": "All boards",
+  "explorer_no_boards": "No boards selected",
+  "explorer_board_fallback": "1 board",
+  "explorer_selected": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} board selected",
+        "countPlural=*": "{countFormatted} boards selected"
+      }
+    }
+  ],
+  "explorer_active": "Active",
+  "explorer_overdue": "Overdue",
+  "explorer_recurring": "Recurring",
+  "explorer_archived": "Archived",
+  "explorer_all_statuses": "All statuses",
+  "explorer_all_columns": "All columns",
+  "explorer_archived_at": "Archived at",
+  "explorer_no_column": "No column",
+  "explorer_no_tasks": "No tasks yet",
+  "explorer_empty_active": "No active tasks",
+  "explorer_empty_overdue": "No overdue tasks",
+  "explorer_empty_recurring": "No recurring tasks",
+  "explorer_empty_archived": "No archived tasks",
+  "explorer_description": "Search and manage tasks across boards.",
+  "explorer_loaded": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task loaded",
+        "countPlural=*": "{countFormatted} tasks loaded"
+      }
+    }
+  ],
+  "explorer_hide_filters": "Hide filters",
+  "explorer_show_filters": "Show filters",
+  "explorer_scope": "Board scope",
+  "explorer_sort_by": "Sort by",
+  "explorer_sort_tasks": "Sort tasks",
+  "explorer_search_all": "Search all boards",
+  "explorer_search_selected": "Search selected boards",
+  "explorer_status": "Task status",
+  "explorer_applied": "Applied filters",
+  "explorer_clear_column": "Clear column filter",
+  "explorer_clear_due": "Clear due date filter",
+  "explorer_clear_archive": "Clear archive time filter",
+  "explorer_has_due": "Has due date",
+  "explorer_due_today": "Due today",
+  "explorer_any_start": "Any start",
+  "explorer_any_end": "Any end",
+  "explorer_last7": "Last 7 days",
+  "explorer_last30": "Last 30 days",
+  "explorer_year": "This year",
+  "explorer_clear_all": "Clear all filters",
+  "explorer_clear_all_hint": "Clear column, due date, and archive time filters",
+  "explorer_any_due": "Any due date",
+  "explorer_custom_range": "Custom range",
+  "explorer_due_from": "Due from",
+  "explorer_due_through": "Due through",
+  "explorer_range_invalid": "End date must be on or after start date.",
+  "explorer_due_help": "Includes both dates. Tasks without a due date are excluded. Leave either date empty for an open-ended range.",
+  "explorer_archive_help": "Includes both dates. Leave either date empty for an open-ended range.",
+  "explorer_archive_time": "Archive time",
+  "explorer_any_time": "Any time",
+  "explorer_end": "End date",
+  "explorer_load_error": "Couldn't load tasks",
+  "explorer_retry_hint": "Try loading the list again.",
+  "explorer_select_board_hint": "Select at least one board to view tasks.",
+  "explorer_search_hint": "Try another search or clear the filters.",
+  "explorer_empty_scope": "There are no tasks in {name}.",
+  "explorer_clear_search_filters": "Clear search and filters",
+  "explorer_clear_search_hint": "Clear the search text and all applied filters",
+  "explorer_loading": "Loading tasks...",
+  "explorer_loading_more": "Loading more...",
+  "explorer_retry_more": "Retry loading more tasks",
+  "explorer_archived_date": "Archived {date}",
+  "explorer_view_named": "View {name}",
+  "explorer_open_board": "Opens this task in {name}",
+  "explorer_actions_named": "Actions for {name}",
+  "explorer_filter_column": "Column: {name}",
+  "explorer_filter_due": "Due: {start} – {end}",
+  "explorer_filter_archive": "Archived: {range}",
+  "explorer_range": "{start} – {end}",
+  "date_select": "Select date",
+  "date_clear": "Clear {name}",
+  "calendar_select_month": "Select month",
+  "calendar_previous_year": "Previous year",
+  "calendar_next_year": "Next year",
+  "calendar_months_year": [
+    {
+      "declarations": ["input year", "local yearFormatted = year: number"],
+      "match": {
+        "year=*": "Months in {yearFormatted}"
+      }
+    }
+  ],
+  "calendar_view": "Calendar view",
+  "calendar_month": "Month",
+  "calendar_week": "Week",
+  "calendar_display": "Display",
+  "calendar_items": "Calendar items",
+  "calendar_show_recurring": "Show recurring previews",
+  "calendar_show_archived": "Show archived tasks",
+  "calendar_add_hint": "Double-click empty space to add a task",
+  "calendar_previous_month": "Previous month",
+  "calendar_next_month": "Next month",
+  "calendar_previous_week": "Previous week",
+  "calendar_next_week": "Next week",
+  "calendar_add_due": "Add task due {date}",
+  "archive_restore": "Unarchive",
+  "archive_choose": "Select a column...",
+  "archive_search": "Search columns...",
+  "archive_required": "Please select a column.",
+  "archive_description": "Select the column where {name} should be restored.",
+  "task_untitled": "Untitled task",
+  "explorer_column": "Column",
+  "explorer_due_label": "Due date",
+  "explorer_no_matching": "No matching tasks",
+  "explorer_clear_search": "Clear task search",
+  "explorer_view": "View task",
+  "explorer_unarchive": "Unarchive task",
+  "explorer_edit": "Edit task",
+  "explorer_archive": "Archive task",
+  "calendar_unarchive": "Unarchive Task",
+  "calendar_add": "Add task",
+  "calendar_export": "Export",
+  "calendar_label": "Task due date calendar",
+  "calendar_legend": "Calendar item legend",
+  "calendar_recurring_preview": "Recurring preview",
+  "focus_nothing": "Nothing here",
+  "focus_view": "Today focus view",
+  "focus_clear": "All clear",
+  "focus_today_clear": "You're clear for today.",
+  "focus_upcoming": "Upcoming",
+  "focus_visible": "Visible tasks",
+  "focus_try_search": "Try another search.",
+  "focus_empty": "There are no active tasks in your workspace.",
+  "focus_add": "Add today's first task",
+  "focus_today_help": "Tasks due before the day ends",
+  "focus_overdue_help": "Past due tasks that need a decision",
+  "focus_upcoming_help": "Everything scheduled after today",
+  "focus_unscheduled": "No schedule",
+  "focus_unscheduled_help": "Tasks waiting for a due date",
+  "focus_attention": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task needs your attention.",
+        "countPlural=*": "{countFormatted} tasks need your attention."
+      }
+    }
+  ],
+  "note_title": "Notes",
+  "note_description": "Ideas and reminders, saved automatically.",
+  "note_new": "New note",
+  "note_search": "Search notes",
+  "note_loading": "Loading notes…",
+  "note_retry": "Retry loading notes",
+  "note_untitled": "Untitled note",
+  "note_empty": "Empty note",
+  "note_no_matching": "No matching notes",
+  "note_none": "No notes yet",
+  "note_edit": "Edit note",
+  "note_preview": "Preview note",
+  "note_unpin": "Unpin note",
+  "note_pin": "Pin note",
+  "note_delete": "Delete note",
+  "note_name": "Note title",
+  "note_no_preview": "Nothing to preview yet.",
+  "note_write": "Write Markdown…",
+  "note_content": "Note content",
+  "note_choose": "Select a note or create a new one.",
+  "ui_start_date": "Start date",
+  "ui_referenced_card": "Referenced card",
+  "ui_open_this_link_to_view_the_card": "Open this link to view the card.",
+  "ui_no_found": "No found",
+  "ui_no_tasks": "No tasks",
+  "ui_local_database": "Local database",
+  "ui_couldn_t_open_your_data": "Couldn't open your data",
+  "ui_error_details": "Error details",
+  "ui_this_error_is_also_recorded_in_the_cardbe_app_log": "This error is also recorded in the Cardbe app log.",
+  "ui_export_calendar": "Export calendar",
+  "ui_start_month": "Start month",
+  "ui_end_month": "End month",
+  "ui_format": "Format",
+  "ui_theme": "Theme",
+  "ui_light": "Light",
+  "ui_dark": "Dark",
+  "ui_png_layout": "PNG layout",
+  "ui_single_image": "Single image",
+  "ui_separate_images": "Separate images",
+  "ui_saves_one_png_per_month_in_a_folder_you_choose": "Saves one PNG per month in a folder you choose.",
+  "ui_pdf_page_size": "PDF page size",
+  "ui_pagination": "Pagination",
+  "ui_weeks": "Weeks",
+  "ui_show_entry_count_and_date": "Show entry count and date",
+  "ui_calculating_output_size": "Calculating output size...",
+  "ui_vector_pdf_scalable_text_and_graphics": "Vector PDF · Scalable text and graphics",
+  "ui_export_preview": "Export preview",
+  "ui_updating_preview": "Updating preview",
+  "ui_entries_to_include": "Entries to include",
+  "ui_search_tasks_columns_descriptions_or_labels": "Search tasks, columns, descriptions, or labels",
+  "ui_search_calendar_entries": "Search calendar entries",
+  "ui_select_all": "Select all",
+  "ui_clear_all": "Clear all",
+  "ui_no_matching_calendar_entries": "No matching calendar entries",
+  "ui_import_board_as_new": "Import board as new?",
+  "ui_columns": "Columns",
+  "ui_active_tasks": "Active tasks",
+  "ui_templates": "Templates",
+  "ui_search_column": "Search column...",
+  "ui_task_templates": "Task Templates",
+  "ui_no_task_templates": "No task templates",
+  "ui_open_a_card_s_action_menu_and_choose_save_as_template": "Open a card's action menu and choose “Save as Template”.",
+  "ui_template": "Template",
+  "ui_select_a_template": "Select a template...",
+  "ui_please_select_a_template_and_column": "Please select a template and column.",
+  "ui_preview_template": "Preview template",
+  "ui_edit_template": "Edit template",
+  "ui_delete_template": "Delete template",
+  "ui_use_template": "Use Template",
+  "ui_save_task_template": "Save Task Template",
+  "ui_dates_and_checklist_completion_will_be_reset_when_this_template_is_used": "Dates and checklist completion will be reset when this template is used.",
+  "ui_copy_this_text_and_send_it_to_another_cardbe_user": "Copy this text and send it to another Cardbe user.",
+  "ui_task_share_text": "Task share text",
+  "ui_copy_text": "Copy Text",
+  "ui_paste_task_sharing_text_from_another_cardbe_user": "Paste task sharing text from another Cardbe user.",
+  "ui_task_sharing_text": "Task sharing text",
+  "ui_continue": "Continue",
+  "ui_reorder_checklist_item": "Reorder checklist item",
+  "ui_drag_to_reorder": "Drag to reorder",
+  "ui_review_device_approval_requests": "Review device approval requests",
+  "ui_device_requests": "Device requests",
+  "ui_request_access_to_shared_boards_again": "Request access to shared boards again",
+  "ui_access_removed": "Access removed",
+  "ui_task_management_for_focused_work": "Task management for focused work.",
+  "ui_desktop_task_management_kept_simple": "Desktop task management, kept simple.",
+  "ui_version": "Version",
+  "ui_build": "Build",
+  "ui_check_for_updates": "Check for Updates",
+  "ui_current_version": "Current version",
+  "ui_github_repository": "GitHub Repository",
+  "ui_licenses": "Licenses",
+  "ui_diagnostics": "Diagnostics",
+  "ui_review_safe_app_details_and_prepare_information_for_support": "Review safe app details and prepare information for support.",
+  "ui_redacted_export": "Redacted export",
+  "ui_loading_diagnostic_information": "Loading diagnostic information…",
+  "ui_app_details": "App details",
+  "ui_platform": "Platform",
+  "ui_logs": "Logs",
+  "ui_log_location": "Log location",
+  "ui_open_log_folder": "Open Log Folder",
+  "ui_support_tools": "Support tools",
+  "ui_copy_debug_information": "Copy Debug Information",
+  "ui_three_line_issue_summary": "Three-line issue summary",
+  "ui_export_debug_information": "Export Debug Information",
+  "ui_redacted_logs_and_metadata": "Redacted logs and metadata",
+  "ui_close_quick_add": "Close quick add",
+  "ui_task": "Task",
+  "ui_add_to_board": "Add to board",
+  "ui_add_to_column": "Add to column",
+  "ui_task_column": "Task column",
+  "ui_no_columns_yet": "No columns yet",
+  "ui_create_a_column_in_cardbe_before_adding_a_task": "Create a column in Cardbe before adding a task.",
+  "ui_ctrl_enter_to_add_esc_to_close": "Ctrl+Enter to add · Esc to close",
+  "ui_loading_shared_board": "Loading shared board…",
+  "ui_share_unavailable": "Share unavailable",
+  "ui_try_again": "Try again",
+  "ui_live_read_only_lan_share": "Live read-only LAN share",
+  "ui_search_shared_board": "Search shared board",
+  "ui_refresh_shared_board": "Refresh shared board",
+  "ui_shared_board_view": "Shared board view",
+  "ui_viewing": "Viewing",
+  "ui_published_web_views": "Published web views",
+  "ui_published_views": "Published views",
+  "ui_assign_to_this_board": "Assign to this board",
+  "ui_review_and_enable_it_after_assigning": "Review and enable it after assigning.",
+  "ui_edit_settings": "Edit settings",
+  "ui_copy_address": "Copy address",
+  "ui_delete_view": "Delete view",
+  "ui_no_published_views_yet": "No published views yet.",
+  "ui_source_board": "Source board",
+  "ui_web_address": "Web address",
+  "ui_copy_web_address": "Copy web address",
+  "ui_last_published": "Last published",
+  "ui_shared_content_settings": "Shared content settings",
+  "ui_share_settings": "Share settings",
+  "ui_these_settings_control_what_visitors_can_see": "These settings control what visitors can see.",
+  "ui_expiration": "Expiration",
+  "ui_shared_content": "Shared content",
+  "ui_automatic_labels": "Automatic labels",
+  "ui_none": "None",
+  "ui_board_to_share": "Board to share",
+  "ui_the_new_link_will_publish_content_from_this_board": "The new link will publish content from this board.",
+  "ui_sharing_from": "Sharing from",
+  "ui_published_view_title": "Published view title",
+  "ui_team_roadmap": "Team roadmap",
+  "ui_create_a_new_address_or_restore_one_you_shared_before": "Create a new address, or restore one you shared before.",
+  "ui_new_address": "New address",
+  "ui_best_for_a_new_audience": "Best for a new audience",
+  "ui_reuse_previous_address": "Reuse previous address",
+  "ui_reconnect_an_old_shared_url": "Reconnect an old shared URL",
+  "ui_previous_address_or_share_id": "Previous address or share ID",
+  "ui_paste_the_link_you_shared_before": "Paste the link you shared before",
+  "ui_set_web_address_expiration": "Set web address expiration",
+  "ui_the_web_address_remains_active_until_you_disable_it": "The web address remains active until you disable it.",
+  "ui_automatically_include_labels": "Automatically include labels",
+  "ui_add_label": "Add label",
+  "ui_content_to_include": "Content to include",
+  "ui_search_columns_tasks_descriptions_or_labels": "Search columns, tasks, descriptions, or labels",
+  "ui_search_shareable_tasks": "Search shareable tasks",
+  "ui_no_matching_columns_or_tasks": "No matching columns or tasks",
+  "ui_delete_this_published_view": "Delete this published view?",
+  "ui_keep_view": "Keep view",
+  "ui_collaborate_in_cardbe_with_read_only_or_editing_access": "Collaborate in Cardbe with read-only or editing access.",
+  "ui_manage_boards_you_share_and_boards_shared_with_you": "Manage boards you share and boards shared with you.",
+  "ui_back": "Back",
+  "ui_waiting_for_approval": "Waiting for approval",
+  "ui_your_device_id_compare_this_with_the_owner": "Your device ID · compare this with the owner",
+  "ui_copy_device_id": "Copy device ID",
+  "ui_cancel_waiting": "Cancel waiting",
+  "ui_share_a_board": "Share a board",
+  "ui_choose_a_board_and_give_people_viewing_or_editing_access": "Choose a board and give people viewing or editing access.",
+  "ui_join_a_shared_board": "Join a shared board",
+  "ui_paste_an_invitation_link_to_join": "Paste an invitation link to join.",
+  "ui_manage_sharing": "Manage sharing",
+  "ui_permission": "Permission",
+  "ui_copy_invitation_link": "Copy invitation link",
+  "ui_approve_each_device_in_manage_sharing_before_it_can_join": "Approve each device in Manage sharing before it can join.",
+  "ui_create_another_invitation_to_manage_access_separately": "Create another invitation to manage access separately.",
+  "ui_invitation_link": "Invitation link",
+  "ui_paste_the_link_from_the_board_owner": "Paste the link from the board owner.",
+  "ui_sharing_management_views": "Sharing management views",
+  "ui_no_boards_have_been_shared_with_you": "No boards have been shared with you.",
+  "ui_open_board": "Open board",
+  "ui_use_owner_version": "Use owner version",
+  "ui_keep_my_version": "Keep my version",
+  "ui_waiting_for_approval_view_device_id": "Waiting for approval · View device ID",
+  "ui_access_was_removed_your_local_board_is_still_here": "Access was removed. Your local board is still here.",
+  "ui_request_access_again": "Request access again",
+  "ui_no_invitations_yet": "No invitations yet.",
+  "ui_link_active": "Link active",
+  "ui_copy_link": "Copy link",
+  "ui_devices": "Devices",
+  "ui_review": "Review",
+  "ui_revoke": "Revoke",
+  "ui_board_invitation_qr_code": "Board invitation QR code",
+  "ui_delete_invitation": "Delete invitation",
+  "ui_review_device_request": "Review device request",
+  "ui_device_id": "Device ID",
+  "ui_copy_id": "Copy ID",
+  "ui_reject": "Reject",
+  "ui_approve_device": "Approve device",
+  "ui_revoke_device_access": "Revoke device access?",
+  "ui_revoke_access": "Revoke access",
+  "startup_database_description": "Cardbe opened, but couldn't read its local database. The workspace can't load until this issue is resolved.",
+  "share_web_description": "Publish a read-only web view of a board, or manage existing published views. Addresses resume when Cardbe starts again.",
+  "share_reuse_description": "Paste the complete old address when possible. Cardbe will restore its share ID and try to use the same port.",
+  "share_labels_description": "Cards with any of these labels are included automatically, including cards created later.",
+  "share_delete_description": "This permanently removes the published view and disables its web address. This action cannot be undone. Use Disable instead if you may want to publish it again.",
+  "export_description": "Choose the content, appearance, resolution, and page layout for the calendar export.",
+  "export_max_months": "· Maximum 12 months",
+  "export_canvas_memory": "MB canvas",
+  "export_sample": "Sample:",
+  "share_device_wait_description": "The owner needs to approve this device. This screen checks automatically.",
+  "share_device_invite_description": "Approve each device in Manage sharing before it can join. Create another invitation to manage access separately.",
+  "share_conflict_description": "Open the board to review your local version. Using the owner's version saves your local version as a separate board first. Keeping yours will replace the owner's changes if their version has not changed again.",
+  "share_invite_delete_description": "People can no longer use this invitation to sync. Boards they already received stay on their devices.",
+  "template_use_description": "Choose a reusable task and the column where the new card should be created.",
+  "help_export_description": "Logs in exported packages are redacted before they leave this device.",
+  "export_entry_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} entry",
+        "countPlural=*": "{countFormatted} entries"
+      }
+    }
+  ],
+  "export_entries_date": [
+    {
+      "declarations": [
+        "input count",
+        "input date",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} entry · {date}",
+        "countPlural=*": "{countFormatted} entries · {date}"
+      }
+    }
+  ],
+  "export_entries_selected": [
+    {
+      "declarations": [
+        "input selected",
+        "input total",
+        "local totalFormatted = total: number",
+        "local selectedFormatted = selected: number"
+      ],
+      "match": {
+        "total=*": "{selectedFormatted} of {totalFormatted} entries selected"
+      }
+    }
+  ],
+  "share_task_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} tasks"
+      }
+    }
+  ],
+  "share_content_count": [
+    {
+      "declarations": [
+        "input columns",
+        "input tasks",
+        "local columnsFormatted = columns: number",
+        "local tasksFormatted = tasks: number"
+      ],
+      "match": {
+        "columns=*": "{columnsFormatted} columns · {tasksFormatted} tasks"
+      }
+    }
+  ],
+  "share_selected_count": [
+    {
+      "declarations": [
+        "input columns",
+        "input tasks",
+        "local columnsFormatted = columns: number",
+        "local tasksFormatted = tasks: number"
+      ],
+      "match": {
+        "columns=*": "{columnsFormatted} columns · {tasksFormatted} tasks selected"
+      }
+    }
+  ],
+  "share_published_date": "Published {date}",
+  "share_viewing_count": [
+    {
+      "declarations": [
+        "input visible",
+        "input total",
+        "local totalFormatted = total: number",
+        "local visibleFormatted = visible: number"
+      ],
+      "match": {
+        "total=*": "Viewing {visibleFormatted} of {totalFormatted} tasks"
+      }
+    }
+  ],
+  "share_refresh_checked": "Refresh now (last checked {time})",
+  "import_board_description": "A new board named “{name}” will be created. Your existing boards will not be changed.",
+  "import_task_column_description": "Paste task sharing text to import it into “{name}”.",
+  "share_review_description": "Confirm this ID with the person requesting access through a trusted channel. Approval grants this invitation's {permission} permission. Rejected devices may request again later.",
+  "share_revoke_description": "This device will no longer be able to sync {name}. Its local copy stays on the device, and it can request access again later.",
+  "share_owned_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "Shared by me ({countFormatted})"
+      }
+    }
+  ],
+  "share_received_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "Shared with me ({countFormatted})"
+      }
+    }
+  ],
+  "share_service_error": "Sharing service could not start: {error}",
+  "share_waiting_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} waiting for your approval"
+      }
+    }
+  ],
+  "share_pending_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} pending"
+      }
+    }
+  ],
+  "calendar_due_summary": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task with due dates",
+        "countPlural=*": "{countFormatted} tasks with due dates"
+      }
+    }
+  ],
+  "calendar_period_summary": [
+    {
+      "declarations": [
+        "input count",
+        "input period",
+        "local countFormatted = count: number"
+      ],
+      "match": {
+        "count=*": "{countFormatted} tasks this {period}"
+      }
+    }
+  ],
+  "calendar_recurring_summary": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} recurring preview",
+        "countPlural=*": "{countFormatted} recurring previews"
+      }
+    }
+  ],
+  "ui_select": "Select...",
+  "ui_search": "Search...",
+  "ui_unknown_board": "Unknown board",
+  "ui_default": "Default",
+  "ui_imported_board": "Imported board",
+  "ui_importing": "Importing...",
+  "ui_import_as_new_board": "Import as new board",
+  "ui_save_template": "Save Template",
+  "ui_select_the_column_for_the_new_card": "Select the column for the new card.",
+  "ui_select_the_column_where_this_task_should_be_imported": "Select the column where this task should be imported.",
+  "ui_fit_content": "Fit content",
+  "ui_months": "Months",
+  "ui_one_page": "One page",
+  "ui_rendering": "Rendering...",
+  "ui_preparing": "Preparing...",
+  "ui_export_pngs": "Export PNGs",
+  "ui_a_monthly_image_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_or_use_pdf": "A monthly image is too large. Lower the DPI, hide empty first/last weeks, or use PDF.",
+  "ui_output_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_use_separate_png_images_or_use_pdf": "Output is too large. Lower the DPI, hide empty first/last weeks, use separate PNG images, or use PDF.",
+  "ui_disabled": "Disabled",
+  "ui_no_expiration": "No expiration",
+  "ui_disable_view": "Disable view",
+  "ui_enable_view": "Enable view",
+  "ui_new_published_view": "New published view",
+  "ui_creating_published_view": "Creating published view",
+  "ui_edit_published_view": "Edit published view",
+  "ui_anyone_on_this_local_network_with_the_link_can_view_the_selected_content": "Anyone on this local network with the link can view the selected content.",
+  "ui_this_address_and_its_settings_are_saved_but_nobody_can_open_it": "This address and its settings are saved, but nobody can open it.",
+  "ui_disabling": "Disabling...",
+  "ui_disable": "Disable",
+  "ui_enabling": "Enabling...",
+  "ui_enable": "Enable",
+  "ui_save_changes": "Save changes",
+  "ui_publishing": "Publishing...",
+  "ui_reuse_address": "Reuse address",
+  "ui_publish_web_view": "Publish web view",
+  "ui_deleting": "Deleting...",
+  "ui_board_sharing": "Board sharing",
+  "ui_manage_board_sharing": "Manage board sharing",
+  "ui_choose_a_board": "Choose a board",
+  "ui_creating": "Creating...",
+  "ui_create_new_invitation": "Create new invitation",
+  "ui_create_invitation": "Create invitation",
+  "ui_connecting": "Connecting...",
+  "ui_request_access": "Request access",
+  "ui_syncing_with_owner": "Syncing with owner...",
+  "ui_sync_conflict_both_versions_are_saved": "Sync conflict: both versions are saved",
+  "ui_local_changes_are_waiting_to_sync": "Local changes are waiting to sync",
+  "ui_sync_needs_attention": "Sync needs attention",
+  "ui_background_sync_enabled": "Background sync enabled",
+  "ui_no_sync_yet_this_session": "No sync yet this session",
+  "ui_created_before_this_version": "Created before this version",
+  "ui_hide_qr": "Hide QR",
+  "ui_show_qr": "Show QR",
+  "ui_approval_requested": "Approval requested",
+  "ui_approved_device": "Approved device",
+  "ui_this_board": "this board",
+  "ui_loading": "Loading…",
+  "ui_what_needs_doing": "What needs doing?",
+  "ui_note_title_optional": "Note title (optional)",
+  "ui_task_title": "Task title",
+  "ui_details_optional": "Details (optional)",
+  "ui_capture_your_thought": "Capture your thought…",
+  "ui_saving": "Saving…",
+  "ui_new_note": "New Note",
+  "ui_this_share_no_longer_exists": "This share no longer exists.",
+  "ui_refresh_now": "Refresh now",
+  "ui_share_unavailable_cardbe": "Share unavailable - Cardbe",
+  "ui_invitation_copied": "Invitation copied",
+  "ui_invitation_created": "Invitation created",
+  "ui_device_approved": "Device approved",
+  "ui_request_rejected": "Request rejected",
+  "ui_device_access_revoked": "Device access revoked",
+  "ui_access_restored": "Access restored",
+  "ui_access_request_sent": "Access request sent",
+  "ui_device_id_copied": "Device ID copied",
+  "ui_invitation_saved_but_sharing_is_offline": "Invitation saved, but sharing is offline",
+  "ui_invitation_updated": "Invitation updated",
+  "ui_invitation_deleted": "Invitation deleted",
+  "ui_published_view_updated": "Published view updated",
+  "ui_previous_web_address_reused": "Previous web address reused",
+  "ui_web_view_published": "Web view published",
+  "ui_web_address_copied": "Web address copied",
+  "ui_published_view_disabled_you_can_enable_it_again_later": "Published view disabled. You can enable it again later.",
+  "ui_published_view_enabled": "Published view enabled",
+  "ui_published_view_deleted": "Published view deleted",
+  "ui_note_deleted": "Note deleted",
+  "ui_debug_information_copied": "Debug information copied",
+  "ui_debug_information_exported": "Debug information exported",
+  "ui_task_sharing_text_copied": "Task sharing text copied",
+  "ui_only_boards_you_own_can_be_published": "Only boards you own can be published",
+  "ui_access_was_declined_or_revoked": "Access was declined or revoked",
+  "ui_sharing_took_too_long_please_try_again": "Sharing took too long. Please try again.",
+  "ui_shared_content_is_no_longer_available": "Shared content is no longer available",
+  "ui_sharing_was_stopped_for_a_link_whose_board_no_longer_exists": "Sharing was stopped for a link whose board no longer exists.",
+  "ui_could_not_disable_outdated_share_content_close_cardbe_to_stop_sharing": "Could not disable outdated share content. Close Cardbe to stop sharing.",
+  "ui_download_the_new_version_from_github_releases": "Download the new version from GitHub Releases.",
+  "ui_view_release": "View Release",
+  "ui_later": "Later",
+  "ui_create_a_column_before_importing_a_task": "Create a column before importing a task",
+  "ui_invalid_task_sharing_text": "Invalid task sharing text",
+  "ui_couldn_t_copy_text_select_it_and_copy_manually": "Couldn't copy text. Select it and copy manually.",
+  "ui_referenced_card_no_longer_exists": "Referenced card no longer exists",
+  "ui_updating_published_views": "Updating published views",
+  "ui_couldn_t_load_notes": "Couldn't load notes",
+  "ui_couldn_t_create_note": "Couldn't create note",
+  "ui_couldn_t_save_note": "Couldn't save note",
+  "ui_couldn_t_delete_note": "Couldn't delete note",
+  "ui_couldn_t_create_invitation": "Couldn't create invitation",
+  "ui_couldn_t_copy_invitation": "Couldn't copy invitation",
+  "ui_couldn_t_load_invitations": "Couldn't load invitations",
+  "ui_couldn_t_update_device": "Couldn't update device",
+  "ui_couldn_t_copy_device_id": "Couldn't copy Device ID",
+  "ui_couldn_t_update_invitation": "Couldn't update invitation",
+  "ui_couldn_t_delete_invitation": "Couldn't delete invitation",
+  "ui_couldn_t_load_invitation": "Couldn't load invitation",
+  "ui_couldn_t_load_shared_board_content": "Couldn't load shared board content",
+  "ui_couldn_t_load_this_board_s_share_settings": "Couldn't load this board's share settings",
+  "ui_couldn_t_publish_board_share": "Couldn't publish board share",
+  "ui_couldn_t_publish_the_web_view": "Couldn't publish the web view",
+  "ui_couldn_t_copy_the_link": "Couldn't copy the link",
+  "ui_couldn_t_disable_board_share": "Couldn't disable board share",
+  "ui_couldn_t_disable_the_published_view": "Couldn't disable the published view",
+  "ui_couldn_t_enable_board_share": "Couldn't enable board share",
+  "ui_couldn_t_enable_the_published_view": "Couldn't enable the published view",
+  "ui_couldn_t_delete_board_share": "Couldn't delete board share",
+  "ui_couldn_t_delete_the_published_view": "Couldn't delete the published view",
+  "ui_couldn_t_estimate_calendar_export": "Couldn't estimate calendar export",
+  "ui_couldn_t_export_calendar": "Couldn't export calendar",
+  "ui_couldn_t_export_the_calendar": "Couldn't export the calendar",
+  "ui_couldn_t_load_diagnostic_information": "Couldn't load diagnostic information.",
+  "ui_couldn_t_open_the_link": "Couldn't open the link",
+  "ui_couldn_t_open_the_log_folder": "Couldn't open the log folder",
+  "ui_couldn_t_copy_debug_information": "Couldn't copy debug information",
+  "ui_couldn_t_export_debug_information": "Couldn't export debug information",
+  "ui_couldn_t_update_a_board_share": "Couldn't update a board share",
+  "ui_couldn_t_update_the_shared_board": "Couldn't update the shared board",
+  "ui_couldn_t_revoke_this_board_s_share_links": "Couldn't revoke this board's share links",
+  "ui_couldn_t_sync_quick_add_board_shares": "Couldn't sync Quick Add board shares",
+  "ui_couldn_t_prepare_task_sharing_text": "Couldn't prepare task sharing text",
+  "ui_couldn_t_open_github_releases": "Couldn't open GitHub Releases",
+  "ui_couldn_t_check_for_updates": "Couldn't check for updates",
+  "share_legacy_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} older published views have no board assigned."
+      }
+    }
+  ],
+  "share_matching_tasks": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} matching tasks"
+      }
+    }
+  ],
+  "share_available_tasks": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} available tasks"
+      }
+    }
+  ],
+  "export_matching_entries": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} matching entries"
+      }
+    }
+  ],
+  "export_available_entries": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} available entries"
+      }
+    }
+  ],
+  "export_preparing_images": [
+    {
+      "declarations": ["input total", "local totalFormatted = total: number"],
+      "match": {
+        "total=*": "Preparing {totalFormatted} images..."
+      }
+    }
+  ],
+  "export_saving_images": [
+    {
+      "declarations": [
+        "input completed",
+        "input total",
+        "local completedFormatted = completed: number",
+        "local totalFormatted = total: number"
+      ],
+      "match": {
+        "completed=*": "Saving {completedFormatted} of {totalFormatted}..."
+      }
+    }
+  ],
+  "export_png_success": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} calendar PNGs exported"
+      }
+    }
+  ],
+  "export_success": "Calendar {format} exported",
+  "export_choose_folder": "Choose a folder for calendar images",
+  "note_delete_confirm": "Delete “{name}”?",
+  "share_expires_date": "Expires {date}",
+  "share_last_synced": "Last synced this session: {time}",
+  "calendar_go_today": "Go to today",
+  "calendar_month_summary": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} entry this month",
+        "countPlural=*": "{countFormatted} entries this month"
+      }
+    }
+  ],
+  "calendar_week_summary": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} entry this week",
+        "countPlural=*": "{countFormatted} entries this week"
+      }
+    }
+  ],
+  "export_month_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} month",
+        "countPlural=*": "{countFormatted} months"
+      }
+    }
+  ],
+  "export_page_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} page",
+        "countPlural=*": "{countFormatted} pages"
+      }
+    }
+  ],
+  "export_image_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} image",
+        "countPlural=*": "{countFormatted} images"
+      }
+    }
+  ],
+  "export_action": "Export {format}",
+  "export_a4_landscape": "A4 landscape",
+  "export_a3_landscape": "A3 landscape",
+  "export_canvas_error": "Canvas rendering is unavailable",
+  "export_create_error": "Couldn't create the exported file",
+  "export_png_data_error": "Invalid PNG data",
+  "export_png_chunk_error": "Invalid PNG chunk data",
+  "export_png_structure_error": "Invalid PNG structure",
+  "export_pdf_color_error": "PDF color support is not initialized",
+  "export_pdf_page_error": "A PDF needs at least one page",
+  "export_font_empty": "The system font collection is empty",
+  "export_font_error": "Couldn't load a system font for PDF export",
+  "export_select_month": "Select at least one month to export",
+  "export_large_error": "This multi-month image is too large. Lower the DPI or export fewer months.",
+  "export_filename_error": "Couldn't find an available file name in the selected folder",
+  "export_pdf_document": "PDF document",
+  "export_png_image": "PNG image",
+  "time_hours": "Hours",
+  "time_minutes": "Minutes",
+  "time_seconds": "Seconds",
+  "time_period": "Period",
+  "time_am": "AM",
+  "time_pm": "PM",
+  "color_saturation_brightness": "Saturation and Brightness",
+  "tag_add": "Add tag...",
+  "chip_remove": "Remove",
+  "color_slate": "Slate",
+  "color_red": "Red",
+  "color_orange": "Orange",
+  "color_amber": "Amber",
+  "color_green": "Green",
+  "color_cyan": "Cyan",
+  "color_blue": "Blue",
+  "color_violet": "Violet",
+  "color_pink": "Pink",
+  "share_sync_failed": "Web publish failed: {error}",
+  "share_sync_summary": [
+    {
+      "declarations": [
+        "input count",
+        "input time",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} web view published · Last published {time}",
+        "countPlural=*": "{countFormatted} web views published · Last published {time}"
+      }
+    }
+  ],
+  "share_stopped_named": "Sharing stopped for “{name}” because its content could not be updated.",
+  "startup_check_error": "Could not check local data startup status: {error}",
+  "template_preview_named": "Preview template {name}",
+  "template_edit_named": "Edit template {name}",
+  "template_delete_named": "Delete template {name}",
+  "export_dpi_error": "This calendar is too large at the selected DPI. Lower the DPI or export fewer months.",
+  "share_revoke_retry": "Couldn't revoke this share link. Try again.",
+  "share_revoke_delete": "Couldn't revoke this share link. Try again before deleting this board.",
+  "share_revoke_restore": "Couldn't revoke this share link. Try again before restoring everything.",
+  "share_restore_stopped": "Restore stopped because share links could not be revoked",
+  "quick_load_error": "Couldn't load your data. Please try again.",
+  "quick_task_error": "Couldn't add the task. Please try again.",
+  "quick_note_error": "Couldn't add the note. Please try again.",
+  "update_check_error": "Couldn't check for app updates: {error}",
+  "update_open_error": "Couldn't open the GitHub release: {error}",
+  "share_local_ready": "Local version ready to sync",
+  "share_owner_restored": "Owner version restored; local copy saved",
+  "share_conflict_error": "Couldn't resolve sync conflict",
+  "update_current": "{name} is up to date",
+  "update_available": "{name} {version} is available",
+  "statistics_description": "Archive activity for the current board. Restored or deleted tasks are excluded.",
+  "statistics_loading": "Loading statistics...",
+  "statistics_load_error": "Couldn't load statistics.",
+  "statistics_total_archived": "Total archived",
+  "statistics_all_time": "All time",
+  "statistics_archived_year": "Archived this year",
+  "statistics_active_days": "Days with archived tasks",
+  "statistics_in_year": "In {year}",
+  "statistics_longest_streak": "Longest streak",
+  "statistics_streak_year": "Consecutive days in {year}",
+  "statistics_activity": "Activity",
+  "statistics_intensity": "Activity intensity: 0, 1, 2, 3, 4 or more tasks",
+  "statistics_less": "Less",
+  "statistics_more": "More",
+  "export_document_title": "Calendar export",
+  "export_month_label": "Month {month}",
+  "task_move_board": "Move to Board",
+  "task_move_board_title": "Move Task to Board",
+  "task_move_board_description": "Move “{name}” to another editable board. Moving clears this board’s undo history and cannot be undone.",
+  "task_move_board_empty": "No other editable boards available.",
+  "task_move_columns_loading": "Loading columns…",
+  "task_move_column_empty": "Add a column to this board before moving a task.",
+  "task_move_columns_error": "Couldn't load columns.",
+  "task_moving": "Moving…",
+  "task_move_action": "Move Task",
+  "task_moved_board": "Task moved to another board",
+  "task_template_saved": "Template saved",
+  "task_template_updated": "Template updated",
+  "task_template_deleted": "Template deleted",
+  "share_open_publish": "Open Web publish. {detail}",
+  "backup_file_type": "Cardbe everything backup",
+  "backup_invalid": "This is not a valid Cardbe everything backup",
+  "backup_restore_confirm": "Restore everything from this backup? This replaces every board and all notes. Existing LAN share links will be permanently revoked and are not restored.",
+  "backup_restore_revoked_error": "Restore failed. Existing LAN share links were already revoked; your boards were not replaced.",
+  "backup_restore_error": "Couldn't restore everything",
+  "app_loading": "Cardbe is loading",
+  "tray_enable_shortcuts": "Enable global shortcuts",
+  "tray_show": "Show Cardbe",
+  "tray_quit": "Quit Cardbe",
+  "notification_expired_title": "Task Expired — {board}",
+  "notification_expired_body": "Task \"{task}\" has passed its due date",
+  "task_id_invalid": "Invalid task ID: {value}",
+  "column_id_invalid": "Invalid column ID: {value}",
+  "share_join_error": "Couldn't join shared board",
+  "link_open_error": "Couldn't open link",
+  "common_search": "Search",
+  "common_unknown_error": "An unknown error occurred.",
+  "command_title": "Command Palette",
+  "command_description": "Search for a command to run",
+  "share_name_required": "Enter a name for the shared board",
+  "share_name_limit": "Board name must be {count} characters or fewer",
+  "share_column_required": "Select at least one column to share",
+  "share_column_limit": "A share can contain at most {count} columns",
+  "share_task_limit": "A share can contain at most {count} tasks",
+  "share_link_invalid": "Enter a valid Cardbe share link or share ID",
+  "task_transfer_incomplete": "The task sharing text is incomplete",
+  "task_transfer_version": "Unsupported task sharing version",
+  "task_transfer_labels_invalid": "Invalid task label count",
+  "task_transfer_checklist_invalid": "Invalid task checklist count",
+  "task_transfer_recurrence_invalid": "Invalid task recurrence",
+  "task_transfer_unexpected": "The task sharing text contains unexpected data",
+  "task_transfer_large": "Task sharing text is too large",
+  "task_transfer_invalid": "Invalid task sharing text",
+  "task_transfer_unsupported": "This is not supported Cardbe task sharing text",
+  "task_transfer_damaged": "Invalid or damaged task sharing text",
+  "import_object_required": "The import file must contain a JSON object",
+  "import_collections_required": "The import file must contain columns and archives arrays",
+  "share_switch_error": "Couldn't update a share before switching boards: {error}",
+  "statistics_year_summary": [
+    {
+      "declarations": [
+        "input count",
+        "input year",
+        "local countFormatted = count: number",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} archived task in {year}",
+        "countPlural=*": "{countFormatted} archived tasks in {year}"
+      }
+    }
+  ],
+  "statistics_day_summary": [
+    {
+      "declarations": [
+        "input count",
+        "input date",
+        "local countFormatted = count: number",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{date}: {countFormatted} archived task",
+        "countPlural=*": "{date}: {countFormatted} archived tasks"
+      }
+    }
+  ],
+  "share_request_access_again": "Request access again",
+  "share_connection_settings": "Connection settings",
+  "share_back_to_sharing": "Back to board sharing",
+  "share_access_unavailable": "Access is no longer available.",
+  "share_first_board": "Share your first board",
+  "share_first_board_description": "Create an invitation, send it to someone you trust, then approve their device here.",
+  "share_access_revoked": "Access revoked",
+  "share_enabled": "Sharing enabled",
+  "share_settings_help": "Changes apply immediately. Turning sharing off stops sync for every device using this invitation.",
+  "note_expand_editor": "Expand note editor",
+  "editor_expand": "Expand",
+  "share_creation_date_unavailable": "Creation date unavailable",
+  "share_connection_details_unavailable": "Connection details are unavailable. They will update on the next check.",
+  "share_network_direct": "Direct only",
+  "share_network_relay": "Relay only",
+  "share_network_choose": "Choose a connection mode",
+  "share_network_save_error": "Couldn't save connection settings",
+  "share_network_load_error": "Couldn't load connection settings",
+  "share_network_port_error": "Invalid listening port: enter a whole number from 0 to 65535.",
+  "share_load_retry": "Couldn't load sharing. Try again.",
+  "share_direct_ip": "Direct IP",
+  "share_direct_addresses": "Direct IP addresses",
+  "share_relay_servers": "Relay servers",
+  "share_custom_transport": "Custom transport",
+  "share_loading_settings": "Loading settings...",
+  "share_network_method": "Connection method",
+  "share_network_mode": "Connection mode",
+  "share_network_automatic": "Automatic (recommended)",
+  "share_network_manual": "Use invitation and manual addresses",
+  "share_network_find": "Find automatically (recommended)",
+  "share_network_advanced": "Advanced addresses and services",
+  "share_network_customized": "Customized",
+  "share_network_addresses": "Device addresses",
+  "share_network_port": "Listening UDP port",
+  "share_network_fixed_addresses": "This device's fixed addresses",
+  "share_network_relay_urls": "Relay service URLs",
+  "share_network_discovery_urls": "Discovery service URLs",
+  "share_network_applying_changes": "Applying changes…",
+  "share_network_unapplied": "Changes not applied",
+  "share_network_retry_activate": "Settings saved. Retry to activate them.",
+  "share_network_applied": "Settings applied. Received boards are reconnecting automatically.",
+  "share_network_no_changes": "No unapplied changes",
+  "share_network_defaults": "Restore defaults",
+  "share_network_applying": "Applying…",
+  "share_network_retry": "Retry",
+  "share_network_apply": "Apply",
+  "share_network_retrying": "Retrying...",
+  "share_connection_last": "Last used connection",
+  "share_network_description": "Applies to all board sharing on this device. Applying changes may briefly interrupt connections. Received boards reconnect automatically; their local changes are kept.",
+  "share_network_compatibility": "Applies to this device. Both devices need a compatible connection method.",
+  "share_network_automatic_help": "Allows direct connections or encrypted relay connections when needed. Recommended on both devices.",
+  "share_network_direct_help": "Transfers data directly between devices. Both devices must allow direct connections; firewalls and some networks can block them. No relay fallback.",
+  "share_network_relay_help": "Transfers encrypted data through a relay. The owner must allow relay connections and their relay must be reachable. Direct connections are disabled.",
+  "share_network_disabled_help": "Connections are disabled in your saved settings. Choose a mode to allow devices to connect.",
+  "share_network_discovery_help": "Automatic discovery finds updated addresses after a device restarts or changes settings. Without it, you may need a new invitation or updated manual addresses to reconnect.",
+  "share_network_port_help": "Use 0 for an automatic port. For port forwarding, set a fixed port and forward UDP traffic to it.",
+  "share_network_fixed_help": "Enter the IP:port other devices can reach, one per line. Set a listening UDP port above; if your router uses a different external port, enter that port here. Leave empty for automatic addresses.",
+  "share_network_enable_direct": "Enable direct connection to edit this field.",
+  "share_network_auto_addresses": "Using automatic addresses.",
+  "share_network_relay_help_urls": "One URL per line. Leave empty for the default service. Custom URLs replace the default relay service.",
+  "share_network_enable_relay": "Enable relay connection to edit this field.",
+  "share_network_default_service": "Using the default service.",
+  "share_network_discovery_help_urls": "One compatible service URL per line. Leave empty for the default service. Custom URLs replace the default discovery service.",
+  "share_network_enable_discovery": "Enable automatic device discovery to edit this field.",
+  "share_network_enable_transport": "Enable direct or relay connections so devices can transfer data.",
+  "share_network_discard_help": "Your connection settings will keep their previously saved values.",
+  "share_network_discard": "Discard changes",
+  "share_disabled_invitation_help": "This invitation is disabled. Approval will be saved, but sharing must be enabled before this device can sync.",
+  "share_no_pending": "No devices are waiting for approval.",
+  "share_created_date": "Created {date}",
+  "share_access_removed_help": "Your local board is safe. Request access again; the owner must approve it. If the invitation was deleted or disabled, ask the owner for a new invitation or to enable sharing.",
+  "share_invitation_settings": "Invitation settings ? {permission}",
+  "share_permission_for": "Access permission for {name}",
+  "share_pending_filter": "With pending device requests ({count})",
+  "share_owner_sync": "Each board syncs with its owner.",
+  "share_manage_auto_help": "New devices need your approval before accessing a board. This list updates automatically.",
+  "share_received_auto_help": "This list updates automatically.",
+  "share_connection_observed": "Observed at {time}. This is the path used for the last connection, and may change on the next sync. Enabled connection options do not indicate which path was used.",
+  "share_approval_reconnect": "Approval checks reconnect automatically, so temporary ports and network paths can change.",
+  "share_connection_paths": "Technical details ({count} network paths)",
+  "share_boards_need_access": "{count} shared boards need access",
+  "task_expand_description": "Expand description editor",
+  "editor_expanded_description": "Expanded rich text editor"
+}

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Field from "$lib/components/ui/field/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
@@ -323,7 +325,7 @@
         <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
           <div class="py-4 w-full max-w-md px-1">
             {#if show_template_picker && template_browser_open}
-              <section class="space-y-4" aria-label="Choose a template">
+              <section class="space-y-4" aria-label={m.task_template_choose()}>
                 <Button
                   type="button"
                   variant="ghost"
@@ -332,21 +334,23 @@
                   onclick={close_template_browser}
                 >
                   <ArrowLeftIcon />
-                  Back to card
+                  {m.task_template_back()}
                 </Button>
                 <div>
-                  <div class="text-base font-semibold">Choose a Template</div>
+                  <div class="text-base font-semibold">
+                    {m.task_template_choose_title()}
+                  </div>
                   <div class="text-sm text-muted-foreground">
-                    Search by template name, card title, or label.
+                    {m.task_template_search_description()}
                   </div>
                 </div>
                 <Command.Root class="rounded-lg border">
                   <Command.Input
-                    placeholder="Search templates..."
-                    aria-label="Search templates"
+                    placeholder={m.task_template_search_placeholder()}
+                    aria-label={m.task_template_search()}
                   />
                   <Command.List class="max-h-[50vh]">
-                    <Command.Empty>No templates found.</Command.Empty>
+                    <Command.Empty>{m.task_template_empty()}</Command.Empty>
                     <Command.Group value="templates">
                       {#each templates as template (template.id)}
                         <Command.Item
@@ -370,12 +374,12 @@
                               {template.name}
                             </div>
                             <div class="truncate text-xs text-muted-foreground">
-                              {template.task.title || "Untitled card"}
+                              {template.task.title ||
+                                m.task_template_untitled()}
                               ·
-                              {template.task.items.length}
-                              {template.task.items.length === 1
-                                ? " checklist item"
-                                : " checklist items"}
+                              {m.task_checklist_count({
+                                count: template.task.items.length,
+                              })}
                             </div>
                           </div>
                         </Command.Item>
@@ -388,7 +392,7 @@
               {#if show_template_picker && templates.length > 0}
                 <section
                   class="mb-5 space-y-3 border-b pb-5"
-                  aria-label="Creation method"
+                  aria-label={m.task_template_method()}
                 >
                   <div
                     class="grid grid-cols-2 gap-2 rounded-lg bg-muted/60 p-1"
@@ -400,7 +404,7 @@
                       onclick={choose_blank_card}
                     >
                       <FilePlus2Icon />
-                      Blank Card
+                      {m.task_template_blank_title()}
                     </Button>
                     <Button
                       type="button"
@@ -412,7 +416,7 @@
                       }}
                     >
                       <LayoutTemplateIcon />
-                      From Template
+                      {m.task_template_from()}
                     </Button>
                   </div>
                   {#if template_mode_active}
@@ -430,12 +434,12 @@
                             {selected_template.name}
                           </div>
                           <div class="truncate text-xs text-muted-foreground">
-                            {selected_template.task.title || "Untitled card"}
+                            {selected_template.task.title ||
+                              m.task_template_untitled()}
                             ·
-                            {selected_template.task.items.length}
-                            {selected_template.task.items.length === 1
-                              ? " checklist item"
-                              : " checklist items"}
+                            {m.task_checklist_count({
+                              count: selected_template.task.items.length,
+                            })}
                           </div>
                         </div>
                         <Button
@@ -446,7 +450,7 @@
                             template_browser_open = true;
                           }}
                         >
-                          Change
+                          {m.common_change()}
                         </Button>
                       </div>
                     {/if}
@@ -458,11 +462,11 @@
                   {#if show_template_name}
                     <Field.Field data-invalid={invalid_template_name}>
                       <Field.FieldLabel for="template-edit-name"
-                        >Template name</Field.FieldLabel
+                        >{m.task_template_name()}</Field.FieldLabel
                       >
                       <Input
                         id="template-edit-name"
-                        placeholder="Template name"
+                        placeholder={m.task_template_name()}
                         bind:value={template_name}
                         required
                         onfocusout={() => {
@@ -474,17 +478,20 @@
                         }}
                       />
                       {#if invalid_template_name}
-                        <Field.Error>Please enter the template name</Field.Error
+                        <Field.Error
+                          >{m.task_template_name_required()}</Field.Error
                         >
                       {/if}
                     </Field.Field>
                   {/if}
                   <Field.Field data-invalid={invalid_title}>
-                    <Field.FieldLabel for="title">Title</Field.FieldLabel>
+                    <Field.FieldLabel for="title"
+                      >{m.task_title()}</Field.FieldLabel
+                    >
                     <Input
                       id="title"
                       bind:ref={title_ref}
-                      placeholder="Title"
+                      placeholder={m.task_title()}
                       class="col-span-5"
                       bind:value={task.title}
                       required
@@ -496,7 +503,7 @@
                       }}
                     />
                     {#if invalid_title}
-                      <Field.Error>Please enter the title</Field.Error>
+                      <Field.Error>{m.task_title_required()}</Field.Error>
                     {/if}
                   </Field.Field>
                   <Field.Field>
@@ -513,13 +520,13 @@
                             <Button {...props} variant="outline" class="flex-1">
                               <PaletteIcon></PaletteIcon>
                               {task.color.length == 0
-                                ? "Default"
+                                ? m.ui_default()
                                 : display_task_color(task.color)}
                             </Button>
                             <Button
                               variant="outline"
-                              aria-label="Reset task color"
-                              title="Reset task color"
+                              aria-label={m.task_color_reset()}
+                              title={m.task_color_reset()}
                               onclick={() => {
                                 task.color = "";
                               }}
@@ -534,7 +541,7 @@
                           <p
                             class="mb-2 text-xs font-medium text-muted-foreground"
                           >
-                            Quick colors
+                            {m.task_quick_colors()}
                           </p>
                           <div class="grid grid-cols-9 gap-2">
                             {#each task_color_presets as preset}
@@ -544,7 +551,20 @@
                                 size="icon-xs"
                                 class="size-7 rounded-full border-2 border-background shadow-sm ring-offset-2 ring-offset-background aria-pressed:ring-2 aria-pressed:ring-ring"
                                 style={`background-color: ${preset_display_color(preset)}`}
-                                aria-label={`Use ${preset.name} (${preset_display_color(preset)})`}
+                                aria-label={m.task_color_use({
+                                  name: {
+                                    Slate: m.color_slate,
+                                    Red: m.color_red,
+                                    Orange: m.color_orange,
+                                    Amber: m.color_amber,
+                                    Green: m.color_green,
+                                    Cyan: m.color_cyan,
+                                    Blue: m.color_blue,
+                                    Violet: m.color_violet,
+                                    Pink: m.color_pink,
+                                  }[preset.name](),
+                                  color: preset_display_color(preset),
+                                })}
                                 aria-pressed={is_preset_color(
                                   task.color,
                                   preset,
@@ -568,18 +588,18 @@
                   </Field.Field>
                   {#if task.due_time}
                     <Field.Field>
-                      <Field.FieldLabel>Repeat</Field.FieldLabel>
+                      <Field.FieldLabel>{m.task_repeat()}</Field.FieldLabel>
                       <div class="flex items-center gap-2">
                         {#if task.recurrence}
                           <span class="text-sm text-muted-foreground"
-                            >Every</span
+                            >{m.task_repeat_every()}</span
                           >
                           <Input
                             class="w-20"
                             type="number"
                             min="1"
                             max="999"
-                            aria-label="Repeat interval"
+                            aria-label={m.task_repeat_interval()}
                             bind:value={task.recurrence.interval}
                             onfocusout={() => {
                               if (task.recurrence) {
@@ -602,40 +622,48 @@
                         >
                           <Select.Trigger class="min-w-40 flex-1">
                             {task.recurrence?.frequency === "daily"
-                              ? "day(s)"
+                              ? m.task_repeat_days_label()
                               : task.recurrence?.frequency === "weekly"
-                                ? "week(s)"
+                                ? m.task_repeat_weeks_label()
                                 : task.recurrence?.frequency === "monthly"
-                                  ? "month(s)"
-                                  : "Does not repeat"}
+                                  ? m.task_repeat_months_label()
+                                  : m.task_repeat_none()}
                           </Select.Trigger>
                           <Select.Content>
                             <Select.Item value="none"
-                              >Does not repeat</Select.Item
+                              >{m.task_repeat_none()}</Select.Item
                             >
-                            <Select.Item value="daily">Day(s)</Select.Item>
-                            <Select.Item value="weekly">Week(s)</Select.Item>
-                            <Select.Item value="monthly">Month(s)</Select.Item>
+                            <Select.Item value="daily"
+                              >{m.task_repeat_days()}</Select.Item
+                            >
+                            <Select.Item value="weekly"
+                              >{m.task_repeat_weeks()}</Select.Item
+                            >
+                            <Select.Item value="monthly"
+                              >{m.task_repeat_months()}</Select.Item
+                            >
                           </Select.Content>
                         </Select.Root>
                       </div>
                       {#if task.recurrence}
                         <Field.Description>
-                          Archiving this task creates the next occurrence.
+                          {m.task_repeat_description()}
                         </Field.Description>
                       {/if}
                     </Field.Field>
                   {/if}
                   <Field.Field>
                     <div class="flex items-center gap-1.5">
-                      <Field.FieldLabel for="label">Label</Field.FieldLabel>
+                      <Field.FieldLabel for="label"
+                        >{m.task_label()}</Field.FieldLabel
+                      >
                       <div class="group/label-help relative inline-flex">
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon-xs"
                           class="text-muted-foreground"
-                          aria-label="Label format help"
+                          aria-label={m.task_label_help()}
                           aria-describedby="label-format-help"
                         >
                           <CircleHelpIcon class="size-3.5" />
@@ -645,23 +673,30 @@
                           role="tooltip"
                           class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-max max-w-64 rounded-md bg-popover px-3 py-2 text-xs leading-relaxed text-popover-foreground opacity-0 shadow-md ring-1 ring-foreground/10 transition-opacity group-hover/label-help:opacity-100 group-focus-within/label-help:opacity-100"
                         >
-                          Use <code>owner:Name</code> for an owner.<br />
-                          Use <code>type:Category</code> for a task category.<br
-                          />
-                          Use <code>priority:Level</code> for priority.<br />
-                          Use <code>status:State</code> for status.<br />
-                          Use <code>effort:Size</code> for effort.
+                          {m.task_label_owner_help({
+                            example: "owner:Name",
+                          })}<br />
+                          {m.task_label_type_help({
+                            example: "type:Category",
+                          })}<br />
+                          {m.task_label_priority_help({
+                            example: "priority:Level",
+                          })}<br />
+                          {m.task_label_status_help({
+                            example: "status:State",
+                          })}<br />
+                          {m.task_label_effort_help({ example: "effort:Size" })}
                         </div>
                       </div>
                     </div>
                     <TagInput
                       bind:tags={task.labels}
                       suggestions={label_suggestions}
-                      placeholder="Add Label"
+                      placeholder={m.task_label_add()}
                     />
                   </Field.Field>
                   <Field.Field>
-                    <Field.FieldLabel>Checklist</Field.FieldLabel>
+                    <Field.FieldLabel>{m.task_checklist()}</Field.FieldLabel>
                     <div class="space-y-2">
                       <DragDropProvider onDragOver={handle_item_drag_over}>
                         <div role="list" class="space-y-2">
@@ -672,11 +707,17 @@
                             >
                               <Checkbox
                                 bind:checked={item.completed}
-                                aria-label={`Mark ${item.text || "item"} as ${item.completed ? "not completed" : "completed"}`}
+                                aria-label={item.completed
+                                  ? m.task_item_mark_incomplete({
+                                      name: item.text || m.task_item(),
+                                    })
+                                  : m.task_item_mark_complete({
+                                      name: item.text || m.task_item(),
+                                    })}
                               />
                               <Input
                                 class={`h-7 min-w-0 flex-1 border-0 px-1.5 py-1 text-sm shadow-none focus-visible:ring-0 ${item.completed ? "text-muted-foreground line-through" : ""}`}
-                                placeholder="Item"
+                                placeholder={m.task_item()}
                                 data-task-item-input={item.id}
                                 bind:value={item.text}
                                 onfocusout={() =>
@@ -701,8 +742,8 @@
                                 variant="ghost"
                                 size="icon-sm"
                                 class="size-7 text-muted-foreground hover:text-destructive"
-                                aria-label="Delete item"
-                                title="Delete item"
+                                aria-label={m.task_item_delete()}
+                                title={m.task_item_delete()}
                                 onpointerdown={(event) =>
                                   event.preventDefault()}
                                 onclick={() => void delete_item(item.id)}
@@ -721,7 +762,7 @@
                         onclick={() => void add_item()}
                       >
                         <PlusIcon />
-                        Add item
+                        {m.task_item_add()}
                       </Button>
                     </div>
                   </Field.Field>
@@ -729,7 +770,7 @@
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex items-center gap-1.5">
                         <Field.FieldLabel for="description"
-                          >Description</Field.FieldLabel
+                          >{m.task_description()}</Field.FieldLabel
                         >
                         <div class="group/reference-help relative inline-flex">
                           <Button
@@ -737,7 +778,7 @@
                             variant="ghost"
                             size="icon-xs"
                             class="text-muted-foreground"
-                            aria-label="Card reference help"
+                            aria-label={m.task_reference_help()}
                             aria-describedby="card-reference-help"
                           >
                             <CircleHelpIcon class="size-3.5" />
@@ -747,8 +788,7 @@
                             role="tooltip"
                             class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-max max-w-64 rounded-md bg-popover px-3 py-2 text-xs leading-relaxed text-popover-foreground opacity-0 shadow-md ring-1 ring-foreground/10 transition-opacity group-hover/reference-help:opacity-100 group-focus-within/reference-help:opacity-100"
                           >
-                            Type <code>[[</code> to search for and reference another
-                            card.
+                            {m.task_reference_hint()}
                           </div>
                         </div>
                       </div>
@@ -761,12 +801,14 @@
                           variant="ghost"
                           size="sm"
                           class="h-7 gap-1.5 px-2 text-xs"
-                          aria-label="Expand description editor"
-                          title="Expand description editor"
+                          aria-label={m.task_expand_description()}
+                          title={m.task_expand_description()}
                           onclick={() => (description_expanded = true)}
                         >
                           <Maximize2Icon class="size-3.5" />
-                          <span class="hidden sm:inline">Expand</span>
+                          <span class="hidden sm:inline"
+                            >{m.editor_expand()}</span
+                          >
                         </Button>
                       </div>
                     </div>
@@ -776,7 +818,7 @@
                         bind:ref={description_ref}
                         containerClass="rounded-md border bg-background"
                         class="h-80 overflow-y-auto px-3 py-2"
-                        placeholder="Description (Markdown supported)"
+                        placeholder={m.task_description_placeholder()}
                         id="description"
                         bind:value={task.description}
                         onvaluechange={handle_description_change}
@@ -802,7 +844,7 @@
                 submitting}
               type="button"
               onclick={() => void try_submit()}
-              >{show_saving ? "Saving..." : submit_button_text}</Button
+              >{show_saving ? m.common_saving() : submit_button_text}</Button
             >
           </Dialog.Footer>
         {/if}
@@ -820,7 +862,9 @@
     >
       <Dialog.Header class="shrink-0 border-b px-4 py-3 text-start sm:px-6">
         <div class="flex items-center justify-between gap-3">
-          <Dialog.Title class="min-w-0 flex-1">Description</Dialog.Title>
+          <Dialog.Title class="min-w-0 flex-1"
+            >{m.task_description()}</Dialog.Title
+          >
           {#if !previewing_description && card_reference_options.length > 0}
             {@render card_reference_picker()}
           {/if}
@@ -836,7 +880,7 @@
           </Button>
         </div>
         <Dialog.Description class="sr-only"
-          >Expanded rich text editor</Dialog.Description
+          >{m.editor_expanded_description()}</Dialog.Description
         >
       </Dialog.Header>
       <div class="min-h-0 flex-1 p-3 sm:p-5">
@@ -844,7 +888,7 @@
           bind:ref={expanded_description_ref}
           containerClass="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background"
           class="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
-          placeholder="Description (Markdown supported)"
+          placeholder={m.task_description_placeholder()}
           showToolbar
           value={task.description}
           onvaluechange={(content) => {

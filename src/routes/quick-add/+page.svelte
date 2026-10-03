@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import { emit } from "@tauri-apps/api/event";
@@ -32,6 +33,11 @@
     "mode",
   );
   const mode: CaptureMode = requested_mode === "note" ? "note" : "task";
+  $effect(() => {
+    void quick_window
+      .setTitle(`${mode === "task" ? m.task_new() : m.ui_new_note()} · Cardbe`)
+      .catch((error) => logger.warn("quick_add.title_language.failed", error));
+  });
   const shortcut = mode === "task" ? "Ctrl + Alt + T" : "Ctrl + Alt + N";
 
   let columns = $state<ColumnSummary[]>([]);
@@ -147,7 +153,7 @@
         }
       })
       .catch((caught) => {
-        error = `Could not check local data startup status: ${String(caught)}`;
+        error = m.startup_check_error({ error: String(caught) });
         loading = false;
       });
     const handle_focus = () => {
@@ -234,7 +240,7 @@
         return;
       }
       console.error(caught);
-      error = "Couldn't load your data. Please try again.";
+      error = m.quick_load_error();
     } finally {
       if (generation === column_load_generation) {
         loading = false;
@@ -312,8 +318,8 @@
         mode === "task" && String(caught).includes("board")
           ? String(caught)
           : mode === "task"
-            ? "Couldn't add the task. Please try again."
-            : "Couldn't add the note. Please try again.";
+            ? m.quick_task_error()
+            : m.quick_note_error();
       await tick();
       schedule_window_resize();
       title_input?.focus();
@@ -324,7 +330,7 @@
 </script>
 
 <svelte:head>
-  <title>{mode === "task" ? "New Task" : "New Note"} · Cardbe</title>
+  <title>{mode === "task" ? m.task_new() : m.ui_new_note()} · Cardbe</title>
 </svelte:head>
 
 <main
@@ -345,7 +351,7 @@
       </div>
       <div>
         <h1 class="text-base font-semibold tracking-tight">
-          {mode === "task" ? "New Task" : "New Note"}
+          {mode === "task" ? m.task_new() : m.ui_new_note()}
         </h1>
         <p class="mt-0.5 text-xs text-muted-foreground">{shortcut}</p>
       </div>
@@ -353,7 +359,7 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label="Close quick add"
+      aria-label={m.ui_close_quick_add()}
       onclick={close_quick_window}
     >
       <XIcon />
@@ -368,7 +374,7 @@
       {#if mode === "task"}
         <label
           for="quick-add-task-title"
-          class="text-xs font-medium text-muted-foreground">Task</label
+          class="text-xs font-medium text-muted-foreground">{m.ui_task()}</label
         >
       {/if}
       <Input
@@ -377,9 +383,9 @@
         bind:value={title}
         maxlength={200}
         placeholder={mode === "task"
-          ? "What needs doing?"
-          : "Note title (optional)"}
-        aria-label={mode === "task" ? "Task title" : "Note title"}
+          ? m.ui_what_needs_doing()
+          : m.ui_note_title_optional()}
+        aria-label={mode === "task" ? m.ui_task_title() : m.note_name()}
         autocomplete="off"
         class="focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"
       />
@@ -389,7 +395,8 @@
       <div class="grid gap-1.5">
         <label
           for="quick-add-board"
-          class="text-xs font-medium text-muted-foreground">Add to board</label
+          class="text-xs font-medium text-muted-foreground"
+          >{m.ui_add_to_board()}</label
         >
         <select
           id="quick-add-board"
@@ -406,17 +413,18 @@
       <div class="grid gap-1.5">
         <label
           for="quick-add-column"
-          class="text-xs font-medium text-muted-foreground">Add to column</label
+          class="text-xs font-medium text-muted-foreground"
+          >{m.ui_add_to_column()}</label
         >
         <select
           id="quick-add-column"
           bind:value={column_id}
           disabled={loading || columns.length === 0}
-          aria-label="Task column"
+          aria-label={m.ui_task_column()}
           class="border-input bg-background h-10 w-full rounded-md border px-3 text-sm outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
         >
           {#if columns.length === 0}
-            <option value="">No columns yet</option>
+            <option value="">{m.ui_no_columns_yet()}</option>
           {:else}
             {#each columns as column (column.id)}
               <option value={String(column.id)}>{column.name}</option>
@@ -430,9 +438,9 @@
       bind:value={details}
       class="h-20 min-h-20 flex-none resize-none focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"
       placeholder={mode === "task"
-        ? "Details (optional)"
-        : "Capture your thought…"}
-      aria-label={mode === "task" ? "Task details" : "Note content"}
+        ? m.ui_details_optional()
+        : m.ui_capture_your_thought()}
+      aria-label={mode === "task" ? m.task_details_label() : m.note_content()}
     />
 
     <div
@@ -443,11 +451,11 @@
           <span class="text-destructive">{error}</span>
         {:else if mode === "task" && !loading && columns.length === 0}
           <span class="text-muted-foreground"
-            >Create a column in Cardbe before adding a task.</span
+            >{m.ui_create_a_column_in_cardbe_before_adding_a_task()}</span
           >
         {:else}
           <span class="text-muted-foreground"
-            >Ctrl+Enter to add · Esc to close</span
+            >{m.ui_ctrl_enter_to_add_esc_to_close()}</span
           >
         {/if}
       </div>
@@ -458,7 +466,7 @@
         onclick={() => void save()}
       >
         <CheckIcon />
-        {saving ? "Saving…" : "Add"}
+        {saving ? m.ui_saving() : m.common_add()}
       </Button>
     </div>
   </form>

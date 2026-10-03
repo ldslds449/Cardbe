@@ -1,0 +1,1340 @@
+{
+  "common_save": "儲存",
+  "common_cancel": "取消",
+  "common_confirm": "確認",
+  "common_delete": "刪除",
+  "common_edit": "編輯",
+  "common_close": "關閉",
+  "common_add": "新增",
+  "common_create": "建立",
+  "common_name": "名稱",
+  "common_done": "完成",
+  "common_preview": "預覽",
+  "common_saving": "儲存中…",
+  "common_sort": "排序",
+  "common_custom": "自訂",
+  "board_title": "看板",
+  "board_list": "看板",
+  "board_navigation": "看板導覽",
+  "board_list_navigation": "看板清單",
+  "board_open": "開啟看板清單",
+  "board_close": "關閉看板清單",
+  "board_search": "搜尋看板",
+  "board_empty": "找不到看板",
+  "board_create": "建立看板",
+  "board_new": "新增看板",
+  "board_create_description": "為新看板命名。",
+  "board_rename": "重新命名看板",
+  "board_rename_action": "重新命名",
+  "board_rename_description": "為這個看板選擇新名稱。",
+  "board_name": "看板名稱",
+  "board_delete_description": "這會永久刪除看板及其所有內容，且無法復原。",
+  "board_shared": "與我分享",
+  "board_read_only": "唯讀",
+  "board_can_edit": "可編輯",
+  "board_sharing": "看板分享…",
+  "board_publish": "網頁發布",
+  "board_publish_open": "網頁發布…",
+  "board_search_tasks": "搜尋此看板",
+  "board_clear_search": "清除搜尋",
+  "board_searching": "正在搜尋任務",
+  "board_search_error": "搜尋無法使用，請重試或清除搜尋。",
+  "column_create": "新增欄位",
+  "column_new": "新增欄位",
+  "column_delete": "刪除欄位",
+  "column_delete_confirm": "確定要刪除此欄位及其中所有任務嗎？",
+  "column_name_required": "請輸入名稱",
+  "column_archive_tasks": "封存所有任務",
+  "column_due_asc": "到期日：最早優先",
+  "column_due_desc": "到期日：最晚優先",
+  "task_create": "新增任務",
+  "task_new": "新增任務",
+  "task_add_card": "新增卡片",
+  "task_edit": "編輯卡片",
+  "task_delete": "刪除任務",
+  "task_import": "匯入任務",
+  "task_title": "標題",
+  "task_title_required": "請輸入標題",
+  "task_color_reset": "重設任務顏色",
+  "task_quick_colors": "常用顏色",
+  "task_repeat": "重複",
+  "task_repeat_every": "每隔",
+  "task_repeat_interval": "重複間隔",
+  "task_repeat_none": "不重複",
+  "task_repeat_days": "天",
+  "task_repeat_weeks": "週",
+  "task_repeat_months": "月",
+  "task_repeat_days_label": "天",
+  "task_repeat_weeks_label": "週",
+  "task_repeat_months_label": "月",
+  "task_repeat_description": "封存此任務時會建立下一次任務。",
+  "task_label": "標籤",
+  "task_label_add": "新增標籤",
+  "task_label_help": "標籤格式說明",
+  "task_checklist": "檢查清單",
+  "task_item": "項目",
+  "task_item_add": "新增項目",
+  "task_item_delete": "刪除項目",
+  "task_description": "描述",
+  "task_description_placeholder": "描述（支援 Markdown）",
+  "task_description_preview": "描述預覽",
+  "task_preview_empty": "尚無內容可預覽",
+  "task_reference": "引用卡片",
+  "task_reference_help": "卡片引用說明",
+  "task_search_cards": "搜尋卡片",
+  "task_search_cards_placeholder": "搜尋卡片…",
+  "task_cards_empty": "找不到卡片。",
+  "task_due_none": "未設定到期日",
+  "task_due_clear": "清除到期日",
+  "task_time_none": "未設定時間",
+  "task_details_hide": "隱藏任務詳細內容",
+  "task_details_show": "顯示任務詳細內容",
+  "task_details_board": "可在看板檢視中展開任務詳細內容",
+  "task_template_open": "開啟任務範本",
+  "task_template_save": "儲存為範本",
+  "task_template_edit": "編輯範本",
+  "task_template_create_card": "從範本新增卡片",
+  "task_template_name": "範本名稱",
+  "task_template_name_required": "請輸入範本名稱",
+  "task_template_choose": "選擇範本",
+  "task_explorer": "任務總覽",
+  "task_explorer_open": "開啟任務總覽",
+  "workspace_today": "今天",
+  "workspace_statistics": "統計",
+  "task_pin": "釘選任務",
+  "task_unpin": "取消釘選任務",
+  "workspace_calendar": "行事曆",
+  "workspace_navigation": "工作區導覽",
+  "workspace_views": "工作區檢視",
+  "workspace_board_only": "可在看板檢視中使用",
+  "settings_title": "設定",
+  "settings_language": "語言",
+  "settings_language_system": "跟隨系統",
+  "settings_language_save_error": "無法儲存語言設定",
+  "settings_notify_disable": "停用通知",
+  "settings_notify_enable": "啟用通知",
+  "settings_theme_toggle": "切換外觀",
+  "notes_open": "開啟筆記",
+  "notes_close": "關閉筆記",
+  "menu_file": "檔案",
+  "menu_help": "說明",
+  "menu_undo": "復原",
+  "menu_about": "關於 Cardbe",
+  "menu_diagnostics": "診斷…",
+  "menu_export_board": "匯出此看板…",
+  "menu_import_board": "匯入為新看板…",
+  "menu_backup": "備份所有資料…",
+  "menu_restore": "還原所有資料…",
+  "notification_close": "關閉通知",
+  "share_read_only": "已分享－唯讀",
+  "share_can_edit": "已分享－可編輯",
+  "share_conflict": "衝突",
+  "share_syncing": "同步中…",
+  "share_pending": "待處理",
+  "share_sync_error": "無法同步分享看板",
+  "share_background": "背景同步",
+  "share_sync": "立即同步",
+  "share_sync_board": "立即同步分享的看板",
+  "share_resolve_conflict": "在看板分享中解決衝突",
+  "board_delete_named_confirm": "確定要刪除「{name}」嗎？",
+  "task_delete_named_confirm": "確定要刪除「{name}」嗎？",
+  "task_delete_confirm": "確定要刪除此任務嗎？",
+  "column_add_named_task": "新增任務至「{name}」",
+  "workspace_current_board": "目前看板：{name}",
+  "share_synced_at": "已於 {time} 同步",
+  "task_due_today": "今天到期 · {date}",
+  "task_due_soon": "即將到期 · {date}",
+  "board_shared_name": "{name} — 與我分享，{permission}",
+  "task_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個任務"
+      }
+    }
+  ],
+  "common_update": "更新",
+  "common_import": "匯入",
+  "common_change": "變更",
+  "common_not_set": "未設定",
+  "task_details": "任務詳細內容",
+  "task_details_label": "任務詳細內容",
+  "task_start_time": "開始時間",
+  "task_due_time": "到期時間",
+  "task_labels": "標籤",
+  "task_description_empty": "無描述",
+  "task_template_back": "返回卡片",
+  "task_template_choose_title": "選擇範本",
+  "task_template_search_description": "依範本名稱、卡片標題或標籤搜尋。",
+  "task_template_search": "搜尋範本",
+  "task_template_search_placeholder": "搜尋範本…",
+  "task_template_empty": "找不到範本。",
+  "task_template_untitled": "無標題卡片",
+  "task_template_method": "建立方式",
+  "task_template_blank_title": "空白卡片",
+  "task_template_from": "從範本建立",
+  "task_template_update": "更新範本",
+  "task_menu": "任務操作",
+  "task_expand": "展開任務",
+  "task_collapse": "收合任務",
+  "column_due_asc_hint": "到期日：最早優先。點擊切換至自訂排序。",
+  "column_due_desc_hint": "到期日：最晚優先。點擊切換至自訂排序。",
+  "column_due_asc_accessible": "到期日：最早優先。切換至自訂排序。",
+  "column_due_desc_accessible": "到期日：最晚優先。切換至自訂排序。",
+  "board_columns_empty": "尚未建立欄位",
+  "board_columns_empty_description": "尚未新增欄位，請先新增第一個欄位！",
+  "task_checklist_label": "任務檢查清單",
+  "task_checklist_completion": "檢查清單完成進度",
+  "task_added": "已新增任務",
+  "task_deleted": "已刪除任務",
+  "task_archived": "已封存任務",
+  "task_archived_all": "已封存所有任務",
+  "task_restored": "已還原任務",
+  "task_updated": "已更新任務",
+  "task_add_error": "無法新增任務",
+  "task_delete_error": "無法刪除任務",
+  "task_archive_error": "無法封存任務",
+  "task_archive_all_error": "無法封存任務",
+  "task_restore_error": "無法還原任務",
+  "task_update_error": "無法更新任務",
+  "task_move_error": "無法移動任務",
+  "task_missing": "任務已不存在",
+  "task_original_missing": "原始任務已不存在",
+  "task_template_load_error": "無法載入任務範本",
+  "task_template_save_error": "無法儲存範本",
+  "task_template_update_error": "無法更新範本",
+  "task_template_delete_error": "無法刪除範本",
+  "column_added": "已新增欄位",
+  "column_updated": "已更新欄位",
+  "column_deleted": "已刪除欄位",
+  "column_add_error": "無法新增欄位",
+  "column_update_error": "無法更新欄位",
+  "column_move_error": "無法移動欄位",
+  "column_delete_error": "無法刪除欄位",
+  "column_missing": "欄位已不存在",
+  "board_create_error": "無法建立看板",
+  "board_rename_error": "無法重新命名看板",
+  "board_switch_error": "無法切換看板",
+  "board_delete_error": "無法刪除看板",
+  "board_exported": "已匯出看板",
+  "board_export_error": "無法匯出資料",
+  "board_import_error": "無法匯入看板",
+  "backup_created": "已備份所有資料",
+  "backup_create_error": "無法備份所有資料",
+  "backup_restored": "已還原所有資料",
+  "backup_import_read_error": "無法讀取匯入檔案",
+  "backup_imported": "已匯入資料",
+  "backup_import_error": "無法匯入資料",
+  "backup_recovery": "應用程式資料復原",
+  "settings_notify_save_error": "無法儲存通知設定",
+  "settings_notify_permission_error": "未取得通知權限",
+  "common_undone": "已復原上次操作",
+  "common_undo_error": "無法復原上次操作",
+  "common_undo": "復原",
+  "share_synced": "已同步分享的看板",
+  "board_search_empty": "找不到符合「{query}」的卡片。",
+  "board_imported_named": "已匯入為「{name}」",
+  "task_checklist_progress": [
+    {
+      "declarations": [
+        "input completed",
+        "input total",
+        "local completedFormatted = completed: number",
+        "local totalFormatted = total: number"
+      ],
+      "match": {
+        "completed=*": "已完成 {completedFormatted} / {totalFormatted} 項"
+      }
+    }
+  ],
+  "task_checklist_progress_accessible": [
+    {
+      "declarations": [
+        "input total",
+        "input completed",
+        "local completedFormatted = completed: number",
+        "local totalFormatted = total: number"
+      ],
+      "match": {
+        "completed=*": "已完成 {totalFormatted} 項中的 {completedFormatted} 項"
+      }
+    }
+  ],
+  "task_item_mark_complete": "將「{name}」標記為已完成",
+  "task_item_mark_incomplete": "將「{name}」標記為未完成",
+  "task_color_use": "使用 {name}（{color}）",
+  "task_label_owner_help": "使用 {example} 設定負責人。",
+  "task_label_type_help": "使用 {example} 設定任務類別。",
+  "task_label_priority_help": "使用 {example} 設定優先順序。",
+  "task_label_status_help": "使用 {example} 設定狀態。",
+  "task_label_effort_help": "使用 {example} 設定工作量。",
+  "task_reference_hint": "輸入 [[ 可搜尋並引用其他卡片。",
+  "task_repeat_day_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "每 {countFormatted} 天"
+      }
+    }
+  ],
+  "task_repeat_week_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "每 {countFormatted} 週"
+      }
+    }
+  ],
+  "task_repeat_month_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "每 {countFormatted} 個月"
+      }
+    }
+  ],
+  "task_checklist_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個檢查項目"
+      }
+    }
+  ],
+  "common_resize_panel": "調整面板大小",
+  "common_resize_panel_hint": "拖曳可調整大小，按兩下可重設。",
+  "task_view_details": "檢視詳細內容",
+  "task_edit_action": "編輯任務",
+  "task_duplicate_action": "複製任務",
+  "task_share": "分享任務",
+  "task_archive_action": "封存任務",
+  "task_due_date": "到期",
+  "common_retry": "重試",
+  "board_labels_load_error": "無法載入標籤",
+  "board_columns_refresh_error": "無法重新整理欄位",
+  "task_archives_load_error": "無法載入封存任務",
+  "task_expired_load_error": "無法載入逾期任務",
+  "task_explorer_load_error": "無法載入所有任務",
+  "settings_notify_permission_disabled": "未取得通知權限，已停用通知",
+  "board_loading": "正在載入資料",
+  "board_loading_description": "請稍候…",
+  "board_searching_cards": "正在搜尋卡片…",
+  "board_search_unavailable": "搜尋無法使用。",
+  "board_search_retry": "重試搜尋",
+  "board_load_error": "載入時發生錯誤",
+  "common_error": "錯誤",
+  "explorer_all_boards": "所有看板",
+  "explorer_no_boards": "尚未選取看板",
+  "explorer_board_fallback": "1 個看板",
+  "explorer_selected": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已選取 {countFormatted} 個看板"
+      }
+    }
+  ],
+  "explorer_active": "進行中",
+  "explorer_overdue": "已逾期",
+  "explorer_recurring": "重複任務",
+  "explorer_archived": "已封存",
+  "explorer_all_statuses": "所有狀態",
+  "explorer_all_columns": "所有欄位",
+  "explorer_archived_at": "封存時間",
+  "explorer_no_column": "未指定欄位",
+  "explorer_no_tasks": "尚無任務",
+  "explorer_empty_active": "目前沒有進行中的任務",
+  "explorer_empty_overdue": "目前沒有逾期任務",
+  "explorer_empty_recurring": "尚未建立重複任務",
+  "explorer_empty_archived": "尚未封存任何任務",
+  "explorer_description": "搜尋與管理各看板的任務。",
+  "explorer_loaded": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已載入 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "explorer_hide_filters": "隱藏篩選",
+  "explorer_show_filters": "顯示篩選",
+  "explorer_scope": "看板範圍",
+  "explorer_sort_by": "排序依據",
+  "explorer_sort_tasks": "排序任務",
+  "explorer_search_all": "搜尋所有看板",
+  "explorer_search_selected": "搜尋選取的看板",
+  "explorer_status": "任務狀態",
+  "explorer_applied": "已套用的篩選",
+  "explorer_clear_column": "清除欄位篩選",
+  "explorer_clear_due": "清除到期日篩選",
+  "explorer_clear_archive": "清除封存時間篩選",
+  "explorer_has_due": "有到期日",
+  "explorer_due_today": "今日到期",
+  "explorer_any_start": "不限開始日期",
+  "explorer_any_end": "不限結束日期",
+  "explorer_last7": "最近 7 天",
+  "explorer_last30": "最近 30 天",
+  "explorer_year": "今年",
+  "explorer_clear_all": "清除所有篩選",
+  "explorer_clear_all_hint": "清除欄位、到期日與封存時間篩選",
+  "explorer_any_due": "不限到期日",
+  "explorer_custom_range": "自訂範圍",
+  "explorer_due_from": "到期日自",
+  "explorer_due_through": "到期日至",
+  "explorer_range_invalid": "結束日期不得早於開始日期。",
+  "explorer_due_help": "包含起迄日期，僅顯示已設定到期日的任務。留空開始或結束日期即可不限制該日期。",
+  "explorer_archive_help": "包含起迄日期。留空開始或結束日期即可不限制該日期。",
+  "explorer_archive_time": "封存時間",
+  "explorer_any_time": "不限時間",
+  "explorer_end": "結束日期",
+  "explorer_load_error": "無法載入任務",
+  "explorer_retry_hint": "請重新載入清單。",
+  "explorer_select_board_hint": "請至少選取一個看板以查看任務。",
+  "explorer_search_hint": "試試其他關鍵字，或清除篩選條件。",
+  "explorer_empty_scope": "「{name}」目前沒有符合此狀態的任務。",
+  "explorer_clear_search_filters": "清除搜尋與篩選",
+  "explorer_clear_search_hint": "清除搜尋文字與所有已套用的篩選",
+  "explorer_loading": "正在載入任務…",
+  "explorer_loading_more": "正在載入更多…",
+  "explorer_retry_more": "重試載入更多任務",
+  "explorer_archived_date": "封存於 {date}",
+  "explorer_view_named": "查看「{name}」",
+  "explorer_open_board": "在「{name}」中開啟此任務",
+  "explorer_actions_named": "「{name}」的操作",
+  "explorer_filter_column": "欄位：{name}",
+  "explorer_filter_due": "到期日：{start} – {end}",
+  "explorer_filter_archive": "封存時間：{range}",
+  "explorer_range": "{start} – {end}",
+  "date_select": "選取日期",
+  "date_clear": "清除{name}",
+  "calendar_select_month": "選取月份",
+  "calendar_previous_year": "上一年",
+  "calendar_next_year": "下一年",
+  "calendar_months_year": [
+    {
+      "declarations": ["input year", "local yearFormatted = year: number"],
+      "match": {
+        "year=*": "{yearFormatted} 年的月份"
+      }
+    }
+  ],
+  "calendar_view": "行事曆檢視",
+  "calendar_month": "月",
+  "calendar_week": "週",
+  "calendar_display": "顯示",
+  "calendar_items": "行事曆項目",
+  "calendar_show_recurring": "顯示重複任務預覽",
+  "calendar_show_archived": "顯示已封存任務",
+  "calendar_add_hint": "按兩下空白處以新增任務",
+  "calendar_previous_month": "上個月",
+  "calendar_next_month": "下個月",
+  "calendar_previous_week": "上一週",
+  "calendar_next_week": "下一週",
+  "calendar_add_due": "新增於 {date} 到期的任務",
+  "archive_restore": "取消封存",
+  "archive_choose": "選取欄位…",
+  "archive_search": "搜尋欄位…",
+  "archive_required": "請選取欄位。",
+  "archive_description": "選取要將「{name}」還原至哪個欄位。",
+  "task_untitled": "未命名任務",
+  "explorer_column": "欄位",
+  "explorer_due_label": "到期日",
+  "explorer_no_matching": "找不到符合條件的任務",
+  "explorer_clear_search": "清除任務搜尋",
+  "explorer_view": "查看任務",
+  "explorer_unarchive": "取消封存任務",
+  "explorer_edit": "編輯任務",
+  "explorer_archive": "封存任務",
+  "calendar_unarchive": "取消封存任務",
+  "calendar_add": "新增任務",
+  "calendar_export": "匯出",
+  "calendar_label": "任務到期日行事曆",
+  "calendar_legend": "行事曆項目圖例",
+  "calendar_recurring_preview": "重複任務預覽",
+  "focus_nothing": "目前沒有待辦事項",
+  "focus_view": "今日重點檢視",
+  "focus_clear": "目前沒有待辦事項",
+  "focus_today_clear": "今天的待辦事項都處理好了。",
+  "focus_upcoming": "即將到期",
+  "focus_visible": "顯示的任務",
+  "focus_try_search": "請嘗試其他搜尋條件。",
+  "focus_empty": "工作區目前沒有待辦任務。",
+  "focus_add": "新增今天的第一個任務",
+  "focus_today_help": "今天結束前到期的任務",
+  "focus_overdue_help": "已超過到期日，等待處理的任務",
+  "focus_upcoming_help": "今天之後到期的任務",
+  "focus_unscheduled": "未排程",
+  "focus_unscheduled_help": "尚未設定到期日的任務",
+  "focus_attention": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "有 {countFormatted} 個任務需要處理。"
+      }
+    }
+  ],
+  "note_title": "筆記",
+  "note_description": "隨手記下想法與提醒，內容會自動儲存。",
+  "note_new": "新增筆記",
+  "note_search": "搜尋筆記",
+  "note_loading": "正在載入筆記…",
+  "note_retry": "重試載入筆記",
+  "note_untitled": "未命名筆記",
+  "note_empty": "尚未輸入內容",
+  "note_no_matching": "找不到符合條件的筆記",
+  "note_none": "尚無筆記",
+  "note_edit": "編輯筆記",
+  "note_preview": "預覽筆記",
+  "note_unpin": "取消釘選筆記",
+  "note_pin": "釘選筆記",
+  "note_delete": "刪除筆記",
+  "note_name": "筆記標題",
+  "note_no_preview": "尚無內容可預覽。",
+  "note_write": "輸入 Markdown…",
+  "note_content": "筆記內容",
+  "note_choose": "選取筆記或新增一則筆記。",
+  "ui_start_date": "開始日期",
+  "ui_referenced_card": "引用的卡片",
+  "ui_open_this_link_to_view_the_card": "開啟連結以查看卡片。",
+  "ui_no_found": "找不到符合的項目",
+  "ui_no_tasks": "尚未建立任務",
+  "ui_local_database": "本機資料庫",
+  "ui_couldn_t_open_your_data": "無法開啟資料",
+  "ui_error_details": "錯誤詳細資訊",
+  "ui_this_error_is_also_recorded_in_the_cardbe_app_log": "此錯誤也已記錄在 Cardbe 的應用程式記錄中。",
+  "ui_export_calendar": "匯出行事曆",
+  "ui_start_month": "開始月份",
+  "ui_end_month": "結束月份",
+  "ui_format": "格式",
+  "ui_theme": "外觀",
+  "ui_light": "淺色",
+  "ui_dark": "深色",
+  "ui_png_layout": "PNG 配置",
+  "ui_single_image": "單張圖片",
+  "ui_separate_images": "分開匯出",
+  "ui_saves_one_png_per_month_in_a_folder_you_choose": "每個月份各匯出一張 PNG，儲存到你選擇的資料夾。",
+  "ui_pdf_page_size": "PDF 紙張大小",
+  "ui_pagination": "分頁方式",
+  "ui_weeks": "週",
+  "ui_show_entry_count_and_date": "顯示項目數與日期",
+  "ui_calculating_output_size": "正在計算輸出大小…",
+  "ui_vector_pdf_scalable_text_and_graphics": "向量 PDF · 文字與圖形可自由縮放",
+  "ui_export_preview": "匯出預覽",
+  "ui_updating_preview": "正在更新預覽",
+  "ui_entries_to_include": "要匯出的項目",
+  "ui_search_tasks_columns_descriptions_or_labels": "搜尋任務、欄位、描述或標籤",
+  "ui_search_calendar_entries": "搜尋行事曆項目",
+  "ui_select_all": "全選",
+  "ui_clear_all": "全部清除",
+  "ui_no_matching_calendar_entries": "找不到符合條件的行事曆項目",
+  "ui_import_board_as_new": "匯入為新看板？",
+  "ui_columns": "欄位",
+  "ui_active_tasks": "進行中的任務",
+  "ui_templates": "範本",
+  "ui_search_column": "搜尋欄位…",
+  "ui_task_templates": "任務範本",
+  "ui_no_task_templates": "尚未建立任務範本",
+  "ui_open_a_card_s_action_menu_and_choose_save_as_template": "開啟卡片的操作選單，選擇「儲存為範本」。",
+  "ui_template": "範本",
+  "ui_select_a_template": "選取範本…",
+  "ui_please_select_a_template_and_column": "請選取範本與欄位。",
+  "ui_preview_template": "預覽範本",
+  "ui_edit_template": "編輯範本",
+  "ui_delete_template": "刪除範本",
+  "ui_use_template": "套用範本",
+  "ui_save_task_template": "儲存任務範本",
+  "ui_dates_and_checklist_completion_will_be_reset_when_this_template_is_used": "套用範本時，日期與檢查清單的完成狀態會重設。",
+  "ui_copy_this_text_and_send_it_to_another_cardbe_user": "複製以下文字，傳給其他 Cardbe 使用者。",
+  "ui_task_share_text": "任務分享文字",
+  "ui_copy_text": "複製文字",
+  "ui_paste_task_sharing_text_from_another_cardbe_user": "貼上其他 Cardbe 使用者提供的任務分享文字。",
+  "ui_task_sharing_text": "任務分享文字",
+  "ui_continue": "繼續",
+  "ui_reorder_checklist_item": "調整檢查清單項目的順序",
+  "ui_drag_to_reorder": "拖曳以調整順序",
+  "ui_review_device_approval_requests": "審核裝置存取申請",
+  "ui_device_requests": "裝置申請",
+  "ui_request_access_to_shared_boards_again": "重新申請共用看板的存取權",
+  "ui_access_removed": "存取權已撤銷",
+  "ui_task_management_for_focused_work": "專注工作，輕鬆管理任務。",
+  "ui_desktop_task_management_kept_simple": "簡單好用的桌面任務管理工具。",
+  "ui_version": "版本",
+  "ui_build": "建置版本",
+  "ui_check_for_updates": "檢查更新",
+  "ui_current_version": "目前版本",
+  "ui_github_repository": "GitHub 專案",
+  "ui_licenses": "授權資訊",
+  "ui_diagnostics": "診斷資訊",
+  "ui_review_safe_app_details_and_prepare_information_for_support": "查看應用程式資訊，準備回報問題所需的資料。",
+  "ui_redacted_export": "匯出時隱藏敏感資訊",
+  "ui_loading_diagnostic_information": "正在載入診斷資訊…",
+  "ui_app_details": "應用程式資訊",
+  "ui_platform": "平台",
+  "ui_logs": "應用程式記錄",
+  "ui_log_location": "記錄檔位置",
+  "ui_open_log_folder": "開啟記錄檔資料夾",
+  "ui_support_tools": "問題回報工具",
+  "ui_copy_debug_information": "複製偵錯資訊",
+  "ui_three_line_issue_summary": "三行問題摘要",
+  "ui_export_debug_information": "匯出偵錯資訊",
+  "ui_redacted_logs_and_metadata": "已隱藏敏感資訊的記錄與中繼資料",
+  "ui_close_quick_add": "關閉快速新增",
+  "ui_task": "任務",
+  "ui_add_to_board": "新增至看板",
+  "ui_add_to_column": "新增至欄位",
+  "ui_task_column": "任務欄位",
+  "ui_no_columns_yet": "尚未建立欄位",
+  "ui_create_a_column_in_cardbe_before_adding_a_task": "請先在 Cardbe 建立欄位，再新增任務。",
+  "ui_ctrl_enter_to_add_esc_to_close": "Ctrl+Enter 新增 · Esc 關閉",
+  "ui_loading_shared_board": "正在載入共用看板…",
+  "ui_share_unavailable": "無法開啟共用看板",
+  "ui_try_again": "重試",
+  "ui_live_read_only_lan_share": "區域網路即時分享 · 唯讀",
+  "ui_search_shared_board": "搜尋共用看板",
+  "ui_refresh_shared_board": "重新整理共用看板",
+  "ui_shared_board_view": "共用看板檢視",
+  "ui_viewing": "正在檢視",
+  "ui_published_web_views": "已發布的網頁",
+  "ui_published_views": "已發布的網頁",
+  "ui_assign_to_this_board": "指定給此看板",
+  "ui_review_and_enable_it_after_assigning": "指定後，請確認設定並啟用。",
+  "ui_edit_settings": "編輯設定",
+  "ui_copy_address": "複製網址",
+  "ui_delete_view": "刪除網頁",
+  "ui_no_published_views_yet": "尚未發布任何網頁。",
+  "ui_source_board": "來源看板",
+  "ui_web_address": "網址",
+  "ui_copy_web_address": "複製網址",
+  "ui_last_published": "上次發布時間",
+  "ui_shared_content_settings": "分享內容設定",
+  "ui_share_settings": "分享設定",
+  "ui_these_settings_control_what_visitors_can_see": "設定訪客可以看到的內容。",
+  "ui_expiration": "有效期限",
+  "ui_shared_content": "分享內容",
+  "ui_automatic_labels": "自動納入的標籤",
+  "ui_none": "無",
+  "ui_board_to_share": "要分享的看板",
+  "ui_the_new_link_will_publish_content_from_this_board": "新連結會發布此看板的內容。",
+  "ui_sharing_from": "分享來源",
+  "ui_published_view_title": "網頁標題",
+  "ui_team_roadmap": "團隊計畫",
+  "ui_create_a_new_address_or_restore_one_you_shared_before": "建立新網址，或恢復之前分享過的網址。",
+  "ui_new_address": "建立新網址",
+  "ui_best_for_a_new_audience": "適合分享給新的對象",
+  "ui_reuse_previous_address": "沿用原本的網址",
+  "ui_reconnect_an_old_shared_url": "重新啟用先前的分享網址",
+  "ui_previous_address_or_share_id": "原本的網址或分享 ID",
+  "ui_paste_the_link_you_shared_before": "貼上之前分享的連結",
+  "ui_set_web_address_expiration": "設定網址有效期限",
+  "ui_the_web_address_remains_active_until_you_disable_it": "網址會持續有效，直到你停用為止。",
+  "ui_automatically_include_labels": "依標籤自動納入卡片",
+  "ui_add_label": "新增標籤",
+  "ui_content_to_include": "要分享的內容",
+  "ui_search_columns_tasks_descriptions_or_labels": "搜尋欄位、任務、描述或標籤",
+  "ui_search_shareable_tasks": "搜尋可分享的任務",
+  "ui_no_matching_columns_or_tasks": "找不到符合條件的欄位或任務",
+  "ui_delete_this_published_view": "確定要刪除此網頁？",
+  "ui_keep_view": "保留網頁",
+  "ui_collaborate_in_cardbe_with_read_only_or_editing_access": "在 Cardbe 共用看板，可設定唯讀或編輯權限。",
+  "ui_manage_boards_you_share_and_boards_shared_with_you": "管理你分享的看板，以及別人與你共用的看板。",
+  "ui_back": "返回",
+  "ui_waiting_for_approval": "等待核准",
+  "ui_your_device_id_compare_this_with_the_owner": "你的裝置 ID · 請與看板擁有者核對",
+  "ui_copy_device_id": "複製裝置 ID",
+  "ui_cancel_waiting": "取消等待",
+  "ui_share_a_board": "分享看板",
+  "ui_choose_a_board_and_give_people_viewing_or_editing_access": "選擇看板，並設定其他人的檢視或編輯權限。",
+  "ui_join_a_shared_board": "加入共用看板",
+  "ui_paste_an_invitation_link_to_join": "貼上邀請連結以加入看板。",
+  "ui_manage_sharing": "管理分享",
+  "ui_permission": "權限",
+  "ui_copy_invitation_link": "複製邀請連結",
+  "ui_approve_each_device_in_manage_sharing_before_it_can_join": "每個裝置都必須先在「管理分享」中核准，才能加入。",
+  "ui_create_another_invitation_to_manage_access_separately": "建立另一個邀請，分別管理不同對象的存取權。",
+  "ui_invitation_link": "邀請連結",
+  "ui_paste_the_link_from_the_board_owner": "貼上看板擁有者提供的連結。",
+  "ui_sharing_management_views": "分享管理檢視",
+  "ui_no_boards_have_been_shared_with_you": "目前沒有與你共用的看板。",
+  "ui_open_board": "開啟看板",
+  "ui_use_owner_version": "採用擁有者的版本",
+  "ui_keep_my_version": "保留我的版本",
+  "ui_waiting_for_approval_view_device_id": "等待核准 · 查看裝置 ID",
+  "ui_access_was_removed_your_local_board_is_still_here": "存取權已撤銷，本機看板仍會保留。",
+  "ui_request_access_again": "重新申請存取權",
+  "ui_no_invitations_yet": "尚未建立邀請。",
+  "ui_link_active": "連結有效",
+  "ui_copy_link": "複製連結",
+  "ui_devices": "裝置",
+  "ui_review": "審核",
+  "ui_revoke": "撤銷",
+  "ui_board_invitation_qr_code": "看板邀請 QR Code",
+  "ui_delete_invitation": "刪除邀請",
+  "ui_review_device_request": "審核裝置申請",
+  "ui_device_id": "裝置 ID",
+  "ui_copy_id": "複製 ID",
+  "ui_reject": "拒絕",
+  "ui_approve_device": "核准裝置",
+  "ui_revoke_device_access": "確定要撤銷此裝置的存取權？",
+  "ui_revoke_access": "撤銷存取權",
+  "startup_database_description": "Cardbe 無法讀取本機資料庫，請先排除此問題，才能載入工作區。",
+  "share_web_description": "將看板發布為唯讀網頁，或管理已發布的網頁。重新開啟 Cardbe 後，分享網址會恢復運作。",
+  "share_reuse_description": "請盡量貼上完整的原始網址。Cardbe 會恢復原本的分享 ID，並嘗試沿用相同的連接埠。",
+  "share_labels_description": "只要卡片有其中任一標籤，就會自動納入分享；之後新增的卡片也適用。",
+  "share_delete_description": "刪除後，網頁與分享網址將永久失效，且無法復原。若之後可能再次發布，請改用「停用」。",
+  "export_description": "選擇匯出內容、外觀、解析度與頁面配置。",
+  "export_max_months": "· 最多 12 個月",
+  "export_canvas_memory": "MB 畫布記憶體",
+  "export_sample": "範例：",
+  "share_device_wait_description": "請等待看板擁有者核准此裝置，核准狀態會自動更新。",
+  "share_device_invite_description": "每個裝置都須先在「管理分享」中核准才能加入。你也可以建立其他邀請，分別管理不同對象的存取權。",
+  "share_conflict_description": "請先開啟看板，確認本機版本。若採用擁有者的版本，系統會先將你的版本另存為新看板；若保留你的版本，則會取代擁有者的變更，但前提是對方尚未再次更新。",
+  "share_invite_delete_description": "刪除後，其他人將無法再透過此邀請同步；已取得的看板仍會保留在各自的裝置上。",
+  "template_use_description": "選擇任務範本，並指定新卡片要新增至哪個欄位。",
+  "help_export_description": "匯出前，系統會先隱藏記錄檔中的敏感資訊。",
+  "export_entry_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個項目"
+      }
+    }
+  ],
+  "export_entries_date": [
+    {
+      "declarations": [
+        "input count",
+        "input date",
+        "local countFormatted = count: number"
+      ],
+      "match": {
+        "count=*": "{countFormatted} 個項目 · {date}"
+      }
+    }
+  ],
+  "export_entries_selected": [
+    {
+      "declarations": [
+        "input selected",
+        "input total",
+        "local totalFormatted = total: number",
+        "local selectedFormatted = selected: number"
+      ],
+      "match": {
+        "total=*": "已選取 {selectedFormatted}／{totalFormatted} 個項目"
+      }
+    }
+  ],
+  "share_task_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個任務"
+      }
+    }
+  ],
+  "share_content_count": [
+    {
+      "declarations": [
+        "input columns",
+        "input tasks",
+        "local columnsFormatted = columns: number",
+        "local tasksFormatted = tasks: number"
+      ],
+      "match": {
+        "columns=*": "{columnsFormatted} 個欄位 · {tasksFormatted} 個任務"
+      }
+    }
+  ],
+  "share_selected_count": [
+    {
+      "declarations": [
+        "input columns",
+        "input tasks",
+        "local columnsFormatted = columns: number",
+        "local tasksFormatted = tasks: number"
+      ],
+      "match": {
+        "columns=*": "已選取 {columnsFormatted} 個欄位 · {tasksFormatted} 個任務"
+      }
+    }
+  ],
+  "share_published_date": "發布於 {date}",
+  "share_viewing_count": [
+    {
+      "declarations": [
+        "input visible",
+        "input total",
+        "local totalFormatted = total: number",
+        "local visibleFormatted = visible: number"
+      ],
+      "match": {
+        "total=*": "顯示 {visibleFormatted}／{totalFormatted} 個任務"
+      }
+    }
+  ],
+  "share_refresh_checked": "立即重新整理（上次檢查：{time}）",
+  "import_board_description": "將建立名為「{name}」的新看板，現有看板不會受到影響。",
+  "import_task_column_description": "貼上任務分享文字，即可匯入至「{name}」。",
+  "share_review_description": "請透過可信任的管道，與申請者核對此 ID。核准後，裝置將取得「{permission}」權限；遭拒的裝置仍可再次提出申請。",
+  "share_revoke_description": "此裝置將無法再同步「{name}」，但本機副本仍會保留；裝置之後也可重新申請存取權。",
+  "share_owned_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "我分享的看板（{countFormatted}）"
+      }
+    }
+  ],
+  "share_received_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "與我共用的看板（{countFormatted}）"
+      }
+    }
+  ],
+  "share_service_error": "無法啟動分享服務：{error}",
+  "share_waiting_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "有 {countFormatted} 個裝置等待核准"
+      }
+    }
+  ],
+  "share_pending_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個待審核"
+      }
+    }
+  ],
+  "calendar_due_summary": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個任務已設定到期日"
+      }
+    }
+  ],
+  "calendar_period_summary": [
+    {
+      "declarations": [
+        "input period",
+        "input count",
+        "local countFormatted = count: number"
+      ],
+      "match": {
+        "count=*": "本{period}有 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "calendar_recurring_summary": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個重複任務預覽"
+      }
+    }
+  ],
+  "ui_select": "請選擇…",
+  "ui_search": "搜尋…",
+  "ui_unknown_board": "未命名看板",
+  "ui_default": "預設",
+  "ui_imported_board": "匯入的看板",
+  "ui_importing": "匯入中…",
+  "ui_import_as_new_board": "匯入為新看板",
+  "ui_save_template": "儲存範本",
+  "ui_select_the_column_for_the_new_card": "選擇新卡片要新增至哪個欄位。",
+  "ui_select_the_column_where_this_task_should_be_imported": "選擇要將任務匯入至哪個欄位。",
+  "ui_fit_content": "符合內容大小",
+  "ui_months": "依月份",
+  "ui_one_page": "單頁",
+  "ui_rendering": "產生中…",
+  "ui_preparing": "準備中…",
+  "ui_export_pngs": "匯出 PNG 圖片",
+  "ui_a_monthly_image_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_or_use_pdf": "單月圖片過大。請降低 DPI、隱藏月初或月底的空白週，或改用 PDF。",
+  "ui_output_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_use_separate_png_images_or_use_pdf": "輸出檔案過大。請降低 DPI、隱藏月初或月底的空白週、分開匯出 PNG，或改用 PDF。",
+  "ui_disabled": "已停用",
+  "ui_no_expiration": "不設期限",
+  "ui_disable_view": "停用網頁",
+  "ui_enable_view": "啟用網頁",
+  "ui_new_published_view": "發布新網頁",
+  "ui_creating_published_view": "建立發布網頁",
+  "ui_edit_published_view": "編輯發布網頁",
+  "ui_anyone_on_this_local_network_with_the_link_can_view_the_selected_content": "同一區域網路中的任何人，只要取得連結，就能查看你選擇的內容。",
+  "ui_this_address_and_its_settings_are_saved_but_nobody_can_open_it": "網址與設定已保留，目前無法透過此網址查看內容。",
+  "ui_disabling": "停用中…",
+  "ui_disable": "停用",
+  "ui_enabling": "啟用中…",
+  "ui_enable": "啟用",
+  "ui_save_changes": "儲存變更",
+  "ui_publishing": "發布中…",
+  "ui_reuse_address": "沿用網址",
+  "ui_publish_web_view": "發布網頁",
+  "ui_deleting": "刪除中…",
+  "ui_board_sharing": "看板分享",
+  "ui_manage_board_sharing": "管理看板分享",
+  "ui_choose_a_board": "選擇看板",
+  "ui_creating": "建立中…",
+  "ui_create_new_invitation": "建立新邀請",
+  "ui_create_invitation": "建立邀請",
+  "ui_connecting": "連線中…",
+  "ui_request_access": "申請存取權",
+  "ui_syncing_with_owner": "正在與擁有者同步…",
+  "ui_sync_conflict_both_versions_are_saved": "同步發生衝突，兩個版本皆已保留",
+  "ui_local_changes_are_waiting_to_sync": "本機變更等待同步",
+  "ui_sync_needs_attention": "同步需要處理",
+  "ui_background_sync_enabled": "已啟用背景同步",
+  "ui_no_sync_yet_this_session": "此次尚未同步",
+  "ui_created_before_this_version": "建立於舊版 Cardbe",
+  "ui_hide_qr": "隱藏 QR Code",
+  "ui_show_qr": "顯示 QR Code",
+  "ui_approval_requested": "已提出申請",
+  "ui_approved_device": "已核准的裝置",
+  "ui_this_board": "此看板",
+  "ui_loading": "載入中…",
+  "ui_what_needs_doing": "有什麼待辦事項？",
+  "ui_note_title_optional": "筆記標題（選填）",
+  "ui_task_title": "任務標題",
+  "ui_details_optional": "詳細內容（選填）",
+  "ui_capture_your_thought": "記下你的想法…",
+  "ui_saving": "儲存中…",
+  "ui_new_note": "新增筆記",
+  "ui_this_share_no_longer_exists": "此分享已不存在。",
+  "ui_refresh_now": "立即重新整理",
+  "ui_share_unavailable_cardbe": "無法開啟共用看板 - Cardbe",
+  "ui_invitation_copied": "已複製邀請",
+  "ui_invitation_created": "已建立邀請",
+  "ui_device_approved": "已核准裝置",
+  "ui_request_rejected": "已拒絕申請",
+  "ui_device_access_revoked": "已撤銷裝置存取權",
+  "ui_access_restored": "已恢復存取權",
+  "ui_access_request_sent": "已送出存取申請",
+  "ui_device_id_copied": "已複製裝置 ID",
+  "ui_invitation_saved_but_sharing_is_offline": "已儲存邀請，目前分享服務離線",
+  "ui_invitation_updated": "已更新邀請",
+  "ui_invitation_deleted": "已刪除邀請",
+  "ui_published_view_updated": "已更新發布網頁",
+  "ui_previous_web_address_reused": "已恢復原本的分享網址",
+  "ui_web_view_published": "已發布網頁",
+  "ui_web_address_copied": "已複製網址",
+  "ui_published_view_disabled_you_can_enable_it_again_later": "已停用發布網頁，之後可再次啟用。",
+  "ui_published_view_enabled": "已啟用發布網頁",
+  "ui_published_view_deleted": "已刪除發布網頁",
+  "ui_note_deleted": "已刪除筆記",
+  "ui_debug_information_copied": "已複製偵錯資訊",
+  "ui_debug_information_exported": "已匯出偵錯資訊",
+  "ui_task_sharing_text_copied": "已複製任務分享文字",
+  "ui_only_boards_you_own_can_be_published": "只能發布自己擁有的看板",
+  "ui_access_was_declined_or_revoked": "存取申請遭拒或存取權已撤銷",
+  "ui_sharing_took_too_long_please_try_again": "分享連線逾時，請重試。",
+  "ui_shared_content_is_no_longer_available": "分享內容已無法使用",
+  "ui_sharing_was_stopped_for_a_link_whose_board_no_longer_exists": "來源看板已不存在，已停止該連結的分享。",
+  "ui_could_not_disable_outdated_share_content_close_cardbe_to_stop_sharing": "無法停用過期的分享內容，請關閉 Cardbe 以停止分享。",
+  "ui_download_the_new_version_from_github_releases": "請前往 GitHub Releases 下載新版。",
+  "ui_view_release": "查看新版",
+  "ui_later": "稍後",
+  "ui_create_a_column_before_importing_a_task": "請先建立欄位，再匯入任務",
+  "ui_invalid_task_sharing_text": "任務分享文字的格式不正確",
+  "ui_couldn_t_copy_text_select_it_and_copy_manually": "無法複製文字，請選取後手動複製。",
+  "ui_referenced_card_no_longer_exists": "引用的卡片已不存在",
+  "ui_updating_published_views": "正在更新發布網頁",
+  "ui_couldn_t_load_notes": "無法載入筆記",
+  "ui_couldn_t_create_note": "無法新增筆記",
+  "ui_couldn_t_save_note": "無法儲存筆記",
+  "ui_couldn_t_delete_note": "無法刪除筆記",
+  "ui_couldn_t_create_invitation": "無法建立邀請",
+  "ui_couldn_t_copy_invitation": "無法複製邀請",
+  "ui_couldn_t_load_invitations": "無法載入邀請",
+  "ui_couldn_t_update_device": "無法更新裝置",
+  "ui_couldn_t_copy_device_id": "無法複製裝置 ID",
+  "ui_couldn_t_update_invitation": "無法更新邀請",
+  "ui_couldn_t_delete_invitation": "無法刪除邀請",
+  "ui_couldn_t_load_invitation": "無法載入邀請",
+  "ui_couldn_t_load_shared_board_content": "無法載入分享內容",
+  "ui_couldn_t_load_this_board_s_share_settings": "無法載入此看板的分享設定",
+  "ui_couldn_t_publish_board_share": "無法發布看板",
+  "ui_couldn_t_publish_the_web_view": "無法發布網頁",
+  "ui_couldn_t_copy_the_link": "無法複製連結",
+  "ui_couldn_t_disable_board_share": "無法停用看板分享",
+  "ui_couldn_t_disable_the_published_view": "無法停用發布網頁",
+  "ui_couldn_t_enable_board_share": "無法啟用看板分享",
+  "ui_couldn_t_enable_the_published_view": "無法啟用發布網頁",
+  "ui_couldn_t_delete_board_share": "無法刪除看板分享",
+  "ui_couldn_t_delete_the_published_view": "無法刪除發布網頁",
+  "ui_couldn_t_estimate_calendar_export": "無法估算行事曆匯出大小",
+  "ui_couldn_t_export_calendar": "無法匯出行事曆",
+  "ui_couldn_t_export_the_calendar": "無法匯出行事曆",
+  "ui_couldn_t_load_diagnostic_information": "無法載入診斷資訊。",
+  "ui_couldn_t_open_the_link": "無法開啟連結",
+  "ui_couldn_t_open_the_log_folder": "無法開啟記錄檔資料夾",
+  "ui_couldn_t_copy_debug_information": "無法複製偵錯資訊",
+  "ui_couldn_t_export_debug_information": "無法匯出偵錯資訊",
+  "ui_couldn_t_update_a_board_share": "無法更新看板分享",
+  "ui_couldn_t_update_the_shared_board": "無法更新共用看板",
+  "ui_couldn_t_revoke_this_board_s_share_links": "無法撤銷此看板的分享連結",
+  "ui_couldn_t_sync_quick_add_board_shares": "無法同步快速新增的看板分享",
+  "ui_couldn_t_prepare_task_sharing_text": "無法產生任務分享文字",
+  "ui_couldn_t_open_github_releases": "無法開啟 GitHub Releases",
+  "ui_couldn_t_check_for_updates": "無法檢查更新",
+  "share_legacy_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "有 {countFormatted} 個舊版發布網頁尚未指定來源看板。"
+      }
+    }
+  ],
+  "share_matching_tasks": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "找到 {countFormatted} 個符合條件的任務"
+      }
+    }
+  ],
+  "share_available_tasks": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "可選擇 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "export_matching_entries": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "找到 {countFormatted} 個符合條件的項目"
+      }
+    }
+  ],
+  "export_available_entries": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "可選擇 {countFormatted} 個項目"
+      }
+    }
+  ],
+  "export_preparing_images": [
+    {
+      "declarations": ["input total", "local totalFormatted = total: number"],
+      "match": {
+        "total=*": "正在準備 {totalFormatted} 張圖片…"
+      }
+    }
+  ],
+  "export_saving_images": [
+    {
+      "declarations": [
+        "input completed",
+        "input total",
+        "local completedFormatted = completed: number",
+        "local totalFormatted = total: number"
+      ],
+      "match": {
+        "completed=*": "正在儲存第 {completedFormatted}／{totalFormatted} 張圖片…"
+      }
+    }
+  ],
+  "export_png_success": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已匯出 {countFormatted} 張行事曆 PNG"
+      }
+    }
+  ],
+  "export_success": "已匯出 {format} 行事曆",
+  "export_choose_folder": "選擇行事曆圖片的儲存資料夾",
+  "note_delete_confirm": "確定要刪除「{name}」嗎？",
+  "share_expires_date": "有效期限：{date}",
+  "share_last_synced": "此次上次同步時間：{time}",
+  "calendar_go_today": "跳至今天",
+  "calendar_month_summary": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "本月有 {countFormatted} 個項目"
+      }
+    }
+  ],
+  "calendar_week_summary": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "本週有 {countFormatted} 個項目"
+      }
+    }
+  ],
+  "export_month_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "共 {countFormatted} 個月"
+      }
+    }
+  ],
+  "export_page_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "共 {countFormatted} 頁"
+      }
+    }
+  ],
+  "export_image_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "共 {countFormatted} 張圖片"
+      }
+    }
+  ],
+  "export_action": "匯出 {format}",
+  "export_a4_landscape": "A4 橫向",
+  "export_a3_landscape": "A3 橫向",
+  "export_canvas_error": "無法使用圖片繪製功能",
+  "export_create_error": "無法產生匯出檔案",
+  "export_png_data_error": "PNG 資料格式不正確",
+  "export_png_chunk_error": "PNG 區塊資料不正確",
+  "export_png_structure_error": "PNG 檔案結構不正確",
+  "export_pdf_color_error": "PDF 色彩功能尚未初始化",
+  "export_pdf_page_error": "PDF 至少需要一頁",
+  "export_font_empty": "系統未提供可用的字型",
+  "export_font_error": "無法載入 PDF 匯出所需的系統字型",
+  "export_select_month": "請至少選取一個月份",
+  "export_large_error": "跨月圖片過大，請降低 DPI 或減少匯出月份。",
+  "export_filename_error": "所選資料夾中沒有可用的檔名",
+  "export_pdf_document": "PDF 文件",
+  "export_png_image": "PNG 圖片",
+  "time_hours": "時",
+  "time_minutes": "分",
+  "time_seconds": "秒",
+  "time_period": "時段",
+  "time_am": "上午",
+  "time_pm": "下午",
+  "color_saturation_brightness": "飽和度與亮度",
+  "tag_add": "新增標籤…",
+  "chip_remove": "移除",
+  "color_slate": "灰藍色",
+  "color_red": "紅色",
+  "color_orange": "橘色",
+  "color_amber": "琥珀色",
+  "color_green": "綠色",
+  "color_cyan": "青色",
+  "color_blue": "藍色",
+  "color_violet": "紫色",
+  "color_pink": "粉紅色",
+  "share_sync_failed": "網頁發布失敗：{error}",
+  "share_sync_summary": [
+    {
+      "declarations": [
+        "input count",
+        "input time",
+        "local countFormatted = count: number"
+      ],
+      "match": {
+        "count=*": "已發布 {countFormatted} 個網頁 · 上次發布：{time}"
+      }
+    }
+  ],
+  "share_stopped_named": "無法更新「{name}」的內容，已停止分享。",
+  "startup_check_error": "無法檢查本機資料的啟動狀態：{error}",
+  "template_preview_named": "預覽範本「{name}」",
+  "template_edit_named": "編輯範本「{name}」",
+  "template_delete_named": "刪除範本「{name}」",
+  "export_dpi_error": "目前 DPI 設定下的行事曆過大，請降低 DPI 或減少匯出月份。",
+  "share_revoke_retry": "無法撤銷分享連結，請重試。",
+  "share_revoke_delete": "無法撤銷分享連結，請重試後再刪除看板。",
+  "share_revoke_restore": "無法撤銷分享連結，請重試後再還原所有資料。",
+  "share_restore_stopped": "無法撤銷分享連結，已停止還原",
+  "quick_load_error": "無法載入資料，請重試。",
+  "quick_task_error": "無法新增任務，請重試。",
+  "quick_note_error": "無法新增筆記，請重試。",
+  "update_check_error": "無法檢查應用程式更新：{error}",
+  "update_open_error": "無法開啟 GitHub 版本頁面：{error}",
+  "share_local_ready": "本機版本已準備好同步",
+  "share_owner_restored": "已採用擁有者的版本，本機版本已另存",
+  "share_conflict_error": "無法處理同步衝突",
+  "update_current": "{name} 已是最新版本",
+  "update_available": "{name} {version} 新版已推出",
+  "statistics_description": "目前看板的封存活動，不含已還原或刪除的任務。",
+  "statistics_loading": "正在載入統計資料…",
+  "statistics_load_error": "無法載入統計資料。",
+  "statistics_total_archived": "累計封存任務",
+  "statistics_all_time": "所有時間",
+  "statistics_archived_year": "年度封存任務",
+  "statistics_active_days": "有封存任務的天數",
+  "statistics_in_year": "{year} 年",
+  "statistics_longest_streak": "最長連續封存天數",
+  "statistics_streak_year": "{year} 年的連續封存天數",
+  "statistics_activity": "封存活動",
+  "statistics_intensity": "封存數量：0、1、2、3、4 個以上任務",
+  "statistics_less": "較少",
+  "statistics_more": "較多",
+  "export_document_title": "行事曆匯出",
+  "export_month_label": "第 {month} 個月",
+  "task_move_board": "移至其他看板",
+  "task_move_board_title": "將任務移至其他看板",
+  "task_move_board_description": "將「{name}」移至其他可編輯的看板。移動後會清除目前看板的復原紀錄，且無法復原此操作。",
+  "task_move_board_empty": "沒有其他可編輯的看板。",
+  "task_move_columns_loading": "正在載入欄位…",
+  "task_move_column_empty": "請先在目標看板建立欄位，再移動任務。",
+  "task_move_columns_error": "無法載入欄位。",
+  "task_moving": "正在移動…",
+  "task_move_action": "移動任務",
+  "task_moved_board": "已將任務移至其他看板",
+  "task_template_saved": "已儲存範本",
+  "task_template_updated": "已更新範本",
+  "task_template_deleted": "已刪除範本",
+  "share_open_publish": "開啟網頁發佈。{detail}",
+  "backup_file_type": "Cardbe 完整備份",
+  "backup_invalid": "這不是有效的 Cardbe 完整備份",
+  "backup_restore_confirm": "確定要從這份備份還原所有資料嗎？這會取代所有看板與筆記。現有的區域網路分享連結將永久失效，且不會還原。",
+  "backup_restore_revoked_error": "還原失敗。現有的區域網路分享連結已撤銷，但看板資料尚未被取代。",
+  "backup_restore_error": "無法還原所有資料",
+  "app_loading": "Cardbe 正在載入",
+  "tray_enable_shortcuts": "啟用全域快捷鍵",
+  "tray_show": "顯示 Cardbe",
+  "tray_quit": "結束 Cardbe",
+  "notification_expired_title": "任務已逾期 — {board}",
+  "notification_expired_body": "任務「{task}」已超過截止時間",
+  "task_id_invalid": "任務識別碼無效：{value}",
+  "column_id_invalid": "欄位識別碼無效：{value}",
+  "share_join_error": "無法加入分享看板",
+  "link_open_error": "無法開啟連結",
+  "common_search": "搜尋",
+  "common_unknown_error": "發生未知錯誤。",
+  "command_title": "指令面板",
+  "command_description": "搜尋要執行的指令",
+  "share_name_required": "請輸入分享看板的名稱",
+  "share_name_limit": "看板名稱不得超過 {count} 個字元",
+  "share_column_required": "請至少選擇一個要分享的欄位",
+  "share_column_limit": "每份分享最多可包含 {count} 個欄位",
+  "share_task_limit": "每份分享最多可包含 {count} 個任務",
+  "share_link_invalid": "請輸入有效的 Cardbe 分享連結或分享識別碼",
+  "task_transfer_incomplete": "任務分享文字不完整",
+  "task_transfer_version": "不支援此任務分享版本",
+  "task_transfer_labels_invalid": "任務標籤數量無效",
+  "task_transfer_checklist_invalid": "任務檢查清單項目數量無效",
+  "task_transfer_recurrence_invalid": "任務重複設定無效",
+  "task_transfer_unexpected": "任務分享文字含有非預期的資料",
+  "task_transfer_large": "任務分享文字過大",
+  "task_transfer_invalid": "任務分享文字無效",
+  "task_transfer_unsupported": "這不是支援的 Cardbe 任務分享文字",
+  "task_transfer_damaged": "任務分享文字無效或已損壞",
+  "import_object_required": "匯入檔案必須包含 JSON 物件",
+  "import_collections_required": "匯入檔案必須包含欄位與封存資料陣列",
+  "share_switch_error": "切換看板前無法更新分享：{error}",
+  "statistics_year_summary": [
+    {
+      "declarations": [
+        "input count",
+        "input year",
+        "local countFormatted = count: number"
+      ],
+      "match": {
+        "count=*": "{year} 年封存了 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "statistics_day_summary": [
+    {
+      "declarations": [
+        "input count",
+        "input date",
+        "local countFormatted = count: number"
+      ],
+      "match": {
+        "count=*": "{date}：封存了 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "share_request_access_again": "再次申請存取",
+  "share_connection_settings": "連線設定",
+  "share_back_to_sharing": "返回看板分享",
+  "share_access_unavailable": "目前無法存取。",
+  "share_first_board": "分享第一個看板",
+  "share_first_board_description": "建立邀請並傳給信任的人，再於此核准對方的裝置。",
+  "share_access_revoked": "存取權已撤銷",
+  "share_enabled": "啟用分享",
+  "share_settings_help": "變更會立即生效。關閉分享會停止所有使用此邀請的裝置同步。",
+  "note_expand_editor": "展開筆記編輯器",
+  "editor_expand": "展開",
+  "share_creation_date_unavailable": "無法取得建立日期",
+  "share_connection_details_unavailable": "目前無法取得連線資訊，將於下次檢查時更新。",
+  "share_network_direct": "僅直接連線",
+  "share_network_relay": "僅中繼連線",
+  "share_network_choose": "選擇連線模式",
+  "share_network_save_error": "無法儲存連線設定",
+  "share_network_load_error": "無法載入連線設定",
+  "share_network_port_error": "監聽埠無效：請輸入 0 到 65535 之間的整數。",
+  "share_load_retry": "無法載入分享，請再試一次。",
+  "share_direct_ip": "直接 IP 連線",
+  "share_direct_addresses": "直接連線 IP 位址",
+  "share_relay_servers": "中繼伺服器",
+  "share_custom_transport": "自訂傳輸方式",
+  "share_loading_settings": "正在載入設定…",
+  "share_network_method": "連線方式",
+  "share_network_mode": "連線模式",
+  "share_network_automatic": "自動（建議）",
+  "share_network_manual": "使用邀請與手動位址",
+  "share_network_find": "自動尋找（建議）",
+  "share_network_advanced": "進階位址與服務",
+  "share_network_customized": "已自訂",
+  "share_network_addresses": "裝置位址",
+  "share_network_port": "UDP 監聽埠",
+  "share_network_fixed_addresses": "此裝置的固定位址",
+  "share_network_relay_urls": "中繼服務網址",
+  "share_network_discovery_urls": "探索服務網址",
+  "share_network_applying_changes": "正在套用變更…",
+  "share_network_unapplied": "變更尚未套用",
+  "share_network_retry_activate": "設定已儲存，請重試以啟用。",
+  "share_network_applied": "設定已套用，已加入的看板正在自動重新連線。",
+  "share_network_no_changes": "沒有尚未套用的變更",
+  "share_network_defaults": "還原預設值",
+  "share_network_applying": "正在套用…",
+  "share_network_retry": "重試",
+  "share_network_apply": "套用",
+  "share_network_retrying": "正在重試…",
+  "share_connection_last": "上次使用的連線",
+  "share_network_description": "適用於此裝置的所有看板分享。套用變更可能暫時中斷連線，已加入的看板會自動重新連線並保留本機變更。",
+  "share_network_compatibility": "適用於此裝置。雙方裝置須使用相容的連線方式。",
+  "share_network_automatic_help": "允許直接連線，必要時使用加密中繼連線。建議雙方裝置皆使用此模式。",
+  "share_network_direct_help": "在裝置間直接傳輸資料。雙方都須允許直接連線，但防火牆或部分網路可能阻擋連線。此模式不會改用中繼。",
+  "share_network_relay_help": "透過中繼傳輸加密資料。擁有者須允許中繼連線，且中繼服務須能連上。此模式會停用直接連線。",
+  "share_network_disabled_help": "已儲存的設定停用了連線。請選擇模式以允許裝置連線。",
+  "share_network_discovery_help": "自動探索會在裝置重新啟動或變更設定後尋找更新的位址。停用時，可能需要新邀請或更新手動位址才能重新連線。",
+  "share_network_port_help": "輸入 0 以自動選擇埠。若需設定埠轉送，請使用固定埠並將 UDP 流量轉送至該埠。",
+  "share_network_fixed_help": "每行輸入一個其他裝置可連線的 IP:埠。請在上方設定 UDP 監聽埠；若路由器使用不同的外部埠，請在此填入該埠。留空以自動設定。",
+  "share_network_enable_direct": "啟用直接連線後即可編輯此欄位。",
+  "share_network_auto_addresses": "目前使用自動位址。",
+  "share_network_relay_help_urls": "每行輸入一個網址。留空以使用預設服務，自訂網址會取代預設中繼服務。",
+  "share_network_enable_relay": "啟用中繼連線後即可編輯此欄位。",
+  "share_network_default_service": "目前使用預設服務。",
+  "share_network_discovery_help_urls": "每行輸入一個相容服務的網址。留空以使用預設服務，自訂網址會取代預設探索服務。",
+  "share_network_enable_discovery": "啟用自動裝置探索後即可編輯此欄位。",
+  "share_network_enable_transport": "請啟用直接或中繼連線，讓裝置能夠傳輸資料。",
+  "share_network_discard_help": "連線設定將維持先前儲存的值。",
+  "share_network_discard": "捨棄變更",
+  "share_disabled_invitation_help": "此邀請已停用。核准結果會儲存，但須啟用分享後此裝置才能同步。",
+  "share_no_pending": "目前沒有待核准的裝置。",
+  "share_created_date": "建立於 {date}",
+  "share_access_removed_help": "本機看板仍安全保留。請再次申請存取並等待擁有者核准。若邀請已刪除或停用，請向擁有者索取新邀請或請對方啟用分享。",
+  "share_invitation_settings": "邀請設定・{permission}",
+  "share_permission_for": "{name} 的存取權限",
+  "share_pending_filter": "有待核准的裝置申請（{count}）",
+  "share_owner_sync": "每個看板都會與其擁有者同步。",
+  "share_manage_auto_help": "新裝置須經您核准後才能存取看板。此清單會自動更新。",
+  "share_received_auto_help": "此清單會自動更新。",
+  "share_connection_observed": "觀察時間：{time}。這是上次連線使用的路徑，下次同步可能改變。已啟用的連線選項不代表實際使用的路徑。",
+  "share_approval_reconnect": "核准檢查會自動重新連線，因此暫時使用的埠與網路路徑可能改變。",
+  "share_connection_paths": "技術資訊（{count} 條網路路徑）",
+  "share_boards_need_access": "{count} 個共享看板需要存取權限",
+  "task_expand_description": "展開描述編輯器",
+  "editor_expanded_description": "已展開的文字編輯器"
+}

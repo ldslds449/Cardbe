@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { Time } from "@internationalized/date";
   import * as Select from "$lib/components/ui/select";
   import { getDateByType, setDateByType } from "./time-picker-utils";
@@ -65,7 +66,7 @@
     bind:ref
     class="w-[64px] font-mono text-base tabular-nums focus:bg-accent focus:text-accent-foreground"
     onkeydown={handleKeyDown}
-    aria-label={picker === "hours" ? "Hours" : "Minutes"}
+    aria-label={picker === "hours" ? m.time_hours() : m.time_minutes()}
   >
     {value}
   </Select.Trigger>

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import * as m from "$lib/paraglide/messages.js";
+  import { formatDate, formatNumber } from "$lib/i18n";
   import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import * as Card from "$lib/components/ui/card/index.js";
@@ -45,10 +47,14 @@
     "bg-success/70",
     "bg-success",
   ];
-  const date_formatter = new Intl.DateTimeFormat("en-US", {
-    dateStyle: "full",
-  });
-  const month_formatter = new Intl.DateTimeFormat("en-US", { month: "short" });
+  const year_label = $derived(formatNumber(year, { useGrouping: false }));
+  const weekday_labels = $derived(
+    [null, null, 1, null, 3, null, 5, null].map((day) =>
+      day === null
+        ? ""
+        : formatDate(new Date(2024, 0, 7 + day), { weekday: "short" }),
+    ),
+  );
   const selected_day = $derived(
     activity.days.find(
       (day) => day.date.getTime() === selected_date?.getTime(),
@@ -58,13 +64,14 @@
 
 <section
   class="mx-auto flex w-full max-w-5xl flex-col gap-6"
-  aria-label="Statistics"
+  aria-label={m.workspace_statistics()}
 >
   <header>
-    <h1 class="text-2xl font-semibold tracking-tight">Statistics</h1>
+    <h1 class="text-2xl font-semibold tracking-tight">
+      {m.workspace_statistics()}
+    </h1>
     <p class="mt-1 text-sm text-muted-foreground">
-      Archive activity for the current board. Restored or deleted tasks are
-      excluded.
+      {m.statistics_description()}
     </p>
   </header>
   {#if loading}
@@ -72,20 +79,22 @@
       class="flex items-center gap-2 py-12 text-sm text-muted-foreground"
       role="status"
     >
-      <Spinner /> Loading statistics...
+      <Spinner />
+      {m.statistics_loading()}
     </div>
   {:else if !loaded}
     <div class="flex items-center gap-3 py-12" role="alert">
-      <p class="text-sm text-muted-foreground">Couldn't load statistics.</p>
-      <Button variant="outline" onclick={onRetry}>Retry</Button>
+      <p class="text-sm text-muted-foreground">{m.statistics_load_error()}</p>
+      <Button variant="outline" onclick={onRetry}>{m.common_retry()}</Button>
     </div>
   {:else}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {#each [{ label: "Total archived", value: archives.length, detail: "All time" }, { label: "Archived this year", value: activity.total, detail: String(year) }, { label: "Days with archived tasks", value: activity.active_days, detail: `In ${year}` }, { label: "Longest streak", value: activity.longest_streak, detail: `Consecutive days in ${year}` }] as metric}
+      {#each [{ label: m.statistics_total_archived(), value: archives.length, detail: m.statistics_all_time() }, { label: m.statistics_archived_year(), value: activity.total, detail: year_label }, { label: m.statistics_active_days(), value: activity.active_days, detail: m.statistics_in_year( { year: year_label } ) }, { label: m.statistics_longest_streak(), value: activity.longest_streak, detail: m.statistics_streak_year( { year: year_label } ) }] as metric}
         <Card.Root class="gap-3">
           <Card.Header
             ><Card.Description>{metric.label}</Card.Description><Card.Title
-              class="text-3xl tabular-nums">{metric.value}</Card.Title
+              class="text-3xl tabular-nums"
+              >{formatNumber(metric.value)}</Card.Title
             ></Card.Header
           >
           <Card.Content class="text-xs text-muted-foreground"
@@ -97,25 +106,28 @@
     <Card.Root>
       <Card.Header class="flex flex-wrap items-center justify-between gap-4">
         <div class="space-y-1">
-          <Card.Title>Activity</Card.Title><Card.Description
-            >{activity.total} archived tasks in {year}</Card.Description
+          <Card.Title>{m.statistics_activity()}</Card.Title><Card.Description
+            >{m.statistics_year_summary({
+              count: activity.total,
+              year: year_label,
+            })}</Card.Description
           >
         </div>
         <div class="flex items-center gap-2">
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="Previous year"
+            aria-label={m.calendar_previous_year()}
             onclick={() => year--}><ChevronLeftIcon /></Button
           >
           <span
             class="min-w-12 text-center text-sm font-medium tabular-nums"
-            aria-live="polite">{year}</span
+            aria-live="polite">{year_label}</span
           >
           <Button
             variant="outline"
             size="icon-sm"
-            aria-label="Next year"
+            aria-label={m.calendar_next_year()}
             disabled={year >= now.getFullYear()}
             onclick={() => year++}><ChevronRightIcon /></Button
           >
@@ -128,8 +140,7 @@
               class="grid grid-rows-8 gap-1 text-[10px] leading-3 text-muted-foreground"
               aria-hidden="true"
             >
-              {#each ["", "", "Mon", "", "Wed", "", "Fri", ""] as label}<span
-                  class="h-3">{label}</span
+              {#each weekday_labels as label}<span class="h-3">{label}</span
                 >{/each}
             </div>
             <div class="flex gap-1">
@@ -140,15 +151,19 @@
                     >{week.some(
                       (day) => day.in_year && day.date.getDate() === 1,
                     )
-                      ? month_formatter.format(
+                      ? formatDate(
                           week.find(
                             (day) => day.in_year && day.date.getDate() === 1,
                           )!.date,
+                          { month: "short" },
                         )
                       : ""}</span
                   >
                   {#each week as day}
-                    {@const label = `${date_formatter.format(day.date)}: ${day.count} archived tasks`}
+                    {@const label = m.statistics_day_summary({
+                      date: formatDate(day.date, { dateStyle: "full" }),
+                      count: day.count,
+                    })}
                     <button
                       type="button"
                       class={`size-3 shrink-0 rounded-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${day.in_year ? levels[Math.min(day.count, 4)] : "invisible"} ${!day.available ? "opacity-40" : ""}`}
@@ -169,16 +184,19 @@
         >
           <span aria-live="polite"
             >{selected_day
-              ? `${date_formatter.format(selected_day.date)}: ${selected_day.count} archived tasks`
+              ? m.statistics_day_summary({
+                  date: formatDate(selected_day.date, { dateStyle: "full" }),
+                  count: selected_day.count,
+                })
               : ""}</span
           >
           <div
             class="flex items-center gap-1"
-            aria-label="Activity intensity: 0, 1, 2, 3, 4 or more tasks"
+            aria-label={m.statistics_intensity()}
           >
-            <span class="mr-1">Less</span>{#each levels as level}<span
-                class={`size-3 rounded-xs ${level}`}
-              ></span>{/each}<span class="ml-1">More</span>
+            <span class="mr-1">{m.statistics_less()}</span
+            >{#each levels as level}<span class={`size-3 rounded-xs ${level}`}
+              ></span>{/each}<span class="ml-1">{m.statistics_more()}</span>
           </div>
         </div>
       </Card.Content>

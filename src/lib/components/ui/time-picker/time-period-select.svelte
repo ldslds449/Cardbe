@@ -17,6 +17,7 @@
 </script>
 
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { display12HourValue, setDateByType } from "./time-picker-utils";
   import { Time } from "@internationalized/date";
   import * as Select from "$lib/components/ui/select";
@@ -83,11 +84,12 @@
     <Select.Trigger
       bind:ref
       class="w-[65px] focus:bg-accent focus:text-accent-foreground"
-      onkeydown={handleKeyDown}>{period ?? ""}</Select.Trigger
+      onkeydown={handleKeyDown}
+      >{period === "AM" ? m.time_am() : m.time_pm()}</Select.Trigger
     >
     <Select.Content>
-      <Select.Item value="AM">AM</Select.Item>
-      <Select.Item value="PM">PM</Select.Item>
+      <Select.Item value="AM">{m.time_am()}</Select.Item>
+      <Select.Item value="PM">{m.time_pm()}</Select.Item>
     </Select.Content>
   </Select.Root>
 </div>

@@ -1,3 +1,4 @@
+import * as m from "$lib/paraglide/messages.js";
 import updateConfig from "../../config/update.json";
 
 export const UPDATE_STARTUP_DELAY_MS = updateConfig.startupDelayMs;
@@ -20,7 +21,7 @@ export function updateCheckErrorMessage(error: unknown): string {
     }
   }
 
-  return "An unknown error occurred.";
+  return m.common_unknown_error();
 }
 
 export function shouldCheckForUpdate(

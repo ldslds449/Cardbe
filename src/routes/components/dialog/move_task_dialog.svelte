@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { invoke } from "@tauri-apps/api/core";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
@@ -75,18 +76,19 @@
 <Dialog.Root bind:open>
   <Dialog.Content>
     <Dialog.Header>
-      <Dialog.Title>Move Task to Board</Dialog.Title>
+      <Dialog.Title>{m.task_move_board_title()}</Dialog.Title>
       <Dialog.Description
-        >Move “{task.title}” to another editable board. Moving clears this
-        board’s undo history and cannot be undone.</Dialog.Description
+        >{m.task_move_board_description({
+          name: task.title,
+        })}</Dialog.Description
       >
     </Dialog.Header>
     <div class="space-y-2">
-      <p class="text-sm font-medium" id="move-board-label">Board</p>
+      <p class="text-sm font-medium" id="move-board-label">{m.board_title()}</p>
       <Select.Root type="single" bind:value={target} disabled={moving}>
         <Select.Trigger aria-labelledby="move-board-label" class="w-full"
           >{targets.find((b) => String(b.id) === target)?.name ??
-            "Choose a board"}</Select.Trigger
+            m.ui_choose_a_board()}</Select.Trigger
         >
         <Select.Content
           >{#each targets as item (item.id)}<Select.Item
@@ -96,11 +98,13 @@
         >
       </Select.Root>
       {#if targets.length === 0}<p class="text-sm text-muted-foreground">
-          No other editable boards available.
+          {m.task_move_board_empty()}
         </p>{/if}
     </div>
     <div class="space-y-2">
-      <p class="text-sm font-medium" id="move-column-label">Column</p>
+      <p class="text-sm font-medium" id="move-column-label">
+        {m.explorer_column()}
+      </p>
       <Select.Root
         type="single"
         bind:value={column}
@@ -108,7 +112,9 @@
       >
         <Select.Trigger aria-labelledby="move-column-label" class="w-full"
           >{columns.find((c) => String(c.id) === column)?.name ??
-            (loading ? "Loading columns…" : "Choose a column")}</Select.Trigger
+            (loading
+              ? m.task_move_columns_loading()
+              : m.archive_choose())}</Select.Trigger
         >
         <Select.Content
           >{#each columns as item (item.id)}<Select.Item
@@ -120,17 +126,19 @@
       {#if target && !loading && !error && !columns.length}<p
           class="text-sm text-muted-foreground"
         >
-          Add a column to this board before moving a task.
+          {m.task_move_column_empty()}
         </p>{/if}
     </div>
-    {#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
+    {#if error}<p class="text-sm text-destructive" role="alert">
+        {m.task_move_columns_error()}
+      </p>{/if}
     <Dialog.Footer>
       <Button
         variant="outline"
         disabled={moving}
         onclick={() => {
           open = false;
-        }}>Cancel</Button
+        }}>{m.common_cancel()}</Button
       >
       <Button
         disabled={moving ||
@@ -138,7 +146,7 @@
           !column ||
           board.active_board_id !== source_id ||
           !targets.some((b) => String(b.id) === target)}
-        onclick={move}>{moving ? "Moving…" : "Move Task"}</Button
+        onclick={move}>{moving ? m.task_moving() : m.task_move_action()}</Button
       >
     </Dialog.Footer>
   </Dialog.Content>

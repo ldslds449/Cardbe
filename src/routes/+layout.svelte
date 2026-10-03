@@ -1,13 +1,48 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import { dev } from "$app/environment";
   import "../app.css";
   import Sonner from "$lib/components/ui/sonner/sonner.svelte";
   import { onMount } from "svelte";
+  import { invoke, isTauri } from "@tauri-apps/api/core";
+  import {
+    applyLanguagePreference,
+    getLocale,
+    refreshSystemLocale,
+  } from "$lib/i18n";
   import { installGlobalErrorLogging, logger } from "$lib/logger";
 
   let { children } = $props();
 
+  $effect(() => {
+    document.documentElement.lang = getLocale();
+    document.documentElement.dir = "ltr";
+    document
+      .getElementById("app-startup")
+      ?.setAttribute("aria-label", m.app_loading());
+  });
+
+  $effect(() => {
+    if (isTauri() && window.location.pathname === "/") {
+      void invoke("set_desktop_menu_labels", {
+        labels: [
+          m.task_new(),
+          m.ui_new_note(),
+          m.tray_enable_shortcuts(),
+          m.tray_show(),
+          m.tray_quit(),
+        ],
+      }).catch((error) => logger.warn("desktop.menu_language.failed", error));
+    }
+  });
+
   onMount(() => {
+    if (isTauri()) {
+      void invoke<{ language?: string }>("get_settings")
+        .then((settings) => applyLanguagePreference(settings.language))
+        .catch((error) => logger.warn("settings.language_load.failed", error));
+    }
     const uninstallErrorLogging = installGlobalErrorLogging();
     logger.info("app.mounted");
     const dismiss_startup = () =>
@@ -40,5 +75,7 @@
   });
 </script>
 
+<svelte:window onlanguagechange={refreshSystemLocale} />
+
 {@render children()}
-<Sonner expand closeButton closeButtonAriaLabel="Close notification" />
+<Sonner expand closeButton closeButtonAriaLabel={m.notification_close()} />

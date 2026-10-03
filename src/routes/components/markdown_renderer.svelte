@@ -1,6 +1,7 @@
 ﻿<script lang="ts">
   import { logger } from "$lib/logger";
   import "$lib/components/editor/markdown-content.css";
+  import * as m from "$lib/paraglide/messages.js";
   import { mode } from "mode-watcher";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
@@ -177,7 +178,7 @@
     } catch (error) {
       logger.warn("markdown.open_link.failed", error);
       console.error("Couldn't open external link", error);
-      toast.error("Couldn't open link");
+      toast.error(m.link_open_error());
     }
   }
 

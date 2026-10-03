@@ -4864,6 +4864,7 @@ mod tests {
         second.columns[0].name = "Second column".into();
         second.columns[0].tasks[0].title = "Second task".into();
         let settings = crate::models::Settings {
+            language: crate::models::LanguagePreference::TraditionalChinese,
             notify_enabled: true,
             global_shortcuts_enabled: false,
             ..Default::default()
@@ -4931,6 +4932,7 @@ mod tests {
             0,
             &invalid_notes,
             &crate::models::Settings {
+                language: crate::models::LanguagePreference::English,
                 notify_enabled: true,
                 global_shortcuts_enabled: false,
                 ..Default::default()

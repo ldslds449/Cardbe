@@ -158,6 +158,31 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
         tray = tray.icon(icon.clone());
     }
     tray.build(app)?;
+    app.manage(menu);
+    Ok(())
+}
+
+pub fn set_menu_labels<R: Runtime>(app: &AppHandle<R>, labels: [String; 5]) -> Result<(), String> {
+    let menu = app.state::<Menu<R>>();
+    for (label, (id, shortcut)) in labels.into_iter().zip([
+        ("quick-task", Some(QUICK_TASK_SHORTCUT)),
+        ("quick-note", Some(QUICK_NOTE_SHORTCUT)),
+        ("toggle-shortcuts", None),
+        ("show", Some(SHOW_CARDBE_SHORTCUT)),
+        ("quit", None),
+    ]) {
+        let text = match shortcut {
+            Some(shortcut) => format!("{label}\t{shortcut}"),
+            None => label,
+        };
+        if let Some(item) = menu.get(id) {
+            if let Some(item) = item.as_menuitem() {
+                item.set_text(&text).map_err(|error| error.to_string())?;
+            } else if let Some(item) = item.as_check_menuitem() {
+                item.set_text(&text).map_err(|error| error.to_string())?;
+            }
+        }
+    }
     Ok(())
 }
 

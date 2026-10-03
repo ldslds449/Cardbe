@@ -1,6 +1,6 @@
 use crate::{
     commands::iroh_share,
-    models::{IrohNetworkSettings, Settings},
+    models::{IrohNetworkSettings, LanguagePreference, Settings},
     state::{update_stored, SharedAppData},
 };
 use tauri::{AppHandle, State};
@@ -47,6 +47,30 @@ pub async fn set_iroh_network_settings(
         .await
         .err()
         .map(|error| format!("Settings saved, but the connection service could not restart. Retry to apply them. {error}")))
+}
+
+#[tauri::command]
+pub fn set_language(
+    state: State<'_, SharedAppData>,
+    language: LanguagePreference,
+) -> Result<(), String> {
+    update_stored(&state, |data| {
+        data.settings.language = language;
+        Ok(())
+    })
+}
+
+#[tauri::command]
+pub fn set_desktop_menu_labels(app: tauri::AppHandle, labels: [String; 5]) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        crate::desktop::set_menu_labels(&app, labels)
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, labels);
+        Ok(())
+    }
 }
 
 #[tauri::command]

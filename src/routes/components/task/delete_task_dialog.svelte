@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
   import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 
   interface DeleteTaskDialogProps {
@@ -22,14 +24,18 @@
 <AlertDialog.Root bind:open>
   <AlertDialog.Content>
     <AlertDialog.Header>
-      <AlertDialog.Title>Delete Task</AlertDialog.Title>
+      <AlertDialog.Title>{m.task_delete()}</AlertDialog.Title>
       <AlertDialog.Description>
-        Are you sure you want to delete “{task_title ?? "this task"}”?
+        {task_title
+          ? m.task_delete_named_confirm({ name: task_title })
+          : m.task_delete_confirm()}
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>
-      <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-      <AlertDialog.Action onclick={confirm_delete}>Confirm</AlertDialog.Action>
+      <AlertDialog.Cancel>{m.common_cancel()}</AlertDialog.Cancel>
+      <AlertDialog.Action onclick={confirm_delete}
+        >{m.common_confirm()}</AlertDialog.Action
+      >
     </AlertDialog.Footer>
   </AlertDialog.Content>
 </AlertDialog.Root>

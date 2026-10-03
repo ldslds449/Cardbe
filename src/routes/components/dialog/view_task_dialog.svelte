@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages.js";
+  import "$lib/i18n/locale.svelte";
+  import { formatDateTime } from "$lib/i18n";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
@@ -26,9 +29,9 @@
 
   function formatDate(date: Date | undefined): string {
     if (!date) {
-      return "Not set";
+      return m.common_not_set();
     }
-    return date.toLocaleDateString() + " " + date.toLocaleTimeString();
+    return formatDateTime(date);
   }
 </script>
 
@@ -40,9 +43,11 @@
           class="max-w-full break-all pe-8"
           style="color: {task ? display_task_color(task.color) : ''};"
         >
-          {task?.title ?? "Task Details"}
+          {task?.title ?? m.task_details()}
         </Dialog.Title>
-        <Dialog.Description class="sr-only">Task details</Dialog.Description>
+        <Dialog.Description class="sr-only"
+          >{m.task_details_label()}</Dialog.Description
+        >
       </Dialog.Header>
       <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
         <div class="w-full max-w-md space-y-4 py-4 ps-1 pe-4">
@@ -50,7 +55,7 @@
             <div>
               <div class="flex items-center gap-2 text-sm font-medium mb-1">
                 <CalendarIcon class="size-4" />
-                <span>Start Time</span>
+                <span>{m.task_start_time()}</span>
               </div>
               <p class="text-sm text-muted-foreground">
                 {formatDate(task.start_time)}
@@ -61,7 +66,7 @@
               <div>
                 <div class="flex items-center gap-2 text-sm font-medium mb-1">
                   <Repeat2Icon class="size-4" />
-                  <span>Repeat</span>
+                  <span>{m.task_repeat()}</span>
                 </div>
                 <p class="text-sm text-muted-foreground">
                   {recurrence_label(task.recurrence)}
@@ -72,7 +77,7 @@
             <div>
               <div class="flex items-center gap-2 text-sm font-medium mb-1">
                 <CalendarIcon class="size-4" />
-                <span>Due Time</span>
+                <span>{m.task_due_time()}</span>
               </div>
               <p class="text-sm text-muted-foreground">
                 {formatDate(task.due_time)}
@@ -83,7 +88,7 @@
               <div>
                 <div class="flex items-center gap-2 text-sm font-medium mb-2">
                   <TagIcon class="size-4" />
-                  <span>Labels</span>
+                  <span>{m.task_labels()}</span>
                 </div>
                 <div class="flex flex-wrap gap-2">
                   {#each task.labels as label}
@@ -96,7 +101,7 @@
             {#if task.items.length > 0}
               <Separator />
               <div>
-                <p class="text-sm font-medium mb-2">Checklist</p>
+                <p class="text-sm font-medium mb-2">{m.task_checklist()}</p>
                 <ChecklistDisplay items={task.items} />
               </div>
             {/if}
@@ -104,9 +109,11 @@
             <Separator />
 
             <div>
-              <p class="text-sm font-medium mb-1">Description</p>
+              <p class="text-sm font-medium mb-1">{m.task_description()}</p>
               {#if task.description.length == 0}
-                <p class="text-sm text-muted-foreground">No description</p>
+                <p class="text-sm text-muted-foreground">
+                  {m.task_description_empty()}
+                </p>
               {:else}
                 <Markdown md={task.description} />
               {/if}
@@ -125,7 +132,7 @@
               onEdit?.();
             }}
           >
-            Edit
+            {m.common_edit()}
           </Button>
         </Dialog.Footer>
       {/if}

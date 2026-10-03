@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import EyeIcon from "@lucide/svelte/icons/eye";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import PencilIcon from "@lucide/svelte/icons/pencil";
@@ -56,19 +57,18 @@
 <Dialog.Root bind:open>
   <Dialog.Content class="sm:max-w-[520px]">
     <Dialog.Header>
-      <Dialog.Title>Task Templates</Dialog.Title>
+      <Dialog.Title>{m.ui_task_templates()}</Dialog.Title>
       <Dialog.Description>
-        Choose a reusable task and the column where the new card should be
-        created.
+        {m.template_use_description()}
       </Dialog.Description>
     </Dialog.Header>
     {#if templates.length === 0}
       <Empty.Root class="py-8">
         <Empty.Header>
           <Empty.Media variant="icon"><LayoutTemplateIcon /></Empty.Media>
-          <Empty.Title>No task templates</Empty.Title>
+          <Empty.Title>{m.ui_no_task_templates()}</Empty.Title>
           <Empty.Description>
-            Open a card's action menu and choose “Save as Template”.
+            {m.ui_open_a_card_s_action_menu_and_choose_save_as_template()}
           </Empty.Description>
         </Empty.Header>
       </Empty.Root>
@@ -83,24 +83,26 @@
         <Field.Set>
           <Field.Group>
             <Field.Field data-invalid={selection_error}>
-              <Field.FieldLabel>Template</Field.FieldLabel>
+              <Field.FieldLabel>{m.ui_template()}</Field.FieldLabel>
               <Combobox
                 items={template_items}
-                select_placeholder="Select a template..."
-                search_placeholder="Search templates..."
+                select_placeholder={m.ui_select_a_template()}
+                search_placeholder={m.task_template_search_placeholder()}
                 bind:selected_value={selected_template_id}
               />
             </Field.Field>
             <Field.Field data-invalid={selection_error}>
-              <Field.FieldLabel>Column</Field.FieldLabel>
+              <Field.FieldLabel>{m.explorer_column()}</Field.FieldLabel>
               <Combobox
                 items={column_items}
-                select_placeholder="Select a column..."
-                search_placeholder="Search columns..."
+                select_placeholder={m.archive_choose()}
+                search_placeholder={m.archive_search()}
                 bind:selected_value={template_column_id}
               />
               {#if selection_error}
-                <Field.Error>Please select a template and column.</Field.Error>
+                <Field.Error
+                  >{m.ui_please_select_a_template_and_column()}</Field.Error
+                >
               {/if}
             </Field.Field>
           </Field.Group>
@@ -122,8 +124,10 @@
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Preview template ${template.name}`}
-                    title="Preview template"
+                    aria-label={m.template_preview_named({
+                      name: template.name,
+                    })}
+                    title={m.ui_preview_template()}
                     onclick={() => onPreviewTemplate(template.task)}
                   >
                     <EyeIcon />
@@ -132,8 +136,8 @@
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Edit template ${template.name}`}
-                    title="Edit template"
+                    aria-label={m.template_edit_named({ name: template.name })}
+                    title={m.ui_edit_template()}
                     onclick={() => onEditTemplate(template.id)}
                   >
                     <PencilIcon />
@@ -142,8 +146,10 @@
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    aria-label={`Delete template ${template.name}`}
-                    title="Delete template"
+                    aria-label={m.template_delete_named({
+                      name: template.name,
+                    })}
+                    title={m.ui_delete_template()}
                     onclick={() => void onDeleteTemplate(template.id)}
                   >
                     <TrashIcon />
@@ -157,7 +163,7 @@
               type="submit"
               disabled={!selected_template_id || !template_column_id}
             >
-              Use Template
+              {m.ui_use_template()}
             </Button>
           </Dialog.Footer>
         </Field.Set>
@@ -169,9 +175,9 @@
 <Dialog.Root bind:open={save_open}>
   <Dialog.Content class="sm:max-w-[425px]">
     <Dialog.Header>
-      <Dialog.Title>Save Task Template</Dialog.Title>
+      <Dialog.Title>{m.ui_save_task_template()}</Dialog.Title>
       <Dialog.Description>
-        Dates and checklist completion will be reset when this template is used.
+        {m.ui_dates_and_checklist_completion_will_be_reset_when_this_template_is_used()}
       </Dialog.Description>
     </Dialog.Header>
     <form
@@ -182,7 +188,9 @@
     >
       <Field.Set>
         <Field.Field>
-          <Field.FieldLabel for="template-name">Template name</Field.FieldLabel>
+          <Field.FieldLabel for="template-name"
+            >{m.task_template_name()}</Field.FieldLabel
+          >
           <Input id="template-name" bind:value={save_template_name} required />
         </Field.Field>
         <Dialog.Footer>
@@ -190,7 +198,7 @@
             type="submit"
             disabled={!save_template_name.trim() || saving_template}
           >
-            {saving_template ? "Saving..." : "Save Template"}
+            {saving_template ? m.common_saving() : m.ui_save_template()}
           </Button>
         </Dialog.Footer>
       </Field.Set>

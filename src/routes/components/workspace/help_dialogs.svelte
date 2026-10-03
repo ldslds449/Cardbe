@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
   import { invoke } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
   import CopyIcon from "@lucide/svelte/icons/copy";
@@ -64,7 +65,7 @@
     try {
       diagnostics = await invoke<DiagnosticInfo>("get_diagnostics");
     } catch (error) {
-      diagnostics_error = "Couldn't load diagnostic information.";
+      diagnostics_error = m.ui_couldn_t_load_diagnostic_information();
       logger.error("diagnostics.load.failed", error);
     } finally {
       diagnostics_loading = false;
@@ -76,7 +77,7 @@
       await invoke("open_external_url", { url });
     } catch (error) {
       logger.error(event, error);
-      toast.error("Couldn't open the link");
+      toast.error(m.ui_couldn_t_open_the_link());
     }
   }
 
@@ -85,7 +86,7 @@
       await invoke("open_log_folder");
     } catch (error) {
       logger.error("diagnostics.open_log_folder.failed", error);
-      toast.error("Couldn't open the log folder");
+      toast.error(m.ui_couldn_t_open_the_log_folder());
     }
   }
 
@@ -115,10 +116,10 @@
     }
     try {
       await navigator.clipboard.writeText(debug_information(diagnostics));
-      toast.success("Debug information copied");
+      toast.success(m.ui_debug_information_copied());
     } catch (error) {
       logger.error("diagnostics.copy.failed", error);
-      toast.error("Couldn't copy debug information");
+      toast.error(m.ui_couldn_t_copy_debug_information());
     }
   }
 
@@ -134,10 +135,10 @@
       }
 
       await invoke("export_debug_information", { destination });
-      toast.success("Debug information exported");
+      toast.success(m.ui_debug_information_exported());
     } catch (error) {
       logger.error("diagnostics.export.failed", error);
-      toast.error("Couldn't export debug information");
+      toast.error(m.ui_couldn_t_export_debug_information());
     }
   }
 
@@ -157,9 +158,9 @@
           <InfoIcon class="size-5" />
         </div>
         <div class="space-y-1">
-          <Dialog.Title>About Cardbe</Dialog.Title>
+          <Dialog.Title>{m.menu_about()}</Dialog.Title>
           <Dialog.Description>
-            Task management for focused work.
+            {m.ui_task_management_for_focused_work()}
           </Dialog.Description>
         </div>
       </div>
@@ -169,22 +170,26 @@
       <Card.Header class="bg-muted/30 py-4">
         <Card.Title class="text-base">Cardbe</Card.Title>
         <Card.Description
-          >Desktop task management, kept simple.</Card.Description
+          >{m.ui_desktop_task_management_kept_simple()}</Card.Description
         >
       </Card.Header>
       <Card.Content class="grid grid-cols-2 gap-4 py-4">
         <div class="space-y-1">
-          <div class="text-xs font-medium text-muted-foreground">Version</div>
+          <div class="text-xs font-medium text-muted-foreground">
+            {m.ui_version()}
+          </div>
           <div class="font-mono text-sm">
             {diagnostics?.appVersion ??
-              (diagnostics_loading ? "Loading…" : "Unknown")}
+              (diagnostics_loading ? m.ui_loading() : "Unknown")}
           </div>
         </div>
         <div class="space-y-1">
-          <div class="text-xs font-medium text-muted-foreground">Build</div>
+          <div class="text-xs font-medium text-muted-foreground">
+            {m.ui_build()}
+          </div>
           <div class="font-mono text-sm">
             {diagnostics?.buildCommit ??
-              (diagnostics_loading ? "Loading…" : "Unknown")}
+              (diagnostics_loading ? m.ui_loading() : "Unknown")}
           </div>
         </div>
       </Card.Content>
@@ -202,9 +207,11 @@
           {:else}
             <RefreshCwIcon class="size-4" />
           {/if}
-          Check for Updates
+          {m.ui_check_for_updates()}
         </span>
-        <span class="text-xs font-normal opacity-70">Current version</span>
+        <span class="text-xs font-normal opacity-70"
+          >{m.ui_current_version()}</span
+        >
       </Button>
       <Button
         variant="outline"
@@ -213,7 +220,7 @@
       >
         <span class="flex items-center gap-2">
           <GithubIcon class="size-4" />
-          GitHub Repository
+          {m.ui_github_repository()}
         </span>
         <ExternalLinkIcon class="size-4 text-muted-foreground" />
       </Button>
@@ -225,14 +232,14 @@
       >
         <span class="flex items-center gap-2">
           <FileTextIcon class="size-4" />
-          Licenses
+          {m.ui_licenses()}
         </span>
         <ExternalLinkIcon class="size-4 text-muted-foreground" />
       </Button>
     </div>
 
     <Dialog.Footer class="border-t pt-4">
-      <Dialog.Close class={close_button_class}>Close</Dialog.Close>
+      <Dialog.Close class={close_button_class}>{m.common_close()}</Dialog.Close>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
@@ -244,14 +251,14 @@
     <Dialog.Header class="border-b pb-4">
       <div class="flex items-start justify-between gap-4 pr-8">
         <div class="space-y-1">
-          <Dialog.Title>Diagnostics</Dialog.Title>
+          <Dialog.Title>{m.ui_diagnostics()}</Dialog.Title>
           <Dialog.Description>
-            Review safe app details and prepare information for support.
+            {m.ui_review_safe_app_details_and_prepare_information_for_support()}
           </Dialog.Description>
         </div>
         <Badge variant="outline" class="mt-0.5 shrink-0 gap-1.5">
           <ShieldCheckIcon class="size-3.5 text-emerald-600" />
-          Redacted export
+          {m.ui_redacted_export()}
         </Badge>
       </div>
     </Dialog.Header>
@@ -261,7 +268,7 @@
         class="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"
       >
         <LoaderCircleIcon class="size-4 animate-spin" />
-        Loading diagnostic information…
+        {m.ui_loading_diagnostic_information()}
       </div>
     {:else if diagnostics_error}
       <div
@@ -273,24 +280,26 @@
       <div class="grid gap-3 sm:grid-cols-2">
         <Card.Root class="gap-0 py-0">
           <Card.Header class="border-b py-4">
-            <Card.Title class="text-sm">App details</Card.Title>
+            <Card.Title class="text-sm">{m.ui_app_details()}</Card.Title>
           </Card.Header>
           <Card.Content class="grid gap-4 py-4">
             <div class="space-y-1">
               <div class="text-xs font-medium text-muted-foreground">
-                Version
+                {m.ui_version()}
               </div>
               <div class="font-mono text-sm">{diagnostics.appVersion}</div>
             </div>
             <div class="space-y-1">
-              <div class="text-xs font-medium text-muted-foreground">Build</div>
+              <div class="text-xs font-medium text-muted-foreground">
+                {m.ui_build()}
+              </div>
               <div class="font-mono text-sm">
                 {diagnostics.buildCommit ?? "Unknown"}
               </div>
             </div>
             <div class="space-y-1">
               <div class="text-xs font-medium text-muted-foreground">
-                Platform
+                {m.ui_platform()}
               </div>
               <div class="text-sm">{platform_label(diagnostics)}</div>
             </div>
@@ -299,12 +308,12 @@
 
         <Card.Root class="gap-0 py-0">
           <Card.Header class="border-b py-4">
-            <Card.Title class="text-sm">Logs</Card.Title>
+            <Card.Title class="text-sm">{m.ui_logs()}</Card.Title>
           </Card.Header>
           <Card.Content class="space-y-4 py-4">
             <div class="space-y-1">
               <div class="text-xs font-medium text-muted-foreground">
-                Log location
+                {m.ui_log_location()}
               </div>
               <div
                 class="rounded-md bg-muted/50 px-3 py-2 font-mono text-xs break-all"
@@ -318,7 +327,7 @@
               onclick={() => void open_log_folder()}
             >
               <FolderOpenIcon class="size-4" />
-              Open Log Folder
+              {m.ui_open_log_folder()}
             </Button>
           </Card.Content>
         </Card.Root>
@@ -326,10 +335,9 @@
 
       <div class="space-y-3">
         <div>
-          <h3 class="text-sm font-medium">Support tools</h3>
+          <h3 class="text-sm font-medium">{m.ui_support_tools()}</h3>
           <p class="text-sm text-muted-foreground">
-            Logs in exported packages are redacted before they leave this
-            device.
+            {m.help_export_description()}
           </p>
         </div>
         <div class="grid gap-2 sm:grid-cols-2">
@@ -340,9 +348,9 @@
           >
             <CopyIcon class="size-4 shrink-0" />
             <span>
-              <span class="block">Copy Debug Information</span>
+              <span class="block">{m.ui_copy_debug_information()}</span>
               <span class="block text-xs font-normal text-muted-foreground"
-                >Three-line issue summary</span
+                >{m.ui_three_line_issue_summary()}</span
               >
             </span>
           </Button>
@@ -352,9 +360,9 @@
           >
             <DownloadIcon class="size-4 shrink-0" />
             <span>
-              <span class="block">Export Debug Information</span>
+              <span class="block">{m.ui_export_debug_information()}</span>
               <span class="block text-xs font-normal text-primary-foreground/70"
-                >Redacted logs and metadata</span
+                >{m.ui_redacted_logs_and_metadata()}</span
               >
             </span>
           </Button>
@@ -363,7 +371,7 @@
     {/if}
 
     <Dialog.Footer class="border-t pt-4">
-      <Dialog.Close class={close_button_class}>Close</Dialog.Close>
+      <Dialog.Close class={close_button_class}>{m.common_close()}</Dialog.Close>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>

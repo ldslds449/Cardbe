@@ -1,4 +1,6 @@
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages.js";
+  import { getLocale } from "$lib/i18n";
   import { logger } from "$lib/logger";
   import { onMount } from "svelte";
   import { ModeWatcher, toggleMode } from "mode-watcher";
@@ -106,7 +108,7 @@
         });
         const body = await result.json();
         if (!result.ok) {
-          throw new Error(body.error || "Share unavailable");
+          throw new Error(body.error || m.ui_share_unavailable());
         }
         apply_response(body as PublicShareResponse);
         error_message = "";
@@ -120,9 +122,9 @@
         columns = [];
         selected_task = null;
         task_dialog_open = false;
-        document.title = "Share unavailable - Cardbe";
+        document.title = m.ui_share_unavailable_cardbe();
         error_message =
-          error instanceof Error ? error.message : "Share unavailable";
+          error instanceof Error ? error.message : m.ui_share_unavailable();
       } finally {
         loading = false;
         refresh_in_progress = false;
@@ -155,8 +157,8 @@
     variant="outline"
     size="icon"
     class="relative shrink-0"
-    aria-label="Toggle color theme"
-    title="Toggle color theme"
+    aria-label={m.settings_theme_toggle()}
+    title={m.settings_theme_toggle()}
   >
     <SunIcon
       class="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 !transition-all dark:-rotate-90 dark:scale-0"
@@ -177,7 +179,7 @@
       <span
         class="size-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground"
       ></span>
-      Loading shared board…
+      {m.ui_loading_shared_board()}
     </div>
   </main>
 {:else if error_message || !response}
@@ -186,9 +188,9 @@
     <section
       class="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-sm"
     >
-      <h1 class="text-xl font-semibold">Share unavailable</h1>
+      <h1 class="text-xl font-semibold">{m.ui_share_unavailable()}</h1>
       <p class="mt-2 text-sm text-muted-foreground">
-        {error_message || "This share no longer exists."}
+        {error_message || m.ui_this_share_no_longer_exists()}
       </p>
       <Button
         class="mt-5"
@@ -199,7 +201,7 @@
         <RefreshCwIcon
           class={refresh_in_progress ? "size-4 animate-spin" : "size-4"}
         />
-        Try again
+        {m.ui_try_again()}
       </Button>
     </section>
   </main>
@@ -214,13 +216,15 @@
             class="flex items-center gap-2 text-xs font-medium text-muted-foreground"
           >
             <WifiIcon class="size-3.5" />
-            Live read-only LAN share
+            {m.ui_live_read_only_lan_share()}
           </div>
           <h1 class="truncate text-xl font-semibold tracking-tight">
             {response.snapshot.title}
           </h1>
           <p class="text-xs text-muted-foreground">
-            Published {new Date(response.updated_at).toLocaleString()}
+            {m.share_published_date({
+              date: new Date(response.updated_at).toLocaleString(getLocale()),
+            })}
           </p>
         </div>
 
@@ -233,8 +237,8 @@
               bind:value={search_text}
               type="search"
               class="pl-9"
-              placeholder="Search this board"
-              aria-label="Search shared board"
+              placeholder={m.board_search_tasks()}
+              aria-label={m.ui_search_shared_board()}
             />
           </label>
           <Button
@@ -242,10 +246,12 @@
             size="icon"
             disabled={refresh_in_progress}
             onclick={() => void refresh_share()}
-            aria-label="Refresh shared board"
+            aria-label={m.ui_refresh_shared_board()}
             title={last_checked_at
-              ? `Refresh now (last checked ${last_checked_at.toLocaleTimeString()})`
-              : "Refresh now"}
+              ? m.share_refresh_checked({
+                  time: last_checked_at.toLocaleTimeString(getLocale()),
+                })
+              : m.ui_refresh_now()}
           >
             <RefreshCwIcon
               class={refresh_in_progress ? "size-4 animate-spin" : "size-4"}
@@ -259,7 +265,7 @@
         <div
           class="relative grid w-56 grid-cols-2 rounded-xl border bg-muted p-1 shadow-inner"
           role="tablist"
-          aria-label="Shared board view"
+          aria-label={m.ui_shared_board_view()}
         >
           <Button
             variant={active_view === "board" ? "default" : "ghost"}
@@ -269,7 +275,7 @@
             aria-selected={active_view === "board"}
             aria-current={active_view === "board" ? "page" : undefined}
             onclick={() => (active_view = "board")}
-            ><KanbanIcon class="size-4" />Board</Button
+            ><KanbanIcon class="size-4" />{m.board_title()}</Button
           >
           <Button
             variant={active_view === "calendar" ? "default" : "ghost"}
@@ -279,15 +285,20 @@
             aria-selected={active_view === "calendar"}
             aria-current={active_view === "calendar" ? "page" : undefined}
             onclick={() => (active_view = "calendar")}
-            ><CalendarDaysIcon class="size-4" />Calendar</Button
+            ><CalendarDaysIcon class="size-4" />{m.workspace_calendar()}</Button
           >
         </div>
         <span class="text-xs tabular-nums text-muted-foreground">
-          Viewing
+          {m.ui_viewing()}
           <strong class="font-medium text-foreground"
-            >{active_view === "board" ? "Board" : "Calendar"}</strong
+            >{active_view === "board"
+              ? m.board_title()
+              : m.workspace_calendar()}</strong
           >
-          · {matching_task_count} of {all_tasks.length} tasks
+          · {m.share_viewing_count({
+            visible: matching_task_count,
+            total: all_tasks.length,
+          })}
         </span>
       </div>
     </header>

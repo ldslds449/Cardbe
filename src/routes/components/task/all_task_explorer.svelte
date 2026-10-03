@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { formatNumber } from "$lib/i18n";
+  import { getLocale, formatDate } from "$lib/i18n";
+  import * as m from "$lib/paraglide/messages.js";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import ArchiveIcon from "@lucide/svelte/icons/archive";
@@ -96,13 +99,13 @@
   );
   const scope_name = $derived(
     board_scope === null
-      ? "All boards"
+      ? m.explorer_all_boards()
       : board_scope.length === 0
-        ? "No boards selected"
+        ? m.explorer_no_boards()
         : board_scope.length === 1
           ? (boards.find((item) => item.id === board_scope?.[0])?.name ??
-            "1 board")
-          : `${board_scope.length} boards selected`,
+            m.explorer_board_fallback())
+          : m.explorer_selected({ count: board_scope.length }),
   );
   let search_text = $state("");
   let column_filter = $state("all");
@@ -134,33 +137,33 @@
   const smart_views: {
     id: SmartView;
     label: string;
-  }[] = [
-    { id: "active", label: "Active" },
-    { id: "overdue", label: "Overdue" },
-    { id: "recurring", label: "Recurring" },
-    { id: "archived", label: "Archived" },
-    { id: "all", label: "All statuses" },
-  ];
+  }[] = $derived([
+    { id: "active", label: m.explorer_active() },
+    { id: "overdue", label: m.explorer_overdue() },
+    { id: "recurring", label: m.explorer_recurring() },
+    { id: "archived", label: m.explorer_archived() },
+    { id: "all", label: m.explorer_all_statuses() },
+  ]);
 
   const column_options = $derived([
-    { id: "all", label: "All columns" },
+    { id: "all", label: m.explorer_all_columns() },
     ...columns.map((column) => ({ id: column.id, label: column.name })),
   ]);
   const sort_options = $derived.by(() =>
     smart_view === "archived"
       ? [
-          { id: "archived" as const, label: "Archived at" },
-          { id: "title" as const, label: "Title" },
+          { id: "archived" as const, label: m.explorer_archived_at() },
+          { id: "title" as const, label: m.task_title() },
         ]
       : smart_view === "recurring"
         ? [
-            { id: "title" as const, label: "Title" },
-            { id: "column" as const, label: "Column" },
+            { id: "title" as const, label: m.task_title() },
+            { id: "column" as const, label: m.explorer_column() },
           ]
         : [
-            { id: "due" as const, label: "Due date" },
-            { id: "title" as const, label: "Title" },
-            { id: "column" as const, label: "Column" },
+            { id: "due" as const, label: m.explorer_due_label() },
+            { id: "title" as const, label: m.task_title() },
+            { id: "column" as const, label: m.explorer_column() },
           ],
   );
 
@@ -227,12 +230,17 @@
   );
   const empty_title = $derived(
     board_scope?.length === 0
-      ? "No boards selected"
+      ? m.explorer_no_boards()
       : has_conditions
-        ? "No matching tasks"
+        ? m.explorer_no_matching()
         : smart_view === "all"
-          ? "No tasks yet"
-          : `No ${smart_view} tasks`,
+          ? m.explorer_no_tasks()
+          : {
+              active: m.explorer_empty_active,
+              overdue: m.explorer_empty_overdue,
+              recurring: m.explorer_empty_recurring,
+              archived: m.explorer_empty_archived,
+            }[smart_view](),
   );
 
   $effect(() => {
@@ -288,9 +296,9 @@
 
   function format_due(task: Task | TaskSummary): string {
     if (!task.due_time) {
-      return "No due date";
+      return m.task_due_none();
     }
-    return task.due_time.toLocaleString("en", {
+    return task.due_time.toLocaleString(getLocale(), {
       month: "short",
       day: "numeric",
       hour:
@@ -309,19 +317,29 @@
   }
 
   function format_archive_time(archived_at: Date): string {
-    return `Archived ${archived_at.toLocaleDateString("en", {
-      month: "short",
-      day: "numeric",
-      year:
-        archived_at.getFullYear() === now.getFullYear() ? undefined : "numeric",
-    })}`;
+    return m.explorer_archived_date({
+      date: archived_at.toLocaleDateString(getLocale(), {
+        month: "short",
+        day: "numeric",
+        year:
+          archived_at.getFullYear() === now.getFullYear()
+            ? undefined
+            : "numeric",
+      }),
+    });
   }
 
   function entry_column(entry: ExplorerEntry): string {
     if (entry.archived_at) {
       return entry.board_name;
     }
-    return `${entry.board_name} / ${entry.column_name ?? "No column"}`;
+    return `${entry.board_name} / ${entry.column_name ?? m.explorer_no_column()}`;
+  }
+
+  function range_date(value: string, fallback: string): string {
+    return value
+      ? formatDate(new Date(`${value}T00:00:00`), { dateStyle: "medium" })
+      : fallback;
   }
 
   function clear_filters() {
@@ -441,10 +459,10 @@
         <div class="min-w-0">
           <Sheet.Title class="flex items-center gap-2">
             <ListTodoIcon class="size-5 text-primary" />
-            Task Explorer
+            {m.task_explorer()}
           </Sheet.Title>
           <Sheet.Description class="sr-only"
-            >Search and manage tasks across boards.</Sheet.Description
+            >{m.explorer_description()}</Sheet.Description
           >
         </div>
       </div>
@@ -456,7 +474,9 @@
       <div class="flex items-center justify-between gap-3">
         <div aria-live="polite">
           <span class="text-base font-semibold"
-            >{entries.length} {has_more ? "tasks loaded" : "tasks"}</span
+            >{has_more
+              ? m.explorer_loaded({ count: entries.length })
+              : m.task_count({ count: entries.length })}</span
           >
         </div>
         <Button
@@ -467,10 +487,10 @@
           onclick={() => (controls_open = !controls_open)}
         >
           <SlidersHorizontalIcon class="size-4" />{controls_open
-            ? "Hide filters"
-            : "Show filters"}
+            ? m.explorer_hide_filters()
+            : m.explorer_show_filters()}
           {#if active_filter_count}<Badge variant="secondary"
-              >{active_filter_count}</Badge
+              >{formatNumber(active_filter_count)}</Badge
             >{/if}
           <ChevronDownIcon
             class={cn(
@@ -484,7 +504,7 @@
         <div
           class="grid min-w-[10rem] flex-[1.2] gap-1 text-xs font-medium text-muted-foreground"
         >
-          <span id="task-explorer-board-label">Board scope</span>
+          <span id="task-explorer-board-label">{m.explorer_scope()}</span>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger>
               {#snippet child({ props })}
@@ -515,7 +535,7 @@
                 onCheckedChange={(checked) => {
                   board_scope = checked ? null : [];
                   column_filter = "all";
-                }}>All boards</DropdownMenu.CheckboxItem
+                }}>{m.explorer_all_boards()}</DropdownMenu.CheckboxItem
               >
               <DropdownMenu.Separator />
               {#each boards as board (board.id)}
@@ -541,7 +561,7 @@
         </div>
         <label
           class="grid min-w-[8rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
-          >Sort by
+          >{m.explorer_sort_by()}
           <Select.Root
             type="single"
             value={sort_mode}
@@ -550,7 +570,7 @@
           >
             <Select.Trigger
               class="h-9 w-full min-w-0 gap-2"
-              aria-label="Sort tasks"
+              aria-label={m.explorer_sort_tasks()}
             >
               <ArrowUpDownIcon class="size-4" />
               {sort_options.find((option) => option.id === sort_mode)?.label ??
@@ -567,18 +587,18 @@
       <InputGroup.Root>
         <InputGroup.Input
           placeholder={board_scope === null
-            ? "Search all boards"
-            : `Search tasks in ${scope_name}`}
+            ? m.explorer_search_all()
+            : m.explorer_search_selected()}
           aria-label={board_scope === null
-            ? "Search all boards"
-            : `Search tasks in ${scope_name}`}
+            ? m.explorer_search_all()
+            : m.explorer_search_selected()}
           bind:value={search_text}
         />
         <InputGroup.Addon><SearchIcon /></InputGroup.Addon>
         {#if search_text}
           <InputGroup.Addon align="inline-end">
             <InputGroup.Button
-              aria-label="Clear task search"
+              aria-label={m.explorer_clear_search()}
               size="icon-xs"
               onclick={() => (search_text = "")}
             >
@@ -588,7 +608,11 @@
         {/if}
       </InputGroup.Root>
 
-      <div class="flex flex-wrap gap-2" role="group" aria-label="Task status">
+      <div
+        class="flex flex-wrap gap-2"
+        role="group"
+        aria-label={m.explorer_status()}
+      >
         {#each smart_views as view (view.id)}
           <Button
             variant={smart_view === view.id ? "default" : "outline"}
@@ -602,18 +626,20 @@
       {#if active_filter_count}
         <div
           class="flex flex-wrap items-center gap-2"
-          aria-label="Applied filters"
+          aria-label={m.explorer_applied()}
         >
           {#if column_filter !== "all"}
             <Button
               variant="secondary"
               size="xs"
-              title="Clear column filter"
+              title={m.explorer_clear_column()}
               onclick={() => (column_filter = "all")}
             >
-              Column: {column_options.find(
-                (column) => column.id === column_filter,
-              )?.label}
+              {m.explorer_filter_column({
+                name:
+                  column_options.find((column) => column.id === column_filter)
+                    ?.label ?? m.explorer_no_column(),
+              })}
               <XIcon class="size-3" />
             </Button>
           {/if}
@@ -621,19 +647,22 @@
             <Button
               variant="secondary"
               size="xs"
-              title="Clear due date filter"
+              title={m.explorer_clear_due()}
               onclick={() => {
                 due_filter = "all";
                 due_start = "";
                 due_end = "";
               }}
               >{due_filter === "due"
-                ? "Has due date"
+                ? m.explorer_has_due()
                 : due_filter === "today"
-                  ? "Due today"
+                  ? m.explorer_due_today()
                   : due_filter === "custom"
-                    ? `Due: ${due_start || "Any start"} – ${due_end || "Any end"}`
-                    : "No due date"}
+                    ? m.explorer_filter_due({
+                        start: range_date(due_start, m.explorer_any_start()),
+                        end: range_date(due_end, m.explorer_any_end()),
+                      })
+                    : m.task_due_none()}
               <XIcon class="size-3" />
             </Button>
           {/if}
@@ -641,30 +670,42 @@
             <Button
               variant="secondary"
               size="xs"
-              title="Clear archive time filter"
+              title={m.explorer_clear_archive()}
               onclick={() => {
                 archive_time_filter = "all";
                 archive_start = "";
                 archive_end = "";
               }}
-              >Archived: {archive_time_filter === "today"
-                ? "Today"
-                : archive_time_filter === "7d"
-                  ? "Last 7 days"
-                  : archive_time_filter === "30d"
-                    ? "Last 30 days"
-                    : archive_time_filter === "custom"
-                      ? `${archive_start || "Any start"} – ${archive_end || "Any end"}`
-                      : "This year"}
+              >{m.explorer_filter_archive({
+                range:
+                  archive_time_filter === "today"
+                    ? m.workspace_today()
+                    : archive_time_filter === "7d"
+                      ? m.explorer_last7()
+                      : archive_time_filter === "30d"
+                        ? m.explorer_last30()
+                        : archive_time_filter === "custom"
+                          ? m.explorer_range({
+                              start: range_date(
+                                archive_start,
+                                m.explorer_any_start(),
+                              ),
+                              end: range_date(
+                                archive_end,
+                                m.explorer_any_end(),
+                              ),
+                            })
+                          : m.explorer_year(),
+              })}
               <XIcon class="size-3" />
             </Button>
           {/if}
           <Button
             variant="ghost"
             size="xs"
-            title="Clear column, due date, and archive time filters"
+            title={m.explorer_clear_all_hint()}
             onclick={reset_filters}
-            ><RotateCcwIcon class="size-3" />Clear all filters</Button
+            ><RotateCcwIcon class="size-3" />{m.explorer_clear_all()}</Button
           >
         </div>
       {/if}
@@ -677,7 +718,7 @@
                 <label
                   class="grid min-w-[9rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
                 >
-                  Column
+                  {m.explorer_column()}
                   <Select.Root
                     type="single"
                     value={column_filter}
@@ -686,7 +727,7 @@
                     <Select.Trigger class="h-9 w-full min-w-0">
                       {column_options.find(
                         (column) => column.id === column_filter,
-                      )?.label ?? "All columns"}
+                      )?.label ?? m.explorer_all_columns()}
                     </Select.Trigger>
                     <Select.Content>
                       {#each column_options as column (column.id)}
@@ -701,7 +742,7 @@
               <label
                 class="grid min-w-[8rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
               >
-                Due
+                {m.task_due_date()}
                 <Select.Root
                   type="single"
                   value={due_filter}
@@ -710,21 +751,27 @@
                 >
                   <Select.Trigger class="h-9 w-full min-w-0">
                     {due_filter === "all"
-                      ? "Any due date"
+                      ? m.explorer_any_due()
                       : due_filter === "due"
-                        ? "Has due date"
+                        ? m.explorer_has_due()
                         : due_filter === "today"
-                          ? "Due today"
+                          ? m.explorer_due_today()
                           : due_filter === "custom"
-                            ? "Custom range"
-                            : "No due date"}
+                            ? m.explorer_custom_range()
+                            : m.task_due_none()}
                   </Select.Trigger>
                   <Select.Content>
-                    <Select.Item value="all">Any due date</Select.Item>
-                    <Select.Item value="due">Has due date</Select.Item>
-                    <Select.Item value="today">Due today</Select.Item>
-                    <Select.Item value="none">No due date</Select.Item>
-                    <Select.Item value="custom">Custom range</Select.Item>
+                    <Select.Item value="all">{m.explorer_any_due()}</Select.Item
+                    >
+                    <Select.Item value="due">{m.explorer_has_due()}</Select.Item
+                    >
+                    <Select.Item value="today"
+                      >{m.explorer_due_today()}</Select.Item
+                    >
+                    <Select.Item value="none">{m.task_due_none()}</Select.Item>
+                    <Select.Item value="custom"
+                      >{m.explorer_custom_range()}</Select.Item
+                    >
                   </Select.Content>
                 </Select.Root>
               </label>
@@ -732,14 +779,14 @@
             {#if due_filter === "custom"}
               <div class="grid grid-cols-2 gap-3">
                 <DateFilterPicker
-                  label="Due from"
+                  label={m.explorer_due_from()}
                   bind:value={due_start}
                   max={due_end || undefined}
                   invalid={invalid_due_range}
                   describedby="due-range-help"
                 />
                 <DateFilterPicker
-                  label="Due through"
+                  label={m.explorer_due_through()}
                   bind:value={due_end}
                   min={due_start || undefined}
                   invalid={invalid_due_range}
@@ -754,8 +801,8 @@
                 role={invalid_due_range ? "alert" : undefined}
               >
                 {invalid_due_range
-                  ? "End date must be on or after start date."
-                  : "Includes both dates. Tasks without a due date are excluded. Leave either date empty for an open-ended range."}
+                  ? m.explorer_range_invalid()
+                  : m.explorer_due_help()}
               </p>
             {/if}
             {#if smart_view === "archived" || smart_view === "all"}
@@ -763,7 +810,7 @@
                 <label
                   class="grid min-w-[10rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
                 >
-                  Archive time
+                  {m.explorer_archive_time()}
                   <Select.Root
                     type="single"
                     value={archive_time_filter}
@@ -773,24 +820,33 @@
                   >
                     <Select.Trigger class="h-9 w-full min-w-0">
                       {archive_time_filter === "all"
-                        ? "Any time"
+                        ? m.explorer_any_time()
                         : archive_time_filter === "today"
-                          ? "Today"
+                          ? m.workspace_today()
                           : archive_time_filter === "7d"
-                            ? "Last 7 days"
+                            ? m.explorer_last7()
                             : archive_time_filter === "30d"
-                              ? "Last 30 days"
+                              ? m.explorer_last30()
                               : archive_time_filter === "custom"
-                                ? "Custom range"
-                                : "This year"}
+                                ? m.explorer_custom_range()
+                                : m.explorer_year()}
                     </Select.Trigger>
                     <Select.Content>
-                      <Select.Item value="all">Any time</Select.Item>
-                      <Select.Item value="today">Today</Select.Item>
-                      <Select.Item value="7d">Last 7 days</Select.Item>
-                      <Select.Item value="30d">Last 30 days</Select.Item>
-                      <Select.Item value="year">This year</Select.Item>
-                      <Select.Item value="custom">Custom range</Select.Item>
+                      <Select.Item value="all"
+                        >{m.explorer_any_time()}</Select.Item
+                      >
+                      <Select.Item value="today"
+                        >{m.workspace_today()}</Select.Item
+                      >
+                      <Select.Item value="7d">{m.explorer_last7()}</Select.Item>
+                      <Select.Item value="30d"
+                        >{m.explorer_last30()}</Select.Item
+                      >
+                      <Select.Item value="year">{m.explorer_year()}</Select.Item
+                      >
+                      <Select.Item value="custom"
+                        >{m.explorer_custom_range()}</Select.Item
+                      >
                     </Select.Content>
                   </Select.Root>
                 </label>
@@ -798,14 +854,14 @@
               {#if archive_time_filter === "custom"}
                 <div class="grid grid-cols-2 gap-3">
                   <DateFilterPicker
-                    label="Start date"
+                    label={m.ui_start_date()}
                     bind:value={archive_start}
                     max={archive_end || undefined}
                     invalid={invalid_archive_range}
                     describedby="archive-range-help"
                   />
                   <DateFilterPicker
-                    label="End date"
+                    label={m.explorer_end()}
                     bind:value={archive_end}
                     min={archive_start || undefined}
                     invalid={invalid_archive_range}
@@ -820,8 +876,8 @@
                   role={invalid_archive_range ? "alert" : undefined}
                 >
                   {invalid_archive_range
-                    ? "End date must be on or after start date."
-                    : "Includes both dates. Leave either date empty for an open-ended range."}
+                    ? m.explorer_range_invalid()
+                    : m.explorer_archive_help()}
                 </p>
               {/if}
             {/if}
@@ -834,12 +890,12 @@
       {#if all_task_items_error && !loading && entries.length === 0}
         <Empty.Root class="h-full border-none">
           <Empty.Header
-            ><Empty.Title>Couldn't load tasks</Empty.Title>
-            <Empty.Description>Try loading the list again.</Empty.Description
+            ><Empty.Title>{m.explorer_load_error()}</Empty.Title>
+            <Empty.Description>{m.explorer_retry_hint()}</Empty.Description
             ></Empty.Header
           >
           <Button variant="outline" onclick={() => onSearchAllTasks(query)}
-            >Retry</Button
+            >{m.common_retry()}</Button
           >
         </Empty.Root>
       {:else if loading && entries.length === 0}
@@ -847,7 +903,7 @@
           class="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground"
         >
           <Spinner />
-          Loading {smart_view} tasks...
+          {m.explorer_loading()}
         </div>
       {:else if entries.length === 0 && !has_more}
         <Empty.Root class="h-full border-none py-12">
@@ -856,16 +912,19 @@
             <Empty.Title>{empty_title}</Empty.Title>
             <Empty.Description
               >{board_scope?.length === 0
-                ? "Select at least one board to view tasks."
+                ? m.explorer_select_board_hint()
                 : has_conditions
-                  ? "Try another search or clear the filters."
-                  : `There are no ${smart_view === "all" ? "" : smart_view + " "}tasks in ${scope_name}.`}</Empty.Description
+                  ? m.explorer_search_hint()
+                  : m.explorer_empty_scope({
+                      name: scope_name,
+                    })}</Empty.Description
             >
             {#if has_conditions}
               <Button
                 variant="outline"
-                title="Clear the search text and all applied filters"
-                onclick={clear_filters}>Clear search and filters</Button
+                title={m.explorer_clear_search_hint()}
+                onclick={clear_filters}
+                >{m.explorer_clear_search_filters()}</Button
               >
             {/if}
           </Empty.Header>
@@ -889,9 +948,11 @@
                   <button
                     type="button"
                     class="min-w-0 flex-1 self-stretch text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    aria-label={`View ${entry.task.title || "untitled task"}`}
+                    aria-label={m.explorer_view_named({
+                      name: entry.task.title || m.task_untitled(),
+                    })}
                     title={entry.board_id !== active_board_id
-                      ? `Opens this task in ${entry.board_name}`
+                      ? m.explorer_open_board({ name: entry.board_name })
                       : undefined}
                     onclick={() => void load_detail(entry)}
                   >
@@ -904,7 +965,7 @@
                         <span
                           class="block truncate text-sm font-medium leading-5 text-foreground"
                         >
-                          {entry.task.title || "Untitled task"}
+                          {entry.task.title || m.task_untitled()}
                         </span>
                         <span
                           class="mt-1 flex min-w-0 items-center gap-3 text-xs text-muted-foreground"
@@ -939,7 +1000,8 @@
                           {#if entry_read_only(entry)}
                             <Badge
                               variant="outline"
-                              class="shrink-0 py-0 text-[11px]">Read only</Badge
+                              class="shrink-0 py-0 text-[11px]"
+                              >{m.board_read_only()}</Badge
                             >
                           {:else if boards.some((board) => board.id === entry.board_id && (board.is_shared || board.shared_role === "editor"))}
                             <Badge
@@ -953,7 +1015,7 @@
                               class="gap-1 py-0 text-[11px]"
                             >
                               <Repeat2Icon />
-                              Recurring
+                              {m.explorer_recurring()}
                             </Badge>
                           {/if}
                         </span>
@@ -972,8 +1034,10 @@
                           {...props}
                           variant="ghost"
                           size="icon-sm"
-                          aria-label={`Actions for ${entry.task.title || "untitled task"}`}
-                          title="Task actions"
+                          aria-label={m.explorer_actions_named({
+                            name: entry.task.title || m.task_untitled(),
+                          })}
+                          title={m.task_menu()}
                           ><EllipsisIcon class="size-4" /></Button
                         >
                       {/snippet}
@@ -982,7 +1046,9 @@
                       <DropdownMenu.Item
                         disabled={Boolean(detail_loading_id)}
                         onclick={() => void load_detail(entry)}
-                        ><ListTodoIcon class="size-4" />View task</DropdownMenu.Item
+                        ><ListTodoIcon
+                          class="size-4"
+                        />{m.explorer_view()}</DropdownMenu.Item
                       >
                       {#if !entry_read_only(entry)}
                         <DropdownMenu.Separator />
@@ -990,18 +1056,24 @@
                           <DropdownMenu.Item
                             disabled={Boolean(detail_loading_id)}
                             onclick={() => void unarchive_entry(entry)}
-                            ><Undo2Icon class="size-4" />Unarchive task</DropdownMenu.Item
+                            ><Undo2Icon
+                              class="size-4"
+                            />{m.explorer_unarchive()}</DropdownMenu.Item
                           >
                         {:else}
                           <DropdownMenu.Item
                             disabled={Boolean(detail_loading_id)}
                             onclick={() => void load_detail(entry, true)}
-                            ><PencilIcon class="size-4" />Edit task</DropdownMenu.Item
+                            ><PencilIcon
+                              class="size-4"
+                            />{m.explorer_edit()}</DropdownMenu.Item
                           >
                           <DropdownMenu.Item
                             disabled={Boolean(detail_loading_id)}
                             onclick={() => void archive_entry(entry)}
-                            ><ArchiveIcon class="size-4" />Archive task</DropdownMenu.Item
+                            ><ArchiveIcon
+                              class="size-4"
+                            />{m.explorer_archive()}</DropdownMenu.Item
                           >
                         {/if}
                       {/if}
@@ -1013,7 +1085,9 @@
                 <ContextMenu.Item
                   disabled={Boolean(detail_loading_id)}
                   onclick={() => void load_detail(entry)}
-                  ><ListTodoIcon class="size-4" />View task</ContextMenu.Item
+                  ><ListTodoIcon
+                    class="size-4"
+                  />{m.explorer_view()}</ContextMenu.Item
                 >
                 {#if !entry_read_only(entry)}
                   <ContextMenu.Separator />
@@ -1021,18 +1095,24 @@
                     <ContextMenu.Item
                       disabled={Boolean(detail_loading_id)}
                       onclick={() => void unarchive_entry(entry)}
-                      ><Undo2Icon class="size-4" />Unarchive task</ContextMenu.Item
+                      ><Undo2Icon
+                        class="size-4"
+                      />{m.explorer_unarchive()}</ContextMenu.Item
                     >
                   {:else}
                     <ContextMenu.Item
                       disabled={Boolean(detail_loading_id)}
                       onclick={() => void load_detail(entry, true)}
-                      ><PencilIcon class="size-4" />Edit task</ContextMenu.Item
+                      ><PencilIcon
+                        class="size-4"
+                      />{m.explorer_edit()}</ContextMenu.Item
                     >
                     <ContextMenu.Item
                       disabled={Boolean(detail_loading_id)}
                       onclick={() => void archive_entry(entry)}
-                      ><ArchiveIcon class="size-4" />Archive task</ContextMenu.Item
+                      ><ArchiveIcon
+                        class="size-4"
+                      />{m.explorer_archive()}</ContextMenu.Item
                     >
                   {/if}
                 {/if}
@@ -1044,14 +1124,14 @@
           <div
             class="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground"
           >
-            <Spinner />Loading more...
+            <Spinner />{m.explorer_loading_more()}
           </div>
         {/if}
         {#if all_task_items_error && !loading}
           <Button
             variant="outline"
             class="shrink-0"
-            onclick={onLoadMoreAllTasks}>Retry loading more tasks</Button
+            onclick={onLoadMoreAllTasks}>{m.explorer_retry_more()}</Button
           >
         {/if}
       {/if}
