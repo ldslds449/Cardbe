@@ -164,6 +164,7 @@ fn write_task(map: &LoroMap, task: &Task, archive_time: Option<u128>) -> Result<
     set_field(map, "labels", &task.labels)?;
     set_field(map, "items", &task.items)?;
     set_field(map, "recurrence", &task.recurrence)?;
+    set_field(map, "pinned", &task.pinned)?;
     set_field(map, "archive_time", &archive_time)
 }
 
@@ -326,6 +327,11 @@ fn task_from_map(id: i64, map: &serde_json::Value) -> Result<Task, String> {
         labels: field(map, "labels")?,
         items: field(map, "items")?,
         recurrence: field(map, "recurrence")?,
+        pinned: if map.get("pinned").is_some() {
+            field(map, "pinned")?
+        } else {
+            false
+        },
     })
 }
 
@@ -489,12 +495,14 @@ mod tests {
         title.columns[0].tasks[0].title = "After".into();
         let mut color = base.clone();
         color.columns[0].tasks[0].color = "blue".into();
+        color.columns[0].tasks[0].pinned = true;
         let left = apply_local_delta(Some(&initial), &base, &title).unwrap();
         let right = apply_local_delta(Some(&initial), &base, &color).unwrap();
         let merged = merge(Some(&left), &right).unwrap();
         let card = &project(&merged).unwrap().columns[0].tasks[0];
         assert_eq!(card.title, "After");
         assert_eq!(card.color, "blue");
+        assert!(card.pinned);
     }
 
     #[test]

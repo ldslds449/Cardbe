@@ -18,6 +18,7 @@ fn normalize_template_task(mut task: crate::models::Task) -> crate::models::Task
     task.start_time = 0;
     task.due_time = None;
     task.recurrence = None;
+    task.pinned = false;
     for item in &mut task.items {
         item.completed = false;
     }

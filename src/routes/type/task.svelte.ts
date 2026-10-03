@@ -27,6 +27,7 @@ export function recurrence_label(recurrence: Recurrence | undefined): string {
 }
 
 export interface Task {
+  pinned?: boolean;
   id: string;
   title: string;
   description: string;
@@ -39,6 +40,7 @@ export interface Task {
 }
 
 export interface TaskSerialized {
+  pinned?: boolean;
   id: number;
   title: string;
   description: string;
@@ -111,6 +113,7 @@ export function create_task(
     labels: labels,
     items: items,
     recurrence: recurrence,
+    pinned: false,
   };
 }
 
@@ -124,6 +127,7 @@ export function reset_task(task: Task): void {
   task.labels = [];
   task.items = [];
   task.recurrence = undefined;
+  task.pinned = false;
 }
 
 export function clone_task(task: Task): Task {
@@ -157,6 +161,7 @@ export function task_from_template(task: Task): Task {
     completed: false,
   }));
   result.recurrence = undefined;
+  result.pinned = false;
   return result;
 }
 
@@ -185,6 +190,7 @@ export function serialize_task(task: Task): TaskSerialized {
     labels: task.labels,
     items: task.items,
     recurrence: task.recurrence,
+    pinned: task.pinned ?? false,
   };
 }
 
@@ -199,6 +205,7 @@ export function deserialize_task(data: TaskSerialized): Task {
     labels: data.labels,
     items: (data.items ?? []).map((item) => ({ ...item })),
     recurrence: data.recurrence ? { ...data.recurrence } : undefined,
+    pinned: data.pinned ?? false,
   };
   set_task_id(t, data.id);
   return t;

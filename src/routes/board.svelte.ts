@@ -531,6 +531,9 @@ export class BoardStore {
           return;
         }
         board.columns = data.map(deserialize_column);
+        for (const column of board.columns) {
+          board.sort_column_tasks(column);
+        }
         board.sync_active_board_task_count();
         board.column_fetch_finish = true;
       })
@@ -1235,11 +1238,13 @@ export class BoardStore {
   // ============ Task Operations ============
 
   sort_column_tasks(column: Column) {
-    if (column.sort_order === "custom") {
-      return;
-    }
     const direction = column.sort_order === "due_date_asc" ? 1 : -1;
     column.tasks.sort((a, b) => {
+      const pinned_order =
+        Number(b.pinned ?? false) - Number(a.pinned ?? false);
+      if (pinned_order || column.sort_order === "custom") {
+        return pinned_order;
+      }
       if (!a.due_time) {
         return b.due_time ? 1 : 0;
       }
@@ -1971,7 +1976,10 @@ export class BoardStore {
       return true;
     }
 
-    const before_task_id = to_column.tasks[to_task_idx + 1]?.id ?? null;
+    const final_task_idx = to_column.tasks.findIndex(
+      (task) => task.id === data.id,
+    );
+    const before_task_id = to_column.tasks[final_task_idx + 1]?.id ?? null;
     this.persist_task_move(data.id, to_column.id, before_task_id);
     return true;
   }

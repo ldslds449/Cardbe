@@ -483,6 +483,41 @@ describe("pending task operations", () => {
 });
 
 describe("column sorting", () => {
+  it("keeps pinned cards first for custom and date sorting", () => {
+    const store = create_store();
+    const first = create_task("task_1", "First");
+    const pinned = create_task("task_2", "Pinned");
+    pinned.pinned = true;
+    const dated = create_task(
+      "task_3",
+      "Dated",
+      "",
+      "",
+      undefined,
+      new Date(100),
+    );
+    store.columns[0].tasks = [first, pinned, dated];
+    store.sort_column_tasks(store.columns[0]);
+    expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
+      "task_2",
+      "task_1",
+      "task_3",
+    ]);
+    store.columns[0].sort_order = "due_date_asc";
+    store.sort_column_tasks(store.columns[0]);
+    expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
+      "task_2",
+      "task_3",
+      "task_1",
+    ]);
+    pinned.pinned = false;
+    store.sort_column_tasks(store.columns[0]);
+    expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
+      "task_3",
+      "task_2",
+      "task_1",
+    ]);
+  });
   it("sorts due dates in either direction and leaves undated tasks last", () => {
     const store = create_store();
     const undated = create_task("task_1", "Undated");

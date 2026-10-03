@@ -18,6 +18,7 @@
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
   import Share2Icon from "@lucide/svelte/icons/share-2";
+  import PinIcon from "@lucide/svelte/icons/pin";
 
   import { recurrence_label, type Task } from "../../type/task.svelte";
   import { display_task_color } from "../../utils/task-color";
@@ -41,6 +42,7 @@
     onExportTask?: () => void;
     onDeleteTask: () => void;
     onArchiveTask: () => void;
+    onTogglePin?: () => void;
   }
 
   let {
@@ -57,6 +59,7 @@
     onExportTask = () => {},
     onDeleteTask = () => {},
     onArchiveTask = () => {},
+    onTogglePin,
   }: CardItemProps = $props();
 
   const { ref, isDragging, isDropTarget } = useSortable({
@@ -153,12 +156,19 @@
   >
     <Card.Header class="w-full px-4">
       <Card.Title
-        class="break-all pr-16"
+        class="break-all {onTogglePin && !read_only ? 'pr-24' : 'pr-16'}"
         style="color: {display_task_color(task.color)};"
       >
         {task.title}
       </Card.Title>
       <Card.Description>
+        {#if read_only && task.pinned}
+          <span
+            class="mr-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+          >
+            <PinIcon class="size-3.5 fill-current" />
+          </span>
+        {/if}
         {#if due_metadata != undefined}
           <span
             class={`inline-flex items-center gap-1.5 text-xs ${
@@ -191,7 +201,7 @@
     </Card.Header>
     {#if !read_only}
       <div
-        class="absolute top-3 right-3 z-20 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        class="absolute top-3 right-3 z-20 flex items-start gap-1"
         onpointerdown={(event) => event.stopPropagation()}
         ondblclick={(event) => event.stopPropagation()}
       >
@@ -199,7 +209,7 @@
           <Button
             variant="ghost"
             size="icon-sm"
-            class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             aria-label={show_content
               ? "Collapse task content"
               : "Expand task content"}
@@ -218,76 +228,98 @@
             {/if}
           </Button>
         {/if}
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            {#snippet child({ props })}
-              <Button
-                {...props}
-                variant="ghost"
-                size="icon-sm"
-                class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                aria-label="Task actions"
-                title="Task actions"
-              >
-                <EllipsisIcon class="size-4" />
-              </Button>
-            {/snippet}
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content
-            align="end"
-            class="min-w-36"
-            onCloseAutoFocus={(event) => {
-              if (prevent_menu_focus_restore) {
-                event.preventDefault();
-              }
-              prevent_menu_focus_restore = false;
-            }}
-          >
-            <DropdownMenu.Item onclick={onViewTask}>
-              <FullscreenIcon />
-              View Details
-            </DropdownMenu.Item>
-            <DropdownMenu.Item onclick={onEditTask}>
-              <PencilIcon />
-              Edit Task
-            </DropdownMenu.Item>
-            <DropdownMenu.Item onclick={onDuplicateTask}>
-              <CopyIcon />
-              Duplicate Task
-            </DropdownMenu.Item>
-            {#if onSaveAsTemplate}
-              <DropdownMenu.Item onclick={onSaveAsTemplate}>
-                <LayoutTemplateIcon />
-                Save as Template
+        <div class="flex flex-row-reverse items-center gap-1">
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger>
+              {#snippet child({ props })}
+                <Button
+                  {...props}
+                  variant="ghost"
+                  size="icon-sm"
+                  class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                  aria-label="Task actions"
+                  title="Task actions"
+                >
+                  <EllipsisIcon class="size-4" />
+                </Button>
+              {/snippet}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content
+              align="end"
+              class="min-w-36"
+              onCloseAutoFocus={(event) => {
+                if (prevent_menu_focus_restore) {
+                  event.preventDefault();
+                }
+                prevent_menu_focus_restore = false;
+              }}
+            >
+              <DropdownMenu.Item onclick={onViewTask}>
+                <FullscreenIcon />
+                View Details
               </DropdownMenu.Item>
-            {/if}
-            <DropdownMenu.Item onclick={onExportTask}>
-              <Share2Icon />
-              Share Task
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              onSelect={() => {
-                // This trigger disappears with the archived card. Restoring
-                // focus to it can make the scroll viewport jump to the top.
-                prevent_menu_focus_restore = true;
-                onArchiveTask();
+              <DropdownMenu.Item onclick={onEditTask}>
+                <PencilIcon />
+                Edit Task
+              </DropdownMenu.Item>
+              <DropdownMenu.Item onclick={onDuplicateTask}>
+                <CopyIcon />
+                Duplicate Task
+              </DropdownMenu.Item>
+              {#if onSaveAsTemplate}
+                <DropdownMenu.Item onclick={onSaveAsTemplate}>
+                  <LayoutTemplateIcon />
+                  Save as Template
+                </DropdownMenu.Item>
+              {/if}
+              <DropdownMenu.Item onclick={onExportTask}>
+                <Share2Icon />
+                Share Task
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onSelect={() => {
+                  // This trigger disappears with the archived card. Restoring
+                  // focus to it can make the scroll viewport jump to the top.
+                  prevent_menu_focus_restore = true;
+                  onArchiveTask();
+                }}
+              >
+                <ArchiveIcon />
+                Archive Task
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item
+                variant="destructive"
+                onclick={() => {
+                  delete_confirm_open = true;
+                }}
+              >
+                <TrashIcon />
+                Delete Task
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+          {#if onTogglePin}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground {task.pinned
+                ? 'opacity-100'
+                : 'opacity-0'} transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              aria-label={task.pinned ? "Unpin Task" : "Pin Task"}
+              aria-pressed={task.pinned ?? false}
+              title={task.pinned ? "Unpin Task" : "Pin Task"}
+              onclick={(event) => {
+                if (event.detail > 0) {
+                  event.currentTarget.blur();
+                }
+                onTogglePin();
               }}
             >
-              <ArchiveIcon />
-              Archive Task
-            </DropdownMenu.Item>
-            <DropdownMenu.Separator />
-            <DropdownMenu.Item
-              variant="destructive"
-              onclick={() => {
-                delete_confirm_open = true;
-              }}
-            >
-              <TrashIcon />
-              Delete Task
-            </DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+              <PinIcon class="size-3.5 {task.pinned ? '' : 'rotate-45'}" />
+            </Button>
+          {/if}
+        </div>
       </div>
     {/if}
     {#if task.items.length > 0 || (task.description.trim().length > 0 && (expand_content || show_content))}

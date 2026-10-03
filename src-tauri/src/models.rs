@@ -113,6 +113,8 @@ pub struct Recurrence {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Task {
+    #[serde(default)]
+    pub pinned: bool,
     #[serde(default = "default_id")]
     pub id: i64,
     #[serde(default)]
@@ -161,6 +163,7 @@ impl From<&Task> for TaskSummary {
 impl Default for Task {
     fn default() -> Self {
         Self {
+            pinned: false,
             id: -1,
             title: String::new(),
             description: String::new(),
@@ -281,13 +284,18 @@ impl StoredData {
     pub fn sort_column_tasks(&mut self) {
         for column in &mut self.columns {
             let direction = match column.sort_order {
-                ColumnSort::Custom => continue,
+                ColumnSort::Custom => std::cmp::Ordering::Equal,
                 ColumnSort::DueDateAsc => std::cmp::Ordering::Less,
                 ColumnSort::DueDateDesc => std::cmp::Ordering::Greater,
             };
-            column
-                .tasks
-                .sort_by(|left, right| match (left.due_time, right.due_time) {
+            column.tasks.sort_by(|left, right| {
+                let pinned_order = right.pinned.cmp(&left.pinned);
+                if pinned_order != std::cmp::Ordering::Equal
+                    || direction == std::cmp::Ordering::Equal
+                {
+                    return pinned_order;
+                }
+                match (left.due_time, right.due_time) {
                     (Some(left), Some(right)) => {
                         if direction == std::cmp::Ordering::Less {
                             left.cmp(&right)
@@ -298,7 +306,8 @@ impl StoredData {
                     (Some(_), None) => std::cmp::Ordering::Less,
                     (None, Some(_)) => std::cmp::Ordering::Greater,
                     (None, None) => std::cmp::Ordering::Equal,
-                });
+                }
+            });
         }
     }
 
@@ -524,6 +533,7 @@ mod tests {
         assert_eq!(migrated.schema_version, CURRENT_SCHEMA_VERSION);
         assert!(migrated.columns[0].tasks[0].items.is_empty());
         assert!(migrated.columns[0].tasks[0].recurrence.is_none());
+        assert!(!migrated.columns[0].tasks[0].pinned);
     }
 
     #[test]
@@ -575,6 +585,20 @@ mod tests {
                 .map(|task| task.id)
                 .collect::<Vec<_>>(),
             vec![2, 3, 1]
+        );
+        stored.columns[0].tasks[2].pinned = true;
+        stored.sort_column_tasks();
+        assert_eq!(stored.columns[0].tasks[0].id, 1);
+        stored.columns[0].sort_order = ColumnSort::Custom;
+        stored.columns[0].tasks.rotate_left(1);
+        stored.sort_column_tasks();
+        assert_eq!(
+            stored.columns[0]
+                .tasks
+                .iter()
+                .map(|task| task.id)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
         );
     }
 }

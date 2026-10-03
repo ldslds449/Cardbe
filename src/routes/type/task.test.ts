@@ -14,6 +14,15 @@ import {
 } from "./task.svelte";
 
 describe("task serialization", () => {
+  it("preserves pins and defaults older data to unpinned", () => {
+    const task = create_task("task_42", "Pinned");
+    task.pinned = true;
+    expect(deserialize_task(serialize_task(task)).pinned).toBe(true);
+    const legacy = serialize_task(task);
+    delete legacy.pinned;
+    expect(deserialize_task(legacy).pinned).toBe(false);
+    expect(task_from_template(task).pinned).toBe(false);
+  });
   it("round-trips dates, labels, and generated ids", () => {
     const checklist_item = create_task_item("Publish release notes");
     checklist_item.completed = true;

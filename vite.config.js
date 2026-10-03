@@ -42,6 +42,9 @@ export default defineConfig({
     clearMocks: false,
   },
   plugins: lazyPlugins(() => [tailwindcss(), sveltekit()]),
+  optimizeDeps: {
+    include: ["@tauri-apps/api/dpi", "@tauri-apps/api/window"],
+  },
   // Custom ports use their own generated config and dependency cache.
   ...(isCustomPort
     ? {

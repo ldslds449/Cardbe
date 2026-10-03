@@ -3968,6 +3968,7 @@ mod tests {
             tasks: vec![Task {
                 id: 0,
                 title: "First task".into(),
+                pinned: true,
                 ..Task::default()
             }],
         });
@@ -4011,6 +4012,7 @@ mod tests {
             restored_second.columns[0].tasks[0].id
         );
         assert_eq!(restored_first.columns[0].tasks[0].title, "First task");
+        assert!(restored_first.columns[0].tasks[0].pinned);
         assert_eq!(restored_second.columns[0].tasks[0].title, "Second task");
         assert_eq!(restored_first.settings, settings);
 
@@ -4018,6 +4020,7 @@ mod tests {
         let reopened = load(&dir).unwrap();
         assert_eq!(reopened.database.active_board_id(), boards[1].id);
         assert_eq!(reopened.stored.columns[0].tasks[0].title, "Second task");
+        assert!(reopened.stored.columns[0].tasks[0].pinned);
         assert_eq!(reopened.database.get_notes().unwrap(), notes);
         drop(reopened);
         fs::remove_dir_all(dir).unwrap();

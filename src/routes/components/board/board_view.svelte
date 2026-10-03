@@ -172,7 +172,12 @@
         from_position &&
         to_position &&
         from_position.column_idx === to_position.column_idx &&
-        board.columns[from_position.column_idx].sort_order !== "custom"
+        (board.columns[from_position.column_idx].sort_order !== "custom" ||
+          !!board.columns[from_position.column_idx].tasks[
+            from_position.task_idx
+          ].pinned !==
+            !!board.columns[to_position.column_idx].tasks[to_position.task_idx]
+              .pinned)
       ) {
         // dnd-kit optimistically reorders the DOM unless the drag-over event is
         // explicitly prevented. Returning here only skips our store update.
@@ -301,6 +306,11 @@
                 onExportTask={() => onExportTask(task)}
                 onDeleteTask={() => board.delete_task(task.id)}
                 onArchiveTask={() => board.archive_task(task.id)}
+                onTogglePin={() =>
+                  void board.update_task(task.id, {
+                    ...task,
+                    pinned: !task.pinned,
+                  })}
                 {read_only}
               />
             {/if}

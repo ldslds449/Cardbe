@@ -34,7 +34,9 @@
 <DragDropProvider>
   <div class="flex min-h-full min-w-max flex-row items-start gap-4 p-5">
     {#each columns as column (column.id)}
-      {@const visible_tasks = column.tasks.filter(task_matches_search)}
+      {@const visible_tasks = column.tasks
+        .filter(task_matches_search)
+        .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false))}
       <Card.Root class="w-[320px] shrink-0 gap-2 bg-muted/35 py-3">
         <Card.Header class="px-4">
           <Card.Title class="flex items-center justify-between gap-3 text-base">
