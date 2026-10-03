@@ -1,5 +1,6 @@
 <script lang="ts">
   import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
+  import ChartNoAxesCombinedIcon from "@lucide/svelte/icons/chart-no-axes-combined";
   import Columns3Icon from "@lucide/svelte/icons/columns-3";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
@@ -34,6 +35,7 @@
     { id: "focus", label: "Today", icon: SparklesIcon },
     { id: "board", label: "Board", icon: Columns3Icon },
     { id: "calendar", label: "Calendar", icon: CalendarDaysIcon },
+    { id: "statistics", label: "Statistics", icon: ChartNoAxesCombinedIcon },
   ];
   const time_formatter = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",

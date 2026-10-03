@@ -38,6 +38,7 @@
   import BoardShareDialog from "./components/dialog/board_share_dialog.svelte";
   import IrohShareDialog from "./components/dialog/iroh_share_dialog.svelte";
   import CalendarView from "./components/calendar/calendar_view.svelte";
+  import StatisticsView from "./components/statistics/statistics_view.svelte";
   import type { CalendarViewMode } from "./components/calendar/calendar";
   import FocusView from "./components/focus/focus_view.svelte";
   import NotePanel from "./components/note/note_panel.svelte";
@@ -79,6 +80,15 @@
   let task_expand_mode = $state(true);
   let active_view = $state<WorkspaceView>("focus");
   let selected_view = $state<WorkspaceView>("focus");
+  $effect(() => {
+    if (
+      active_view === "statistics" &&
+      board.active_board_id !== null &&
+      board.column_fetch_finish
+    ) {
+      untrack(() => void board.ensure_archives_loaded());
+    }
+  });
   let view_switch_sequence = 0;
   let search_text = $state("");
   let calendar_visible_date = $state(new Date());
@@ -1688,7 +1698,14 @@
             ? "min-h-full px-5 pb-5 pt-7"
             : "min-h-full p-5"}
         >
-          {#if search_text.trim() && board.search_pending}
+          {#if active_view === "statistics"}
+            <StatisticsView
+              archives={board.archives}
+              loaded={board.archives_loaded}
+              loading={board.archives_loading}
+              onRetry={() => void board.get_archives()}
+            />
+          {:else if search_text.trim() && board.search_pending}
             <div
               class="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground"
               role="status"
