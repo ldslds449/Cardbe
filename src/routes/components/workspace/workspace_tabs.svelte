@@ -66,7 +66,7 @@
   </div>
 
   <div
-    class="ml-auto flex min-w-0 max-w-[55%] self-center items-center gap-2 text-sm"
+    class="ml-auto flex min-w-0 max-w-[45%] self-center items-center gap-2 text-sm"
     aria-label={`Current board: ${active_board_name}`}
   >
     <span class="truncate font-medium text-foreground" title={active_board_name}

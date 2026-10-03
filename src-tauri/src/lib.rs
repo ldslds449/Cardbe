@@ -8,7 +8,7 @@ mod storage;
 
 use commands::{
     archive, board, boards, calendar_export, diagnostics, import_export, iroh_share, notes,
-    notifications, settings, share, templates, update,
+    notifications, settings, share, task_explorer, templates, update,
 };
 use state::AppData;
 #[cfg(all(debug_assertions, desktop))]
@@ -113,6 +113,24 @@ impl DebugDataLock {
             Err(TryLockError::Error(error)) => Err(error),
         }
     }
+
+    #[cfg(unix)]
+    fn migrate(source: &Path, destination: &Path) -> io::Result<Self> {
+        // A previous launch may have renamed successfully before clearing its migration record.
+        if !source.exists() && destination.exists() {
+            return Self::acquire(destination);
+        }
+        if !source.exists() || destination.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "Development data migration requires an existing source and an unused destination",
+            ));
+        }
+        let lock = Self::acquire(source)?;
+        // On Unix the open lock follows the same inode through the directory rename.
+        fs::rename(source, destination)?;
+        Ok(lock)
+    }
 }
 
 #[cfg(all(test, debug_assertions, desktop))]
@@ -209,7 +227,26 @@ pub fn run() {
             #[cfg(not(all(debug_assertions, desktop)))]
             let app_data_dir = data_dir(app);
             #[cfg(all(debug_assertions, desktop))]
-            let debug_data_lock = DebugDataLock::acquire(&app_data_dir)?;
+            let debug_data_lock = {
+                #[cfg(unix)]
+                {
+                    let migration_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("target/.dev-migrate-from");
+                    match std::env::var("CARDBE_DEV_MIGRATE_FROM") {
+                        Ok(from) if migration_file.exists() => {
+                            let source_port = from.parse::<u16>().ok().filter(|port| *port != 0)
+                                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid source development port"))?;
+                            let lock = DebugDataLock::migrate(&data_dir(app, source_port), &app_data_dir)?;
+                            fs::remove_file(migration_file)?;
+                            log::info!(target: "startup", "Migrated development data from port {source_port} to {port}");
+                            lock
+                        }
+                        _ => DebugDataLock::acquire(&app_data_dir)?,
+                    }
+                }
+                #[cfg(not(unix))]
+                { DebugDataLock::acquire(&app_data_dir)? }
+            };
             #[cfg(all(debug_assertions, desktop))]
             app.manage(debug_data_lock);
             app.manage(share::LanShareState::default());
@@ -284,6 +321,8 @@ pub fn run() {
             board::delete_task,
             board::update_task,
             archive::get_archives,
+            archive::list_archives,
+            archive::get_archive_task,
             archive::archive_task,
             archive::archive_all_tasks,
             archive::unarchive_task,
@@ -312,6 +351,9 @@ pub fn run() {
             iroh_share::delete_iroh_invite,
             notifications::check_expired_tasks,
             notifications::get_expired_tasks,
+            notifications::list_expired_tasks,
+            notifications::get_task_detail,
+            task_explorer::list_all_tasks,
             notes::get_notes,
             notes::create_note,
             notes::create_quick_note,

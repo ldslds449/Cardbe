@@ -133,6 +133,31 @@ pub struct Task {
     pub recurrence: Option<Recurrence>,
 }
 
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct TaskSummary {
+    pub id: i64,
+    pub title: String,
+    pub color: String,
+    pub start_time: u128,
+    pub due_time: Option<u128>,
+    pub labels: Vec<String>,
+    pub recurrence: Option<Recurrence>,
+}
+
+impl From<&Task> for TaskSummary {
+    fn from(task: &Task) -> Self {
+        Self {
+            id: task.id,
+            title: task.title.clone(),
+            color: task.color.clone(),
+            start_time: task.start_time,
+            due_time: task.due_time,
+            labels: task.labels.clone(),
+            recurrence: task.recurrence.clone(),
+        }
+    }
+}
+
 impl Default for Task {
     fn default() -> Self {
         Self {

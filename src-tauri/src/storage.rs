@@ -1,6 +1,6 @@
 use crate::models::{
     Archive, Board, BoardRole, Column, ColumnSort, IrohDeviceStatus, IrohPermission, Note,
-    StoredData, SyncStatus, Task, TaskTemplate, CURRENT_SCHEMA_VERSION,
+    StoredData, SyncStatus, Task, TaskSummary, TaskTemplate, CURRENT_SCHEMA_VERSION,
 };
 use base64::Engine;
 use rusqlite::{
@@ -19,6 +19,30 @@ use std::{
 type StorageResult<T> = Result<T, Box<dyn std::error::Error>>;
 type IrohInviteRecord = (String, i64, String, IrohPermission, bool);
 type IrohInviteSummaryRecord = (String, i64, IrohPermission, bool, String, String);
+
+pub(crate) struct AllTaskRow {
+    pub board_id: i64,
+    pub board_name: String,
+    pub column_name: Option<String>,
+    pub archived_at: Option<u128>,
+    pub task: TaskSummary,
+}
+
+#[derive(Default, serde::Deserialize)]
+#[serde(default)]
+pub struct TaskExplorerQuery {
+    pub query: String,
+    pub board_ids: Option<Vec<i64>>,
+    pub column_id: Option<i64>,
+    pub status: String,
+    pub sort: String,
+    pub due: String,
+    pub due_start: Option<i64>,
+    pub due_end: Option<i64>,
+    pub archive_start: Option<i64>,
+    pub archive_end: Option<i64>,
+    pub now: i64,
+}
 
 macro_rules! impl_text_enum {
     ($type:ty { $($value:literal => $variant:path),+ $(,)? }) => {
@@ -1399,6 +1423,7 @@ impl Database {
              CREATE TABLE IF NOT EXISTS cardbe_tasks(board_id INTEGER NOT NULL,id INTEGER NOT NULL,column_id INTEGER NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,id),FOREIGN KEY(board_id,column_id) REFERENCES cardbe_columns(board_id,id) ON DELETE CASCADE);
              CREATE INDEX IF NOT EXISTS cardbe_tasks_by_board_column_position ON cardbe_tasks(board_id,column_id,position);
              CREATE TABLE IF NOT EXISTS cardbe_archives(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,task_id INTEGER NOT NULL,archived_at TEXT NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,task_id));
+             CREATE INDEX IF NOT EXISTS cardbe_archives_by_board_time ON cardbe_archives(board_id,CAST(archived_at AS INTEGER) DESC,task_id DESC);
              CREATE TABLE IF NOT EXISTS cardbe_templates(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,id INTEGER NOT NULL,name TEXT NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,id));
              CREATE TABLE IF NOT EXISTS cardbe_board_metadata(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(board_id,key));"
         )?;
@@ -1576,6 +1601,203 @@ impl Database {
             })
             .collect();
         result
+    }
+
+    pub fn load_archive_page(
+        &self,
+        board_id: i64,
+        cursor: Option<(u128, i64)>,
+        query: &str,
+        limit: usize,
+    ) -> StorageResult<Vec<Archive>> {
+        // ponytail: archive search scans JSON payloads; add indexed summary/FTS columns if it becomes a hotspot.
+        let cursor_time = cursor.map(|(time, _)| i64::try_from(time)).transpose()?;
+        let cursor_id = cursor.map(|(_, id)| id);
+        let mut statement = self.connection.prepare(
+            "SELECT task_id, archived_at, payload
+             FROM cardbe_archives
+             WHERE board_id = ?1
+               AND (?2 = '' OR instr(lower(payload), lower(?2)) > 0)
+               AND (?3 IS NULL OR CAST(archived_at AS INTEGER) < ?3
+                    OR (CAST(archived_at AS INTEGER) = ?3 AND task_id < ?4))
+             ORDER BY CAST(archived_at AS INTEGER) DESC, task_id DESC
+             LIMIT ?5",
+        )?;
+        let rows = statement
+            .query_map(
+                params![
+                    board_id,
+                    query.trim(),
+                    cursor_time,
+                    cursor_id,
+                    i64::try_from(limit)?,
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows.into_iter()
+            .map(|(task_id, time, payload)| {
+                Ok(Archive {
+                    time: time.parse()?,
+                    task: serde_json::from_str(&payload).map_err(|error| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("Could not decode archived task {task_id}: {error}"),
+                        )
+                    })?,
+                })
+            })
+            .collect()
+    }
+
+    pub fn load_archive_task(&self, board_id: i64, task_id: i64) -> StorageResult<Option<Task>> {
+        self.connection
+            .query_row(
+                "SELECT payload FROM cardbe_archives WHERE board_id=?1 AND task_id=?2",
+                params![board_id, task_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .map(|payload| serde_json::from_str(&payload).map_err(Into::into))
+            .transpose()
+    }
+
+    pub fn list_all_task_page(
+        &self,
+        filter: &TaskExplorerQuery,
+        offset: i64,
+        limit: usize,
+    ) -> StorageResult<Vec<AllTaskRow>> {
+        // ponytail: OFFSET keeps all sort modes simple; use keyset cursors if deep pages become slow.
+        let mut statement = self.connection.prepare(
+            "WITH tasks AS (
+             SELECT s.board_id, b.name AS board_name, c.name AS column_name,
+                    t.column_id, s.archived, s.task_id, a.archived_at,
+                    CASE WHEN s.archived=0 THEN t.payload ELSE a.payload END AS payload
+             FROM cardbe_task_search s
+             JOIN cardbe_boards b ON b.id=s.board_id
+             LEFT JOIN cardbe_tasks t
+               ON s.archived=0 AND t.board_id=s.board_id AND t.id=s.task_id
+             LEFT JOIN cardbe_columns c
+               ON s.archived=0 AND c.board_id=t.board_id AND c.id=t.column_id
+             LEFT JOIN cardbe_archives a
+               ON s.archived=1 AND a.board_id=s.board_id AND a.task_id=s.task_id
+             WHERE (?1='' OR instr(lower(s.body),lower(?1))>0)
+               AND (?2 IS NULL OR s.board_id IN (SELECT value FROM json_each(?2)))
+             ), summaries AS (
+               SELECT *, json_extract(payload, '$.due_time') AS due_time,
+                      json_extract(payload, '$.title') AS title,
+                      json_extract(payload, '$.recurrence') AS recurrence
+               FROM tasks
+             )
+             SELECT board_id, board_name, column_name, archived_at, payload
+             FROM summaries
+             WHERE (?3 IS NULL OR column_id=?3)
+               AND (CASE ?4
+                 WHEN 'active' THEN archived=0
+                 WHEN 'archived' THEN archived=1
+                 WHEN 'overdue' THEN archived=0 AND due_time<?5
+                 WHEN 'recurring' THEN archived=0 AND recurrence IS NOT NULL
+                 ELSE 1 END)
+               AND (CASE ?6 WHEN 'none' THEN due_time IS NULL
+                           WHEN 'due' THEN due_time IS NOT NULL ELSE 1 END)
+               AND (?7 IS NULL OR due_time>=?7)
+               AND (?8 IS NULL OR due_time<?8)
+               AND (archived=0 OR ((?9 IS NULL OR CAST(archived_at AS INTEGER)>=?9)
+                                 AND (?10 IS NULL OR CAST(archived_at AS INTEGER)<?10)))
+             ORDER BY
+               CASE WHEN ?11='due' THEN due_time IS NULL END,
+               CASE WHEN ?11='due' THEN due_time END,
+               CASE WHEN ?11='archived' THEN CAST(archived_at AS INTEGER) END DESC,
+               CASE WHEN ?11='column' THEN column_name END COLLATE NOCASE,
+               title COLLATE NOCASE, board_id, archived, task_id
+             LIMIT ?12 OFFSET ?13",
+        )?;
+        let rows = statement
+            .query_map(
+                params![
+                    filter.query.trim(),
+                    filter
+                        .board_ids
+                        .as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()?,
+                    filter.column_id,
+                    filter.status,
+                    filter.now,
+                    filter.due,
+                    filter.due_start,
+                    filter.due_end,
+                    filter.archive_start,
+                    filter.archive_end,
+                    filter.sort,
+                    i64::try_from(limit)?,
+                    offset,
+                ],
+                |row| {
+                    let board_id = row.get(0)?;
+                    let board_name = row.get(1)?;
+                    let column_name = row.get(2)?;
+                    let archived_at = row
+                        .get::<_, Option<String>>(3)?
+                        .map(|value| value.parse::<u128>())
+                        .transpose()
+                        .map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                3,
+                                rusqlite::types::Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                    let payload = row.get::<_, String>(4)?;
+                    let task: Task = serde_json::from_str(&payload).map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            4,
+                            rusqlite::types::Type::Text,
+                            Box::new(error),
+                        )
+                    })?;
+                    Ok(AllTaskRow {
+                        board_id,
+                        board_name,
+                        column_name,
+                        archived_at,
+                        task: TaskSummary::from(&task),
+                    })
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn load_board_tasks(&self, board_id: i64) -> StorageResult<Vec<Task>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT payload FROM cardbe_tasks WHERE board_id=?1")?;
+        let rows = statement
+            .query_map([board_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows.into_iter()
+            .map(|row| serde_json::from_str(&row).map_err(Into::into))
+            .collect()
+    }
+
+    pub fn load_task(&self, board_id: i64, task_id: i64) -> StorageResult<Option<Task>> {
+        self.connection
+            .query_row(
+                "SELECT payload FROM cardbe_tasks WHERE board_id=?1 AND id=?2",
+                params![board_id, task_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .map(|payload| serde_json::from_str(&payload).map_err(Into::into))
+            .transpose()
     }
 }
 
@@ -2595,6 +2817,168 @@ mod tests {
     use crate::models::TaskItem;
 
     #[test]
+    fn task_explorer_filters_and_sorts_before_paginating() {
+        let dir = test_dir("task-explorer-pagination");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let first = loaded.database.active_board_id();
+        let second = loaded.database.create_board("Second").unwrap().id;
+        for (board_id, name) in [(first, "Zulu"), (second, "Alpha")] {
+            let data = StoredData {
+                columns: vec![Column {
+                    id: 1,
+                    name: name.into(),
+                    color: String::new(),
+                    sort_order: Default::default(),
+                    tasks: (1..=60)
+                        .map(|id| Task {
+                            id,
+                            title: format!("Task {:02}", 61 - id),
+                            due_time: Some((61 - id) as u128),
+                            recurrence: (id == 60).then_some(crate::models::Recurrence {
+                                frequency: crate::models::RecurrenceFrequency::Daily,
+                                interval: 1,
+                            }),
+                            ..Task::default()
+                        })
+                        .chain(std::iter::once(Task {
+                            id: 61,
+                            title: "No date".into(),
+                            ..Task::default()
+                        }))
+                        .collect(),
+                }],
+                archives: vec![Archive {
+                    time: 100,
+                    task: Task {
+                        id: 62,
+                        title: "Archived".into(),
+                        due_time: Some(1),
+                        ..Task::default()
+                    },
+                }],
+                ..StoredData::default()
+            };
+            loaded
+                .database
+                .replace_board_as_local_edit(board_id, &data)
+                .unwrap();
+        }
+        let mut filter = TaskExplorerQuery {
+            status: "active".into(),
+            sort: "due".into(),
+            ..Default::default()
+        };
+        let page = loaded.database.list_all_task_page(&filter, 0, 50).unwrap();
+        assert_eq!(page[0].task.due_time, Some(1));
+        assert_eq!(page[49].task.due_time, Some(25));
+        let next = loaded.database.list_all_task_page(&filter, 50, 50).unwrap();
+        assert_eq!(next[0].task.due_time, Some(26));
+        assert!(page.iter().all(|row| !next
+            .iter()
+            .any(|other| row.board_id == other.board_id && row.task.id == other.task.id)));
+
+        filter.board_ids = Some(vec![first, second]);
+        let selected = loaded.database.list_all_task_page(&filter, 0, 50).unwrap();
+        assert_eq!(
+            selected
+                .iter()
+                .map(|row| (row.board_id, row.task.id))
+                .collect::<Vec<_>>(),
+            page.iter()
+                .map(|row| (row.board_id, row.task.id))
+                .collect::<Vec<_>>()
+        );
+        filter.board_ids = Some(vec![]);
+        assert!(loaded
+            .database
+            .list_all_task_page(&filter, 0, 50)
+            .unwrap()
+            .is_empty());
+        filter.board_ids = Some(vec![first, first]);
+        let selected = loaded.database.list_all_task_page(&filter, 0, 200).unwrap();
+        assert_eq!(selected.len(), 61);
+        assert!(selected.iter().all(|row| row.board_id == first));
+
+        filter.board_ids = Some(vec![second]);
+        filter.column_id = Some(1);
+        filter.due_start = Some(10);
+        filter.due_end = Some(12);
+        let rows = loaded.database.list_all_task_page(&filter, 0, 50).unwrap();
+        assert_eq!(
+            rows.iter().map(|row| row.task.due_time).collect::<Vec<_>>(),
+            vec![Some(10), Some(11)]
+        );
+        assert!(rows.iter().all(|row| row.board_id == second));
+        filter.due_start = None;
+        filter.due_end = None;
+        filter.status = "overdue".into();
+        filter.now = 2;
+        assert_eq!(
+            loaded
+                .database
+                .list_all_task_page(&filter, 0, 50)
+                .unwrap()
+                .len(),
+            1
+        );
+        filter.status = "recurring".into();
+        assert_eq!(
+            loaded.database.list_all_task_page(&filter, 0, 50).unwrap()[0]
+                .task
+                .id,
+            60
+        );
+        filter.status = "active".into();
+        filter.due = "none".into();
+        assert_eq!(
+            loaded.database.list_all_task_page(&filter, 0, 50).unwrap()[0]
+                .task
+                .id,
+            61
+        );
+        filter.due = "all".into();
+        filter.column_id = None;
+        filter.status = "archived".into();
+        filter.archive_start = Some(100);
+        filter.archive_end = Some(101);
+        assert_eq!(
+            loaded
+                .database
+                .list_all_task_page(&filter, 0, 50)
+                .unwrap()
+                .len(),
+            1
+        );
+        filter.archive_end = Some(100);
+        assert!(loaded
+            .database
+            .list_all_task_page(&filter, 0, 50)
+            .unwrap()
+            .is_empty());
+        filter = TaskExplorerQuery {
+            status: "active".into(),
+            sort: "column".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            loaded.database.list_all_task_page(&filter, 0, 1).unwrap()[0]
+                .column_name
+                .as_deref(),
+            Some("Alpha")
+        );
+        filter.sort = "title".into();
+        assert_eq!(
+            loaded.database.list_all_task_page(&filter, 0, 1).unwrap()[0]
+                .task
+                .title,
+            "No date"
+        );
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn task_search_finds_title_description_labels_and_checklist_text() {
         let dir = test_dir("task-search");
         fs::create_dir_all(&dir).unwrap();
@@ -2625,6 +3009,21 @@ mod tests {
             .database
             .replace_board_as_local_edit(board_id, &data)
             .unwrap();
+        let all_tasks = loaded
+            .database
+            .list_all_task_page(
+                &TaskExplorerQuery {
+                    query: "release notes".into(),
+                    ..Default::default()
+                },
+                0,
+                10,
+            )
+            .unwrap();
+        assert_eq!(all_tasks.len(), 1);
+        assert_eq!(all_tasks[0].board_id, board_id);
+        assert_eq!(all_tasks[0].column_name.as_deref(), Some("Todo"));
+        assert_eq!(all_tasks[0].task.title, "Write release notes");
 
         for query in ["RELEASE NOTES", "public changelog", "launch", "screenshots"] {
             assert_eq!(
@@ -3359,6 +3758,46 @@ mod tests {
         assert!(second.stored.archives.is_empty());
         assert_eq!(second.database.load_archives().unwrap(), after.archives);
         drop(second);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn archive_pages_use_task_id_as_a_stable_tie_breaker() {
+        let dir = test_dir("archive-pages");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let before = loaded.stored.clone();
+        let mut after = before.clone();
+        after.archives = [3, 2, 1]
+            .into_iter()
+            .map(|id| Archive {
+                time: 100,
+                task: Task {
+                    id,
+                    title: format!("Archived {id}"),
+                    ..Task::default()
+                },
+            })
+            .collect();
+        loaded.database.persist_diff(&before, &after).unwrap();
+
+        let first = loaded
+            .database
+            .load_archive_page(loaded.database.active_board_id(), None, "", 2)
+            .unwrap();
+        assert_eq!(
+            first.iter().map(|item| item.task.id).collect::<Vec<_>>(),
+            [3, 2]
+        );
+        let second = loaded
+            .database
+            .load_archive_page(loaded.database.active_board_id(), Some((100, 2)), "", 2)
+            .unwrap();
+        assert_eq!(
+            second.iter().map(|item| item.task.id).collect::<Vec<_>>(),
+            [1]
+        );
+        drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }
 

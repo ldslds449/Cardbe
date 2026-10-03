@@ -1,3 +1,4 @@
+import type { TaskExplorerQuery } from "./utils/task-explorer";
 import { logger } from "$lib/logger";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
@@ -17,17 +18,20 @@ import {
 } from "./type/column.svelte";
 import {
   type Task,
+  type TaskSummary,
   clone_task,
   duplicate_task as create_task_duplicate,
   get_task_id,
   set_task_id,
   serialize_task,
   deserialize_task,
+  deserialize_task_summary,
   type TaskSerialized,
+  type TaskSummarySerialized,
   type TaskTemplate,
   type TaskTemplateSerialized,
 } from "./type/task.svelte";
-import type { Archive } from "./type/archive.svelte";
+import type { Archive, ArchiveSummary } from "./type/archive.svelte";
 import { parse_import_summary, type ImportSummary } from "./utils/import-data";
 import { addMission } from "./utils/mission.svelte";
 
@@ -79,6 +83,35 @@ interface BoardsState {
   active_board_id: number;
 }
 
+interface ArchivePageSerialized {
+  items: Array<{ time: number; task: TaskSummarySerialized }>;
+  next_cursor: string | null;
+}
+
+interface ExpiredTaskPageSerialized {
+  items: TaskSummarySerialized[];
+  next_cursor: string | null;
+}
+
+interface AllTaskPageSerialized {
+  items: Array<{
+    board_id: number;
+    board_name: string;
+    column_name: string | null;
+    archived_at: number | null;
+    task: TaskSummarySerialized;
+  }>;
+  next_cursor: string | null;
+}
+
+export interface AllTaskItem {
+  board_id: number;
+  board_name: string;
+  column_name: string | undefined;
+  archived_at: Date | undefined;
+  task: TaskSummary;
+}
+
 // ============ Board Store (class-based for Svelte 5 rune compatibility) ============
 
 export class BoardStore {
@@ -86,9 +119,18 @@ export class BoardStore {
   columns = $state<Column[]>([]);
   labels = $state<string[]>([]);
   archives = $state<Archive[]>([]);
+  archive_items = $state<ArchiveSummary[]>([]);
+  archive_items_loading = $state(false);
+  archive_items_has_more = $state(false);
   archives_loaded = $state(false);
   archives_loading = $state(false);
-  expired_tasks = $state<Task[]>([]);
+  expired_tasks = $state<TaskSummary[]>([]);
+  expired_tasks_loading = $state(false);
+  expired_tasks_has_more = $state(false);
+  all_task_items = $state<AllTaskItem[]>([]);
+  all_task_items_loading = $state(false);
+  all_task_items_error = $state(false);
+  all_task_items_has_more = $state(false);
   templates = $state<TaskTemplate[]>([]);
   column_fetch_finish = $state(false);
   column_fetch_error = $state(false);
@@ -110,6 +152,17 @@ export class BoardStore {
   // has completed, so keep a session-scoped alias to its persisted ID.
   private resolved_task_ids = new Map<string, string>();
   private archives_request: Promise<void> | undefined;
+  private archive_list_request = 0;
+  private archive_list_cursor: string | null = null;
+  private archive_list_query = "";
+  private archive_list_initialized = false;
+  private expired_list_request = 0;
+  private expired_list_cursor: string | null = null;
+  private expired_list_query = "";
+  private expired_list_initialized = false;
+  private all_task_list_cursor: string | null = null;
+  private all_task_list_filter: TaskExplorerQuery | null = null;
+  private all_task_list_request = 0;
   private search_query = "";
   private search_request = 0;
   private search_timer: ReturnType<typeof setTimeout> | undefined;
@@ -615,6 +668,105 @@ export class BoardStore {
     return request;
   }
 
+  open_archive_list() {
+    this.archive_list_initialized = true;
+    if (this.archive_items.length === 0 && this.archive_list_cursor === null) {
+      return this.fetch_archive_page(true);
+    }
+  }
+
+  search_archives(query: string) {
+    this.archive_list_query = query.trim();
+    this.fetch_archive_page(true);
+  }
+
+  load_more_archives() {
+    if (!this.archive_items_loading && this.archive_items_has_more) {
+      this.fetch_archive_page(false);
+    }
+  }
+
+  private fetch_archive_page(reset: boolean) {
+    const expectedBoardId = this.active_board_id;
+    const generation = this.board_generation;
+    if (expectedBoardId === null) {
+      return Promise.resolve();
+    }
+    const request = ++this.archive_list_request;
+    if (reset) {
+      this.archive_items = [];
+      this.archive_items_loading = false;
+      this.archive_list_cursor = null;
+      this.archive_items_has_more = true;
+    }
+    this.archive_items_loading = true;
+    return invoke<ArchivePageSerialized>("list_archives", {
+      expectedBoardId,
+      cursor: reset ? null : this.archive_list_cursor,
+      query: this.archive_list_query,
+      limit: 50,
+    })
+      .then((data) => {
+        if (
+          request !== this.archive_list_request ||
+          generation !== this.board_generation
+        ) {
+          return;
+        }
+        const items = data.items.map((item) => ({
+          time: new Date(item.time),
+          task: deserialize_task_summary(item.task),
+        }));
+        this.archive_items = reset
+          ? items
+          : [
+              ...this.archive_items,
+              ...items.filter(
+                (item) =>
+                  !this.archive_items.some(
+                    (existing) => existing.task.id === item.task.id,
+                  ),
+              ),
+            ];
+        this.archive_list_cursor = data.next_cursor;
+        this.archive_items_has_more = data.next_cursor !== null;
+      })
+      .catch((error) => {
+        logger.error("board.archive_page_load.failed", error);
+        if (request === this.archive_list_request) {
+          this.show_data_fetch_error("Couldn't load archives", () =>
+            this.fetch_archive_page(reset),
+          );
+        }
+      })
+      .finally(() => {
+        if (request === this.archive_list_request) {
+          this.archive_items_loading = false;
+        }
+      });
+  }
+
+  async get_archive_detail(task_id: string): Promise<Task | null> {
+    const expectedBoardId = this.active_board_id;
+    if (expectedBoardId === null) {
+      return null;
+    }
+    const cached = this.archives.find((archive) => archive.task.id === task_id);
+    if (cached) {
+      return cached.task;
+    }
+    try {
+      const data = await invoke<TaskSerialized>("get_archive_task", {
+        expectedBoardId,
+        taskId: get_task_id(task_id),
+      });
+      return deserialize_task(data);
+    } catch (error) {
+      logger.error("board.archive_detail_load.failed", error);
+      return null;
+    }
+  }
+
   ensure_archives_loaded() {
     if (this.archives_loaded) {
       return Promise.resolve();
@@ -623,36 +775,194 @@ export class BoardStore {
   }
 
   private refresh_archives_if_loaded() {
+    if (this.all_task_list_filter) {
+      void this.fetch_all_task_page(true);
+    }
     if (this.archives_loaded) {
       void this.get_archives();
+    }
+    if (this.archive_list_initialized) {
+      void this.fetch_archive_page(true);
     }
   }
 
   get_expired_tasks() {
-    const board = this;
+    if (this.expired_list_initialized) {
+      this.fetch_expired_page(true);
+    }
+  }
+
+  open_expired_list() {
+    this.expired_list_initialized = true;
+    if (this.expired_tasks.length === 0 && this.expired_list_cursor === null) {
+      return this.fetch_expired_page(true);
+    }
+  }
+
+  search_expired_tasks(query: string) {
+    this.expired_list_query = query.trim();
+    this.fetch_expired_page(true);
+  }
+
+  load_more_expired_tasks() {
+    if (!this.expired_tasks_loading && this.expired_tasks_has_more) {
+      this.fetch_expired_page(false);
+    }
+  }
+
+  private fetch_expired_page(reset: boolean) {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
     if (expectedBoardId === null) {
-      return;
+      return Promise.resolve();
     }
-    addMission(() =>
-      invoke<TaskSerialized[]>("get_expired_tasks", { expectedBoardId }),
-    )
+    const request = ++this.expired_list_request;
+    if (reset) {
+      this.expired_tasks = [];
+      this.expired_tasks_loading = false;
+      this.expired_list_cursor = null;
+      this.expired_tasks_has_more = true;
+    }
+    this.expired_tasks_loading = true;
+    return invoke<ExpiredTaskPageSerialized>("list_expired_tasks", {
+      expectedBoardId,
+      cursor: reset ? null : this.expired_list_cursor,
+      query: this.expired_list_query,
+      limit: 50,
+    })
       .then((data) => {
-        if (generation !== board.board_generation) {
+        if (
+          request !== this.expired_list_request ||
+          generation !== this.board_generation
+        ) {
           return;
         }
-        board.expired_tasks = data.map((t) => deserialize_task(t));
+        const items = data.items.map(deserialize_task_summary);
+        this.expired_tasks = reset
+          ? items
+          : [
+              ...this.expired_tasks,
+              ...items.filter(
+                (item) =>
+                  !this.expired_tasks.some(
+                    (existing) => existing.id === item.id,
+                  ),
+              ),
+            ];
+        this.expired_list_cursor = data.next_cursor;
+        this.expired_tasks_has_more = data.next_cursor !== null;
       })
-      .catch((e) => {
-        logger.error("board.expired_tasks_load.failed", e);
-        console.log(e);
-        if (generation === board.board_generation) {
-          board.show_data_fetch_error("Couldn't load expired tasks", () =>
-            board.get_expired_tasks(),
+      .catch((error) => {
+        logger.error("board.expired_tasks_load.failed", error);
+        if (request === this.expired_list_request) {
+          this.show_data_fetch_error("Couldn't load expired tasks", () =>
+            this.fetch_expired_page(reset),
           );
         }
+      })
+      .finally(() => {
+        if (request === this.expired_list_request) {
+          this.expired_tasks_loading = false;
+        }
       });
+  }
+
+  search_all_tasks(filter: TaskExplorerQuery) {
+    this.all_task_list_filter = filter;
+    return this.fetch_all_task_page(true);
+  }
+
+  load_more_all_tasks() {
+    if (!this.all_task_items_loading && this.all_task_items_has_more) {
+      this.fetch_all_task_page(false);
+    }
+  }
+
+  private fetch_all_task_page(reset: boolean) {
+    if (!this.all_task_list_filter) {
+      return Promise.resolve();
+    }
+    const request = ++this.all_task_list_request;
+    if (reset) {
+      this.all_task_items = [];
+      this.all_task_items_loading = false;
+      this.all_task_list_cursor = null;
+      this.all_task_items_has_more = true;
+    }
+    this.all_task_items_loading = true;
+    this.all_task_items_error = false;
+    return invoke<AllTaskPageSerialized>("list_all_tasks", {
+      cursor: reset ? null : this.all_task_list_cursor,
+      filter: this.all_task_list_filter,
+      limit: 50,
+    })
+      .then((data) => {
+        if (request !== this.all_task_list_request) {
+          return;
+        }
+        const items = data.items.map((item) => ({
+          board_id: item.board_id,
+          board_name: item.board_name,
+          column_name: item.column_name ?? undefined,
+          archived_at:
+            item.archived_at === null ? undefined : new Date(item.archived_at),
+          task: deserialize_task_summary(item.task),
+        }));
+        this.all_task_items = reset
+          ? items
+          : [
+              ...this.all_task_items,
+              ...items.filter(
+                (item) =>
+                  !this.all_task_items.some(
+                    (existing) =>
+                      existing.board_id === item.board_id &&
+                      existing.archived_at?.getTime() ===
+                        item.archived_at?.getTime() &&
+                      existing.task.id === item.task.id,
+                  ),
+              ),
+            ];
+        this.all_task_list_cursor = data.next_cursor;
+        this.all_task_items_has_more = data.next_cursor !== null;
+      })
+      .catch((error) => {
+        logger.error("board.all_task_page_load.failed", error);
+        if (request === this.all_task_list_request) {
+          this.all_task_items_error = true;
+          this.show_data_fetch_error("Couldn't load all tasks", () =>
+            this.fetch_all_task_page(reset),
+          );
+        }
+      })
+      .finally(() => {
+        if (request === this.all_task_list_request) {
+          this.all_task_items_loading = false;
+        }
+      });
+  }
+
+  async get_expired_task_detail(task_id: string): Promise<Task | null> {
+    const expectedBoardId = this.active_board_id;
+    if (expectedBoardId === null) {
+      return null;
+    }
+    const active = this.columns
+      .flatMap((column) => column.tasks)
+      .find((task) => task.id === task_id);
+    if (active) {
+      return active;
+    }
+    try {
+      const data = await invoke<TaskSerialized>("get_task_detail", {
+        expectedBoardId,
+        taskId: get_task_id(task_id),
+      });
+      return deserialize_task(data);
+    } catch (error) {
+      logger.error("board.expired_task_detail_load.failed", error);
+      return null;
+    }
   }
 
   async init() {
@@ -748,6 +1058,8 @@ export class BoardStore {
     if (id === this.active_board_id) {
       return true;
     }
+    const archive_list_was_initialized = this.archive_list_initialized;
+    const expired_list_was_initialized = this.expired_list_initialized;
     try {
       this.board_generation++;
       for (const timer of this.task_move_timers.values()) {
@@ -761,17 +1073,33 @@ export class BoardStore {
       await invoke("switch_board", { boardId: id });
       this.active_board_id = id;
       this.archives = [];
+      this.archive_items = [];
+      this.archive_items_loading = false;
+      this.archive_items_has_more = false;
+      this.archive_list_cursor = null;
+      this.archive_list_initialized = archive_list_was_initialized;
+      this.archive_list_request++;
       this.archives_loaded = false;
       this.archives_loading = false;
       this.archives_request = undefined;
       this.templates = [];
       this.labels = [];
       this.expired_tasks = [];
+      this.expired_tasks_loading = false;
+      this.expired_tasks_has_more = false;
+      this.expired_list_cursor = null;
+      this.expired_list_initialized = expired_list_was_initialized;
+      this.expired_list_request++;
       this.can_undo = false;
       this.get_columns();
       this.update_labels();
       this.get_task_templates();
-      this.get_expired_tasks();
+      if (archive_list_was_initialized) {
+        void this.fetch_archive_page(true);
+      }
+      if (expired_list_was_initialized) {
+        void this.fetch_expired_page(true);
+      }
       return true;
     } catch (e) {
       logger.error("board.switch.failed", e);
@@ -1493,6 +1821,38 @@ export class BoardStore {
     });
   }
 
+  unarchive_task_from_list(column_id: string, task_id: string) {
+    const expectedBoardId = this.active_board_id;
+    const generation = this.board_generation;
+    if (expectedBoardId === null) {
+      return;
+    }
+    addMission(() =>
+      invoke<void>("unarchive_task", {
+        columnId: get_column_id(column_id),
+        taskId: get_task_id(task_id),
+        expectedBoardId,
+      }),
+    )
+      .then(() => {
+        if (generation !== this.board_generation) {
+          return;
+        }
+        this.archive_items = this.archive_items.filter(
+          (item) => item.task.id !== task_id,
+        );
+        this.get_columns();
+        this.refresh_archives_if_loaded();
+        this.show_success_with_undo("Task restored");
+      })
+      .catch((error: unknown) => {
+        logger.error("task.unarchive_from_list.failed", error);
+        if (generation === this.board_generation) {
+          toast.error("Couldn't restore task");
+        }
+      });
+  }
+
   update_task(task_id: string, task: Task): Promise<boolean> {
     const board = this;
     const expectedBoardId = this.active_board_id;
@@ -1540,6 +1900,9 @@ export class BoardStore {
         this.update_labels();
         this.search_tasks(this.search_query);
         this.show_success_with_undo("Task updated");
+        if (this.all_task_list_filter) {
+          void this.fetch_all_task_page(true);
+        }
         return true;
       })
       .catch((e: unknown) => {

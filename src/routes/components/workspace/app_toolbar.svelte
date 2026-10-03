@@ -1,19 +1,17 @@
 <script lang="ts">
   import { toggleMode } from "mode-watcher";
-  import ArchiveIcon from "@lucide/svelte/icons/archive";
   import BellIcon from "@lucide/svelte/icons/bell";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import ClockIcon from "@lucide/svelte/icons/clock";
   import EyeIcon from "@lucide/svelte/icons/eye";
   import EyeClosedIcon from "@lucide/svelte/icons/eye-closed";
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
   import LinkIcon from "@lucide/svelte/icons/link";
+  import ListTodoIcon from "@lucide/svelte/icons/list-todo";
   import MoonIcon from "@lucide/svelte/icons/moon";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
-  import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
   import RadioTowerIcon from "@lucide/svelte/icons/radio-tower";
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
   import SearchIcon from "@lucide/svelte/icons/search";
@@ -35,9 +33,6 @@
     search_text = $bindable(),
     search_pending = false,
     search_error = false,
-    archive_open = $bindable(),
-    expired_open = $bindable(),
-    recurring_open = $bindable(),
     note_open = $bindable(),
     task_expand_mode = $bindable(),
     selected_view,
@@ -57,6 +52,7 @@
     onOpenBoardShare,
     onOpenIrohShare,
     onOpenTaskTemplates,
+    onOpenAllTasks,
     onAddTask,
     onAddColumn,
     onCheckForUpdates,
@@ -65,9 +61,6 @@
     search_text: string;
     search_pending?: boolean;
     search_error?: boolean;
-    archive_open: boolean;
-    expired_open: boolean;
-    recurring_open: boolean;
     note_open: boolean;
     task_expand_mode: boolean;
     selected_view: WorkspaceView;
@@ -87,6 +80,7 @@
     onOpenBoardShare: () => void;
     onOpenIrohShare: () => void;
     onOpenTaskTemplates: () => void;
+    onOpenAllTasks: () => void;
     onAddTask: () => void;
     onAddColumn: () => void;
     onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
@@ -95,8 +89,8 @@
   let diagnostics_open = $state(false);
 </script>
 
-<Menubar.Root class="h-12 shrink-0 rounded-none border-x-0 border-t-0 px-4">
-  <div class="flex h-full w-full flex-row items-center gap-2">
+<Menubar.Root class="h-12 shrink-0 rounded-none border-x-0 border-t-0 px-3">
+  <div class="flex h-full w-full flex-row items-center gap-1.5">
     <Button
       variant={board_panel_open ? "secondary" : "ghost"}
       size="sm"
@@ -117,8 +111,10 @@
       />
     </Button>
 
-    <div class="flex min-w-0 flex-1 items-center pl-1 pr-2">
-      <div class="flex flex-row items-center gap-1">
+    <div class="flex min-w-0 flex-1 items-center">
+      <div
+        class="flex flex-row items-center gap-0.5 rounded-md border bg-muted/30 p-0.5"
+      >
         <Menubar.Menu>
           <Menubar.Trigger>File</Menubar.Trigger>
           <Menubar.Content>
@@ -162,7 +158,7 @@
           <Menubar.Content>
             {#if !read_only}
               <Menubar.Item onclick={onAddTask}>
-                New Card
+                New Task
                 <Menubar.Shortcut>
                   <Kbd.Group>
                     <Kbd.Root>Ctrl</Kbd.Root>
@@ -269,54 +265,68 @@
       </Button>
     {/if}
 
-    <InputGroup.Root
-      class="ml-auto w-40 shrink-0 bg-muted/40 transition-colors focus-within:bg-background sm:w-48 lg:w-64"
-      title={search_error
-        ? "Search unavailable. Retry or clear the search."
-        : undefined}
-    >
-      <InputGroup.Input
-        aria-label="Search tasks"
-        aria-busy={search_pending}
-        placeholder="Search cards"
-        bind:value={search_text}
-      />
-      <InputGroup.Addon>
-        {#if search_pending}
-          <LoaderCircleIcon class="animate-spin" />
-        {:else}
-          <SearchIcon />
-        {/if}
-      </InputGroup.Addon>
-      {#if search_text.length > 0}
-        <InputGroup.Addon align="inline-end">
-          <InputGroup.Button
-            aria-label="Clear search"
-            title="Clear search"
-            size="icon-xs"
-            onclick={() => (search_text = "")}
-          >
-            <XIcon />
-          </InputGroup.Button>
-        </InputGroup.Addon>
-      {/if}
-      <span class="sr-only" aria-live="polite">
-        {#if search_pending}
-          Searching cards
-        {:else if search_error}
-          Search unavailable. Retry or clear the search.
-        {/if}
-      </span>
-    </InputGroup.Root>
+    <div class="ml-auto flex min-w-0 items-center gap-1.5 border-l pl-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        class="shrink-0 gap-1.5"
+        onclick={onOpenAllTasks}
+        aria-label="Open Task Explorer"
+        title="Open Task Explorer"
+      >
+        <ListTodoIcon class="size-4" />
+        <span class="hidden lg:inline">Task Explorer</span>
+      </Button>
 
-    <div class="flex shrink-0 items-center gap-1">
+      <InputGroup.Root
+        class="min-w-0 w-36 shrink bg-muted/40 transition-colors focus-within:bg-background sm:w-44 lg:w-60"
+        title={search_error
+          ? "Search unavailable. Retry or clear the search."
+          : undefined}
+      >
+        <InputGroup.Input
+          aria-label="Search this board"
+          aria-busy={search_pending}
+          placeholder="Search this board"
+          bind:value={search_text}
+        />
+        <InputGroup.Addon>
+          {#if search_pending}
+            <LoaderCircleIcon class="animate-spin" />
+          {:else}
+            <SearchIcon />
+          {/if}
+        </InputGroup.Addon>
+        {#if search_text.length > 0}
+          <InputGroup.Addon align="inline-end">
+            <InputGroup.Button
+              aria-label="Clear search"
+              title="Clear search"
+              size="icon-xs"
+              onclick={() => (search_text = "")}
+            >
+              <XIcon />
+            </InputGroup.Button>
+          </InputGroup.Addon>
+        {/if}
+        <span class="sr-only" aria-live="polite">
+          {#if search_pending}
+            Searching tasks
+          {:else if search_error}
+            Search unavailable. Retry or clear the search.
+          {/if}
+        </span>
+      </InputGroup.Root>
+    </div>
+
+    <div class="flex shrink-0 items-center gap-1 border-l pl-2">
       <Button
         onclick={() => {
           note_open = !note_open;
         }}
         variant="outline"
-        size="icon"
-        class="self-center flex-none"
+        size="icon-sm"
+        class="flex-none"
         aria-pressed={note_open}
         aria-label={note_open ? "Close notes" : "Open notes"}
         title={note_open ? "Close notes" : "Open notes"}
@@ -327,8 +337,8 @@
       <Button
         onclick={onOpenTaskTemplates}
         variant="outline"
-        size="icon"
-        class="self-center flex-none"
+        size="icon-sm"
+        class="flex-none"
         aria-label="Open task templates"
         title="Open task templates"
       >
@@ -337,61 +347,11 @@
 
       <Button
         onclick={() => {
-          archive_open = !archive_open;
-          if (archive_open) {
-            void board.ensure_archives_loaded();
-          }
-        }}
-        variant="outline"
-        size="icon"
-        class="self-center flex-none"
-        aria-pressed={archive_open}
-        aria-label={archive_open ? "Close archives" : "Open archives"}
-        title={archive_open ? "Close archives" : "Open archives"}
-      >
-        <ArchiveIcon />
-      </Button>
-
-      <Button
-        onclick={() => {
-          board.get_expired_tasks();
-          expired_open = !expired_open;
-        }}
-        variant="outline"
-        size="icon"
-        class="self-center flex-none"
-        aria-pressed={expired_open}
-        aria-label={expired_open ? "Close expired tasks" : "Open expired tasks"}
-        title={expired_open ? "Close expired tasks" : "Open expired tasks"}
-      >
-        <ClockIcon />
-      </Button>
-
-      <Button
-        onclick={() => {
-          recurring_open = !recurring_open;
-        }}
-        variant="outline"
-        size="icon"
-        class="self-center flex-none"
-        aria-pressed={recurring_open}
-        aria-label={recurring_open
-          ? "Close recurring tasks"
-          : "Open recurring tasks"}
-        title={recurring_open
-          ? "Close recurring tasks"
-          : "Open recurring tasks"}
-      >
-        <Repeat2Icon />
-      </Button>
-
-      <Button
-        onclick={() => {
           void board.set_notify_enabled(!board.notify_enabled);
         }}
         variant="outline"
-        size="icon"
-        class="self-center flex-none"
+        size="icon-sm"
+        class="flex-none"
         disabled={board.notification_setting_updating}
         aria-pressed={board.notify_enabled}
         aria-label={board.notify_enabled
@@ -416,7 +376,7 @@
       </Button>
 
       <div
-        class="size-9 flex-none"
+        class="size-8 flex-none"
         title={selected_view !== "board"
           ? "Available in Board view"
           : undefined}
@@ -426,8 +386,7 @@
             task_expand_mode = !task_expand_mode;
           }}
           variant="outline"
-          size="icon"
-          class="self-center"
+          size="icon-sm"
           disabled={selected_view !== "board"}
           aria-pressed={task_expand_mode}
           aria-label={selected_view !== "board"
@@ -459,8 +418,8 @@
       <Button
         onclick={toggleMode}
         variant="outline"
-        size="icon"
-        class="self-center flex-none"
+        size="icon-sm"
+        class="flex-none"
         aria-label="Toggle color theme"
         title="Toggle color theme"
       >

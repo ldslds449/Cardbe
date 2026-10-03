@@ -4,7 +4,7 @@
   import { Button, buttonVariants } from "$lib/components/ui/button/index.js";
 
   import type { Column } from "../../type/column.svelte";
-  import type { Task } from "../../type/task.svelte";
+  import type { TaskSummary } from "../../type/task.svelte";
   import Combobox from "../combobox.svelte";
 
   let {
@@ -14,7 +14,7 @@
     onConfirm,
   }: {
     open: boolean;
-    task: Task | null;
+    task: TaskSummary | null;
     columns: Column[];
     onConfirm: (column_id: string, task_id: string) => void;
   } = $props();

@@ -27,8 +27,7 @@
   } from "./type/column.svelte";
   import { IrohDeviceStatus, type IrohInvite } from "./type/iroh-share";
   import BoardView from "./components/board/board_view.svelte";
-  import ArchivePanel from "./components/archive/archive_panel.svelte";
-  import ExpiredPanel from "./components/expire/expire_panel.svelte";
+  import AllTaskExplorer from "./components/task/all_task_explorer.svelte";
   import AddColumnDialog from "./components/dialog/add_column_dialog.svelte";
   import EditTaskDialog from "./components/dialog/edit_task_dialog.svelte";
   import ImportConfirmDialog from "./components/dialog/import_confirm_dialog.svelte";
@@ -41,7 +40,6 @@
   import CalendarView from "./components/calendar/calendar_view.svelte";
   import type { CalendarViewMode } from "./components/calendar/calendar";
   import FocusView from "./components/focus/focus_view.svelte";
-  import RecurringPanel from "./components/recurring/recurring_panel.svelte";
   import NotePanel from "./components/note/note_panel.svelte";
   import CardReferencePreview from "./components/card_reference_preview.svelte";
   import AppToolbar from "./components/workspace/app_toolbar.svelte";
@@ -117,14 +115,8 @@
     );
   });
 
-  // archive panel
-  let archive_open = $state(false);
-
-  // expired panel
-  let expired_open = $state(false);
-
-  // recurring tasks panel
-  let recurring_open = $state(false);
+  // all-task explorer
+  let all_task_open = $state(false);
 
   // quick notes panel
   let note_open = $state(false);
@@ -588,9 +580,6 @@
 
   function reset_board_scoped_ui() {
     search_text = "";
-    archive_open = false;
-    expired_open = false;
-    recurring_open = false;
     task_dialog_open = false;
     view_task_dialog_open = false;
     column_dialog_open = false;
@@ -1478,9 +1467,6 @@
         bind:search_text
         search_pending={board.search_pending}
         search_error={board.search_error}
-        bind:archive_open
-        bind:expired_open
-        bind:recurring_open
         bind:note_open
         bind:task_expand_mode
         {selected_view}
@@ -1526,6 +1512,7 @@
           iroh_share_dialog_open = true;
         }}
         onOpenTaskTemplates={open_templates_dialog}
+        onOpenAllTasks={() => (all_task_open = true)}
         onAddTask={open_add_task_shortcut}
         onAddColumn={open_add_column_dialog}
         onCheckForUpdates={check_for_updates}
@@ -1548,23 +1535,26 @@
         onSwitchView={switch_view}
       />
 
-      <ArchivePanel
-        bind:open={archive_open}
-        archives={board.archives}
-        loading={board.archives_loading}
+      <AllTaskExplorer
+        bind:open={all_task_open}
+        active_board_id={board.active_board_id}
+        boards={board.boards}
         columns={board.columns}
-        onUnarchive={board.unarchive_task.bind(board)}
-      ></ArchivePanel>
-
-      <ExpiredPanel bind:open={expired_open} expired_tasks={board.expired_tasks}
-      ></ExpiredPanel>
-
-      <RecurringPanel
-        bind:open={recurring_open}
-        columns={board.columns}
+        all_task_items={board.all_task_items}
+        all_task_items_loading={board.all_task_items_loading}
+        all_task_items_error={board.all_task_items_error}
+        all_task_items_has_more={board.all_task_items_has_more}
+        read_only={active_board_read_only}
+        onSwitchBoard={switch_board}
+        onLoadMoreAllTasks={board.load_more_all_tasks.bind(board)}
+        onSearchAllTasks={board.search_all_tasks.bind(board)}
+        onGetArchiveDetail={board.get_archive_detail.bind(board)}
+        onGetExpiredDetail={board.get_expired_task_detail.bind(board)}
+        onUnarchive={board.unarchive_task_from_list.bind(board)}
         onViewTask={view_task_by_id}
+        onViewArchivedTask={view_archived_task}
         onEditTask={edit_task_by_id}
-        onStopRepeat={stop_task_recurrence}
+        onArchiveTask={(task) => void board.archive_task(task.id)}
       />
 
       <AddColumnDialog

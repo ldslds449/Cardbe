@@ -50,6 +50,26 @@ export interface TaskSerialized {
   recurrence?: Recurrence;
 }
 
+export interface TaskSummary {
+  id: string;
+  title: string;
+  color: string;
+  start_time: Date | undefined;
+  due_time: Date | undefined;
+  labels: string[];
+  recurrence: Recurrence | undefined;
+}
+
+export interface TaskSummarySerialized {
+  id: number;
+  title: string;
+  color: string;
+  start_time: number;
+  due_time: number | undefined;
+  labels: string[];
+  recurrence?: Recurrence;
+}
+
 export interface TaskTemplate {
   id: number;
   name: string;
@@ -182,4 +202,18 @@ export function deserialize_task(data: TaskSerialized): Task {
   };
   set_task_id(t, data.id);
   return t;
+}
+
+export function deserialize_task_summary(
+  data: TaskSummarySerialized,
+): TaskSummary {
+  return {
+    id: `task_${data.id}`,
+    title: data.title,
+    color: data.color,
+    start_time: data.start_time ? new Date(data.start_time) : undefined,
+    due_time: data.due_time ? new Date(data.due_time) : undefined,
+    labels: data.labels,
+    recurrence: data.recurrence ? { ...data.recurrence } : undefined,
+  };
 }
