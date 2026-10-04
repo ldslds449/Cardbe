@@ -18,12 +18,16 @@
     search_placeholder = "Search...",
     search_label,
     selected_value = $bindable(undefined),
+    class: className,
+    onselect,
   }: {
     items: SelectItem[];
     select_placeholder: string;
     search_placeholder: string;
     search_label?: string;
     selected_value?: any | undefined;
+    class?: string;
+    onselect?: (value: any) => void;
   } = $props();
 
   let open = $state(false);
@@ -42,7 +46,8 @@
   function closeAndFocusTrigger() {
     open = false;
     tick().then(() => {
-      triggerRef.focus();
+      triggerRef.focus({ preventScroll: true });
+      onselect?.(selected_value);
     });
   }
 </script>
@@ -53,16 +58,23 @@
       <Button
         {...props}
         variant="outline"
-        class="w-full justify-between"
+        class={cn("w-full justify-between", className)}
         role="combobox"
         aria-expanded={open}
+        aria-label={select_placeholder}
       >
-        {selectedValue || select_placeholder}
+        <span class="truncate">{selectedValue || select_placeholder}</span>
         <ChevronsUpDownIcon class="opacity-50" />
       </Button>
     {/snippet}
   </Popover.Trigger>
-  <Popover.Content class="w-full p-0">
+  <Popover.Content
+    class="w-64 p-0"
+    onCloseAutoFocus={(event) => {
+      event.preventDefault();
+      triggerRef?.focus({ preventScroll: true });
+    }}
+  >
     <Command.Root>
       <Command.Input
         placeholder={search_placeholder}

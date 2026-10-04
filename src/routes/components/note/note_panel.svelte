@@ -1,14 +1,14 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { toast } from "svelte-sonner";
-  import { onDestroy, onMount, untrack } from "svelte";
+  import { onDestroy, onMount, tick, untrack } from "svelte";
   import { create_note_queue } from "./note-queue";
 
   import PlusIcon from "@lucide/svelte/icons/plus";
-  import EyeIcon from "@lucide/svelte/icons/eye";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import Maximize2Icon from "@lucide/svelte/icons/maximize-2";
+  import Minimize2Icon from "@lucide/svelte/icons/minimize-2";
   import SearchIcon from "@lucide/svelte/icons/search";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import PinIcon from "@lucide/svelte/icons/pin";
@@ -16,10 +16,19 @@
   import XIcon from "@lucide/svelte/icons/x";
 
   import { Button } from "$lib/components/ui/button/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as InputGroup from "$lib/components/ui/input-group/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import * as Sheet from "$lib/components/ui/sheet/index.js";
   import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import EditorControls from "$lib/components/editor/editor-controls.svelte";
+  import CardReferencePicker, {
+    type CardReferenceOption,
+  } from "$lib/components/editor/card-reference-picker.svelte";
+  import {
+    RichTextEditor,
+    type RichTextEditorHandle,
+  } from "$lib/components/editor/index.js";
   import { cn } from "$lib/utils";
   import Markdown from "../markdown.svelte";
 
@@ -32,7 +41,11 @@
     updated_at: number;
   }
 
-  let { open = $bindable(false) }: { open: boolean } = $props();
+  let {
+    open = $bindable(false),
+    card_reference_options = [],
+  }: { open: boolean; card_reference_options?: CardReferenceOption[] } =
+    $props();
 
   let notes = $state<Note[]>([]);
   let selected_id = $state<number | null>(null);
@@ -42,11 +55,43 @@
   let creating = $state(false);
   let deleting_id = $state<number | null>(null);
   const enqueue = create_note_queue();
-  let preview_mode = $state(false);
+  let note_expanded = $state(false);
+  let expanded_note_ref = $state<RichTextEditorHandle | null>(null);
+  let note_ref = $state<RichTextEditorHandle | null>(null);
+  let note_language = $state<string | null>(null);
+  let expanded_note_language = $state<string | null>(null);
+  let note_previewing = $state(false);
+  let reference_open = $state(false);
+  let reference_start = $state<number | undefined>(undefined);
   const save_timers = new Map<number, ReturnType<typeof setTimeout>>();
   const save_versions = new Map<number, number>();
 
   const selected_note = $derived(notes.find((note) => note.id === selected_id));
+  function handle_note_change(content: string) {
+    if (!selected_note) {
+      return;
+    }
+    selected_note.content = content;
+    queue_save(selected_note);
+    const handle = note_expanded ? expanded_note_ref : note_ref;
+    if (
+      card_reference_options.length &&
+      handle?.getTextBeforeCursor(2) === "[["
+    ) {
+      reference_start = handle.getSelection().from - 2;
+      reference_open = true;
+    }
+  }
+  function update_note_title(event: Event) {
+    if (!selected_note) {
+      return;
+    }
+    const input = event.currentTarget as HTMLTextAreaElement;
+    const title = input.value.replace(/[\r\n]+/g, " ");
+    input.value = title;
+    selected_note.title = title;
+    queue_save(selected_note);
+  }
   const filtered_notes = $derived.by(() => {
     const query = search_text.trim().toLocaleLowerCase();
     return query
@@ -57,12 +102,16 @@
   });
 
   $effect(() => {
+    if (!selected_note) {
+      note_expanded = false;
+    }
     const is_open = open;
     untrack(() => {
       if (is_open && !loaded && !loading) {
         void load_notes();
       }
       if (!is_open) {
+        note_expanded = false;
         flush_saves();
       }
     });
@@ -127,7 +176,6 @@
       );
       selected_id = note.id;
       search_text = "";
-      preview_mode = false;
     } catch (error) {
       logger.error("note.create.failed", error);
       console.error(error);
@@ -340,30 +388,55 @@
         </ScrollArea>
       </aside>
 
-      <main class="note-editor flex min-h-0 min-w-0 flex-col">
+      <main class="flex min-h-0 min-w-0 flex-col">
         {#if selected_note}
-          <div class="flex items-center gap-2 border-b p-3">
-            <div class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-              <Button
-                size="sm"
-                variant={preview_mode ? "ghost" : "secondary"}
-                aria-label="Edit note"
-                title="Edit note"
-                onclick={() => (preview_mode = false)}
-              >
-                <PencilIcon /> <span class="note-toolbar-label">Edit</span>
-              </Button>
-              <Button
-                size="sm"
-                variant={preview_mode ? "secondary" : "ghost"}
-                aria-label="Preview note"
-                title="Preview note"
-                onclick={() => (preview_mode = true)}
-              >
-                <EyeIcon /> <span class="note-toolbar-label">Preview</span>
-              </Button>
-            </div>
+          <div class="flex flex-wrap items-center gap-2 border-b p-3">
+            <Textarea
+              rows={1}
+              class="min-h-9 min-w-24 flex-1 resize-none border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
+              placeholder="Note title"
+              aria-label="Note title"
+              disabled={deleting_id === selected_note.id}
+              value={selected_note.title}
+              onkeydown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                }
+              }}
+              oninput={update_note_title}
+            />
+            <EditorControls
+              compact
+              bind:previewing={note_previewing}
+              language={note_language}
+              disabled={deleting_id === selected_note.id}
+              onlanguagechange={(language) =>
+                note_ref?.setCodeLanguage?.(language)}
+            />
             <div class="flex shrink-0 items-center gap-2">
+              {#if card_reference_options.length}
+                <div class="size-8 shrink-0">
+                  {#if !note_expanded && !note_previewing}
+                    <CardReferencePicker
+                      compact
+                      disabled={deleting_id === selected_note.id}
+                      editor={note_ref}
+                      options={card_reference_options}
+                      bind:open={reference_open}
+                      bind:triggerStart={reference_start}
+                    />
+                  {/if}
+                </div>
+              {/if}
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Expand note editor"
+                title="Expand note editor"
+                onclick={() => (note_expanded = true)}
+              >
+                <Maximize2Icon />
+              </Button>
               <Button
                 size="icon-sm"
                 variant={selected_note.pinned ? "secondary" : "ghost"}
@@ -388,64 +461,21 @@
             </div>
           </div>
           <div class="flex min-h-0 flex-1 flex-col gap-3 bg-background p-4">
-            {#if preview_mode}
-              <h1
-                class="min-w-0 text-lg font-semibold leading-7 [overflow-wrap:anywhere]"
-              >
-                {selected_note.title.trim() || "Untitled note"}
-              </h1>
-            {:else}
-              <Textarea
-                rows={1}
-                class="min-h-9 shrink-0 resize-none border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
-                placeholder="Note title"
-                aria-label="Note title"
-                disabled={deleting_id === selected_note.id}
-                value={selected_note.title}
-                onkeydown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                  }
-                }}
-                oninput={(event) => {
-                  const title = event.currentTarget.value.replace(
-                    /[\r\n]+/g,
-                    " ",
-                  );
-                  event.currentTarget.value = title;
-                  selected_note.title = title;
-                  queue_save(selected_note);
-                }}
-              />
-            {/if}
-            {#if preview_mode}
-              <ScrollArea
-                class="min-h-0 min-w-0 w-full flex-1"
-                orientation="vertical"
-              >
-                <div class="min-w-0 max-w-full pb-4 pr-3">
-                  {#if selected_note.content.trim()}
-                    <Markdown md={selected_note.content} />
-                  {:else}
-                    <p class="text-sm text-muted-foreground">
-                      Nothing to preview yet.
-                    </p>
-                  {/if}
-                </div>
-              </ScrollArea>
-            {:else}
-              <Textarea
-                class="min-h-0 flex-1 resize-none border-0 bg-transparent px-0 font-sans text-base leading-6 shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
+            {#key selected_note.id}
+              <RichTextEditor
+                bind:ref={note_ref}
+                bind:language={note_language}
+                bind:previewing={note_previewing}
+                showControls={false}
+                containerClass="flex min-h-0 flex-1 flex-col"
+                class="min-h-0 flex-1 overflow-y-auto border-0 bg-transparent px-0 font-sans text-base leading-6 shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
                 placeholder="Write Markdown…"
                 aria-label="Note content"
                 disabled={deleting_id === selected_note.id}
                 value={selected_note.content}
-                oninput={(event) => {
-                  selected_note.content = event.currentTarget.value;
-                  queue_save(selected_note);
-                }}
+                onvaluechange={handle_note_change}
               />
-            {/if}
+            {/key}
           </div>
         {:else}
           <div
@@ -460,22 +490,98 @@
   </Sheet.Content>
 </Sheet.Root>
 
+{#if selected_note}
+  <Dialog.Root bind:open={note_expanded}>
+    <Dialog.Content
+      class="flex h-[min(90vh,56rem)] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
+      showCloseButton={false}
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        void tick().then(() => expanded_note_ref?.focus());
+      }}
+    >
+      <Dialog.Header class="shrink-0 border-b px-4 py-3 text-start sm:px-6">
+        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+          <Dialog.Title class="sr-only"
+            >{selected_note.title.trim() || "Untitled note"}</Dialog.Title
+          >
+          <Textarea
+            rows={1}
+            class="min-h-9 min-w-0 resize-none border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
+            placeholder="Note title"
+            aria-label="Note title"
+            disabled={deleting_id === selected_note.id}
+            value={selected_note.title}
+            onkeydown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+              }
+            }}
+            oninput={update_note_title}
+          />
+          <div class="flex items-center gap-2">
+            {#if card_reference_options.length}
+              <div class="size-8 shrink-0">
+                {#if !note_previewing}
+                  <CardReferencePicker
+                    compact
+                    disabled={deleting_id === selected_note.id}
+                    editor={expanded_note_ref}
+                    options={card_reference_options}
+                    bind:open={reference_open}
+                    bind:triggerStart={reference_start}
+                  />
+                {/if}
+              </div>
+            {/if}
+            <EditorControls
+              compact
+              bind:previewing={note_previewing}
+              language={expanded_note_language}
+              disabled={deleting_id === selected_note.id}
+              onlanguagechange={(language) =>
+                expanded_note_ref?.setCodeLanguage?.(language)}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Collapse note editor"
+              title="Collapse note editor"
+              onclick={() => (note_expanded = false)}
+            >
+              <Minimize2Icon />
+            </Button>
+          </div>
+        </div>
+        <Dialog.Description class="sr-only"
+          >Expanded rich text editor</Dialog.Description
+        >
+      </Dialog.Header>
+      <div class="min-h-0 flex-1 p-3 sm:p-5">
+        {#key selected_note.id}
+          <RichTextEditor
+            bind:ref={expanded_note_ref}
+            bind:language={expanded_note_language}
+            bind:previewing={note_previewing}
+            showControls={false}
+            containerClass="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background"
+            class="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
+            placeholder="Write Markdown…"
+            showToolbar
+            aria-label="Note content"
+            disabled={deleting_id === selected_note.id}
+            value={selected_note.content}
+            onvaluechange={handle_note_change}
+          />
+        {/key}
+      </div>
+    </Dialog.Content>
+  </Dialog.Root>
+{/if}
+
 <style>
   .note-layout {
     grid-template-columns: clamp(10rem, 36%, 15rem) minmax(0, 1fr);
-  }
-
-  .note-editor {
-    container-type: inline-size;
-  }
-
-  .note-toolbar-label {
-    display: none;
-  }
-
-  @container (min-width: 20rem) {
-    .note-toolbar-label {
-      display: inline;
-    }
   }
 </style>

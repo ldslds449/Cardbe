@@ -1,5 +1,6 @@
-<script lang="ts">
+﻿<script lang="ts">
   import { logger } from "$lib/logger";
+  import "$lib/components/editor/markdown-content.css";
   import { mode } from "mode-watcher";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
@@ -202,7 +203,10 @@
   };
 </script>
 
-<div class="min-w-0 max-w-full [overflow-wrap:anywhere] [&_table]:table-fixed">
+<div
+  class="markdown-content min-w-0 max-w-full [&_table]:table-fixed"
+  class:markdown-content-compact={compact}
+>
   <Markdown
     {md}
     plugins={[
@@ -212,119 +216,17 @@
       shikiPlugin,
     ]}
   >
-    {#snippet h1(props)}
-      {@const { children, style, class: className, ...rest } = props}
-      <h1
-        class="{className} scroll-m-20 {compact
-          ? 'text-lg'
-          : 'text-2xl'} mt-4 mb-2 first:mt-0 font-bold tracking-tight"
-        {...rest}
-      >
-        {@render children?.()}
-      </h1>
-    {/snippet}
-    {#snippet h2(props)}
-      {@const { children, style, class: className, ...rest } = props}
-      <h2
-        class="{className} scroll-m-20 {compact
-          ? 'text-base'
-          : 'text-xl'} mt-4 mb-2 first:mt-0 font-semibold tracking-tight"
-        {...rest}
-      >
-        {@render children?.()}
-      </h2>
-    {/snippet}
-    {#snippet h3(props)}
-      {@const { children, style, class: className, ...rest } = props}
-      <h3
-        class="{className} scroll-m-20 {compact
-          ? 'text-sm'
-          : 'text-lg'} mt-3 mb-1.5 first:mt-0 font-semibold tracking-tight"
-        {...rest}
-      >
-        {@render children?.()}
-      </h3>
-    {/snippet}
-    {#snippet h4(props)}
-      {@const { children, style, class: className, ...rest } = props}
-      <h4
-        class="{className} scroll-m-20 {compact
-          ? 'text-sm'
-          : 'text-base'} mt-3 mb-1.5 first:mt-0 font-medium tracking-tight"
-        {...rest}
-      >
-        {@render children?.()}
-      </h4>
-    {/snippet}
-    {#snippet h5(props)}
-      {@const { children, style, class: className, ...rest } = props}
-      <h5
-        class="{className} scroll-m-20 text-sm mt-3 mb-1 first:mt-0 font-medium tracking-tight"
-        {...rest}
-      >
-        {@render children?.()}
-      </h5>
-    {/snippet}
-    {#snippet blockquote(props)}
-      {@const { children, style, class: className, ...rest } = props}
-      <blockquote
-        class="{className} my-3 rounded-r-md border-l-2 border-primary/40 bg-muted/40 py-2 pr-3 {compact
-          ? 'pl-3 text-sm'
-          : 'pl-4'} text-muted-foreground"
-        {...rest}
-      >
-        {@render children?.()}
-      </blockquote>
-    {/snippet}
-    {#snippet p(props)}
-      {@const { children, style, class: className, ...rest } = props}
-      <p
-        class="{className} {compact
-          ? 'text-sm leading-5 [&:not(:first-child)]:mt-2.5'
-          : 'leading-6 [&:not(:first-child)]:mt-3'}"
-        {...rest}
-      >
-        {@render children?.()}
-      </p>
-    {/snippet}
     {#snippet pre(props)}
       {@const { children, class: className, ...rest } = props}
-      <div
-        class="my-3 min-w-0 max-w-full rounded-md border"
-        use:prevent_task_drag
-      >
-        <ScrollArea orientation="horizontal" class="min-w-0 max-w-full">
-          <pre
-            class="{className ?? ''} m-0 min-w-max p-3 text-sm"
-            {...rest}>{@render children?.()}</pre>
+      <div use:prevent_task_drag>
+        <ScrollArea
+          type="auto"
+          orientation="horizontal"
+          class="code-scroll min-w-0 w-full max-w-full overflow-hidden rounded-md border"
+        >
+          <pre class={className ?? ""} {...rest}>{@render children?.()}</pre>
         </ScrollArea>
       </div>
-    {/snippet}
-    {#snippet code(props)}
-      {@const { children, class: className, ...rest } = props}
-      <code class={className} {...rest}>{@render children?.()}</code>
-    {/snippet}
-    {#snippet ul(props)}
-      {@const { children, style, class: className, ...rest } = props}
-      <ul
-        class="{className} my-3 ml-5 {compact
-          ? 'text-sm'
-          : ''} list-disc [&>li]:mt-1"
-        {...rest}
-      >
-        {@render children?.()}
-      </ul>
-    {/snippet}
-    {#snippet ol(props)}
-      {@const { children, style, class: className, ...rest } = props}
-      <ol
-        class="{className} my-3 ml-5 {compact
-          ? 'text-sm'
-          : ''} list-decimal [&>li]:mt-1"
-        {...rest}
-      >
-        {@render children?.()}
-      </ol>
     {/snippet}
     {#snippet table(props)}
       {@const { children, style, class: className, ...rest } = props}
@@ -369,7 +271,7 @@
       {#if task_id}
         <a
           href={safe_href}
-          class="{className} font-medium text-primary underline decoration-primary/70 decoration-1 underline-offset-4 transition-colors hover:text-primary/80 hover:decoration-2"
+          class="{className} inline-flex max-w-full items-baseline gap-1 align-baseline whitespace-normal font-medium text-primary underline decoration-primary/70 decoration-1 underline-offset-4 transition-colors hover:text-primary/80 hover:decoration-2"
           onmouseenter={(event) => show_card_reference_preview(event, task_id)}
           onmouseleave={hide_card_reference_preview}
           onfocus={(event) => show_card_reference_preview(event, task_id)}
@@ -377,8 +279,8 @@
           onpointerdown={(event) => event.stopPropagation()}
           onclick={(event) => void open_external_link(event, href)}
         >
-          <Link2Icon class="mr-1 inline-block size-[1em] align-[-0.125em]" />
-          <span>{@render children?.()}</span>
+          <Link2Icon class="size-[1em] shrink-0 self-center" />
+          <span class="min-w-0">{@render children?.()}</span>
         </a>
       {:else}
         <a

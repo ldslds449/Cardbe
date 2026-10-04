@@ -8,20 +8,23 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import {
+    RichTextEditor,
+    type RichTextEditorHandle,
+  } from "$lib/components/editor/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
   import { DragDropProvider } from "@dnd-kit-svelte/svelte";
 
   import PaletteIcon from "@lucide/svelte/icons/palette";
   import ResetIcon from "@lucide/svelte/icons/rotate-ccw";
-  import EyeIcon from "@lucide/svelte/icons/eye";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import Maximize2Icon from "@lucide/svelte/icons/maximize-2";
+  import Minimize2Icon from "@lucide/svelte/icons/minimize-2";
   import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
   import CheckIcon from "@lucide/svelte/icons/check";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
   import FilePlus2Icon from "@lucide/svelte/icons/file-plus-2";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
-  import Link2Icon from "@lucide/svelte/icons/link-2";
+  import CardReferencePicker from "$lib/components/editor/card-reference-picker.svelte";
 
   import { tick } from "svelte";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
@@ -43,9 +46,7 @@
     task_color_presets,
   } from "../../utils/task-color";
   import DateTimePicker from "../date_time_picker.svelte";
-  import Markdown from "../markdown.svelte";
   import SortableChecklistItem from "../task/sortable_checklist_item.svelte";
-  import { create_card_reference } from "../../utils/card-reference";
 
   type CardReferenceOption = {
     task: Task;
@@ -89,12 +90,14 @@
   let submitting = $state(false);
   let show_saving = $state(false);
   let previewing_description = $state(false);
+  let description_expanded = $state(false);
   let template_mode_active = $state(false);
   let template_browser_open = $state(false);
   let card_reference_picker_open = $state(false);
   let dialog_content_ref = $state<HTMLDivElement | null>(null);
   let title_ref = $state<HTMLInputElement | null>(null);
-  let description_ref = $state<HTMLTextAreaElement | null>(null);
+  let description_ref = $state<RichTextEditorHandle | null>(null);
+  let expanded_description_ref = $state<RichTextEditorHandle | null>(null);
   let reference_trigger_start = $state<number | undefined>(undefined);
   const selected_template = $derived(
     templates.find(
@@ -122,37 +125,18 @@
     }
   }
 
-  function open_card_reference_picker() {
-    reference_trigger_start = undefined;
-    card_reference_picker_open = true;
-  }
-
-  function handle_description_input(event: Event) {
-    const textarea = event.currentTarget as HTMLTextAreaElement;
-    const cursor = textarea.selectionStart;
-    if (textarea.value.slice(Math.max(0, cursor - 2), cursor) === "[[") {
-      reference_trigger_start = cursor - 2;
+  function handle_description_change() {
+    const editor_ref = description_expanded
+      ? expanded_description_ref
+      : description_ref;
+    const selection = editor_ref?.getSelection();
+    if (!selection) {
+      return;
+    }
+    if (editor_ref?.getTextBeforeCursor(2) === "[[") {
+      reference_trigger_start = selection.from - 2;
       card_reference_picker_open = true;
     }
-  }
-
-  async function insert_card_reference(option: CardReferenceOption) {
-    const textarea = description_ref;
-    const fallback_position = task.description.length;
-    const selection_start = textarea?.selectionStart ?? fallback_position;
-    const selection_end = textarea?.selectionEnd ?? selection_start;
-    const insertion_start = reference_trigger_start ?? selection_start;
-    const token = create_card_reference(option.task.title, option.task.id);
-    task.description =
-      task.description.slice(0, insertion_start) +
-      token +
-      task.description.slice(selection_end);
-    card_reference_picker_open = false;
-    reference_trigger_start = undefined;
-    await tick();
-    const cursor = insertion_start + token.length;
-    description_ref?.focus();
-    description_ref?.setSelectionRange(cursor, cursor);
   }
 
   function set_recurrence(value: string) {
@@ -252,6 +236,7 @@
       invalid_title = false;
       invalid_template_name = false;
       previewing_description = false;
+      description_expanded = false;
       template_mode_active = false;
       template_browser_open = false;
       card_reference_picker_open = false;
@@ -298,6 +283,16 @@
     }
   }
 </script>
+
+{#snippet card_reference_picker()}
+  <CardReferencePicker
+    editor={description_expanded ? expanded_description_ref : description_ref}
+    options={card_reference_options}
+    excludeTaskId={task.id}
+    bind:open={card_reference_picker_open}
+    bind:triggerStart={reference_trigger_start}
+  />
+{/snippet}
 
 <Dialog.Root bind:open>
   <Dialog.Content
@@ -543,20 +538,12 @@
                           </p>
                           <div class="grid grid-cols-9 gap-2">
                             {#each task_color_presets as preset}
-                              <button
+                              <Button
                                 type="button"
-                                class="size-7 rounded-full border-2 border-background shadow-sm ring-offset-2 ring-offset-background transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                class:ring-2={is_preset_color(
-                                  task.color,
-                                  preset,
-                                )}
-                                class:ring-ring={is_preset_color(
-                                  task.color,
-                                  preset,
-                                )}
-                                style:background-color={preset_display_color(
-                                  preset,
-                                )}
+                                variant="outline"
+                                size="icon-xs"
+                                class="size-7 rounded-full border-2 border-background shadow-sm ring-offset-2 ring-offset-background aria-pressed:ring-2 aria-pressed:ring-ring"
+                                style={`background-color: ${preset_display_color(preset)}`}
                                 aria-label={`Use ${preset.name} (${preset_display_color(preset)})`}
                                 aria-pressed={is_preset_color(
                                   task.color,
@@ -566,7 +553,7 @@
                                 onclick={() => {
                                   task.color = preset.light;
                                 }}
-                              ></button>
+                              ></Button>
                             {/each}
                           </div>
                         </div>
@@ -643,14 +630,16 @@
                     <div class="flex items-center gap-1.5">
                       <Field.FieldLabel for="label">Label</Field.FieldLabel>
                       <div class="group/label-help relative inline-flex">
-                        <button
+                        <Button
                           type="button"
-                          class="rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          variant="ghost"
+                          size="icon-xs"
+                          class="text-muted-foreground"
                           aria-label="Label format help"
                           aria-describedby="label-format-help"
                         >
                           <CircleHelpIcon class="size-3.5" />
-                        </button>
+                        </Button>
                         <div
                           id="label-format-help"
                           role="tooltip"
@@ -743,14 +732,16 @@
                           >Description</Field.FieldLabel
                         >
                         <div class="group/reference-help relative inline-flex">
-                          <button
+                          <Button
                             type="button"
-                            class="rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            variant="ghost"
+                            size="icon-xs"
+                            class="text-muted-foreground"
                             aria-label="Card reference help"
                             aria-describedby="card-reference-help"
                           >
                             <CircleHelpIcon class="size-3.5" />
-                          </button>
+                          </Button>
                           <div
                             id="card-reference-help"
                             role="tooltip"
@@ -762,104 +753,34 @@
                         </div>
                       </div>
                       <div class="flex items-center gap-1">
-                        {#if !previewing_description && card_reference_options.length > 0}
-                          <Popover.Root bind:open={card_reference_picker_open}>
-                            <Popover.Trigger>
-                              {#snippet child({ props })}
-                                <Button
-                                  {...props}
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  class="h-7 select-none gap-1.5 px-2 text-xs"
-                                  onclick={open_card_reference_picker}
-                                >
-                                  <Link2Icon class="size-3.5" />
-                                  Reference card
-                                </Button>
-                              {/snippet}
-                            </Popover.Trigger>
-                            <Popover.Content class="w-80 p-0" align="end">
-                              <Command.Root>
-                                <Command.Input
-                                  placeholder="Search cards..."
-                                  aria-label="Search cards"
-                                />
-                                <Command.List class="max-h-64">
-                                  <Command.Empty>No cards found.</Command.Empty>
-                                  <Command.Group value="cards">
-                                    {#each card_reference_options.filter((option) => option.task.id !== task.id) as option (option.task.id)}
-                                      <Command.Item
-                                        value={option.task.id}
-                                        keywords={[
-                                          option.task.title,
-                                          option.column_name,
-                                        ]}
-                                        onSelect={() =>
-                                          void insert_card_reference(option)}
-                                      >
-                                        <div class="min-w-0">
-                                          <div class="truncate">
-                                            {option.task.title}
-                                          </div>
-                                          <div
-                                            class="truncate text-xs text-muted-foreground"
-                                          >
-                                            {option.column_name}
-                                          </div>
-                                        </div>
-                                      </Command.Item>
-                                    {/each}
-                                  </Command.Group>
-                                </Command.List>
-                              </Command.Root>
-                            </Popover.Content>
-                          </Popover.Root>
+                        {#if !description_expanded && !previewing_description && card_reference_options.length > 0}
+                          {@render card_reference_picker()}
                         {/if}
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          class="h-7 w-20 select-none justify-center gap-1.5 px-2 text-xs"
-                          aria-pressed={previewing_description}
-                          onclick={() => {
-                            previewing_description = !previewing_description;
-                          }}
+                          class="h-7 gap-1.5 px-2 text-xs"
+                          aria-label="Expand description editor"
+                          title="Expand description editor"
+                          onclick={() => (description_expanded = true)}
                         >
-                          {#if previewing_description}
-                            <PencilIcon class="size-3.5" />
-                            Edit
-                          {:else}
-                            <EyeIcon class="size-3.5" />
-                            Preview
-                          {/if}
+                          <Maximize2Icon class="size-3.5" />
+                          <span class="hidden sm:inline">Expand</span>
                         </Button>
                       </div>
                     </div>
                     <div class="grid w-full gap-4">
-                      {#if previewing_description}
-                        <div
-                          class="h-80 overflow-y-auto rounded-md border bg-muted/30 px-3 py-2 text-sm"
-                          aria-label="Description preview"
-                        >
-                          {#if task.description.trim().length > 0}
-                            <Markdown md={task.description} />
-                          {:else}
-                            <p class="text-muted-foreground">
-                              Nothing to preview
-                            </p>
-                          {/if}
-                        </div>
-                      {:else}
-                        <Textarea
-                          bind:ref={description_ref}
-                          class="h-80 resize-y"
-                          placeholder="Description (Markdown supported)"
-                          id="description"
-                          bind:value={task.description}
-                          oninput={handle_description_input}
-                        />
-                      {/if}
+                      <RichTextEditor
+                        bind:previewing={previewing_description}
+                        bind:ref={description_ref}
+                        containerClass="rounded-md border bg-background"
+                        class="h-80 overflow-y-auto px-3 py-2"
+                        placeholder="Description (Markdown supported)"
+                        id="description"
+                        bind:value={task.description}
+                        onvaluechange={handle_description_change}
+                      />
                     </div>
                   </Field.Field>
                 </Field.Group>
@@ -888,4 +809,50 @@
       </form>
     </div>
   </Dialog.Content>
+  <Dialog.Root bind:open={description_expanded}>
+    <Dialog.Content
+      class="flex h-[min(90vh,56rem)] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
+      showCloseButton={false}
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        void tick().then(() => expanded_description_ref?.focus());
+      }}
+    >
+      <Dialog.Header class="shrink-0 border-b px-4 py-3 text-start sm:px-6">
+        <div class="flex items-center justify-between gap-3">
+          <Dialog.Title class="min-w-0 flex-1">Description</Dialog.Title>
+          {#if !previewing_description && card_reference_options.length > 0}
+            {@render card_reference_picker()}
+          {/if}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Collapse description editor"
+            title="Collapse description editor"
+            onclick={() => (description_expanded = false)}
+          >
+            <Minimize2Icon />
+          </Button>
+        </div>
+        <Dialog.Description class="sr-only"
+          >Expanded rich text editor</Dialog.Description
+        >
+      </Dialog.Header>
+      <div class="min-h-0 flex-1 p-3 sm:p-5">
+        <RichTextEditor
+          bind:ref={expanded_description_ref}
+          containerClass="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background"
+          class="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
+          placeholder="Description (Markdown supported)"
+          showToolbar
+          value={task.description}
+          onvaluechange={(content) => {
+            task.description = content;
+            handle_description_change();
+          }}
+        />
+      </div>
+    </Dialog.Content>
+  </Dialog.Root>
 </Dialog.Root>

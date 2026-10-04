@@ -1577,7 +1577,12 @@
         onSubmit={handle_add_column}
       />
 
-      <NotePanel bind:open={note_open} />
+      <NotePanel
+        bind:open={note_open}
+        card_reference_options={board.columns.flatMap((column) =>
+          column.tasks.map((task) => ({ task, column_name: column.name })),
+        )}
+      />
 
       <BoardShareDialog
         bind:open={board_share_dialog_open}
