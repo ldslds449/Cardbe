@@ -1094,7 +1094,13 @@ impl Database {
             }
             write_board_transaction(&tx, id, after)?;
             mark_local_board_change(&tx, id, role)?;
-            persist_loro_local_delta(&tx, id, before, after)?;
+            persist_loro_local_delta(
+                &tx,
+                id,
+                before,
+                after,
+                self.loro_peers.entry(id).or_default(),
+            )?;
         }
         tx.commit()?;
         self.positions = self.load_board_positions(self.active_board_id)?;
