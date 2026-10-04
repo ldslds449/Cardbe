@@ -82,7 +82,7 @@
     onGetArchiveDetail: (task_id: string) => Promise<Task | null>;
     onGetExpiredDetail: (task_id: string) => Promise<Task | null>;
     onUnarchive: (column_id: string, task_id: string) => void;
-    onViewTask: (task: Task) => void;
+    onViewTask: (task: Task, read_only: boolean) => void;
     onViewArchivedTask: (task: Task) => void;
     onEditTask: (task: Task) => void;
     onArchiveTask: (task: Task) => void;
@@ -128,6 +128,7 @@
   let detail_loading_id = $state<string | null>(null);
   let unarchive_open = $state(false);
   let unarchive_target = $state<TaskSummary | null>(null);
+  let unarchive_board_id = $state<number | null>(null);
   let requested_query = $state("");
 
   const smart_views: {
@@ -260,6 +261,16 @@
     }
   });
 
+  $effect(() => {
+    if (
+      unarchive_open &&
+      (read_only || active_board_id !== unarchive_board_id)
+    ) {
+      unarchive_open = false;
+      unarchive_target = null;
+    }
+  });
+
   function set_view(view: SmartView) {
     smart_view = view;
     if (view === "archived") {
@@ -342,13 +353,13 @@
       return;
     }
     unarchive_target = task;
+    unarchive_board_id = active_board_id;
     unarchive_open = true;
   }
 
   function entry_read_only(entry: ExplorerEntry): boolean {
-    return (
-      boards.find((board) => board.id === entry.board_id)?.shared_role ===
-      "viewer"
+    return !boards.some(
+      (board) => board.id === entry.board_id && board.shared_role !== "viewer",
     );
   }
 
@@ -360,15 +371,16 @@
     if (detail_loading_id) {
       return null;
     }
-    detail_loading_id = entry.task.id;
+    detail_loading_id = `${entry.board_id}:${entry.task.id}`;
     try {
       await onSwitchBoard(entry.board_id);
       if (active_board_id !== entry.board_id) {
         return null;
       }
-      return await (entry_archived(entry)
+      const task = await (entry_archived(entry)
         ? onGetArchiveDetail(entry.task.id)
         : onGetExpiredDetail(entry.task.id));
+      return active_board_id === entry.board_id ? task : null;
     } finally {
       detail_loading_id = null;
     }
@@ -381,13 +393,13 @@
     const task = await get_entry_task(entry);
     if (task) {
       if (edit) {
-        if (!read_only) {
+        if (!read_only && !entry_read_only(entry)) {
           onEditTask(task);
         }
       } else if (entry_archived(entry)) {
         onViewArchivedTask(task);
       } else {
-        onViewTask(task);
+        onViewTask(task, entry_read_only(entry) || read_only);
       }
     }
   }
@@ -397,7 +409,7 @@
       return;
     }
     const task = await get_entry_task(entry);
-    if (task && !read_only) {
+    if (task && !read_only && !entry_read_only(entry)) {
       onArchiveTask(task);
     }
   }
@@ -407,7 +419,7 @@
       return;
     }
     const task = await get_entry_task(entry);
-    if (task && !read_only) {
+    if (task && !read_only && !entry_read_only(entry)) {
       show_unarchive(task);
     }
   }
@@ -512,7 +524,16 @@
                     board_scope.includes(board.id)}
                   closeOnSelect={false}
                   onCheckedChange={(checked) => select_board(board.id, checked)}
-                  >{board.name}</DropdownMenu.CheckboxItem
+                  >{board.name}
+                  {#if board.is_shared || board.shared_role !== "owner"}
+                    <Badge variant="outline" class="ml-auto text-[11px]">
+                      {board.shared_role === "viewer"
+                        ? "Read only"
+                        : board.shared_role === "editor"
+                          ? "Can edit"
+                          : "Shared"}
+                    </Badge>
+                  {/if}</DropdownMenu.CheckboxItem
                 >
               {/each}
             </DropdownMenu.Content>
@@ -920,6 +941,11 @@
                               variant="outline"
                               class="shrink-0 py-0 text-[11px]">Read only</Badge
                             >
+                          {:else if boards.some((board) => board.id === entry.board_id && (board.is_shared || board.shared_role === "editor"))}
+                            <Badge
+                              variant="outline"
+                              class="shrink-0 py-0 text-[11px]">Shared</Badge
+                            >
                           {/if}
                           {#if smart_view !== "recurring" && entry.task.recurrence && !entry.archived_at}
                             <Badge
@@ -934,7 +960,7 @@
                       </span>
                     </div>
                   </button>
-                  {#if detail_loading_id === entry.task.id}
+                  {#if detail_loading_id === `${entry.board_id}:${entry.task.id}`}
                     <span class="detail-loading-indicator">
                       <Spinner class="size-4" />
                     </span>
@@ -1037,7 +1063,11 @@
   bind:open={unarchive_open}
   task={unarchive_target}
   {columns}
-  onConfirm={onUnarchive}
+  onConfirm={(column_id, task_id) => {
+    if (!read_only && active_board_id === unarchive_board_id) {
+      onUnarchive(column_id, task_id);
+    }
+  }}
 />
 
 <style>

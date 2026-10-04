@@ -206,7 +206,7 @@
                       ><ContextMenu.Separator />
                     {/if}
                     <ContextMenu.Item
-                      class="text-destructive focus:text-destructive"
+                      variant="destructive"
                       disabled={boards.length <= 1}
                       onclick={() => open_delete_dialog(item)}
                       ><Trash2Icon />

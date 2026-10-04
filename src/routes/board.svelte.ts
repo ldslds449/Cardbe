@@ -75,12 +75,17 @@ export interface BoardSummary {
   name: string;
   task_count: number;
   shared_role: BoardRole;
+  is_shared?: boolean;
   sync_status: string;
   sync_revision: number;
 }
 interface BoardsState {
   boards: BoardSummary[];
   active_board_id: number;
+}
+interface IrohSyncResult {
+  board: BoardSummary;
+  content_changed: boolean;
 }
 
 interface ArchivePageSerialized {
@@ -136,7 +141,22 @@ export class BoardStore {
   column_fetch_error = $state(false);
   notify_enabled = $state(false);
   notification_setting_updating = $state(false);
-  can_undo = $state(false);
+  private has_undo_history = $state(false);
+  get can_edit() {
+    const active = this.boards.find(
+      (board) => board.id === this.active_board_id,
+    );
+    return Boolean(
+      active &&
+      (active.shared_role === "owner" || active.shared_role === "editor"),
+    );
+  }
+  get can_undo() {
+    return this.has_undo_history && this.can_edit;
+  }
+  set can_undo(value: boolean) {
+    this.has_undo_history = value && this.can_edit;
+  }
   undo_in_progress = $state(false);
   search_task_ids = $state<Set<string> | null>(null);
   search_pending = $state(false);
@@ -170,19 +190,25 @@ export class BoardStore {
   private iroh_syncing = new Set<number>();
   private iroh_failures = new Map<number, number>();
   private iroh_retry_after = new Map<number, number>();
+  private iroh_last_checked_at = new Map<number, number>();
   private iroh_host_checking = false;
+  private iroh_network_generation = 0;
   iroh_last_error = $state("");
+  iroh_sync_error = $state<Record<number, string>>({});
   iroh_access_removed = $state<Record<number, boolean>>({});
+  iroh_access_error = $state<Record<number, string>>({});
   iroh_last_synced_at = $state<Record<number, number>>({});
 
   async create_iroh_invite(
     board_id: number,
     permission: "viewer" | "editor",
   ): Promise<string> {
-    return invoke<string>("create_iroh_invite", {
+    const ticket = await invoke<string>("create_iroh_invite", {
       boardId: board_id,
       permission,
     });
+    await this.get_boards();
+    return ticket;
   }
 
   async join_iroh_invite(ticket: string, silent = false): Promise<boolean> {
@@ -217,6 +243,7 @@ export class BoardStore {
   async sync_iroh_board(
     board_id = this.active_board_id,
     silent = false,
+    access_only = false,
   ): Promise<boolean> {
     if (board_id === null) {
       return false;
@@ -227,14 +254,39 @@ export class BoardStore {
     const previous_status = this.boards.find(
       (item) => item.id === board_id,
     )?.sync_status;
+    const network_generation = this.iroh_network_generation;
     this.iroh_syncing.add(board_id);
-    this.update_iroh_summary(board_id, "syncing");
+    if (!access_only) {
+      this.update_iroh_summary(board_id, "syncing");
+    }
     try {
-      const synced = await invoke<BoardSummary>("sync_iroh_board", {
-        boardId: board_id,
-      });
+      if (access_only) {
+        const [approved, , refreshed] = await invoke<
+          [boolean, string, BoardSummary?]
+        >("request_iroh_board_access", {
+          boardId: board_id,
+          requestApproval: false,
+        });
+        if (!approved) {
+          throw "APPROVAL_REQUIRED:Waiting for owner approval.";
+        }
+        if (refreshed) {
+          this.apply_iroh_conflict_refresh(refreshed);
+        }
+        this.iroh_failures.delete(board_id);
+        this.iroh_retry_after.delete(board_id);
+        delete this.iroh_sync_error[board_id];
+        return true;
+      }
+      const { board: synced, content_changed } = await invoke<IrohSyncResult>(
+        "sync_iroh_board",
+        {
+          boardId: board_id,
+        },
+      );
       this.iroh_failures.delete(board_id);
       this.iroh_retry_after.delete(board_id);
+      delete this.iroh_sync_error[board_id];
       this.iroh_access_removed = {
         ...this.iroh_access_removed,
         [board_id]: false,
@@ -246,23 +298,45 @@ export class BoardStore {
         ...this.iroh_last_synced_at,
         [synced.id]: Date.now(),
       };
-      if (board_id === this.active_board_id) {
+      if (board_id === this.active_board_id && content_changed) {
         this.can_undo = false;
         this.reload_active_board_data();
+      }
+      if (content_changed && this.all_task_list_filter) {
+        void this.fetch_all_task_page(true);
       }
       if (!silent) {
         toast.success("Shared board synced");
       }
       return true;
     } catch (error) {
+      if (network_generation !== this.iroh_network_generation) {
+        if (!access_only && previous_status) {
+          this.update_iroh_summary(board_id, previous_status);
+        }
+        return false;
+      }
       logger.error("iroh.board_sync.failed", error);
-      const message =
+      const raw_message =
         error instanceof Error
           ? error.message
           : typeof error === "string"
             ? error
             : "Couldn't sync shared board";
-      if (message.startsWith("Access was declined or revoked")) {
+      const access_error =
+        /^(ACCESS_REVOKED|INVITATION_DISABLED|INVITATION_DELETED|APPROVAL_REQUIRED):/.test(
+          raw_message,
+        );
+      const message = raw_message.replace(
+        /^(ACCESS_REVOKED|INVITATION_DISABLED|INVITATION_DELETED|APPROVAL_REQUIRED):/,
+        "",
+      );
+      this.iroh_sync_error[board_id] = message;
+      if (
+        access_error ||
+        message.startsWith("Access was declined or revoked")
+      ) {
+        this.iroh_access_error[board_id] = message;
         this.iroh_access_removed = {
           ...this.iroh_access_removed,
           [board_id]: true,
@@ -281,7 +355,7 @@ export class BoardStore {
       ) {
         this.update_iroh_summary(
           board_id,
-          previous_status === "pending" ? "pending" : "error",
+          previous_status === "pending" && !access_error ? "pending" : "error",
         );
       }
       if (!silent) {
@@ -289,8 +363,41 @@ export class BoardStore {
       }
       return false;
     } finally {
+      // Access-only checks must also yield their place in the sync queue.
+      this.iroh_last_checked_at.set(board_id, Date.now());
       this.iroh_syncing.delete(board_id);
+      if (network_generation !== this.iroh_network_generation) {
+        this.trigger_iroh_background_sync(true);
+      }
     }
+  }
+
+  async restore_iroh_access(board_id: number) {
+    this.iroh_access_removed = {
+      ...this.iroh_access_removed,
+      [board_id]: false,
+    };
+    delete this.iroh_access_error[board_id];
+    delete this.iroh_sync_error[board_id];
+    this.iroh_failures.delete(board_id);
+    this.iroh_retry_after.delete(board_id);
+    if (
+      this.boards.find((item) => item.id === board_id)?.sync_status ===
+      "conflict"
+    ) {
+      toast.success("Access restored. Resolve the conflict before syncing.");
+    } else if (await this.sync_iroh_board(board_id, true)) {
+      toast.success("Access restored");
+    }
+  }
+
+  apply_iroh_conflict_refresh(refreshed: BoardSummary) {
+    // A delayed access response must not restore an already resolved conflict.
+    this.boards = this.boards.map((item) =>
+      item.id === refreshed.id && item.sync_status === "conflict"
+        ? refreshed
+        : item,
+    );
   }
 
   async resolve_iroh_conflict(
@@ -308,6 +415,9 @@ export class BoardStore {
       if (board_id === this.active_board_id && !keep_local) {
         this.can_undo = false;
         this.reload_active_board_data();
+      }
+      if (this.all_task_list_filter) {
+        void this.fetch_all_task_page(true);
       }
       toast.success(
         keep_local
@@ -334,16 +444,24 @@ export class BoardStore {
       this.can_undo = false;
       this.reload_active_board_data();
     }
+    if (this.all_task_list_filter) {
+      void this.fetch_all_task_page(true);
+    }
   }
 
-  trigger_iroh_background_sync() {
+  reconnect_iroh_boards() {
+    this.iroh_network_generation += 1;
+    this.iroh_failures.clear();
+    this.iroh_retry_after.clear();
+    this.iroh_sync_error = {};
+    this.trigger_iroh_background_sync(true);
+  }
+
+  trigger_iroh_background_sync(force = false) {
     if (
       typeof document !== "undefined" &&
       document.visibilityState !== "visible"
     ) {
-      return;
-    }
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
       return;
     }
     if (!this.iroh_host_checking) {
@@ -356,18 +474,25 @@ export class BoardStore {
           this.iroh_host_checking = false;
         });
     }
-    for (const item of this.boards) {
+    for (const item of [...this.boards].sort(
+      (a, b) =>
+        (this.iroh_last_checked_at.get(a.id) ?? 0) -
+        (this.iroh_last_checked_at.get(b.id) ?? 0),
+    )) {
       if (
         item.shared_role !== "owner" &&
-        item.sync_status !== "conflict" &&
+        !this.iroh_access_removed[item.id] &&
         !this.iroh_syncing.has(item.id) &&
-        (item.shared_role !== "viewer" ||
-          Date.now() - (this.iroh_last_synced_at[item.id] ?? 0) >=
-            IROH_VIEWER_SYNC_MS) &&
         this.iroh_syncing.size < 2 &&
         Date.now() >= (this.iroh_retry_after.get(item.id) ?? 0)
       ) {
-        void this.sync_iroh_board(item.id, true);
+        const access_only =
+          item.sync_status === "conflict" ||
+          (!force &&
+            item.shared_role === "viewer" &&
+            Date.now() - (this.iroh_last_synced_at[item.id] ?? 0) <
+              IROH_VIEWER_SYNC_MS);
+        void this.sync_iroh_board(item.id, true, access_only);
       }
     }
   }
@@ -420,6 +545,10 @@ export class BoardStore {
 
   private show_success_with_undo(message: string) {
     this.can_undo = true;
+    if (!this.can_undo) {
+      toast.success(message);
+      return;
+    }
     toast.success(message, {
       action: {
         label: "Undo",
@@ -451,7 +580,6 @@ export class BoardStore {
       this.get_task_templates();
       this.get_expired_tasks();
       this.update_labels();
-      await this.load_settings();
       toast.success("Last action undone");
       return true;
     } catch (e: unknown) {
@@ -1016,6 +1144,9 @@ export class BoardStore {
       }
       this.boards = state.boards;
       this.active_board_id = state.active_board_id;
+      if (!this.can_edit) {
+        this.can_undo = false;
+      }
     } catch (e) {
       logger.error("board.list_load.failed", e);
       console.log("Couldn't load boards:", e);
@@ -1173,7 +1304,6 @@ export class BoardStore {
       }
 
       this.notify_enabled = enabled;
-      this.can_undo = true;
       if (enabled) {
         this.start_expired_task_checker();
       } else {
@@ -1863,6 +1993,9 @@ export class BoardStore {
   }
 
   update_task(task_id: string, task: Task): Promise<boolean> {
+    if (!this.can_edit) {
+      return Promise.resolve(false);
+    }
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
@@ -2492,10 +2625,12 @@ export class BoardStore {
           id: "data-import-success",
           description: `Pre-import backup: ${snapshot_path}`,
           duration: 10000,
-          action: {
-            label: "Undo",
-            onClick: () => void this.undo(),
-          },
+          action: this.can_undo
+            ? {
+                label: "Undo",
+                onClick: () => void this.undo(),
+              }
+            : undefined,
         });
         return true;
       })

@@ -64,12 +64,24 @@ fn debug_port() -> io::Result<u16> {
 }
 
 #[cfg(all(debug_assertions, desktop))]
-fn data_dir(_app: &tauri::App, port: u16) -> PathBuf {
+fn debug_instance_id(port: u16) -> io::Result<String> {
+    match std::env::var("CARDBE_DEV_INSTANCE_ID") {
+        Ok(id) if id.len() == 32 && id.bytes().all(|c| c.is_ascii_hexdigit()) => Ok(id),
+        Err(std::env::VarError::NotPresent) => Ok(port.to_string()),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Invalid CARDBE_DEV_INSTANCE_ID",
+        )),
+    }
+}
+
+#[cfg(all(debug_assertions, desktop))]
+fn data_dir(instance_id: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("src-tauri must have a project root")
         .join(".cardbe-debug")
-        .join(port.to_string())
+        .join(instance_id)
 }
 
 #[cfg(all(debug_assertions, mobile))]
@@ -113,23 +125,32 @@ impl DebugDataLock {
             Err(TryLockError::Error(error)) => Err(error),
         }
     }
-
-    #[cfg(unix)]
     fn migrate(source: &Path, destination: &Path) -> io::Result<Self> {
-        // A previous launch may have renamed successfully before clearing its migration record.
-        if !source.exists() && destination.exists() {
+        // A completed migration always reuses the ID directory, even if an older
+        // desktop later creates another numeric directory.
+        if destination.exists() {
             return Self::acquire(destination);
         }
-        if !source.exists() || destination.exists() {
+        if !source.is_dir() {
             return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "Development data migration requires an existing source and an unused destination",
+                io::ErrorKind::NotFound,
+                "Legacy development data is missing",
             ));
         }
-        let lock = Self::acquire(source)?;
-        // On Unix the open lock follows the same inode through the directory rename.
-        fs::rename(source, destination)?;
-        Ok(lock)
+        let source_lock = Self::acquire(source)?;
+        // The launcher owns this ID. On Windows other open runtime handles also
+        // prevent the rename; Unix keeps the source lock through the rename.
+        #[cfg(windows)]
+        {
+            drop(source_lock);
+            fs::rename(source, destination)?;
+            Self::acquire(destination)
+        }
+        #[cfg(not(windows))]
+        {
+            fs::rename(source, destination)?;
+            Ok(source_lock)
+        }
     }
 }
 
@@ -151,9 +172,21 @@ mod debug_data_lock_tests {
         let first = DebugDataLock::acquire(&dir).unwrap();
         let error = DebugDataLock::acquire(&dir).err().unwrap();
         assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        let destination = dir.with_extension("migrated");
+        fs::write(dir.join("identity"), "saved-device").unwrap();
+        assert!(DebugDataLock::migrate(&dir, &destination).is_err());
+        assert!(!destination.exists());
         drop(first);
-        drop(DebugDataLock::acquire(&dir).unwrap());
-        fs::remove_dir_all(dir).unwrap();
+        let migrated = DebugDataLock::migrate(&dir, &destination).unwrap();
+        assert_eq!(
+            fs::read_to_string(destination.join("identity")).unwrap(),
+            "saved-device"
+        );
+        assert!(!dir.exists());
+        assert!(DebugDataLock::acquire(&destination).is_err());
+        drop(migrated);
+        drop(DebugDataLock::migrate(&dir, &destination).unwrap());
+        fs::remove_dir_all(destination).unwrap();
     }
 }
 
@@ -161,11 +194,29 @@ mod debug_data_lock_tests {
 pub fn run() {
     #[cfg(all(debug_assertions, desktop))]
     let port = debug_port().expect("invalid CARDBE_DEV_PORT");
+    #[cfg(all(debug_assertions, desktop))]
+    let instance_id = debug_instance_id(port).expect("invalid development instance ID");
+    #[cfg(all(debug_assertions, desktop))]
+    let _instance_guard = match std::env::var("CARDBE_DEV_INSTANCE_GUARD_PORT") {
+        Ok(value) => {
+            let port = value
+                .parse::<u16>()
+                .ok()
+                .filter(|port| *port != 0)
+                .expect("invalid development instance guard port");
+            Some(
+                std::net::TcpListener::bind(("127.0.0.1", port))
+                    .expect("development instance is already in use"),
+            )
+        }
+        Err(std::env::VarError::NotPresent) => None,
+        Err(error) => panic!("invalid development instance guard: {error}"),
+    };
     #[allow(unused_mut)]
     let mut context = tauri::generate_context!();
     #[cfg(all(debug_assertions, desktop))]
     {
-        let identifier = format!("{}.debug.p{port}", context.config().identifier);
+        let identifier = format!("{}.debug.p{instance_id}", context.config().identifier);
         context.config_mut().identifier = identifier;
     }
 
@@ -223,29 +274,26 @@ pub fn run() {
                 std::env::consts::ARCH
             );
             #[cfg(all(debug_assertions, desktop))]
-            let app_data_dir = data_dir(app, port);
+            let app_data_dir = data_dir(&instance_id);
             #[cfg(not(all(debug_assertions, desktop)))]
             let app_data_dir = data_dir(app);
             #[cfg(all(debug_assertions, desktop))]
-            let debug_data_lock = {
-                #[cfg(unix)]
-                {
-                    let migration_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .join("target/.dev-migrate-from");
-                    match std::env::var("CARDBE_DEV_MIGRATE_FROM") {
-                        Ok(from) if migration_file.exists() => {
-                            let source_port = from.parse::<u16>().ok().filter(|port| *port != 0)
-                                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid source development port"))?;
-                            let lock = DebugDataLock::migrate(&data_dir(app, source_port), &app_data_dir)?;
-                            fs::remove_file(migration_file)?;
-                            log::info!(target: "startup", "Migrated development data from port {source_port} to {port}");
-                            lock
-                        }
-                        _ => DebugDataLock::acquire(&app_data_dir)?,
-                    }
+            let debug_data_lock = match std::env::var("CARDBE_DEV_LEGACY_PORT") {
+                Ok(value) => {
+                    let port = value
+                        .parse::<u16>()
+                        .ok()
+                        .filter(|port| *port != 0)
+                        .ok_or_else(|| {
+                            io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                "Invalid legacy development port",
+                            )
+                        })?;
+                    DebugDataLock::migrate(&data_dir(&port.to_string()), &app_data_dir)?
                 }
-                #[cfg(not(unix))]
-                { DebugDataLock::acquire(&app_data_dir)? }
+                Err(std::env::VarError::NotPresent) => DebugDataLock::acquire(&app_data_dir)?,
+                Err(error) => return Err(Box::new(error)),
             };
             #[cfg(all(debug_assertions, desktop))]
             app.manage(debug_data_lock);
@@ -346,6 +394,7 @@ pub fn run() {
             iroh_share::list_iroh_invites,
             iroh_share::set_iroh_device_approved,
             iroh_share::iroh_host_error,
+            iroh_share::get_iroh_connection_details,
             iroh_share::ensure_iroh_host,
             iroh_share::get_iroh_invite_access,
             iroh_share::update_iroh_invite,
@@ -362,6 +411,8 @@ pub fn run() {
             notes::delete_note,
             settings::get_settings,
             settings::set_notify_enabled,
+            settings::get_iroh_network_settings,
+            settings::set_iroh_network_settings,
             settings::take_recovery_messages,
             get_startup_error,
             share::publish_lan_share,

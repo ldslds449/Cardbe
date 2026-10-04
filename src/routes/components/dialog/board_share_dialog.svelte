@@ -790,10 +790,12 @@
         </section>
       </aside>
 
-      <div class="grid min-h-0 gap-5 overflow-y-auto px-5 py-5 sm:px-6">
+      <div
+        class="grid min-h-0 content-start gap-5 overflow-y-auto px-5 py-5 sm:px-6"
+      >
         {#if share}
           <section
-            class={`grid min-h-[12.5rem] content-start gap-4 rounded-xl border p-4 ${is_managed_share_enabled(share) ? "border-success/50 bg-success/5" : "border-border bg-muted/30"}`}
+            class={`grid content-start gap-4 rounded-xl border p-4 ${is_managed_share_enabled(share) ? "border-success/50 bg-success/5" : "border-border bg-muted/30"}`}
           >
             <div
               class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
@@ -826,7 +828,7 @@
                     <span class="font-medium">{board_name(share.board_id)}</span
                     >
                   </p>
-                  <p class="mt-1 min-h-10 text-sm text-muted-foreground">
+                  <p class="mt-1 text-sm text-muted-foreground">
                     {is_managed_share_enabled(share)
                       ? "Anyone on this local network with the link can view the selected content."
                       : "This address and its settings are saved, but nobody can open it."}

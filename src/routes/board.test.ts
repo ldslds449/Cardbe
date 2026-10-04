@@ -1,5 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { toast } from "svelte-sonner";
+import { isPermissionGranted } from "@tauri-apps/plugin-notification";
+import type { TaskExplorerQuery } from "./utils/task-explorer";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 
 import { BoardStore } from "./board.svelte";
 import { create_task } from "./type/task.svelte";
@@ -195,6 +205,505 @@ function create_store(column_count = 1) {
   }));
   return store;
 }
+
+describe("Iroh sync", () => {
+  beforeEach(() => invoke_mock.mockReset());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("restores revoked access without syncing an unresolved conflict", async () => {
+    const store = create_store();
+    store.boards[0].shared_role = "editor";
+    store.boards[0].sync_status = "conflict";
+    const saved = { ...store.boards[0] };
+    invoke_mock.mockImplementation((command) => {
+      if (command === "get_boards") {
+        return Promise.resolve({ boards: [saved], active_board_id: 7 });
+      }
+      if (command === "request_iroh_board_access") {
+        return Promise.reject("ACCESS_REVOKED:Access was declined or revoked.");
+      }
+      return Promise.resolve();
+    });
+    await store.sync_iroh_board(7, true, true);
+    expect(store.iroh_access_removed[7]).toBe(true);
+
+    // The approval response refreshes permissions while retaining both versions.
+    store.apply_iroh_conflict_refresh({ ...saved, shared_role: "viewer" });
+    invoke_mock.mockClear();
+    vi.mocked(toast.error).mockClear();
+    await store.restore_iroh_access(7);
+
+    expect(invoke_mock).not.toHaveBeenCalled();
+    expect(store.iroh_access_removed[7]).toBe(false);
+    expect(store.iroh_access_error[7]).toBeUndefined();
+    expect(store.iroh_sync_error[7]).toBeUndefined();
+    expect(store.boards[0].sync_status).toBe("conflict");
+    expect(store.boards[0].shared_role).toBe("viewer");
+    expect(toast.success).toHaveBeenCalledWith(
+      "Access restored. Resolve the conflict before syncing.",
+    );
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("syncs after access is restored when there is no conflict", async () => {
+    const store = create_store();
+    const sync = vi.spyOn(store, "sync_iroh_board").mockResolvedValue(true);
+    await store.restore_iroh_access(7);
+    expect(sync).toHaveBeenCalledWith(7, true);
+    expect(toast.success).toHaveBeenCalledWith("Access restored");
+  });
+
+  it("lets a pending board sync after checking two conflicting boards", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    vi.spyOn(Date, "now").mockReturnValue(10_000);
+    const store = create_store();
+    store.active_board_id = null;
+    store.boards = [7, 8, 9].map((id) => ({
+      ...store.boards[0],
+      id,
+      shared_role: "editor" as const,
+      sync_status: id === 9 ? "pending" : "conflict",
+    }));
+    store.iroh_last_synced_at = { 7: 100, 8: 100, 9: 200 };
+    invoke_mock.mockImplementation((command) => {
+      if (command === "request_iroh_board_access") {
+        return Promise.resolve([true, "editor"]);
+      }
+      if (command === "sync_iroh_board") {
+        return Promise.resolve({
+          board: {
+            ...store.boards.find((board) => board.id === 9),
+            sync_status: "synced",
+          },
+          content_changed: false,
+        });
+      }
+      return Promise.resolve();
+    });
+    store.trigger_iroh_background_sync();
+    expect(
+      invoke_mock.mock.calls
+        .filter(([command]) => command === "request_iroh_board_access")
+        .map(([, args]) => args),
+    ).toEqual([
+      { boardId: 7, requestApproval: false },
+      { boardId: 8, requestApproval: false },
+    ]);
+    expect(invoke_mock).not.toHaveBeenCalledWith(
+      "sync_iroh_board",
+      expect.anything(),
+    );
+    await Promise.resolve();
+    expect(store.iroh_last_synced_at).toEqual({ 7: 100, 8: 100, 9: 200 });
+    store.trigger_iroh_background_sync();
+    await vi.waitFor(() =>
+      expect(invoke_mock).toHaveBeenCalledWith("sync_iroh_board", {
+        boardId: 9,
+      }),
+    );
+    expect(
+      store.boards
+        .filter((board) => board.sync_status === "conflict")
+        .map((board) => board.id),
+    ).toEqual([7, 8]);
+  });
+
+  it("retries a failed viewer immediately after connection settings change", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    const store = create_store();
+    store.boards[0].shared_role = "viewer";
+    store.active_board_id = null;
+    store.iroh_last_synced_at[7] = Date.now();
+    const synced = { ...store.boards[0], sync_status: "synced" as const };
+    let attempts = 0;
+    invoke_mock.mockImplementation((command) => {
+      if (command === "sync_iroh_board") {
+        attempts += 1;
+        return attempts === 1
+          ? Promise.reject("Owner unreachable")
+          : Promise.resolve({ board: synced, content_changed: false });
+      }
+      if (command === "get_boards") {
+        return Promise.resolve({ boards: store.boards, active_board_id: null });
+      }
+      return Promise.resolve();
+    });
+    await store.sync_iroh_board(7, true);
+    expect(store.iroh_sync_error[7]).toBe("Owner unreachable");
+    store.trigger_iroh_background_sync();
+    expect(attempts).toBe(1);
+    store.reconnect_iroh_boards();
+    await vi.waitFor(() => expect(attempts).toBe(2));
+    await vi.waitFor(() => expect(store.iroh_sync_error[7]).toBeUndefined());
+    expect(store.boards[0].sync_status).toBe("synced");
+  });
+
+  it("reconnects after an old in-flight sync fails without applying its retry delay", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    const store = create_store();
+    store.boards[0].shared_role = "editor";
+    store.can_undo = true;
+    const interrupted = deferred<unknown>();
+    let attempts = 0;
+    invoke_mock.mockImplementation((command) => {
+      if (command === "sync_iroh_board") {
+        attempts += 1;
+        return attempts === 1
+          ? interrupted.promise
+          : Promise.resolve({
+              board: { ...store.boards[0], sync_status: "synced" },
+              content_changed: false,
+            });
+      }
+      return Promise.resolve();
+    });
+    const original = store.sync_iroh_board(7, true);
+    store.reconnect_iroh_boards();
+    expect(attempts).toBe(1);
+    interrupted.reject("Old endpoint was closed");
+    await original;
+    await vi.waitFor(() => expect(attempts).toBe(2));
+    expect(store.iroh_sync_error[7]).toBeUndefined();
+    expect(store.can_undo).toBe(true);
+  });
+
+  it("keeps pending edits marked pending if reconnecting also fails", async () => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    const store = create_store();
+    store.boards[0].shared_role = "editor";
+    store.boards[0].sync_status = "pending";
+    const saved = { ...store.boards[0] };
+    const interrupted = deferred<unknown>();
+    let attempts = 0;
+    invoke_mock.mockImplementation((command) => {
+      if (command === "sync_iroh_board") {
+        attempts += 1;
+        return attempts === 1
+          ? interrupted.promise
+          : Promise.reject("Owner still unreachable");
+      }
+      if (command === "get_boards") {
+        return Promise.resolve({ boards: [saved], active_board_id: 7 });
+      }
+      return Promise.resolve();
+    });
+    const original = store.sync_iroh_board(7, true);
+    store.reconnect_iroh_boards();
+    interrupted.reject("Old endpoint was closed");
+    await original;
+    await vi.waitFor(() =>
+      expect(store.iroh_sync_error[7]).toBe("Owner still unreachable"),
+    );
+    expect(store.boards[0].sync_status).toBe("pending");
+  });
+
+  it("keeps conflict data and sync timestamps unchanged when access is still approved", async () => {
+    const store = create_store();
+    store.boards[0].shared_role = "editor";
+    store.boards[0].sync_status = "conflict";
+    store.iroh_last_synced_at[7] = 1000;
+    store.can_undo = true;
+    invoke_mock.mockResolvedValue([true, "device"]);
+
+    expect(await store.sync_iroh_board(7, true, true)).toBe(true);
+    expect(store.boards[0].sync_status).toBe("conflict");
+    expect(store.iroh_last_synced_at[7]).toBe(1000);
+    expect(store.can_undo).toBe(true);
+    expect(invoke_mock).toHaveBeenCalledTimes(1);
+    expect(invoke_mock).toHaveBeenCalledWith("request_iroh_board_access", {
+      boardId: 7,
+      requestApproval: false,
+    });
+  });
+
+  it("updates restored editor permission while preserving conflict content and sync time", async () => {
+    const store = create_store();
+    store.boards[0].shared_role = "viewer";
+    store.boards[0].sync_status = "conflict";
+    store.iroh_last_synced_at[7] = 1000;
+    const columns = store.columns;
+    invoke_mock.mockResolvedValue([
+      true,
+      "device",
+      { ...store.boards[0], shared_role: "editor" },
+    ]);
+
+    expect(await store.sync_iroh_board(7, true, true)).toBe(true);
+    expect(store.boards[0].shared_role).toBe("editor");
+    expect(store.boards[0].sync_status).toBe("conflict");
+    expect(store.columns).toBe(columns);
+    expect(store.iroh_last_synced_at[7]).toBe(1000);
+  });
+
+  it.each([false, true])(
+    "ignores a delayed conflict refresh after resolution (keep local: %s)",
+    async (keep_local) => {
+      const store = create_store();
+      store.active_board_id = null;
+      store.boards[0].shared_role = "editor";
+      store.boards[0].sync_status = "conflict";
+      const stale = { ...store.boards[0], shared_role: "viewer" as const };
+      const resolved = {
+        ...store.boards[0],
+        sync_status: keep_local ? "pending" : "synced",
+      };
+      const response = deferred<[boolean, string, typeof stale]>();
+      invoke_mock.mockImplementation((command) => {
+        if (command === "request_iroh_board_access") {
+          return response.promise;
+        }
+        if (command === "get_boards") {
+          return Promise.resolve({ boards: [resolved], active_board_id: null });
+        }
+        return Promise.resolve();
+      });
+      vi.spyOn(store, "trigger_iroh_background_sync").mockImplementation(
+        () => {},
+      );
+
+      const checking = store.sync_iroh_board(7, true, true);
+      expect(await store.resolve_iroh_conflict(7, keep_local)).toBe(true);
+      response.resolve([true, "device", stale]);
+      await checking;
+      expect(store.boards[0]).toEqual(resolved);
+
+      // The share dialog uses the same guard for its access responses.
+      store.apply_iroh_conflict_refresh(stale);
+      expect(store.boards[0]).toEqual(resolved);
+    },
+  );
+
+  it.each(["viewer", "conflict", "pending"])(
+    "reports revoked access during silent background checks for %s boards",
+    async (state) => {
+      vi.stubGlobal("document", { visibilityState: "visible" });
+      vi.spyOn(Date, "now").mockReturnValue(1000);
+      vi.mocked(toast.error).mockClear();
+      const store = create_store();
+      store.boards[0].shared_role = state === "viewer" ? "viewer" : "editor";
+      store.boards[0].sync_status = state === "viewer" ? "synced" : state;
+      store.iroh_last_synced_at[7] = 1000;
+      const saved = { ...store.boards[0] };
+      invoke_mock.mockImplementation((command) => {
+        if (command === "get_boards") {
+          return Promise.resolve({ boards: [saved], active_board_id: 7 });
+        }
+        if (
+          command === "request_iroh_board_access" ||
+          command === "sync_iroh_board"
+        ) {
+          return Promise.reject(
+            "ACCESS_REVOKED:Access was declined or revoked. You can request access again.",
+          );
+        }
+        return Promise.resolve();
+      });
+
+      store.trigger_iroh_background_sync();
+
+      await vi.waitFor(() => expect(store.iroh_access_removed[7]).toBe(true));
+      await vi.waitFor(() =>
+        expect(store.boards[0].sync_status).toBe(
+          state === "conflict" ? "conflict" : "error",
+        ),
+      );
+      expect(store.iroh_access_error[7]).toContain(
+        "Access was declined or revoked",
+      );
+      expect(toast.error).not.toHaveBeenCalled();
+      if (state !== "pending") {
+        expect(invoke_mock).toHaveBeenCalledWith("request_iroh_board_access", {
+          boardId: 7,
+          requestApproval: false,
+        });
+      }
+    },
+  );
+
+  it("rotates through boards with two slots even when the system reports offline", async () => {
+    vi.stubGlobal("navigator", { onLine: false });
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1000);
+    const store = create_store();
+    store.active_board_id = null;
+    store.boards = [1, 2, 3].map((id) => ({
+      ...store.boards[0],
+      id,
+      shared_role: "editor",
+    }));
+    const responses = [deferred<unknown>(), deferred<unknown>()];
+    const started: number[] = [];
+    invoke_mock.mockImplementation((command, args) => {
+      if (command !== "sync_iroh_board") {
+        return Promise.resolve();
+      }
+      const id = (args as { boardId: number }).boardId;
+      started.push(id);
+      return (
+        responses[id - 1]?.promise ??
+        Promise.resolve({
+          board: store.boards.find((board) => board.id === id),
+          content_changed: false,
+        })
+      );
+    });
+
+    store.trigger_iroh_background_sync();
+    store.trigger_iroh_background_sync();
+    expect(started).toEqual([1, 2]);
+    responses.forEach((response, index) =>
+      response.resolve({
+        board: { ...store.boards[index], sync_status: "synced" },
+        content_changed: false,
+      }),
+    );
+    await vi.waitFor(() => expect(store.iroh_last_synced_at[2]).toBe(1000));
+    clock.mockReturnValue(2000);
+    store.trigger_iroh_background_sync();
+    expect(started.slice(2)).toEqual([3, 1]);
+    await vi.waitFor(() => expect(store.iroh_last_synced_at[3]).toBe(2000));
+  });
+
+  it.each([false, true])(
+    "only clears local Undo and reloads for changed content (%s)",
+    async (content_changed) => {
+      const store = create_store();
+      store.boards[0].shared_role = "editor";
+      store.can_undo = true;
+      const reload = vi
+        .spyOn(store, "get_columns")
+        .mockImplementation(() => {});
+      vi.spyOn(store, "update_labels").mockImplementation(() => {});
+      vi.spyOn(store, "get_task_templates").mockImplementation(() => {});
+      vi.spyOn(store, "get_expired_tasks").mockImplementation(() => {});
+      invoke_mock.mockResolvedValue({
+        board: { ...store.boards[0] },
+        content_changed,
+      });
+
+      expect(await store.sync_iroh_board(7, true)).toBe(true);
+      expect(store.can_undo).toBe(!content_changed);
+      expect(reload).toHaveBeenCalledTimes(content_changed ? 1 : 0);
+    },
+  );
+});
+
+describe("Undo scope and shared Task Explorer updates", () => {
+  beforeEach(() => {
+    invoke_mock.mockReset();
+    vi.mocked(toast.success).mockClear();
+  });
+
+  it("rejects a task edit after its board becomes read-only without changing local data", async () => {
+    const store = create_store();
+    const task = create_task("task_1", "Original");
+    store.columns[0].tasks = [task];
+    store.boards[0].shared_role = "editor";
+    expect(store.can_edit).toBe(true);
+    const edited_task = { ...task, title: "Edited" };
+    store.boards[0].shared_role = "viewer";
+    expect(await store.update_task(task.id, edited_task)).toBe(false);
+    expect(store.columns[0].tasks[0].title).toBe("Original");
+    expect(invoke_mock).not.toHaveBeenCalled();
+  });
+
+  it.each(["editor", "viewer", "shared owner"])(
+    "allows Undo for local edits only when a %s board is editable",
+    async (role) => {
+      const store = create_store();
+      if (role === "shared owner") {
+        store.boards[0].is_shared = true;
+      } else {
+        store.boards[0].shared_role = role as "editor" | "viewer";
+      }
+      invoke_mock.mockImplementation((command) =>
+        Promise.resolve(
+          command === "add_task" ? 42 : command === "undo" ? false : [],
+        ),
+      );
+      await store.add_new_task("column_1", create_task("", "Task"));
+      store.can_undo = true;
+      const editable = role !== "viewer";
+      expect(store.can_undo).toBe(editable);
+      expect(await store.undo()).toBe(editable);
+      expect(
+        invoke_mock.mock.calls.some(([command]) => command === "undo"),
+      ).toBe(editable);
+      expect(
+        vi
+          .mocked(toast.success)
+          .mock.calls.some(([, options]) => options?.action),
+      ).toBe(editable);
+    },
+  );
+
+  it.each([false, true])(
+    "settings preserve existing Undo availability (%s)",
+    async (has_history) => {
+      const store = create_store();
+      store.can_undo = has_history;
+      vi.mocked(isPermissionGranted).mockResolvedValue(true);
+      invoke_mock.mockResolvedValue(undefined);
+      vi.useFakeTimers();
+      await store.set_notify_enabled(true);
+      expect(store.notify_enabled).toBe(true);
+      expect(store.can_undo).toBe(has_history);
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    },
+  );
+
+  it.each(["sync", "push"])(
+    "refreshes Explorer after an inactive shared board %s",
+    async (event) => {
+      const store = create_store();
+      const shared = {
+        ...store.boards[0],
+        id: 9,
+        shared_role: "editor" as const,
+        is_shared: true,
+      };
+      store.boards.push(shared);
+      const filter: TaskExplorerQuery = {
+        query: "",
+        board_ids: null,
+        column_id: null,
+        status: "active",
+        sort: "due",
+        due: "all",
+        due_start: null,
+        due_end: null,
+        archive_start: null,
+        archive_end: null,
+        now: 0,
+      };
+      invoke_mock.mockImplementation((command) => {
+        if (command === "list_all_tasks") {
+          return Promise.resolve({ items: [], next_cursor: null });
+        }
+        if (command === "get_boards") {
+          return Promise.resolve({ boards: store.boards, active_board_id: 7 });
+        }
+        return Promise.resolve({ board: shared, content_changed: true });
+      });
+      await store.search_all_tasks(filter);
+      if (event === "sync") {
+        await store.sync_iroh_board(9, true);
+      } else {
+        await store.handle_iroh_remote_push(9, 1);
+      }
+      expect(
+        invoke_mock.mock.calls.filter(
+          ([command]) => command === "list_all_tasks",
+        ),
+      ).toHaveLength(2);
+      expect(store.active_board_id).toBe(7);
+    },
+  );
+});
 
 describe("initial board loading", () => {
   beforeEach(() => {

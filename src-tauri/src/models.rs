@@ -53,6 +53,8 @@ pub struct Board {
     #[serde(default)]
     pub shared_role: BoardRole,
     #[serde(default)]
+    pub is_shared: bool,
+    #[serde(default)]
     pub sync_status: SyncStatus,
     #[serde(default)]
     pub sync_revision: i64,
@@ -220,11 +222,45 @@ pub struct Archive {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct IrohNetworkSettings {
+    #[serde(default = "default_true")]
+    pub direct_ip_enabled: bool,
+    #[serde(default = "default_true")]
+    pub discovery_enabled: bool,
+    #[serde(default)]
+    pub discovery_urls: Vec<String>,
+    #[serde(default = "default_true")]
+    pub relay_enabled: bool,
+    #[serde(default)]
+    pub relay_urls: Vec<String>,
+    #[serde(default)]
+    pub direct_addresses: Vec<String>,
+    #[serde(default)]
+    pub listen_port: u16,
+}
+
+impl Default for IrohNetworkSettings {
+    fn default() -> Self {
+        Self {
+            direct_ip_enabled: true,
+            discovery_enabled: true,
+            discovery_urls: Vec::new(),
+            relay_enabled: true,
+            relay_urls: Vec::new(),
+            direct_addresses: Vec::new(),
+            listen_port: 0,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
     #[serde(default)]
     pub notify_enabled: bool,
     #[serde(default = "default_true")]
     pub global_shortcuts_enabled: bool,
+    #[serde(default)]
+    pub iroh_network: IrohNetworkSettings,
 }
 
 fn default_true() -> bool {
@@ -236,6 +272,7 @@ impl Default for Settings {
         Self {
             notify_enabled: false,
             global_shortcuts_enabled: true,
+            iroh_network: IrohNetworkSettings::default(),
         }
     }
 }

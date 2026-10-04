@@ -10,7 +10,8 @@
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import { onMount } from "svelte";
+  import XIcon from "@lucide/svelte/icons/x";
+  import { onMount, tick, untrack } from "svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as ButtonGroup from "$lib/components/ui/button-group/index.js";
@@ -23,11 +24,23 @@
   import * as Select from "$lib/components/ui/select/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Switch } from "$lib/components/ui/switch/index.js";
-  import type { BoardStore } from "../../board.svelte";
-  import { IrohDeviceStatus, type IrohInvite } from "../../type/iroh-share";
+  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import type { BoardStore, BoardSummary } from "../../board.svelte";
+  import {
+    IrohDeviceStatus,
+    type IrohInvite,
+    type IrohConnectionInfo,
+    type IrohConnectionDetails,
+  } from "../../type/iroh-share";
 
-  type Flow = "home" | "share" | "join" | "manage";
+  type Flow = "home" | "share" | "join" | "manage" | "network";
   type Invite = IrohInvite;
+  type NetworkSettingsField =
+    | "listen_port"
+    | "direct_addresses"
+    | "relay_urls"
+    | "discovery_urls";
   type Generated = {
     ticket: string;
     qr: string;
@@ -35,6 +48,15 @@
     permission: "viewer" | "editor";
   };
   type InviteAccess = { ticket: string; qr_svg: string };
+  type IrohNetworkSettings = {
+    direct_ip_enabled: boolean;
+    discovery_enabled: boolean;
+    discovery_urls: string[];
+    relay_enabled: boolean;
+    relay_urls: string[];
+    direct_addresses: string[];
+    listen_port: number;
+  };
   let {
     open = $bindable(),
     board,
@@ -62,7 +84,163 @@
     invite_access = $state<Record<string, InviteAccess>>({}),
     loading_access_id = $state<string | null>(null);
   let manage_view = $state<"mine" | "received">("mine");
+  let manage_view_button = $state<HTMLButtonElement | null>(null);
   let host_error = $state<string | null>(null);
+  let pending_only = $state(false);
+  let loading_invites = $state(false);
+  let manage_error = $state<string | null>(null);
+  let device_action_pending = $state(false);
+  let device_id_verified = $state(false);
+  let updating_invite_id = $state<string | null>(null);
+  let connection_details = $state<IrohConnectionDetails>({
+    invitation: null,
+    devices: {},
+    boards: {},
+  });
+  let connection_details_error = $state<string | null>(null);
+  const visible_invites = $derived(
+    invites
+      .filter(
+        (invite) =>
+          !pending_only ||
+          invite.devices.some(
+            (device) => device.status === IrohDeviceStatus.Pending,
+          ),
+      )
+      .sort(
+        (a, b) =>
+          Number(
+            b.devices.some(
+              (device) => device.status === IrohDeviceStatus.Pending,
+            ),
+          ) -
+          Number(
+            a.devices.some(
+              (device) => device.status === IrohDeviceStatus.Pending,
+            ),
+          ),
+      ),
+  );
+  function verification_id(id: string) {
+    return id.match(/.{1,4}/g)?.join(" ") ?? id;
+  }
+  function invitation_date(value: string) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? "Creation date unavailable"
+      : `Created ${sync_time.format(date)}`;
+  }
+  async function load_connection_details() {
+    try {
+      connection_details = await invoke<IrohConnectionDetails>(
+        "get_iroh_connection_details",
+        {
+          boardIds: received_boards.map((shared) => shared.id),
+          ticket: waiting_device_id ? ticket : null,
+        },
+      );
+      connection_details_error = null;
+    } catch (error) {
+      logger.warn("iroh.connection_details.failed", error);
+      connection_details_error =
+        "Connection details are unavailable. They will update on the next check.";
+    }
+  }
+  let network_settings = $state<IrohNetworkSettings>({
+    direct_ip_enabled: true,
+    discovery_enabled: true,
+    discovery_urls: [],
+    relay_enabled: true,
+    relay_urls: [],
+    direct_addresses: [],
+    listen_port: 0,
+  });
+  let relay_urls_text = $state("");
+  let discovery_urls_text = $state("");
+  let direct_addresses_text = $state("");
+  let saving_network_settings = $state(false);
+  let loading_network_settings = $state(false);
+  let saved_network_settings = $state("");
+  let network_settings_applied = $state(false);
+  let network_restart_failed = $state(false);
+  let discard_network_open = $state(false);
+  const network_draft = $derived(
+    JSON.stringify({
+      direct_ip_enabled: network_settings.direct_ip_enabled,
+      discovery_enabled: network_settings.discovery_enabled,
+      relay_enabled: network_settings.relay_enabled,
+      relay_urls: split_addresses(relay_urls_text),
+      discovery_urls: split_addresses(discovery_urls_text),
+      direct_addresses: split_addresses(direct_addresses_text),
+      listen_port: network_settings.listen_port ?? 0,
+    }),
+  );
+  const network_dirty = $derived(network_draft !== saved_network_settings);
+  const network_has_transport = $derived(
+    network_settings.direct_ip_enabled || network_settings.relay_enabled,
+  );
+  const network_mode = $derived(
+    network_settings.direct_ip_enabled && network_settings.relay_enabled
+      ? "automatic"
+      : network_settings.direct_ip_enabled && !network_settings.relay_enabled
+        ? "direct"
+        : !network_settings.direct_ip_enabled && network_settings.relay_enabled
+          ? "relay"
+          : "",
+  );
+  const network_mode_label = $derived(
+    network_mode === "automatic"
+      ? "Automatic (recommended)"
+      : network_mode === "direct"
+        ? "Direct only"
+        : network_mode === "relay"
+          ? "Relay only"
+          : "Choose a connection mode",
+  );
+  function set_network_mode(mode: string) {
+    if (!["automatic", "direct", "relay"].includes(mode)) {
+      return;
+    }
+    network_settings.direct_ip_enabled = mode !== "relay";
+    network_settings.relay_enabled = mode !== "direct";
+    clear_network_settings_error();
+  }
+  const network_customized = $derived(
+    Boolean(
+      relay_urls_text.trim() ||
+      discovery_urls_text.trim() ||
+      direct_addresses_text.trim() ||
+      network_settings.listen_port,
+    ),
+  );
+  function leave_network(discard = false) {
+    if (saving_network_settings) {
+      return;
+    }
+    if (!discard && flow === "network" && network_dirty) {
+      discard_network_open = true;
+      return;
+    }
+    flow = "home";
+  }
+  function reset_network_settings() {
+    network_settings = {
+      direct_ip_enabled: true,
+      discovery_enabled: true,
+      relay_enabled: true,
+      direct_addresses: [],
+      listen_port: 0,
+      relay_urls: [],
+      discovery_urls: [],
+    };
+    relay_urls_text = discovery_urls_text = direct_addresses_text = "";
+    clear_network_settings_error();
+  }
+  let network_settings_error = $state<string | null>(null);
+  let network_settings_field_errors = $state<
+    Partial<Record<NetworkSettingsField, string>>
+  >({});
+  let advanced_addresses_open = $state(false);
   let waiting_device_id = $state<string | null>(null);
   let checking_approval = false;
   let wait_generation = 0;
@@ -117,17 +295,13 @@
     return () => window.clearInterval(timer);
   });
   $effect(() => {
-    if (open && show_requests) {
-      flow = "manage";
-      manage_view = "mine";
-      void load();
-    }
-  });
-  $effect(() => {
-    if (open && show_received) {
-      flow = "manage";
-      manage_view = "received";
-      void load();
+    if (open && (show_requests || show_received)) {
+      const view = show_received ? "received" : "mine";
+      untrack(() => {
+        flow = "manage";
+        manage_view = view;
+        void load();
+      });
     }
   });
   const active = $derived(
@@ -172,6 +346,143 @@
     waiting_device_id = null;
     board.iroh_last_error = "";
     flow = "join";
+  }
+  function split_addresses(value: string) {
+    return value
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  function error_message(error: unknown, fallback: string) {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+    if (typeof error === "string" && error.trim()) {
+      return error;
+    }
+    if (
+      error &&
+      typeof error === "object" &&
+      "message" in error &&
+      typeof error.message === "string" &&
+      error.message
+    ) {
+      return error.message;
+    }
+    return fallback;
+  }
+  function clear_network_settings_error(field?: NetworkSettingsField) {
+    if (field) {
+      network_settings_field_errors[field] = undefined;
+    } else {
+      network_settings_field_errors = {};
+    }
+    network_settings_error = null;
+  }
+  async function set_network_settings_error(error: unknown) {
+    const message = error_message(error, "Couldn't save connection settings");
+    clear_network_settings_error();
+    if (message.startsWith("Invalid listening port:")) {
+      network_settings_field_errors.listen_port = message;
+    } else if (message.startsWith("Invalid direct address:")) {
+      network_settings_field_errors.direct_addresses = `${message}. Enter IP:port, for example 192.168.1.20:12345.`;
+    } else if (message.startsWith("Invalid relay URL:")) {
+      network_settings_field_errors.relay_urls = `${message}. Enter a URL such as https://relay.example.com.`;
+    } else if (message.startsWith("Invalid discovery service URL:")) {
+      network_settings_field_errors.discovery_urls = `${message}. Enter a compatible discovery service URL.`;
+    } else {
+      network_settings_error = message;
+    }
+    const field = Object.keys(network_settings_field_errors)[0] as
+      | NetworkSettingsField
+      | undefined;
+    if (field) {
+      advanced_addresses_open = true;
+      await tick();
+      const id = {
+        listen_port: "network-listen-port",
+        direct_addresses: "network-direct-addresses",
+        relay_urls: "network-relay-urls",
+        discovery_urls: "network-discovery-urls",
+      }[field];
+      const input = document.getElementById(id);
+      input?.focus();
+      input?.scrollIntoView({ block: "nearest" });
+    }
+    return message;
+  }
+  async function open_network_settings() {
+    if (loading_network_settings) {
+      return;
+    }
+    loading_network_settings = true;
+    try {
+      clear_network_settings_error();
+      network_settings = await invoke<IrohNetworkSettings>(
+        "get_iroh_network_settings",
+      );
+      relay_urls_text = network_settings.relay_urls.join("\n");
+      discovery_urls_text = network_settings.discovery_urls.join("\n");
+      direct_addresses_text = network_settings.direct_addresses.join("\n");
+      saved_network_settings = network_draft;
+      network_settings_applied = false;
+      advanced_addresses_open = false;
+      if (open) {
+        flow = "network";
+      }
+    } catch (e) {
+      logger.error("iroh.network_settings_load.failed", e);
+      toast.error(error_message(e, "Couldn't load connection settings"));
+    } finally {
+      loading_network_settings = false;
+    }
+  }
+  async function save_network_settings() {
+    if (
+      saving_network_settings ||
+      !network_has_transport ||
+      (!network_dirty && !network_restart_failed)
+    ) {
+      return;
+    }
+    const settings = JSON.parse(network_draft) as IrohNetworkSettings;
+    if (
+      !Number.isInteger(settings.listen_port) ||
+      settings.listen_port < 0 ||
+      settings.listen_port > 65535
+    ) {
+      await set_network_settings_error(
+        "Invalid listening port: enter a whole number from 0 to 65535.",
+      );
+      return;
+    }
+    saving_network_settings = true;
+    network_settings_applied = false;
+    clear_network_settings_error();
+    try {
+      const restart_error = await invoke<string | null>(
+        "set_iroh_network_settings",
+        {
+          settings,
+        },
+      );
+      saved_network_settings = JSON.stringify(settings);
+      invite_access = {};
+      visible_qr_id = null;
+      generated = null;
+      network_restart_failed = restart_error !== null;
+      network_settings_applied = restart_error === null;
+      network_settings_error = restart_error;
+      if (restart_error === null) {
+        board.reconnect_iroh_boards();
+        await load_connection_details();
+      }
+    } catch (e) {
+      logger.error("iroh.network_settings_save.failed", e);
+      await set_network_settings_error(e);
+    } finally {
+      saving_network_settings = false;
+    }
   }
   async function create() {
     if (selected_board_id === null) {
@@ -239,6 +550,7 @@
           "APPROVAL_REQUIRED:".length,
         );
         board.iroh_last_error = "";
+        await load_connection_details();
       } else if (
         silent &&
         board.iroh_last_error.startsWith("Access was declined or revoked")
@@ -258,17 +570,26 @@
     }
   }
   async function load(silent = false) {
+    if (loading_invites) {
+      return;
+    }
+    loading_invites = true;
     try {
       invites = await invoke<Invite[]>("list_iroh_invites");
       host_error = await invoke<string | null>("iroh_host_error");
       onRequestsChanged();
+      manage_error = null;
+      await load_connection_details();
     } catch (e) {
       logger.error("iroh.invite_list_load.failed", e);
+      manage_error = error_message(e, "Couldn't load sharing. Try again.");
       if (!silent) {
         toast.error(
           e instanceof Error ? e.message : "Couldn't load invitations",
         );
       }
+    } finally {
+      loading_invites = false;
     }
   }
   async function approve_device(
@@ -276,14 +597,18 @@
     node_id: string,
     approved: boolean,
   ) {
+    if (device_action_pending || (approved && !device_id_verified)) {
+      return false;
+    }
+    device_action_pending = true;
     try {
       await invoke("set_iroh_device_approved", {
         inviteId: invite.invite_id,
         nodeId: node_id,
         approved,
       });
-      approval_open = false;
       await load();
+      approval_open = false;
       toast.success(
         approved
           ? "Device approved"
@@ -297,6 +622,8 @@
       logger.error("iroh.device_approval.failed", e);
       toast.error(e instanceof Error ? e.message : "Couldn't update device");
       return false;
+    } finally {
+      device_action_pending = false;
     }
   }
   async function revoke_device() {
@@ -330,25 +657,25 @@
     }
     received_requesting.add(board_id);
     try {
-      const [approved, device_id] = await invoke<[boolean, string]>(
-        "request_iroh_board_access",
-        { boardId: board_id, requestApproval: request_approval },
-      );
+      const [approved, device_id, refreshed] = await invoke<
+        [boolean, string, BoardSummary?]
+      >("request_iroh_board_access", {
+        boardId: board_id,
+        requestApproval: request_approval,
+      });
       if (stopped_waiting.has(board_id)) {
         return;
+      }
+      if (refreshed) {
+        board.apply_iroh_conflict_refresh(refreshed);
       }
       if (approved) {
         delete received_pending[board_id];
         received_waiting_id = null;
-        board.iroh_access_removed = {
-          ...board.iroh_access_removed,
-          [board_id]: false,
-        };
-        if (await board.sync_iroh_board(board_id, true)) {
-          toast.success("Access restored");
-        }
+        await board.restore_iroh_access(board_id);
       } else {
         received_pending[board_id] = device_id;
+        await load_connection_details();
         if (request_approval) {
           toast.success("Access request sent");
         }
@@ -357,14 +684,23 @@
       logger.error("iroh.access_request.failed", e);
       if (
         !request_approval &&
-        (e instanceof Error ? e.message : String(e)).startsWith(
-          "Access was declined or revoked",
+        /^(ACCESS_REVOKED:|INVITATION_DISABLED:|INVITATION_DELETED:|Access was declined or revoked)/.test(
+          e instanceof Error ? e.message : String(e),
         )
       ) {
         delete received_pending[board_id];
+        if (received_waiting_id === board_id) {
+          received_waiting_id = null;
+        }
+        board.iroh_access_removed[board_id] = true;
+        board.iroh_access_error[board_id] = (
+          e instanceof Error ? e.message : String(e)
+        ).replace(/^[A-Z_]+:/, "");
       } else if (request_approval) {
         received_waiting_id = null;
-        toast.error(e instanceof Error ? e.message : String(e));
+        toast.error(
+          (e instanceof Error ? e.message : String(e)).replace(/^[A-Z_]+:/, ""),
+        );
       }
     } finally {
       received_requesting.delete(board_id);
@@ -389,6 +725,10 @@
     invite: Invite,
     change: { permission?: "viewer" | "editor"; enabled?: boolean },
   ) {
+    if (updating_invite_id) {
+      return;
+    }
+    updating_invite_id = invite.invite_id;
     try {
       await invoke("update_iroh_invite", {
         inviteId: invite.invite_id,
@@ -410,6 +750,8 @@
       toast.error(
         e instanceof Error ? e.message : "Couldn't update invitation",
       );
+    } finally {
+      updating_invite_id = null;
     }
   }
   async function remove() {
@@ -420,6 +762,7 @@
       await invoke("delete_iroh_invite", {
         inviteId: pending_delete.invite_id,
       });
+      await board.get_boards();
       await load();
       toast.success("Invitation deleted");
     } catch (e) {
@@ -475,22 +818,144 @@
   }
 </script>
 
+{#snippet connection_info(info: IrohConnectionInfo | null | undefined)}
+  <Collapsible.Root class="rounded-md border bg-background">
+    <Collapsible.Trigger
+      class="group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span>Last used connection</span>
+      <span class="flex items-center gap-2">
+        {#if info && info.paths.length > 0}
+          <Badge variant="outline"
+            >{[
+              ...new Set(
+                info.paths.map((path) =>
+                  path.kind === "Direct" ? "Direct IP" : path.kind,
+                ),
+              ),
+            ].join(" + ")}</Badge
+          >
+        {/if}
+        <ChevronDownIcon
+          class="size-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+        />
+      </span>
+    </Collapsible.Trigger>
+    <Collapsible.Content class="space-y-2 border-t px-3 py-3 text-xs">
+      {#if info}
+        <p class="text-muted-foreground">
+          Observed at {sync_time.format(new Date(info.observed_at))}. This is
+          the path used for the last connection, and may change on the next
+          sync. Enabled connection options do not indicate which path was used.{#if waiting_device_id || received_waiting_id !== null}
+            Approval checks reconnect automatically, so temporary ports and
+            network paths can change.{/if}
+        </p>
+        {#if info.paths.length > 0}
+          <Collapsible.Root>
+            <Collapsible.Trigger
+              class="group flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Technical details ({info.paths.length} network paths)
+              <ChevronDownIcon
+                class="size-3.5 transition-transform group-data-[state=open]:rotate-180"
+              />
+            </Collapsible.Trigger>
+            <Collapsible.Content class="space-y-3 pt-2">
+              {#each [...new Set(info.paths.map((path) => path.kind))] as kind}
+                <div class="space-y-1">
+                  <p class="font-medium">
+                    {kind === "Direct"
+                      ? "Direct IP addresses"
+                      : kind === "Relay"
+                        ? "Relay servers"
+                        : "Custom transport"}
+                  </p>
+                  <code
+                    class="block whitespace-pre-wrap break-all rounded-md bg-muted px-2 py-1 select-all"
+                    >{[
+                      ...new Set(
+                        info.paths
+                          .filter((path) => path.kind === kind)
+                          .map((path) => path.address),
+                      ),
+                    ].join("\n")}</code
+                  >
+                </div>
+              {/each}
+              <p class="text-muted-foreground">
+                Multiple addresses can belong to the same device. Direct IP may
+                use NAT traversal; Iroh does not report whether hole punching
+                was required.
+              </p>
+            </Collapsible.Content>
+          </Collapsible.Root>
+        {:else}
+          <p class="text-muted-foreground">
+            Iroh has not reported the active path yet.
+          </p>
+        {/if}
+      {:else}
+        <p class="text-muted-foreground">
+          No connection observed this session. Connect or sync to collect
+          details.
+        </p>
+      {/if}
+    </Collapsible.Content>
+  </Collapsible.Root>
+{/snippet}
+
 <Dialog.Root bind:open>
   <Dialog.Content
-    showCloseButton={!waiting_device_id && received_waiting_id === null}
-    interactOutsideBehavior={waiting_device_id || received_waiting_id !== null
+    showCloseButton={flow !== "network" &&
+      !saving_network_settings &&
+      !waiting_device_id &&
+      received_waiting_id === null}
+    interactOutsideBehavior={waiting_device_id ||
+    received_waiting_id !== null ||
+    approval_open ||
+    revoke_open ||
+    delete_confirm_open
       ? "ignore"
       : "close"}
-    onEscapeKeydown={(event) => {
-      if (waiting_device_id || received_waiting_id !== null) {
+    onInteractOutside={(event) => {
+      if (flow === "network") {
         event.preventDefault();
+        if (!discard_network_open) {
+          leave_network();
+        }
       }
     }}
-    class={flow === "manage" && received_waiting_id === null
+    onEscapeKeydown={(event) => {
+      if (
+        saving_network_settings ||
+        waiting_device_id ||
+        received_waiting_id !== null
+      ) {
+        event.preventDefault();
+      } else if (flow === "network") {
+        event.preventDefault();
+        if (!discard_network_open) {
+          leave_network();
+        }
+      }
+    }}
+    class={(flow === "manage" || flow === "network") &&
+    received_waiting_id === null
       ? "flex h-[min(42rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-xl"
       : "max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-xl"}
   >
-    <Dialog.Header>
+    {#if flow === "network"}
+      <Button
+        variant="ghost"
+        size="icon"
+        class="absolute right-3 top-3 size-7"
+        disabled={saving_network_settings}
+        aria-label="Back to board sharing"
+        title="Back to board sharing"
+        onclick={() => leave_network()}><XIcon class="size-4" /></Button
+      >
+    {/if}
+    <Dialog.Header class={flow === "network" ? "pr-6" : ""}>
       <Dialog.Title
         >{received_waiting_id !== null
           ? "Waiting for approval"
@@ -500,7 +965,9 @@
               ? "Share a board"
               : flow === "join"
                 ? "Join a shared board"
-                : "Manage board sharing"}</Dialog.Title
+                : flow === "network"
+                  ? "Connection settings"
+                  : "Manage board sharing"}</Dialog.Title
       >
       {#if flow === "home"}
         <Dialog.Description
@@ -510,19 +977,32 @@
         <Dialog.Description
           >Manage boards you share and boards shared with you.</Dialog.Description
         >
+      {:else if flow === "network"}
+        <Dialog.Description
+          >Applies to all board sharing on this device. Applying changes may
+          briefly interrupt connections. Received boards reconnect
+          automatically; their local changes are kept.</Dialog.Description
+        >
       {/if}
     </Dialog.Header>
     <div
-      class={flow === "manage" && received_waiting_id === null
+      class={(flow === "manage" || flow === "network") &&
+      received_waiting_id === null
         ? "flex min-h-0 flex-1 flex-col gap-4"
         : flow === "home"
           ? "grid gap-2"
           : "grid gap-4"}
     >
       {#if flow !== "home" && !waiting_device_id && received_waiting_id === null}
-        <Button variant="ghost" class="w-fit" onclick={() => (flow = "home")}
+        <Button
+          variant="outline"
+          size="sm"
+          class="w-fit"
+          disabled={saving_network_settings}
+          onclick={() =>
+            flow === "network" ? leave_network() : (flow = "home")}
           ><ArrowLeftIcon />
-          Back</Button
+          Back to sharing</Button
         >
       {/if}
       {#if received_waiting_id !== null || waiting_device_id}
@@ -548,7 +1028,7 @@
                 Your device ID · compare this with the owner
               </p>
               <code class="block break-all text-sm leading-relaxed select-all"
-                >{device_id}</code
+                >{verification_id(device_id)}</code
               >
             </div>
             <Button
@@ -557,7 +1037,19 @@
               ><ClipboardIcon />
               Copy device ID</Button
             >
-          {/if}</Card.Root
+          {/if}
+          <div class="w-full text-left">
+            {@render connection_info(
+              received_waiting_id !== null
+                ? connection_details.boards[received_waiting_id]
+                : connection_details.invitation,
+            )}
+            {#if connection_details_error}
+              <p class="mt-2 text-xs text-muted-foreground">
+                {connection_details_error}
+              </p>
+            {/if}
+          </div></Card.Root
         >
         <Button
           variant="outline"
@@ -610,6 +1102,343 @@
           ><Settings2Icon />
           Manage sharing</Button
         >
+        <Button
+          variant="outline"
+          disabled={loading_network_settings}
+          onclick={() => void open_network_settings()}
+          ><Settings2Icon />
+          {loading_network_settings
+            ? "Loading settings..."
+            : "Connection settings"}</Button
+        >
+      {:else if flow === "network"}
+        <ScrollArea
+          class="min-h-0 flex-1"
+          orientation="vertical"
+          type="always"
+          scrollbarYClasses="w-2"
+        >
+          <fieldset
+            disabled={saving_network_settings}
+            class="grid min-w-0 gap-4 pr-4"
+          >
+            <Card.Root class="gap-0 p-0 shadow-none">
+              <Card.Header class="px-4 py-3">
+                <Card.Title class="text-base">Connection method</Card.Title>
+                <Card.Description
+                  >Applies to this device. Both devices need a compatible
+                  connection method.</Card.Description
+                >
+              </Card.Header>
+              <Card.Content class="grid gap-2 px-4 pb-4">
+                <Label for="network-mode">Connection mode</Label>
+                <Select.Root
+                  type="single"
+                  value={network_mode}
+                  onValueChange={set_network_mode}
+                >
+                  <Select.Trigger
+                    id="network-mode"
+                    class="w-full"
+                    aria-describedby="network-mode-help"
+                    >{network_mode_label}</Select.Trigger
+                  >
+                  <Select.Content>
+                    <Select.Item value="automatic"
+                      >Automatic (recommended)</Select.Item
+                    >
+                    <Select.Item value="direct">Direct only</Select.Item>
+                    <Select.Item value="relay">Relay only</Select.Item>
+                  </Select.Content>
+                </Select.Root>
+                <p id="network-mode-help" class="text-sm text-muted-foreground">
+                  {#if network_mode === "automatic"}
+                    Allows direct connections or encrypted relay connections
+                    when needed. Recommended on both devices.
+                  {:else if network_mode === "direct"}
+                    Transfers data directly between devices. Both devices must
+                    allow direct connections; firewalls and some networks can
+                    block them. No relay fallback.
+                  {:else if network_mode === "relay"}
+                    Transfers encrypted data through a relay. The owner must
+                    allow relay connections and their relay must be reachable.
+                    Direct connections are disabled.
+                  {:else}
+                    Connections are disabled in your saved settings. Choose a
+                    mode to allow devices to connect.
+                  {/if}
+                </p>
+              </Card.Content>
+            </Card.Root>
+            <Collapsible.Root
+              bind:open={advanced_addresses_open}
+              class="rounded-lg border bg-card"
+            >
+              <Collapsible.Trigger
+                class="group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span class="flex-1">Advanced addresses and services</span>
+                {#if network_customized}<Badge variant="secondary"
+                    >Customized</Badge
+                  >{/if}
+                <ChevronDownIcon
+                  class="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+                />
+              </Collapsible.Trigger>
+              <Collapsible.Content class="border-t p-4">
+                <div class="grid gap-5">
+                  <div class="grid gap-2">
+                    <Label for="network-discovery">Device addresses</Label>
+                    <Select.Root
+                      type="single"
+                      value={network_settings.discovery_enabled
+                        ? "automatic"
+                        : "manual"}
+                      onValueChange={(value) => {
+                        network_settings.discovery_enabled =
+                          value === "automatic";
+                        clear_network_settings_error("discovery_urls");
+                      }}
+                    >
+                      <Select.Trigger
+                        id="network-discovery"
+                        class="w-full"
+                        aria-describedby="network-discovery-help"
+                        >{network_settings.discovery_enabled
+                          ? "Find automatically (recommended)"
+                          : "Use invitation and manual addresses"}</Select.Trigger
+                      >
+                      <Select.Content>
+                        <Select.Item value="automatic"
+                          >Find automatically (recommended)</Select.Item
+                        >
+                        <Select.Item value="manual"
+                          >Use invitation and manual addresses</Select.Item
+                        >
+                      </Select.Content>
+                    </Select.Root>
+                    <p
+                      id="network-discovery-help"
+                      class="text-sm text-muted-foreground"
+                    >
+                      Automatic discovery finds updated addresses after a device
+                      restarts or changes settings. Without it, you may need a
+                      new invitation or updated manual addresses to reconnect.
+                    </p>
+                  </div>
+
+                  <label class="grid gap-2 text-sm font-medium">
+                    Listening UDP port
+                    <Input
+                      id="network-listen-port"
+                      type="number"
+                      min={0}
+                      max={65535}
+                      step={1}
+                      bind:value={network_settings.listen_port}
+                      disabled={!network_settings.direct_ip_enabled}
+                      aria-describedby={"network-listen-port-help" +
+                        (network_settings_field_errors.listen_port
+                          ? " network-listen-port-error"
+                          : "")}
+                      aria-invalid={Boolean(
+                        network_settings_field_errors.listen_port,
+                      )}
+                      oninput={() =>
+                        clear_network_settings_error("listen_port")}
+                    />
+                    <span
+                      id="network-listen-port-help"
+                      class="font-normal text-muted-foreground"
+                    >
+                      Use 0 for an automatic port. For port forwarding, set a
+                      fixed port and forward UDP traffic to it.
+                    </span>
+                    {#if network_settings_field_errors.listen_port}
+                      <span
+                        id="network-listen-port-error"
+                        class="text-sm font-normal text-destructive"
+                        role="alert"
+                        >{network_settings_field_errors.listen_port}</span
+                      >
+                    {/if}
+                  </label>
+                  <label class="grid gap-2 text-sm font-medium">
+                    This device's fixed addresses
+                    <Textarea
+                      id="network-direct-addresses"
+                      aria-describedby={"network-direct-addresses-help" +
+                        (network_settings_field_errors.direct_addresses
+                          ? " network-direct-addresses-error"
+                          : "")}
+                      bind:value={direct_addresses_text}
+                      disabled={!network_settings.direct_ip_enabled}
+                      aria-invalid={Boolean(
+                        network_settings_field_errors.direct_addresses,
+                      )}
+                      oninput={() =>
+                        clear_network_settings_error("direct_addresses")}
+                      rows={3}
+                      placeholder="192.168.1.20:12345"
+                    />
+                    <span
+                      id="network-direct-addresses-help"
+                      class="font-normal text-muted-foreground"
+                      >Enter the IP:port other devices can reach, one per line.
+                      Set a listening UDP port above; if your router uses a
+                      different external port, enter that port here. Leave empty
+                      for automatic addresses.</span
+                    >
+                    <span class="text-xs font-normal text-muted-foreground"
+                      >{#if !network_settings.direct_ip_enabled}Enable direct
+                        connection to edit this field.{:else if !direct_addresses_text.trim()}Using
+                        automatic addresses.{/if}</span
+                    >
+                    {#if network_settings_field_errors.direct_addresses}
+                      <span
+                        id="network-direct-addresses-error"
+                        class="text-sm font-normal text-destructive"
+                        role="alert"
+                        >{network_settings_field_errors.direct_addresses}</span
+                      >
+                    {/if}
+                  </label>
+                  <label class="grid gap-2 text-sm font-medium">
+                    Relay service URLs
+                    <Textarea
+                      id="network-relay-urls"
+                      aria-describedby={"network-relay-urls-help" +
+                        (network_settings_field_errors.relay_urls
+                          ? " network-relay-urls-error"
+                          : "")}
+                      bind:value={relay_urls_text}
+                      disabled={!network_settings.relay_enabled}
+                      aria-invalid={Boolean(
+                        network_settings_field_errors.relay_urls,
+                      )}
+                      oninput={() => clear_network_settings_error("relay_urls")}
+                      rows={3}
+                      placeholder="https://relay.example.com"
+                    />
+                    <span
+                      id="network-relay-urls-help"
+                      class="font-normal text-muted-foreground"
+                      >One URL per line. Leave empty for the default service.
+                      Custom URLs replace the default relay service.</span
+                    >
+                    <span class="text-xs font-normal text-muted-foreground"
+                      >{#if !network_settings.relay_enabled}Enable relay
+                        connection to edit this field.{:else if !relay_urls_text.trim()}Using
+                        the default service.{/if}</span
+                    >
+                    {#if network_settings_field_errors.relay_urls}
+                      <span
+                        id="network-relay-urls-error"
+                        class="text-sm font-normal text-destructive"
+                        role="alert"
+                        >{network_settings_field_errors.relay_urls}</span
+                      >
+                    {/if}
+                  </label>
+                  <label class="grid gap-2 text-sm font-medium">
+                    Discovery service URLs
+                    <Textarea
+                      id="network-discovery-urls"
+                      aria-describedby={"network-discovery-urls-help" +
+                        (network_settings_field_errors.discovery_urls
+                          ? " network-discovery-urls-error"
+                          : "")}
+                      bind:value={discovery_urls_text}
+                      disabled={!network_settings.discovery_enabled}
+                      aria-invalid={Boolean(
+                        network_settings_field_errors.discovery_urls,
+                      )}
+                      oninput={() =>
+                        clear_network_settings_error("discovery_urls")}
+                      rows={3}
+                      placeholder="https://discovery.example.com"
+                    />
+                    <span
+                      id="network-discovery-urls-help"
+                      class="font-normal text-muted-foreground"
+                      >One compatible service URL per line. Leave empty for the
+                      default service. Custom URLs replace the default discovery
+                      service.</span
+                    >
+                    <span class="text-xs font-normal text-muted-foreground"
+                      >{#if !network_settings.discovery_enabled}Enable automatic
+                        device discovery to edit this field.{:else if !discovery_urls_text.trim()}Using
+                        the default service.{/if}</span
+                    >
+                    {#if network_settings_field_errors.discovery_urls}
+                      <span
+                        id="network-discovery-urls-error"
+                        class="text-sm font-normal text-destructive"
+                        role="alert"
+                        >{network_settings_field_errors.discovery_urls}</span
+                      >
+                    {/if}
+                  </label>
+                </div>
+              </Collapsible.Content>
+            </Collapsible.Root>
+          </fieldset>
+        </ScrollArea>
+        <div class="shrink-0 space-y-3 border-t pt-3">
+          {#if !network_has_transport}
+            <p class="text-sm text-destructive" role="alert">
+              Enable direct or relay connections so devices can transfer data.
+            </p>
+          {/if}
+          {#if network_settings_error}
+            <p
+              class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+              role="alert"
+            >
+              {network_settings_error}
+            </p>
+          {/if}
+          <p class="text-xs text-muted-foreground" role="status">
+            {saving_network_settings
+              ? "Applying changes…"
+              : network_dirty
+                ? "Changes not applied"
+                : network_restart_failed
+                  ? "Settings saved. Retry to activate them."
+                  : network_settings_applied
+                    ? "Settings applied. Received boards are reconnecting automatically."
+                    : "No unapplied changes"}
+          </p>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <Button
+              variant="outline"
+              disabled={saving_network_settings}
+              onclick={reset_network_settings}>Restore defaults</Button
+            >
+            <div class="flex gap-2">
+              <Button
+                variant="outline"
+                class="min-w-24"
+                disabled={saving_network_settings}
+                onclick={() => leave_network(true)}>Cancel</Button
+              >
+              <Button
+                class="min-w-24"
+                aria-busy={saving_network_settings}
+                onclick={() => void save_network_settings()}
+                disabled={saving_network_settings ||
+                  !network_has_transport ||
+                  (!network_dirty && !network_restart_failed)}
+              >
+                {saving_network_settings
+                  ? "Applying…"
+                  : network_restart_failed && !network_dirty
+                    ? "Retry"
+                    : "Apply"}
+              </Button>
+            </div>
+          </div>
+        </div>
       {:else if flow === "share"}
         <div class="grid gap-4">
           <label class="grid gap-2 text-sm font-medium"
@@ -717,30 +1546,67 @@
       {:else}
         <ButtonGroup.Root
           class="grid grid-cols-2"
-          role="tablist"
+          role="group"
           aria-label="Sharing management views"
         >
           <Button
+            bind:ref={manage_view_button}
             variant={manage_view === "mine" ? "secondary" : "outline"}
-            role="tab"
-            aria-selected={manage_view === "mine"}
+            aria-pressed={manage_view === "mine"}
             onclick={() => (manage_view = "mine")}
-            >Shared by me ({invites.length})</Button
+            >My invitations ({invites.length})</Button
           >
           <Button
             variant={manage_view === "received" ? "secondary" : "outline"}
-            role="tab"
-            aria-selected={manage_view === "received"}
+            aria-pressed={manage_view === "received"}
             onclick={() => (manage_view = "received")}
-            >Shared with me ({received_boards.length})</Button
+            >Joined boards ({received_boards.length})</Button
           >
         </ButtonGroup.Root>
+        <div
+          class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+        >
+          {#if manage_view === "mine"}
+            <div class="flex items-center gap-2">
+              <Checkbox id="pending-devices-only" bind:checked={pending_only} />
+              <Label for="pending-devices-only" class="text-xs"
+                >With pending device requests ({pending_count})</Label
+              >
+            </div>
+          {:else}<span>Each board syncs with its owner.</span>{/if}
+        </div>
+        <p class="text-xs text-muted-foreground">
+          {manage_view === "mine"
+            ? "New devices need your approval before accessing a board. "
+            : ""}This list updates automatically.
+        </p>
         <ScrollArea
           class="min-h-0 flex-1"
           orientation="vertical"
           scrollbarYClasses="w-2"
         >
           <div class="grid gap-3 pr-3 pb-1">
+            {#if manage_error}
+              <div
+                class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3 text-sm text-destructive"
+                role="alert"
+              >
+                <p>{manage_error}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={loading_invites}
+                  onclick={() => void load()}
+                >
+                  {loading_invites ? "Retrying..." : "Retry"}
+                </Button>
+              </div>
+            {/if}
+            {#if connection_details_error}
+              <p class="text-xs text-muted-foreground" role="status">
+                {connection_details_error}
+              </p>
+            {/if}
             {#if manage_view === "mine" && host_error}
               <p
                 class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
@@ -765,15 +1631,18 @@
                       <div>
                         <Card.Title class="text-base">{shared.name}</Card.Title
                         ><Card.Description
-                          >{shared.sync_status === "syncing"
-                            ? "Syncing with owner..."
-                            : shared.sync_status === "conflict"
-                              ? "Sync conflict: both versions are saved"
-                              : shared.sync_status === "pending"
-                                ? "Local changes are waiting to sync"
-                                : shared.sync_status === "error"
-                                  ? "Sync needs attention"
-                                  : "Background sync enabled"}</Card.Description
+                          >{board.iroh_access_removed[shared.id]
+                            ? (board.iroh_access_error[shared.id] ??
+                              "Access is no longer available.")
+                            : shared.sync_status === "syncing"
+                              ? "Syncing with owner..."
+                              : shared.sync_status === "conflict"
+                                ? "Sync conflict: both versions are saved"
+                                : shared.sync_status === "pending"
+                                  ? "Local changes are waiting to sync"
+                                  : shared.sync_status === "error"
+                                    ? "Sync needs attention"
+                                    : "Background sync enabled"}</Card.Description
                         >
                         <p class="mt-1 text-xs text-muted-foreground">
                           {board.iroh_last_synced_at[shared.id]
@@ -821,7 +1690,9 @@
                       {:else}
                         <Button
                           variant="outline"
-                          disabled={shared.sync_status === "syncing"}
+                          disabled={shared.sync_status === "syncing" ||
+                            !!board.iroh_access_removed[shared.id] ||
+                            !!received_pending[shared.id]}
                           onclick={() => void board.sync_iroh_board(shared.id)}
                           >{#if shared.sync_status === "syncing"}
                             <LoaderCircleIcon class="animate-spin" />
@@ -844,7 +1715,11 @@
                         class="grid gap-2 rounded-lg border border-primary/25 bg-primary/5 p-3 text-sm"
                       >
                         <span
-                          >Access was removed. Your local board is still here.</span
+                          >{board.iroh_access_error[shared.id] ??
+                            "Access is no longer available."} Your local board is
+                          safe. Request access again; the owner must approve it. If
+                          the invitation was deleted or disabled, ask the owner for
+                          a new invitation or to enable sharing.</span
                         ><Button
                           class="w-full"
                           onclick={() =>
@@ -853,12 +1728,33 @@
                         >
                       </div>
                     {/if}
+                    {@render connection_info(
+                      connection_details.boards[shared.id],
+                    )}
+                    {#if board.iroh_sync_error[shared.id] && !board.iroh_access_removed[shared.id]}
+                      <p class="text-sm text-destructive" role="status">
+                        {board.iroh_sync_error[shared.id]}
+                      </p>
+                    {/if}
                   </Card.Root>
                 {/each}
               {/if}
+            {:else if loading_invites && invites.length === 0}
+              <p
+                class="flex items-center gap-2 p-4 text-sm text-muted-foreground"
+                role="status"
+              >
+                <LoaderCircleIcon class="size-4 animate-spin" />Loading
+                invitations...
+              </p>
             {:else if invites.length === 0}
               <Card.Root class="p-4 shadow-none"
-                ><Card.Description>No invitations yet.</Card.Description
+                ><Card.Title class="text-base"
+                  >Share your first board</Card.Title
+                >
+                <Card.Description
+                  >Create an invitation, send it to someone you trust, then
+                  approve their device here.</Card.Description
                 ></Card.Root
               >
             {:else}
@@ -869,12 +1765,17 @@
                   <ShieldCheckIcon class="size-5 text-primary" />
                   <span class="flex-1"
                     >{pending_count}
-                    {pending_count === 1 ? "device is" : "devices are"}
-                    waiting for your approval</span
+                    {pending_count === 1 ? "access request" : "access requests"}
+                    waiting for review</span
                   >
                 </div>
               {/if}
-              {#each invites as invite}
+              {#if visible_invites.length === 0}<p
+                  class="rounded-md border p-4 text-sm text-muted-foreground"
+                >
+                  No devices are waiting for approval.
+                </p>{/if}
+              {#each visible_invites as invite (invite.invite_id)}
                 <Card.Root class="gap-3 p-4 shadow-none">
                   <div
                     class="flex flex-wrap items-center justify-between gap-2"
@@ -883,46 +1784,69 @@
                       <Card.Title class="text-base"
                         >{invite.board_name}</Card.Title
                       ><Card.Description
-                        >{invite.created_at ||
-                          "Created before this version"}</Card.Description
+                        >{invitation_date(invite.created_at)}</Card.Description
                       >
                     </div>
                     <Badge variant={invite.enabled ? "secondary" : "outline"}
                       >{invite.enabled ? "Active" : "Disabled"}</Badge
                     >
                   </div>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <Select.Root
-                      type="single"
-                      value={invite.permission}
-                      onValueChange={(v) =>
-                        void update(invite, {
-                          permission: v as "viewer" | "editor",
-                        })}
+                  <Collapsible.Root class="rounded-md border">
+                    <Collapsible.Trigger
+                      class="group flex w-full items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <Select.Trigger class="w-36"
-                        >{invite.permission === "viewer"
+                      <span
+                        >Invitation settings · {invite.permission === "viewer"
                           ? "Read only"
-                          : "Can edit"}</Select.Trigger
+                          : "Can edit"}</span
                       >
-                      <Select.Content
-                        ><Select.Item value="viewer">Read only</Select.Item
-                        ><Select.Item value="editor">Can edit</Select.Item
-                        ></Select.Content
-                      >
-                    </Select.Root>
-                    <div class="flex items-center gap-2 px-1">
-                      <Switch
-                        id={`invite-active-${invite.invite_id}`}
-                        checked={invite.enabled}
-                        onCheckedChange={(checked) =>
-                          void update(invite, { enabled: checked })}
+                      <ChevronDownIcon
+                        class="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
                       />
-                      <Label for={`invite-active-${invite.invite_id}`}
-                        >Link active</Label
-                      >
-                    </div>
-                  </div>
+                    </Collapsible.Trigger>
+                    <Collapsible.Content class="space-y-2 border-t p-3">
+                      <div class="flex flex-wrap items-center gap-3">
+                        <Select.Root
+                          type="single"
+                          disabled={updating_invite_id !== null}
+                          value={invite.permission}
+                          onValueChange={(v) =>
+                            void update(invite, {
+                              permission: v as "viewer" | "editor",
+                            })}
+                        >
+                          <Select.Trigger
+                            class="w-36"
+                            aria-label={`Access permission for ${invite.board_name}`}
+                            >{invite.permission === "viewer"
+                              ? "Read only"
+                              : "Can edit"}</Select.Trigger
+                          >
+                          <Select.Content
+                            ><Select.Item value="viewer">Read only</Select.Item
+                            ><Select.Item value="editor">Can edit</Select.Item
+                            ></Select.Content
+                          >
+                        </Select.Root>
+                        <div class="flex items-center gap-2 px-1">
+                          <Switch
+                            id={`invite-active-${invite.invite_id}`}
+                            disabled={updating_invite_id !== null}
+                            checked={invite.enabled}
+                            onCheckedChange={(checked) =>
+                              void update(invite, { enabled: checked })}
+                          />
+                          <Label for={`invite-active-${invite.invite_id}`}
+                            >Sharing enabled</Label
+                          >
+                        </div>
+                      </div>
+                      <p class="text-xs text-muted-foreground">
+                        Changes apply immediately. Turning sharing off stops
+                        sync for every device using this invitation.
+                      </p>
+                    </Collapsible.Content>
+                  </Collapsible.Root>
                   <div class="flex flex-wrap gap-2">
                     <Button
                       variant="outline"
@@ -940,6 +1864,7 @@
                         : "Show QR"}</Button
                     >
                     <Button
+                      class="ml-auto"
                       variant="destructive"
                       onclick={() => {
                         pending_delete = invite;
@@ -985,7 +1910,7 @@
                         />
                       </Collapsible.Trigger>
                       <Collapsible.Content class="border-t">
-                        <div class="max-h-56 space-y-2 overflow-y-auto p-2">
+                        <div class="space-y-2 p-2">
                           {#each invite.devices as device}
                             <div
                               class="rounded-lg border bg-muted/20 p-3 text-sm"
@@ -999,14 +1924,17 @@
                                   <div class="font-medium">
                                     {device.status === IrohDeviceStatus.Pending
                                       ? "Approval requested"
-                                      : "Approved device"}
+                                      : device.status ===
+                                          IrohDeviceStatus.Approved
+                                        ? "Approved device"
+                                        : "Access revoked"}
                                   </div>
                                   <div
                                     class="font-mono text-xs text-muted-foreground"
                                   >
                                     {device.node_id.slice(
                                       0,
-                                      12,
+                                      8,
                                     )}…{device.node_id.slice(-8)}
                                   </div>
                                 </div>
@@ -1018,10 +1946,12 @@
                                         invite,
                                         node_id: device.node_id,
                                       };
+                                      device_id_verified = false;
                                       approval_open = true;
-                                    }}>Review</Button
+                                    }}
+                                    aria-haspopup="dialog">Review</Button
                                   >
-                                {:else}
+                                {:else if device.status === IrohDeviceStatus.Approved}
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1034,6 +1964,11 @@
                                     }}>Revoke</Button
                                   >
                                 {/if}
+                              </div>
+                              <div class="mt-2">
+                                {@render connection_info(
+                                  connection_details.devices[device.node_id],
+                                )}
                               </div>
                             </div>
                           {/each}
@@ -1058,6 +1993,22 @@
     </div>
   </Dialog.Content>
 </Dialog.Root>
+<AlertDialog.Root bind:open={discard_network_open}>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Discard unapplied changes?</AlertDialog.Title>
+      <AlertDialog.Description
+        >Your connection settings will keep their previously saved values.</AlertDialog.Description
+      >
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>Keep editing</AlertDialog.Cancel>
+      <AlertDialog.Action onclick={() => leave_network(true)}
+        >Discard changes</AlertDialog.Action
+      >
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>
 <AlertDialog.Root bind:open={delete_confirm_open}
   ><AlertDialog.Content
     ><AlertDialog.Header
@@ -1080,6 +2031,15 @@
 >
 <AlertDialog.Root bind:open={approval_open}
   ><AlertDialog.Content
+    onCloseAutoFocus={(event) => {
+      event.preventDefault();
+      manage_view_button?.focus({ preventScroll: true });
+    }}
+    onEscapeKeydown={(event) => {
+      if (device_action_pending) {
+        event.preventDefault();
+      }
+    }}
     ><AlertDialog.Header
       ><AlertDialog.Title>Review device request</AlertDialog.Title
       ><AlertDialog.Description
@@ -1092,12 +2052,26 @@
       ></AlertDialog.Header
     >
     {#if approval_candidate}
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="font-medium">{approval_candidate.invite.board_name}</span>
+        <Badge variant="secondary"
+          >{approval_candidate.invite.permission === "viewer"
+            ? "Read only"
+            : "Can edit"}</Badge
+        >
+      </div>
+      {#if !approval_candidate.invite.enabled}
+        <p class="text-sm text-muted-foreground">
+          This invitation is disabled. Approval will be saved, but sharing must
+          be enabled before the device can sync.
+        </p>
+      {/if}
       <div class="rounded-lg border bg-muted/30 p-3">
         <div class="mb-2 text-xs font-medium text-muted-foreground">
           Device ID
         </div>
         <code class="block break-all text-sm leading-relaxed select-all"
-          >{approval_candidate.node_id}</code
+          >{verification_id(approval_candidate.node_id)}</code
         ><Button
           variant="outline"
           size="sm"
@@ -1108,9 +2082,27 @@
         >
       </div>
     {/if}
+    <div class="flex items-start gap-2 rounded-md border p-3">
+      <Checkbox
+        id="device-id-verified"
+        class="mt-0.5 disabled:opacity-100"
+        bind:checked={device_id_verified}
+        disabled={device_action_pending}
+      />
+      <Label
+        for="device-id-verified"
+        class="block text-sm leading-5 peer-disabled:opacity-100"
+        >I compared the full device ID with the person requesting access.</Label
+      >
+    </div>
     <AlertDialog.Footer
-      ><AlertDialog.Cancel>Back</AlertDialog.Cancel><Button
+      ><AlertDialog.Cancel
+        class="disabled:opacity-100"
+        disabled={device_action_pending}>Back</AlertDialog.Cancel
+      ><Button
         variant="destructive"
+        class="disabled:opacity-100"
+        disabled={device_action_pending}
         onclick={() => {
           if (approval_candidate) {
             void approve_device(
@@ -1120,7 +2112,12 @@
             );
           }
         }}>Reject</Button
-      ><AlertDialog.Action
+      ><Button
+        class={device_id_verified
+          ? "min-w-36 disabled:opacity-100"
+          : "min-w-36"}
+        aria-busy={device_action_pending}
+        disabled={device_action_pending || !device_id_verified}
         onclick={() => {
           if (approval_candidate) {
             void approve_device(
@@ -1129,13 +2126,18 @@
               true,
             );
           }
-        }}>Approve device</AlertDialog.Action
+        }}>Approve device</Button
       ></AlertDialog.Footer
     ></AlertDialog.Content
   ></AlertDialog.Root
 >
 <AlertDialog.Root bind:open={revoke_open}
   ><AlertDialog.Content
+    onEscapeKeydown={(event) => {
+      if (device_action_pending) {
+        event.preventDefault();
+      }
+    }}
     ><AlertDialog.Header
       ><AlertDialog.Title>Revoke device access?</AlertDialog.Title
       ><AlertDialog.Description
@@ -1151,8 +2153,13 @@
       >
     {/if}
     <AlertDialog.Footer
-      ><AlertDialog.Cancel>Cancel</AlertDialog.Cancel><Button
+      ><AlertDialog.Cancel
+        class="disabled:opacity-100"
+        disabled={device_action_pending}>Cancel</AlertDialog.Cancel
+      ><Button
         variant="destructive"
+        class="disabled:opacity-100"
+        disabled={device_action_pending}
         onclick={() => void revoke_device()}>Revoke access</Button
       ></AlertDialog.Footer
     ></AlertDialog.Content

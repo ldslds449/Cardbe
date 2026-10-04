@@ -271,11 +271,20 @@ pub fn add_task_to_board(
     state: State<'_, SharedAppData>,
     board_id: i64,
     column_id: i64,
-    mut task: Task,
+    task: Task,
 ) -> Result<i64, String> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
+    add_task_to_board_locked(&mut guard, board_id, column_id, task)
+}
+
+pub(crate) fn add_task_to_board_locked(
+    guard: &mut crate::state::AppData,
+    board_id: i64,
+    column_id: i64,
+    mut task: Task,
+) -> Result<i64, String> {
     if !guard
         .database
         .board_exists(board_id)
@@ -304,7 +313,8 @@ pub fn add_task_to_board(
         if !guard.archives_loaded {
             data.archives.clear();
         }
-        guard.stored = data;
+        let previous = std::mem::replace(&mut guard.stored, data);
+        guard.record_board_undo(previous);
         guard.refresh_labels();
     }
     if let Some(board) = guard.boards.iter_mut().find(|board| board.id == board_id) {

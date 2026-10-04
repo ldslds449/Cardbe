@@ -226,7 +226,7 @@
         aria-label={`${removed_access_count} shared boards need access`}
         title="Request access to shared boards again"
         ><LinkIcon class="size-4" />
-        <span class="hidden xl:inline">Access removed</span><span
+        <span>Request access again</span><span
           class="rounded-full bg-destructive px-1.5 text-xs text-white"
           >{removed_access_count}</span
         ></Button

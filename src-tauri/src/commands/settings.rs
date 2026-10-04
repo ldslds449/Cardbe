@@ -1,8 +1,9 @@
 use crate::{
-    models::Settings,
+    commands::iroh_share,
+    models::{IrohNetworkSettings, Settings},
     state::{update_stored, SharedAppData},
 };
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, SharedAppData>) -> Result<Settings, String> {
@@ -18,6 +19,34 @@ pub fn set_notify_enabled(state: State<'_, SharedAppData>, enabled: bool) -> Res
         data.settings.notify_enabled = enabled;
         Ok(())
     })
+}
+
+#[tauri::command]
+pub fn get_iroh_network_settings(
+    state: State<'_, SharedAppData>,
+) -> Result<IrohNetworkSettings, String> {
+    let guard = state
+        .lock()
+        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    Ok(guard.stored.settings.iroh_network.clone())
+}
+
+#[tauri::command]
+pub async fn set_iroh_network_settings(
+    state: State<'_, SharedAppData>,
+    network: State<'_, iroh_share::IrohShareState>,
+    app_handle: AppHandle,
+    settings: IrohNetworkSettings,
+) -> Result<Option<String>, String> {
+    iroh_share::validate_network_settings(&settings)?;
+    update_stored(&state, |data| {
+        data.settings.iroh_network = settings;
+        Ok(())
+    })?;
+    Ok(iroh_share::restart_host_if_running(&network, app_handle)
+        .await
+        .err()
+        .map(|error| format!("Settings saved, but the connection service could not restart. Retry to apply them. {error}")))
 }
 
 #[tauri::command]

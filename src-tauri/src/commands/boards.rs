@@ -151,6 +151,7 @@ mod tests {
             name: format!("Board {id}"),
             task_count: 0,
             shared_role: BoardRole::Owner,
+            is_shared: false,
             sync_status: SyncStatus::Local,
             sync_revision: 0,
         }

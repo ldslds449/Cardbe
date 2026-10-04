@@ -184,6 +184,9 @@ fn update_locked<R>(
     let mut candidate = guard.stored.clone();
     let result = change(&mut candidate)?;
     candidate.sort_column_tasks();
+    let board_changed = candidate.columns != guard.stored.columns
+        || candidate.archives != guard.stored.archives
+        || candidate.templates != guard.stored.templates;
 
     if guard.archives_loaded {
         guard
@@ -199,14 +202,20 @@ fn update_locked<R>(
 
     let previous = std::mem::replace(&mut guard.stored, candidate);
     refresh_active_board_summary(guard)?;
-    guard.undo_history.push(previous);
-    // Keep memory usage bounded while still allowing a useful sequence of
-    // edits to be recovered.
-    if guard.undo_history.len() > 50 {
-        guard.undo_history.remove(0);
+    if board_changed {
+        guard.record_board_undo(previous);
     }
     guard.refresh_labels();
     Ok(result)
+}
+
+impl AppData {
+    pub(crate) fn record_board_undo(&mut self, previous: StoredData) {
+        self.undo_history.push(previous);
+        if self.undo_history.len() > 50 {
+            self.undo_history.remove(0);
+        }
+    }
 }
 
 fn refresh_active_board_summary(guard: &mut AppData) -> Result<(), String> {
@@ -269,15 +278,20 @@ pub fn undo_last_change_for_board(
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
+    undo_locked(&mut guard, expected_board_id)
+}
+
+fn undo_locked(guard: &mut AppData, expected_board_id: i64) -> Result<bool, String> {
     if guard.active_board_id != expected_board_id {
         return Err("Stale board request".into());
     }
-    ensure_board_can_edit(&guard)?;
-    let previous = guard
+    ensure_board_can_edit(guard)?;
+    let mut previous = guard
         .undo_history
         .last()
         .cloned()
         .ok_or_else(|| "There is nothing to undo".to_string())?;
+    previous.settings = guard.stored.settings.clone();
 
     let archives_loaded = guard.archives_loaded;
     let AppData {
@@ -294,7 +308,7 @@ pub fn undo_last_change_for_board(
     }
     guard.undo_history.pop();
     guard.stored = previous;
-    refresh_active_board_summary(&mut guard)?;
+    refresh_active_board_summary(guard)?;
     guard.refresh_labels();
     Ok(!guard.undo_history.is_empty())
 }
@@ -412,6 +426,29 @@ mod tests {
 
         assert_eq!(app.undo_history.len(), 1);
         assert!(app.undo_history[0].columns.is_empty());
+        update_locked(&mut app, |data| {
+            data.settings.notify_enabled = !data.settings.notify_enabled;
+            data.settings.iroh_network.listen_port = 12345;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(app.undo_history.len(), 1);
+        let settings = app.stored.settings.clone();
+        let board_id = app.active_board_id;
+        crate::commands::board::add_task_to_board_locked(&mut app, board_id, 0, Task::default())
+            .unwrap();
+        assert_eq!(app.undo_history.len(), 2);
+        assert_eq!(app.stored.columns[0].tasks.len(), 1);
+        assert!(undo_locked(&mut app, board_id).unwrap());
+        assert_eq!(app.stored.columns.len(), 1);
+        assert!(app.stored.columns[0].tasks.is_empty());
+        assert!(!undo_locked(&mut app, board_id).unwrap());
+        assert!(app.stored.columns.is_empty());
+        assert_eq!(app.stored.settings, settings);
+        assert_eq!(
+            app.database.read_board_complete(board_id).unwrap().settings,
+            settings
+        );
         drop(app);
         fs::remove_dir_all(dir).unwrap();
     }

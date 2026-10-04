@@ -105,9 +105,7 @@
   const active_board_summary = $derived(
     board.boards.find((item) => item.id === board.active_board_id),
   );
-  const active_board_read_only = $derived(
-    active_board_summary?.shared_role === "viewer",
-  );
+  const active_board_read_only = $derived(!board.can_edit);
 
   $effect(() => {
     void board.columns;
@@ -1238,8 +1236,13 @@
     }
   }
 
-  function view_task_by_id(task: Task) {
-    view_task_routine(task, () => edit_task_by_id(task));
+  function view_task_by_id(task: Task, read_only = active_board_read_only) {
+    view_task_routine(
+      task,
+      read_only || active_board_read_only
+        ? undefined
+        : () => edit_task_by_id(task),
+    );
   }
 
   function view_archived_task(task: Task) {

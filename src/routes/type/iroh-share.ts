@@ -19,3 +19,14 @@ export interface IrohInvite {
   created_at: string;
   devices: IrohDevice[];
 }
+
+export interface IrohConnectionInfo {
+  observed_at: number;
+  paths: Array<{ kind: "Direct" | "Relay" | "Custom"; address: string }>;
+}
+
+export interface IrohConnectionDetails {
+  invitation: IrohConnectionInfo | null;
+  devices: Record<string, IrohConnectionInfo>;
+  boards: Record<number, IrohConnectionInfo>;
+}

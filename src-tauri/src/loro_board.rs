@@ -12,12 +12,21 @@ struct Positioned<T> {
     value: T,
 }
 
+#[derive(Default)]
+pub(crate) struct LocalPeer {
+    id: Option<u64>,
+    counter: i32,
+}
+
 fn doc_from_update(update: Option<&[u8]>) -> Result<LoroDoc, String> {
     // A fresh peer ID on each load prevents two restarted replicas from issuing
     // operations under the same peer clock.
     let doc = LoroDoc::new();
     if let Some(bytes) = update.filter(|bytes| !bytes.is_empty()) {
-        doc.import(bytes).map_err(|e| e.to_string())?;
+        let status = doc.import(bytes).map_err(|e| e.to_string())?;
+        if status.pending.is_some() {
+            return Err("Loro update has missing dependencies".into());
+        }
     }
     Ok(doc)
 }
@@ -44,6 +53,31 @@ pub fn merge(update: Option<&[u8]>, incoming: &[u8]) -> Result<Vec<u8>, String> 
         if status.pending.is_some() {
             return Err("Loro update has missing dependencies".into());
         }
+    }
+    // Resolve independent edits, then publish their result in the legacy format.
+    // Readers of either version must see the same snapshot after merging.
+    for (position, template) in project_templates(&doc, true)?.iter().enumerate() {
+        let key = template.id.to_string();
+        let legacy = serde_json::to_string(&Positioned {
+            position,
+            value: template,
+        })
+        .map_err(|e| e.to_string())?;
+        doc.get_map("cardbe.templates")
+            .insert(&key, legacy.clone())
+            .map_err(|e| e.to_string())?;
+        doc.get_map("cardbe.template_legacy")
+            .insert(&key, legacy)
+            .map_err(|e| e.to_string())?;
+        doc.get_map("cardbe.template_positions")
+            .insert(&key, position as i64)
+            .map_err(|e| e.to_string())?;
+        doc.get_map("cardbe.template_values")
+            .insert(
+                &key,
+                serde_json::to_string(template).map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
     }
     doc.export(ExportMode::Snapshot).map_err(|e| e.to_string())
 }
@@ -168,17 +202,36 @@ fn write_task(map: &LoroMap, task: &Task, archive_time: Option<u128>) -> Result<
     set_field(map, "archive_time", &archive_time)
 }
 
+#[cfg(test)]
 pub fn apply_local_delta(
     update: Option<&[u8]>,
     before: &StoredData,
     after: &StoredData,
 ) -> Result<Vec<u8>, String> {
+    apply_local_delta_with_peer(update, before, after, &mut LocalPeer::default())
+}
+
+pub(crate) fn apply_local_delta_with_peer(
+    update: Option<&[u8]>,
+    before: &StoredData,
+    after: &StoredData,
+    peer: &mut LocalPeer,
+) -> Result<Vec<u8>, String> {
     let doc = doc_from_update(update)?;
+    if let Some(id) = peer.id {
+        // A rollback or replacement must not reuse previously issued operation IDs.
+        if doc.oplog_vv().get(&id).copied().unwrap_or(0) >= peer.counter {
+            doc.set_peer_id(id).map_err(|e| e.to_string())?;
+        }
+    }
     let tree = doc.get_tree("cardbe.tree");
     tree.enable_fractional_index(0);
     let columns = doc.get_map("cardbe.columns");
     let tasks = doc.get_map("cardbe.tasks");
     let templates = doc.get_map("cardbe.templates");
+    let template_positions = doc.get_map("cardbe.template_positions");
+    let template_values = doc.get_map("cardbe.template_values");
+    let template_legacy = doc.get_map("cardbe.template_legacy");
 
     let archive_root = match tree
         .roots()
@@ -259,24 +312,27 @@ pub fn apply_local_delta(
         sync_order(&tree, Some(node), &order)?;
     }
     sync_order(&tree, None, &root_order)?;
-    let mut archive_order = Vec::new();
-    for archive in &after.archives {
-        let node = match task_nodes.get(&archive.task.id) {
-            Some(node) => *node,
-            None => create_node(
-                &tree,
-                Some(archive_root),
-                LoroNodeKind::Task,
-                archive.task.id,
-            )?,
-        };
-        archive_order.push(node);
-        let map = tasks
-            .ensure_mergeable_map(&archive.task.id.to_string())
-            .map_err(|e| e.to_string())?;
-        write_task(&map, &archive.task, Some(archive.time))?;
+    // An omitted, unchanged archive view must leave the document untouched.
+    if before.archives != after.archives || update.is_none() {
+        let mut archive_order = Vec::new();
+        for archive in &after.archives {
+            let node = match task_nodes.get(&archive.task.id) {
+                Some(node) => *node,
+                None => create_node(
+                    &tree,
+                    Some(archive_root),
+                    LoroNodeKind::Task,
+                    archive.task.id,
+                )?,
+            };
+            archive_order.push(node);
+            let map = tasks
+                .ensure_mergeable_map(&archive.task.id.to_string())
+                .map_err(|e| e.to_string())?;
+            write_task(&map, &archive.task, Some(archive.time))?;
+        }
+        sync_order(&tree, Some(archive_root), &archive_order)?;
     }
-    sync_order(&tree, Some(archive_root), &archive_order)?;
 
     let wanted_templates = after.templates.iter().map(|t| t.id).collect::<HashSet<_>>();
     for id in before
@@ -288,20 +344,65 @@ pub fn apply_local_delta(
         templates
             .delete(&id.to_string())
             .map_err(|e| e.to_string())?;
-    }
-    for (position, template) in after.templates.iter().enumerate() {
-        templates
-            .insert(
-                &template.id.to_string(),
-                serde_json::to_string(&Positioned {
-                    position,
-                    value: template,
-                })
-                .map_err(|e| e.to_string())?,
-            )
+        template_positions
+            .delete(&id.to_string())
+            .map_err(|e| e.to_string())?;
+        template_values
+            .delete(&id.to_string())
+            .map_err(|e| e.to_string())?;
+        template_legacy
+            .delete(&id.to_string())
             .map_err(|e| e.to_string())?;
     }
-    doc.export(ExportMode::Snapshot).map_err(|e| e.to_string())
+    for (position, template) in after.templates.iter().enumerate() {
+        let key = template.id.to_string();
+        let legacy_changed = template_legacy.get(&key).is_none()
+            || template_legacy
+                .get(&key)
+                .map(|value| value.get_deep_value())
+                != templates.get(&key).map(|value| value.get_deep_value());
+        if legacy_changed
+            || before
+                .templates
+                .iter()
+                .position(|previous| previous.id == template.id)
+                != Some(position)
+        {
+            template_positions
+                .insert(&template.id.to_string(), position as i64)
+                .map_err(|e| e.to_string())?;
+        }
+        if !before.templates.iter().any(|previous| previous == template)
+            || legacy_changed
+            || template_values.get(&key).is_none()
+        {
+            template_values
+                .insert(
+                    &key,
+                    serde_json::to_string(template).map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        // Mirror both content and position for old clients. Keep the exact mirror
+        // so an old client's later write overrides stale separate fields on read.
+        let legacy = serde_json::to_string(&Positioned {
+            position,
+            value: template,
+        })
+        .map_err(|e| e.to_string())?;
+        templates
+            .insert(&key, legacy.clone())
+            .map_err(|e| e.to_string())?;
+        template_legacy
+            .insert(&key, legacy)
+            .map_err(|e| e.to_string())?;
+    }
+    let snapshot = doc
+        .export(ExportMode::Snapshot)
+        .map_err(|e| e.to_string())?;
+    peer.id = Some(doc.peer_id());
+    peer.counter = doc.oplog_vv().get(&doc.peer_id()).copied().unwrap_or(0);
+    Ok(snapshot)
 }
 
 fn field<T: for<'a> Deserialize<'a>>(value: &serde_json::Value, key: &str) -> Result<T, String> {
@@ -340,7 +441,6 @@ pub fn project(update: &[u8]) -> Result<StoredData, String> {
     let tree = doc.get_tree("cardbe.tree");
     let columns = json(&doc.get_map("cardbe.columns"));
     let tasks = json(&doc.get_map("cardbe.tasks"));
-    let templates = json(&doc.get_map("cardbe.templates"));
     let mut result = StoredData::default();
     let mut seen = HashSet::new();
     for root in tree.roots() {
@@ -387,20 +487,285 @@ pub fn project(update: &[u8]) -> Result<StoredData, String> {
             _ => return Err("Invalid Loro root node".into()),
         }
     }
+    result.templates = project_templates(&doc, false)?;
+    Ok(result)
+}
+
+fn project_templates(
+    doc: &LoroDoc,
+    resolve_separate_fields: bool,
+) -> Result<Vec<TaskTemplate>, String> {
+    let templates = json(&doc.get_map("cardbe.templates"));
+    let template_positions = json(&doc.get_map("cardbe.template_positions"));
+    let template_values = json(&doc.get_map("cardbe.template_values"));
+    let template_legacy = json(&doc.get_map("cardbe.template_legacy"));
     let mut ordered = std::collections::BTreeMap::new();
     for (id, value) in templates.as_object().into_iter().flat_map(|map| map.iter()) {
         let text = value.as_str().ok_or("Invalid Loro template")?;
         let entry: Positioned<TaskTemplate> =
             serde_json::from_str(text).map_err(|e| e.to_string())?;
-        ordered.insert((entry.position, id.clone()), entry.value);
+        let mirrored = resolve_separate_fields
+            && template_legacy.get(id).and_then(|value| value.as_str()) == Some(text);
+        let position = template_positions
+            .get(id)
+            .filter(|_| mirrored)
+            .and_then(|value| value.as_u64())
+            .map(|value| value as usize)
+            .unwrap_or(entry.position);
+        let value = if mirrored {
+            template_values
+                .get(id)
+                .and_then(|value| value.as_str())
+                .map(serde_json::from_str)
+                .transpose()
+                .map_err(|e| e.to_string())?
+                .unwrap_or(entry.value)
+        } else {
+            entry.value
+        };
+        ordered.insert((position, id.clone()), value);
     }
-    result.templates = ordered.into_values().collect();
-    Ok(result)
+    Ok(ordered.into_values().collect())
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::models::ColumnSort;
+
+    fn legacy_templates(update: &[u8]) -> Vec<TaskTemplate> {
+        let doc = doc_from_update(Some(update)).unwrap();
+        let values = json(&doc.get_map("cardbe.templates"));
+        let mut entries = values
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(id, value)| {
+                let entry: Positioned<TaskTemplate> =
+                    serde_json::from_str(value.as_str().unwrap()).unwrap();
+                ((entry.position, id.clone()), entry.value)
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|(key, _)| key.clone());
+        entries.into_iter().map(|(_, value)| value).collect()
+    }
+
+    #[test]
+    fn template_delete_add_and_legacy_writes_keep_compatible_order() {
+        let mut board = StoredData::default();
+        board.templates = [20, 1, 10]
+            .into_iter()
+            .map(|id| TaskTemplate {
+                id,
+                name: id.to_string(),
+                task: Task::default(),
+            })
+            .collect();
+        let mut update = apply_local_delta(None, &StoredData::default(), &board).unwrap();
+        let mut deleted = board.clone();
+        let removed = deleted.templates.remove(1);
+        update = apply_local_delta(Some(&update), &board, &deleted).unwrap();
+        board = deleted.clone();
+        board.templates.push(removed);
+        update = apply_local_delta(Some(&update), &deleted, &board).unwrap();
+        assert_eq!(legacy_templates(&update), board.templates);
+        assert_eq!(project(&update).unwrap().templates, board.templates);
+
+        // Old clients only write Positioned entries, leaving the new maps stale.
+        let doc = doc_from_update(Some(&update)).unwrap();
+        board.templates.rotate_right(1);
+        board.templates[0].name = "Legacy edit".into();
+        for (position, template) in board.templates.iter().enumerate() {
+            doc.get_map("cardbe.templates")
+                .insert(
+                    &template.id.to_string(),
+                    serde_json::to_string(&Positioned {
+                        position,
+                        value: template,
+                    })
+                    .unwrap(),
+                )
+                .unwrap();
+        }
+        update = doc.export(ExportMode::Snapshot).unwrap();
+        assert_eq!(
+            project(&update).unwrap().templates,
+            legacy_templates(&update)
+        );
+        let merged = merge(None, &update).unwrap();
+        assert_eq!(legacy_templates(&merged), board.templates);
+        assert_eq!(
+            project(&merge(Some(&merged), &update).unwrap())
+                .unwrap()
+                .templates,
+            board.templates
+        );
+        let mut edited = board.clone();
+        edited.templates[1].name = "New edit".into();
+        update = apply_local_delta(Some(&update), &board, &edited).unwrap();
+        assert_eq!(project(&update).unwrap().templates, edited.templates);
+        assert_eq!(legacy_templates(&update), edited.templates);
+    }
+    #[test]
+    fn session_peer_is_reused_and_rotates_when_history_rolls_back() {
+        let mut peer = LocalPeer::default();
+        let mut data = StoredData::default();
+        let mut update = apply_local_delta_with_peer(None, &data, &data, &mut peer).unwrap();
+        let original = update.clone();
+        let first_id = peer.id.unwrap();
+        for index in 0..40 {
+            let mut next = data.clone();
+            next.templates = vec![TaskTemplate {
+                id: 1,
+                name: format!("Edit {index}"),
+                task: Task::default(),
+            }];
+            update = apply_local_delta_with_peer(Some(&update), &data, &next, &mut peer).unwrap();
+            data = next;
+            assert_eq!(peer.id, Some(first_id));
+            assert_eq!(doc_from_update(Some(&update)).unwrap().oplog_vv().len(), 1);
+        }
+        // A restored old snapshot cannot continue this writer's old clock.
+        let restored =
+            apply_local_delta_with_peer(Some(&original), &StoredData::default(), &data, &mut peer)
+                .unwrap();
+        assert_ne!(peer.id, Some(first_id));
+        let combined = merge(Some(&update), &restored).unwrap();
+        assert_eq!(project(&combined).unwrap().templates, data.templates);
+        // A new database session gets its own writer, even with identical data.
+        let mut restarted = LocalPeer::default();
+        apply_local_delta_with_peer(Some(&update), &data, &data, &mut restarted).unwrap();
+        assert_ne!(restarted.id, Some(first_id));
+    }
+    #[test]
+    fn incomplete_and_invalid_documents_are_rejected() {
+        let initial =
+            apply_local_delta(None, &StoredData::default(), &StoredData::default()).unwrap();
+        let mut after = StoredData::default();
+        after.templates.push(TaskTemplate {
+            id: 1,
+            name: "New".into(),
+            task: Task::default(),
+        });
+        let next = apply_local_delta(Some(&initial), &StoredData::default(), &after).unwrap();
+        let update = diff(Some(&next), &state_vector(Some(&initial)).unwrap()).unwrap();
+        for invalid in [update.as_slice(), b"not a Loro document"] {
+            assert!(project(invalid).is_err());
+            assert!(state_vector(Some(invalid)).is_err());
+            assert!(merge(None, invalid).is_err());
+        }
+        assert!(diff(Some(&next), b"invalid vector").is_err());
+        assert_eq!(
+            project(&merge(Some(&initial), &update).unwrap())
+                .unwrap()
+                .templates,
+            after.templates
+        );
+    }
+
+    #[test]
+    fn concurrent_delete_and_edit_converge_without_resurrecting_a_card() {
+        let base = StoredData {
+            columns: vec![Column {
+                id: 1,
+                name: "Todo".into(),
+                color: String::new(),
+                sort_order: ColumnSort::Custom,
+                tasks: vec![Task {
+                    id: 2,
+                    ..Task::default()
+                }],
+            }],
+            ..Default::default()
+        };
+        let initial = apply_local_delta(None, &StoredData::default(), &base).unwrap();
+        let mut deleted = base.clone();
+        deleted.columns[0].tasks.clear();
+        let mut edited = base.clone();
+        edited.columns[0].tasks[0].title = "Offline edit".into();
+        let left = apply_local_delta(Some(&initial), &base, &deleted).unwrap();
+        let right = apply_local_delta(Some(&initial), &base, &edited).unwrap();
+        for merged in [
+            merge(Some(&left), &right).unwrap(),
+            merge(Some(&right), &left).unwrap(),
+        ] {
+            assert!(project(&merged).unwrap().columns[0].tasks.is_empty());
+        }
+    }
+    #[test]
+    fn template_reorder_and_content_edit_merge() {
+        let mut base = StoredData::default();
+        base.templates = vec![
+            TaskTemplate {
+                id: 1,
+                name: "A".into(),
+                task: Task::default(),
+            },
+            TaskTemplate {
+                id: 2,
+                name: "B".into(),
+                task: Task::default(),
+            },
+        ];
+        let initial = apply_local_delta(None, &StoredData::default(), &base).unwrap();
+        // Exercise both the new layout and documents predating separate positions.
+        for legacy in [false, true] {
+            let initial = if legacy {
+                let doc = doc_from_update(Some(&initial)).unwrap();
+                let positions = doc.get_map("cardbe.template_positions");
+                positions.delete("1").unwrap();
+                positions.delete("2").unwrap();
+                doc.export(ExportMode::Snapshot).unwrap()
+            } else {
+                initial.clone()
+            };
+            let mut reordered = base.clone();
+            reordered.templates.swap(0, 1);
+            let mut edited = base.clone();
+            edited.templates[0].name = "Edited A".into();
+            let left = apply_local_delta(Some(&initial), &base, &reordered).unwrap();
+            let right = apply_local_delta(Some(&initial), &base, &edited).unwrap();
+            for merged in [
+                merge(Some(&left), &right).unwrap(),
+                merge(Some(&right), &left).unwrap(),
+            ] {
+                let result = project(&merged).unwrap();
+                assert_eq!(legacy_templates(&merged), result.templates);
+                assert_eq!(result.templates[0].id, 2);
+                assert_eq!(result.templates[1].id, 1);
+                assert_eq!(result.templates[1].name, "Edited A");
+            }
+        }
+    }
+    #[test]
+    fn incremental_upload_excludes_acknowledged_history() {
+        let mut data = StoredData::default();
+        data.columns.push(Column {
+            id: 1,
+            name: "Todo".into(),
+            color: String::new(),
+            sort_order: ColumnSort::Custom,
+            tasks: vec![Task {
+                id: 2,
+                ..Task::default()
+            }],
+        });
+        let mut owner = apply_local_delta(None, &StoredData::default(), &data).unwrap();
+        for index in 0..40 {
+            let mut next = data.clone();
+            next.columns[0].tasks[0].title = format!("Edit {index}: {}", "x".repeat(200));
+            owner = apply_local_delta(Some(&owner), &data, &next).unwrap();
+            data = next;
+        }
+        let mut next = data.clone();
+        next.columns[0].tasks[0].color = "blue".into();
+        let editor = apply_local_delta(Some(&owner), &data, &next).unwrap();
+        let update = diff(Some(&editor), &state_vector(Some(&owner)).unwrap()).unwrap();
+        assert!(update.len() < editor.len() / 2);
+        let merged = merge(Some(&owner), &update).unwrap();
+        assert_eq!(project(&merged).unwrap().columns, next.columns);
+        // Repeating an upload after losing the response remains safe.
+        assert!(same_state_vector(&merged, &merge(Some(&merged), &update).unwrap()).unwrap());
+    }
     #[test]
     fn concurrent_cards_merge_without_a_board_snapshot() {
         let base = apply_local_delta(None, &StoredData::default(), &StoredData::default()).unwrap();
