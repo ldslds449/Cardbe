@@ -1008,8 +1008,12 @@ export class BoardStore {
   }
 
   async get_boards() {
+    const generation = this.board_generation;
     try {
       const state = await invoke<BoardsState>("get_boards");
+      if (generation !== this.board_generation) {
+        return;
+      }
       this.boards = state.boards;
       this.active_board_id = state.active_board_id;
     } catch (e) {
@@ -2054,6 +2058,52 @@ export class BoardStore {
     }, DRAG_PERSIST_DEBOUNCE_MS);
 
     this.task_move_timers.set(timer_task_id, timer);
+  }
+
+  async move_task_to_board(
+    task_id: string,
+    target_board_id: number,
+    target_column_id: number,
+  ): Promise<boolean> {
+    const expectedBoardId = this.active_board_id;
+    const generation = this.board_generation;
+    const resolution = this.capture_task_id(task_id);
+    this.cancel_task_move_timer(this.resolve_task_alias(task_id));
+    try {
+      await addMission(async () => {
+        await invoke("move_task_to_board", {
+          expectedBoardId,
+          taskId: await resolution.id,
+          targetBoardId: target_board_id,
+          targetColumnId: target_column_id,
+        });
+        // Clear undo before the next queued edit can create new history.
+        if (generation === this.board_generation) {
+          this.can_undo = false;
+        }
+      });
+      await this.get_boards();
+      if (this.all_task_list_filter) {
+        void this.fetch_all_task_page(true);
+      }
+      if (generation === this.board_generation) {
+        this.get_columns();
+        this.update_labels();
+        this.search_tasks(this.search_query);
+        if (this.expired_list_initialized) {
+          void this.fetch_expired_page(true);
+        }
+      }
+      toast.success("Task moved to another board");
+      return true;
+    } catch (e) {
+      logger.error("task.move_to_board.failed", e);
+      if (generation === this.board_generation) {
+        this.get_columns();
+      }
+      toast.error("Couldn't move task", { description: String(e) });
+      return false;
+    }
   }
 
   // ============ Column Operations ============

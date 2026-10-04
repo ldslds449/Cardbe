@@ -316,6 +316,7 @@ pub fn run() {
             board::move_column,
             board::delete_column,
             board::move_task,
+            board::move_task_to_board,
             board::add_task,
             board::add_task_to_board,
             board::delete_task,

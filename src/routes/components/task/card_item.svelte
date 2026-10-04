@@ -19,6 +19,8 @@
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
   import Share2Icon from "@lucide/svelte/icons/share-2";
   import PinIcon from "@lucide/svelte/icons/pin";
+  import MoveRightIcon from "@lucide/svelte/icons/move-right";
+  import MoveTaskDialog from "../dialog/move_task_dialog.svelte";
 
   import { recurrence_label, type Task } from "../../type/task.svelte";
   import { display_task_color } from "../../utils/task-color";
@@ -78,6 +80,7 @@
     task.items.length > 0 || task.description.trim().length > 0,
   );
   let delete_confirm_open = $state(false);
+  let move_dialog_open = $state(false);
   let due_metadata = $derived(
     (() => {
       if (!task.due_time) {
@@ -266,6 +269,14 @@
                 <CopyIcon />
                 Duplicate Task
               </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onclick={() => {
+                  move_dialog_open = true;
+                }}
+              >
+                <MoveRightIcon />
+                Move to Board
+              </DropdownMenu.Item>
               {#if onSaveAsTemplate}
                 <DropdownMenu.Item onclick={onSaveAsTemplate}>
                   <LayoutTemplateIcon />
@@ -366,3 +377,6 @@
     />
   {/if}
 </div>
+{#if move_dialog_open}
+  <MoveTaskDialog bind:open={move_dialog_open} {task} />
+{/if}

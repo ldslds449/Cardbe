@@ -230,6 +230,40 @@ pub fn add_task(
     })
 }
 
+#[tauri::command]
+pub fn move_task_to_board(
+    state: State<'_, SharedAppData>,
+    expected_board_id: i64,
+    task_id: i64,
+    target_board_id: i64,
+    target_column_id: i64,
+) -> Result<(), String> {
+    let mut guard = state
+        .lock()
+        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err("Stale board request".into());
+    }
+    let mut source = guard
+        .database
+        .move_task_to_board(
+            expected_board_id,
+            task_id,
+            target_board_id,
+            target_column_id,
+        )
+        .map_err(|e| e.to_string())?;
+    if !guard.archives_loaded {
+        source.archives.clear();
+    }
+    guard.stored = source;
+    // A single-board undo would duplicate the task left in the destination.
+    guard.undo_history.clear();
+    guard.refresh_labels();
+    guard.boards = guard.database.boards().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Quick Add deliberately targets an explicit board and never changes global
 /// active-board state as a side effect.
 #[tauri::command]

@@ -24,6 +24,145 @@ vi.mock("svelte-sonner", () => ({
 
 const invoke_mock = vi.mocked(invoke);
 
+describe("cross-board task moves", () => {
+  it("keeps the selected board and refreshes all tasks when move summaries arrive after a board switch", async () => {
+    invoke_mock.mockReset();
+    const store = create_store();
+    const summaries = deferred<{
+      boards: typeof store.boards;
+      active_board_id: number;
+    }>();
+    invoke_mock.mockImplementation((command) => {
+      if (command === "list_all_tasks") {
+        return Promise.resolve({ items: [], next_cursor: null });
+      }
+      if (command === "get_boards") {
+        return summaries.promise;
+      }
+      if (
+        command === "get_columns" ||
+        command === "get_labels" ||
+        command === "get_task_templates" ||
+        command === "search_tasks"
+      ) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve();
+    });
+    await store.search_all_tasks({
+      query: "",
+      board_ids: null,
+      column_id: null,
+      status: "active",
+      sort: "title",
+      due: "all",
+      due_start: null,
+      due_end: null,
+      archive_start: null,
+      archive_end: null,
+      now: Date.now(),
+    });
+    const moving = store.move_task_to_board("task_42", 8, 3);
+    await vi.waitFor(() =>
+      expect(invoke_mock).toHaveBeenCalledWith("get_boards"),
+    );
+    await expect(store.switch_board(9)).resolves.toBe(true);
+    summaries.resolve({ boards: store.boards, active_board_id: 7 });
+    await expect(moving).resolves.toBe(true);
+    expect(store.active_board_id).toBe(9);
+    expect(
+      invoke_mock.mock.calls.filter(
+        ([command]) => command === "list_all_tasks",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("preserves undo for an edit completed while board summaries are refreshing", async () => {
+    invoke_mock.mockReset();
+    const store = create_store();
+    store.can_undo = true;
+    const summaries = deferred<{
+      boards: typeof store.boards;
+      active_board_id: number;
+    }>();
+    invoke_mock.mockImplementation((command) => {
+      if (command === "get_boards") {
+        return summaries.promise;
+      }
+      if (
+        command === "get_columns" ||
+        command === "get_labels" ||
+        command === "search_tasks"
+      ) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve();
+    });
+    const moving = store.move_task_to_board("task_42", 8, 3);
+    await vi.waitFor(() =>
+      expect(invoke_mock).toHaveBeenCalledWith("get_boards"),
+    );
+    expect(store.can_undo).toBe(false);
+    store.can_undo = true;
+    summaries.resolve({ boards: store.boards, active_board_id: 7 });
+    await expect(moving).resolves.toBe(true);
+    expect(store.can_undo).toBe(true);
+  });
+
+  it("passes explicit source and destination IDs and clears undo after success", async () => {
+    invoke_mock.mockReset();
+    const store = create_store();
+    store.can_undo = true;
+    invoke_mock.mockImplementation((command) => {
+      if (command === "list_all_tasks") {
+        return Promise.resolve({ items: [], next_cursor: null });
+      }
+      if (command === "get_boards") {
+        return Promise.resolve({ boards: store.boards, active_board_id: 7 });
+      }
+      if (
+        command === "get_columns" ||
+        command === "get_labels" ||
+        command === "search_tasks"
+      ) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve();
+    });
+    await store.search_all_tasks({
+      query: "",
+      board_ids: null,
+      column_id: null,
+      status: "active",
+      sort: "title",
+      due: "all",
+      due_start: null,
+      due_end: null,
+      archive_start: null,
+      archive_end: null,
+      now: Date.now(),
+    });
+    const initial_list_requests = invoke_mock.mock.calls.filter(
+      ([command]) => command === "list_all_tasks",
+    ).length;
+    await expect(store.move_task_to_board("task_42", 8, 3)).resolves.toBe(true);
+    expect(invoke_mock).toHaveBeenCalledWith("move_task_to_board", {
+      expectedBoardId: 7,
+      taskId: 42,
+      targetBoardId: 8,
+      targetColumnId: 3,
+    });
+    expect(store.can_undo).toBe(false);
+    expect(
+      invoke_mock.mock.calls.filter(
+        ([command]) => command === "list_all_tasks",
+      ),
+    ).toHaveLength(initial_list_requests + 1);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;

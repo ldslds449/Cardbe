@@ -983,6 +983,60 @@ impl Database {
         })
     }
 
+    pub fn move_task_to_board(
+        &mut self,
+        source_id: i64,
+        task_id: i64,
+        target_id: i64,
+        column_id: i64,
+    ) -> StorageResult<StoredData> {
+        if source_id == target_id {
+            return Err("Choose a different board".into());
+        }
+        let before_source = self.read_board_complete(source_id)?;
+        let before_target = self.read_board_complete(target_id)?;
+        let mut source = before_source.clone();
+        let mut target = before_target.clone();
+        let column = target
+            .columns
+            .iter()
+            .position(|c| c.id == column_id)
+            .ok_or("Target column not found")?;
+        let (from_column, from_task) = source
+            .columns
+            .iter()
+            .enumerate()
+            .find_map(|(i, c)| c.tasks.iter().position(|t| t.id == task_id).map(|j| (i, j)))
+            .ok_or("Task not found")?;
+        let mut task = source.columns[from_column].tasks.remove(from_task);
+        task.id = target.allocate_task_id()?;
+        for label in &task.labels {
+            target.touch_label(label.clone());
+        }
+        target.columns[column].tasks.push(task);
+        target.sort_column_tasks();
+        let tx = self.connection.transaction()?;
+        for (id, before, after) in [
+            (source_id, &before_source, &source),
+            (target_id, &before_target, &target),
+        ] {
+            let role: BoardRole = tx.query_row(
+                "SELECT shared_role FROM cardbe_boards WHERE id=?1",
+                [id],
+                |r| r.get(0),
+            )?;
+            if role == BoardRole::Viewer {
+                return Err("This shared board is read-only".into());
+            }
+            write_board_transaction(&tx, id, after)?;
+            mark_local_board_change(&tx, id, role)?;
+            persist_loro_local_delta(&tx, id, before, after)?;
+        }
+        tx.commit()?;
+        self.positions = self.load_board_positions(self.active_board_id)?;
+        Ok(source)
+    }
+
     pub fn replace_board_as_local_edit(
         &mut self,
         board_id: i64,
@@ -3950,6 +4004,90 @@ mod tests {
         assert_eq!(reopened.database.active_board_id(), first_id);
         assert_eq!(reopened.stored.columns[0].name, "First");
         drop(reopened);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cross_board_move_preserves_task_and_rejects_read_only_boards() {
+        let dir = test_dir("cross-board-move");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let mut data = StoredData::default();
+        let task = Task {
+            id: 0,
+            title: "Move me".into(),
+            description: "Keep content".into(),
+            labels: vec!["label".into()],
+            ..Task::default()
+        };
+        data.columns.push(Column {
+            id: 0,
+            name: "Tasks".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![task.clone()],
+        });
+        data.next_column_id = 1;
+        data.next_task_id = 1;
+        let source = loaded
+            .database
+            .create_board_with_data("Source", &data)
+            .unwrap()
+            .id;
+        let target = loaded
+            .database
+            .create_board_with_data("Target", &data)
+            .unwrap()
+            .id;
+        assert!(loaded
+            .database
+            .move_task_to_board(source, 0, target, 99)
+            .is_err());
+        for id in [target, source] {
+            loaded
+                .database
+                .connection
+                .execute(
+                    "UPDATE cardbe_boards SET shared_role='viewer' WHERE id=?1",
+                    [id],
+                )
+                .unwrap();
+            assert!(loaded
+                .database
+                .move_task_to_board(source, 0, target, 0)
+                .is_err());
+            assert_eq!(
+                loaded.database.read_board_complete(source).unwrap().columns[0].tasks,
+                vec![task.clone()]
+            );
+            assert_eq!(
+                loaded.database.read_board_complete(target).unwrap().columns[0].tasks,
+                vec![task.clone()]
+            );
+            loaded
+                .database
+                .connection
+                .execute(
+                    "UPDATE cardbe_boards SET shared_role='owner' WHERE id=?1",
+                    [id],
+                )
+                .unwrap();
+        }
+        loaded
+            .database
+            .move_task_to_board(source, 0, target, 0)
+            .unwrap();
+        assert!(
+            loaded.database.read_board_complete(source).unwrap().columns[0]
+                .tasks
+                .is_empty()
+        );
+        let moved = loaded.database.read_board_complete(target).unwrap();
+        let mut expected = task.clone();
+        expected.id = moved.columns[0].tasks[1].id;
+        assert_ne!(expected.id, task.id);
+        assert_eq!(moved.columns[0].tasks, vec![task, expected]);
+        drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }
 
