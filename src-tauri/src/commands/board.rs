@@ -1,17 +1,18 @@
+use crate::errors::{CommandError, DomainError};
 use crate::{
     models::{Column, ColumnSort, StoredData, Task},
     state::{undo_last_change_for_board, update_stored_for_board, SharedAppData},
 };
 use tauri::State;
 
-fn column_index(data: &StoredData, column_id: i64) -> Result<usize, String> {
+fn column_index(data: &StoredData, column_id: i64) -> Result<usize, DomainError> {
     data.columns
         .iter()
         .position(|column| column.id == column_id)
-        .ok_or_else(|| format!("Column not found: {column_id}"))
+        .ok_or(DomainError::ColumnNotFound)
 }
 
-fn task_position(data: &StoredData, task_id: i64) -> Result<(usize, usize), String> {
+fn task_position(data: &StoredData, task_id: i64) -> Result<(usize, usize), DomainError> {
     data.columns
         .iter()
         .enumerate()
@@ -22,19 +23,19 @@ fn task_position(data: &StoredData, task_id: i64) -> Result<(usize, usize), Stri
                 .position(|task| task.id == task_id)
                 .map(|task_idx| (column_idx, task_idx))
         })
-        .ok_or_else(|| format!("Task not found: {task_id}"))
+        .ok_or(DomainError::TaskNotFound)
 }
 
 #[tauri::command]
 pub fn get_columns(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
-) -> Result<Vec<Column>, String> {
+) -> Result<Vec<Column>, CommandError> {
     let guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(CommandError::StaleBoardRequest);
     }
     Ok(guard.stored.columns.clone())
 }
@@ -43,21 +44,21 @@ pub fn get_columns(
 pub fn get_board_columns(
     state: State<'_, SharedAppData>,
     board_id: i64,
-) -> Result<Vec<Column>, String> {
+) -> Result<Vec<Column>, CommandError> {
     let guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     if !guard
         .database
         .board_exists(board_id)
-        .map_err(|e| e.to_string())?
+        .map_err(CommandError::repository)?
     {
-        return Err("Board not found".into());
+        return Err(CommandError::BoardNotFound);
     }
     Ok(guard
         .database
         .read_board(board_id)
-        .map_err(|e| e.to_string())?
+        .map_err(CommandError::repository)?
         .columns)
 }
 
@@ -66,36 +67,36 @@ pub fn search_tasks(
     state: State<'_, SharedAppData>,
     query: String,
     expected_board_id: i64,
-) -> Result<Vec<i64>, String> {
+) -> Result<Vec<i64>, CommandError> {
     let guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(CommandError::StaleBoardRequest);
     }
     guard
         .database
         .search_tasks(expected_board_id, &query)
-        .map_err(|error| error.to_string())
+        .map_err(CommandError::repository)
 }
 
 #[tauri::command]
 pub fn get_labels(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, CommandError> {
     let guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(CommandError::StaleBoardRequest);
     }
     Ok(guard.ordered_labels())
 }
 
 #[tauri::command]
-pub fn undo(state: State<'_, SharedAppData>, expected_board_id: i64) -> Result<bool, String> {
-    undo_last_change_for_board(&state, expected_board_id)
+pub fn undo(state: State<'_, SharedAppData>, expected_board_id: i64) -> Result<bool, CommandError> {
+    undo_last_change_for_board(&state, expected_board_id).map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -104,7 +105,7 @@ pub fn add_column(
     name: String,
     color: String,
     expected_board_id: i64,
-) -> Result<i64, String> {
+) -> Result<i64, CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
         let id = data.allocate_column_id()?;
         data.columns.push(Column {
@@ -116,6 +117,7 @@ pub fn add_column(
         });
         Ok(id)
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -126,7 +128,7 @@ pub fn update_column(
     color: String,
     sort_order: ColumnSort,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
         let index = column_index(data, column_id)?;
         data.columns[index].name = name;
@@ -134,6 +136,7 @@ pub fn update_column(
         data.columns[index].sort_order = sort_order;
         Ok(())
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -141,12 +144,13 @@ pub fn delete_column(
     state: State<'_, SharedAppData>,
     column_id: i64,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
         let index = column_index(data, column_id)?;
         data.columns.remove(index);
         Ok(())
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -155,7 +159,7 @@ pub fn move_column(
     column_id: i64,
     before_column_id: Option<i64>,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
         if before_column_id == Some(column_id) {
             return Ok(());
@@ -169,6 +173,7 @@ pub fn move_column(
         data.columns.insert(destination, column);
         Ok(())
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -178,7 +183,7 @@ pub fn move_task(
     to_column_id: i64,
     before_task_id: Option<i64>,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
         if before_task_id == Some(task_id) {
             return Ok(());
@@ -191,12 +196,13 @@ pub fn move_task(
                 .tasks
                 .iter()
                 .position(|candidate| candidate.id == id)
-                .ok_or_else(|| format!("Destination task not found in column: {id}"))?,
+                .ok_or(DomainError::TaskNotFound)?,
             None => data.columns[to_column].tasks.len(),
         };
         data.columns[to_column].tasks.insert(destination, task);
         Ok(())
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -206,7 +212,7 @@ pub fn add_task(
     mut task: Task,
     after_task_id: Option<i64>,
     expected_board_id: i64,
-) -> Result<i64, String> {
+) -> Result<i64, CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
         let column = column_index(data, column_id)?;
         let destination = match after_task_id {
@@ -215,7 +221,7 @@ pub fn add_task(
                     .tasks
                     .iter()
                     .position(|candidate| candidate.id == id)
-                    .ok_or_else(|| format!("Original task not found in column: {id}"))?
+                    .ok_or(DomainError::TaskNotFound)?
                     + 1
             }
             None => data.columns[column].tasks.len(),
@@ -228,6 +234,7 @@ pub fn add_task(
         data.columns[column].tasks.insert(destination, task);
         Ok(id)
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -237,12 +244,12 @@ pub fn move_task_to_board(
     task_id: i64,
     target_board_id: i64,
     target_column_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let mut guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(CommandError::StaleBoardRequest);
     }
     let mut source = guard
         .database
@@ -252,7 +259,7 @@ pub fn move_task_to_board(
             target_board_id,
             target_column_id,
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(CommandError::repository)?;
     if !guard.archives_loaded {
         source.archives.clear();
     }
@@ -260,7 +267,7 @@ pub fn move_task_to_board(
     // A single-board undo would duplicate the task left in the destination.
     guard.undo_history.clear();
     guard.refresh_labels();
-    guard.boards = guard.database.boards().map_err(|e| e.to_string())?;
+    guard.boards = guard.database.boards().map_err(CommandError::repository)?;
     Ok(())
 }
 
@@ -272,10 +279,10 @@ pub fn add_task_to_board(
     board_id: i64,
     column_id: i64,
     task: Task,
-) -> Result<i64, String> {
+) -> Result<i64, CommandError> {
     let mut guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     add_task_to_board_locked(&mut guard, board_id, column_id, task)
 }
 
@@ -284,18 +291,18 @@ pub(crate) fn add_task_to_board_locked(
     board_id: i64,
     column_id: i64,
     mut task: Task,
-) -> Result<i64, String> {
+) -> Result<i64, CommandError> {
     if !guard
         .database
         .board_exists(board_id)
-        .map_err(|e| e.to_string())?
+        .map_err(CommandError::repository)?
     {
-        return Err("Target board no longer exists".into());
+        return Err(CommandError::BoardNotFound);
     }
     let mut data = guard
         .database
         .read_board_complete(board_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(CommandError::repository)?;
     let column = column_index(&data, column_id)?;
     let id = data.allocate_task_id()?;
     task.id = id;
@@ -306,7 +313,7 @@ pub(crate) fn add_task_to_board_locked(
     let (revision, status) = guard
         .database
         .replace_board_as_local_edit(board_id, &data)
-        .map_err(|e| e.to_string())?;
+        .map_err(CommandError::repository)?;
     if board_id == guard.active_board_id {
         // Preserve the lazily-loaded archive contract for the active in-memory
         // view while the complete database write keeps archives intact.
@@ -330,12 +337,13 @@ pub fn delete_task(
     state: State<'_, SharedAppData>,
     task_id: i64,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
         let (column, task) = task_position(data, task_id)?;
         data.columns[column].tasks.remove(task);
         Ok(())
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -344,7 +352,7 @@ pub fn update_task(
     task_id: i64,
     mut task: Task,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
         let (column, index) = task_position(data, task_id)?;
         let previous_labels = data.columns[column].tasks[index].labels.clone();
@@ -357,4 +365,5 @@ pub fn update_task(
         data.columns[column].tasks[index] = task;
         Ok(())
     })
+    .map_err(CommandError::from)
 }

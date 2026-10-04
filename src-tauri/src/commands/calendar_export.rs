@@ -1,3 +1,4 @@
+use crate::errors::CommandError;
 use std::path::PathBuf;
 use tauri::ipc::Response;
 
@@ -51,15 +52,15 @@ fn system_font_candidates() -> Vec<PathBuf> {
 }
 
 #[tauri::command]
-pub fn get_calendar_pdf_font() -> Result<Response, String> {
+pub fn get_calendar_pdf_font() -> Result<Response, CommandError> {
     for path in system_font_candidates() {
         if !path.is_file() {
             continue;
         }
         return std::fs::read(&path)
             .map(Response::new)
-            .map_err(|error| format!("Couldn't read the system PDF font: {error}"));
+            .map_err(CommandError::internal);
     }
 
-    Err("No compatible CJK system font was found. Install Noto Sans CJK to export non-English text to PDF.".into())
+    Err(CommandError::CalendarFontNotFound)
 }

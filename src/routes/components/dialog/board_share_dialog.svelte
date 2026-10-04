@@ -1,4 +1,8 @@
 <script lang="ts">
+  import {
+    parseCommandError,
+    translateCommandError,
+  } from "$lib/command-errors";
   import { formatNumber } from "$lib/i18n";
   import { getLocale } from "$lib/i18n";
   import * as m from "$lib/paraglide/messages.js";
@@ -173,7 +177,7 @@
         return false;
       }
       console.error(m.ui_couldn_t_load_shared_board_content(), error);
-      toast.error(m.ui_couldn_t_load_this_board_s_share_settings());
+      toast.error(translateCommandError(error));
       return false;
     } finally {
       if (generation === board_content_generation) {
@@ -451,7 +455,11 @@
     } catch (error) {
       logger.error("share.publish.failed", error);
       console.error(m.ui_couldn_t_publish_board_share(), error);
-      toast.error(m.ui_couldn_t_publish_the_web_view());
+      toast.error(
+        parseCommandError(error)
+          ? translateCommandError(error)
+          : m.ui_couldn_t_publish_the_web_view(),
+      );
     } finally {
       publishing = false;
     }
@@ -490,7 +498,7 @@
       logger.error("share.disable.failed", error);
       console.error(m.ui_couldn_t_disable_board_share(), error);
       onShareRevokeError?.(target.id, error);
-      toast.error(m.ui_couldn_t_disable_the_published_view());
+      toast.error(translateCommandError(error));
     } finally {
       revoking = false;
     }
@@ -547,7 +555,11 @@
     } catch (error) {
       logger.error("share.enable.failed", error);
       console.error(m.ui_couldn_t_enable_board_share(), error);
-      toast.error(m.ui_couldn_t_enable_the_published_view());
+      toast.error(
+        parseCommandError(error)
+          ? translateCommandError(error)
+          : m.ui_couldn_t_enable_the_published_view(),
+      );
     } finally {
       publishing = false;
     }
@@ -574,7 +586,7 @@
       logger.error("share.delete.failed", error);
       console.error(m.ui_couldn_t_delete_board_share(), error);
       onShareRevokeError?.(deleted_id, error);
-      toast.error(m.ui_couldn_t_delete_the_published_view());
+      toast.error(translateCommandError(error));
     } finally {
       revoking = false;
     }

@@ -1,5 +1,10 @@
 ﻿<script lang="ts">
   import * as m from "$lib/paraglide/messages.js";
+  import {
+    parseCommandError,
+    translateCommandError,
+    type CommandError,
+  } from "$lib/command-errors";
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -16,7 +21,7 @@
   let columns = $state<ColumnSerialized[]>([]);
   let loading = $state(false);
   let moving = $state(false);
-  let error = $state("");
+  let error = $state<CommandError | null>(null);
   const source_id = board.active_board_id;
   const targets = $derived(
     board.boards.filter(
@@ -29,7 +34,7 @@
     let cancelled = false;
     columns = [];
     column = "";
-    error = "";
+    error = null;
     loading = Boolean(id);
     if (id) {
       invoke<ColumnSerialized[]>("get_board_columns", { boardId: Number(id) })
@@ -42,7 +47,7 @@
         .catch((e) => {
           logger.error("task.move_columns_load.failed", e);
           if (!cancelled) {
-            error = m.task_move_columns_error();
+            error = parseCommandError(e) ?? { code: "INTERNAL_ERROR" };
           }
         })
         .finally(() => {
@@ -132,7 +137,7 @@
         </p>{/if}
     </div>
     {#if error}<p class="text-sm text-destructive" role="alert">
-        {m.task_move_columns_error()}
+        {translateCommandError(error)}
       </p>{/if}
     <Dialog.Footer>
       <Button

@@ -1,3 +1,4 @@
+use crate::errors::{CommandError, DomainError};
 use axum::{
     body::Body,
     extract::{Request, State as AxumState},
@@ -122,26 +123,26 @@ fn is_public_viewer_asset(path: &str) -> bool {
     }
 }
 
-fn validate_snapshot(snapshot: &Value) -> Result<(), String> {
+fn validate_snapshot(snapshot: &Value) -> Result<(), DomainError> {
     let object = snapshot
         .as_object()
-        .ok_or_else(|| "Invalid share snapshot".to_string())?;
+        .ok_or(DomainError::ShareSnapshotInvalid)?;
     if object.get("schema_version").and_then(Value::as_u64) != Some(1) {
-        return Err("Unsupported share schema".into());
+        return Err(DomainError::ShareSnapshotInvalid);
     }
     let title = object
         .get("title")
         .and_then(Value::as_str)
         .unwrap_or_default();
     if title.trim().is_empty() || title.chars().count() > 120 {
-        return Err("Invalid shared board name".into());
+        return Err(DomainError::ShareSnapshotInvalid);
     }
     let columns = object
         .get("columns")
         .and_then(Value::as_array)
-        .ok_or_else(|| "Invalid shared columns".to_string())?;
+        .ok_or(DomainError::ShareSnapshotInvalid)?;
     if columns.is_empty() || columns.len() > 50 {
-        return Err("A share must contain between 1 and 50 columns".into());
+        return Err(DomainError::ShareLimitExceeded);
     }
     let task_count = columns
         .iter()
@@ -149,26 +150,26 @@ fn validate_snapshot(snapshot: &Value) -> Result<(), String> {
         .map(Vec::len)
         .sum::<usize>();
     if task_count > 2_000 {
-        return Err("A share can contain at most 2000 tasks".into());
+        return Err(DomainError::ShareLimitExceeded);
     }
     if serde_json::to_vec(snapshot)
-        .map_err(|error| error.to_string())?
+        .map_err(|error| DomainError::Internal(error.to_string()))?
         .len()
         > 512 * 1024
     {
-        return Err("Share payload is too large".into());
+        return Err(DomainError::ShareLimitExceeded);
     }
     Ok(())
 }
 
-fn parse_expiration(expires_at: Option<String>) -> Result<Option<DateTime<Utc>>, String> {
+fn parse_expiration(expires_at: Option<String>) -> Result<Option<DateTime<Utc>>, DomainError> {
     expires_at
         .map(|value| {
             let parsed = DateTime::parse_from_rfc3339(&value)
-                .map_err(|_| "Invalid expiration date".to_string())?
+                .map_err(|_| DomainError::ShareExpirationInvalid)?
                 .with_timezone(&Utc);
             if parsed <= Utc::now() {
-                return Err("Expiration must be in the future".into());
+                return Err(DomainError::ShareExpirationInvalid);
             }
             Ok(parsed)
         })
@@ -200,7 +201,7 @@ impl LanShareState {
         share_id: String,
         share: LanShare,
         allow_reactivate: bool,
-    ) -> Result<(), String> {
+    ) -> Result<(), DomainError> {
         // Serialize publication and revocation, including requests already in
         // flight when the user disables or replaces a link.
         let mut retired = self
@@ -211,7 +212,7 @@ impl LanShareState {
             if allow_reactivate {
                 retired.remove(&share_id);
             } else {
-                return Err("This share link was disabled. Create a new share link.".into());
+                return Err(DomainError::ShareLinkDisabled);
             }
         }
         let mut shares = self
@@ -224,7 +225,7 @@ impl LanShareState {
         Ok(())
     }
 
-    fn revoke(&self, share_id: String) -> Result<(), String> {
+    fn revoke(&self, share_id: String) -> Result<(), DomainError> {
         let mut retired = self
             .retired_ids
             .lock()
@@ -242,7 +243,7 @@ impl LanShareState {
         &self,
         _app: &AppHandle,
         preferred_port: Option<u16>,
-    ) -> Result<(String, u16), String> {
+    ) -> Result<(String, u16), DomainError> {
         let mut server_guard = self
             .server
             .lock()
@@ -254,10 +255,10 @@ impl LanShareState {
         let ip = local_ip_address::local_ip()
             .map_err(|error| format!("Could not determine this computer's LAN address: {error}"))?;
         if ip.is_loopback() {
-            return Err("No LAN network connection was found".into());
+            return Err(DomainError::LanUnavailable);
         }
         if !is_private_lan_address(ip) {
-            return Err("LAN sharing requires a private local-network address".into());
+            return Err(DomainError::LanUnavailable);
         }
         // Bind only the selected LAN interface, rather than exposing the
         // temporary viewer on every network interface on this computer.
@@ -266,7 +267,7 @@ impl LanShareState {
         #[cfg(not(dev))]
         let requested_port = preferred_port.unwrap_or(0);
         if preferred_port == Some(0) {
-            return Err("Invalid preferred LAN sharing port".into());
+            return Err(DomainError::InvalidArgument);
         }
         let listener = StdTcpListener::bind((ip, requested_port))
             .map_err(|error| format!("Could not start LAN sharing: {error}"))?;
@@ -275,7 +276,7 @@ impl LanShareState {
             .map_err(|error| format!("Could not configure LAN sharing: {error}"))?;
         let port = listener
             .local_addr()
-            .map_err(|error| error.to_string())?
+            .map_err(|error| DomainError::Internal(error.to_string()))?
             .port();
         let host = format_host(ip);
         #[cfg(not(dev))]
@@ -342,22 +343,22 @@ pub fn publish_lan_share(
     share_id: String,
     allow_reactivate: bool,
     preferred_port: Option<u16>,
-) -> Result<LanShareResponse, String> {
-    let board_id = board_id.ok_or("Choose a board you own before publishing")?;
+) -> Result<LanShareResponse, CommandError> {
+    let board_id = board_id.ok_or(DomainError::BoardNotFound)?;
     let guard = board_state
         .lock()
-        .map_err(|_| "Application state lock is poisoned")?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     if guard
         .database
         .board_role(board_id)
-        .map_err(|e| e.to_string())?
+        .map_err(CommandError::repository)?
         != crate::models::BoardRole::Owner
     {
-        return Err("Only boards you own can be published".into());
+        return Err(CommandError::PermissionDenied);
     }
     drop(guard);
     if !valid_share_id(&share_id) {
-        return Err("Invalid share ID".into());
+        return Err(CommandError::InvalidArgument);
     }
     validate_snapshot(&snapshot)?;
     let expires_at = parse_expiration(expires_at)?;
@@ -381,8 +382,11 @@ pub fn publish_lan_share(
 }
 
 #[tauri::command]
-pub fn revoke_lan_share(state: State<'_, LanShareState>, share_id: String) -> Result<(), String> {
-    state.revoke(share_id)
+pub fn revoke_lan_share(
+    state: State<'_, LanShareState>,
+    share_id: String,
+) -> Result<(), CommandError> {
+    state.revoke(share_id).map_err(CommandError::from)
 }
 
 fn lan_router(state: LanHttpState) -> Router {
@@ -497,16 +501,23 @@ async fn lan_request(AxumState(state): AxumState<LanHttpState>, request: Request
 
     if let Some(id) = path.strip_prefix("/api/shares/") {
         if let Some(share) = active_share(&state.shares, id) {
-            let body = serde_json::to_vec(&PublicShareResponse {
+            let body = match serde_json::to_vec(&PublicShareResponse {
                 id: id.to_string(),
                 updated_at: share.updated_at,
                 expires_at: share.expires_at.map(|value| value.to_rfc3339()),
                 snapshot: share.snapshot,
-            })
-            .unwrap_or_else(|error| {
-                log::error!(target: "share", "Could not encode public share response: {error}");
-                br#"{"error":"Could not encode share"}"#.to_vec()
-            });
+            }) {
+                Ok(body) => body,
+                Err(error) => {
+                    let error = CommandError::internal(error);
+                    return secured_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "application/json; charset=utf-8",
+                        serde_json::to_vec(&error).unwrap(),
+                        None,
+                    );
+                }
+            };
             return secured_response(
                 StatusCode::OK,
                 "application/json; charset=utf-8",
@@ -517,7 +528,7 @@ async fn lan_request(AxumState(state): AxumState<LanHttpState>, request: Request
         return secured_response(
             StatusCode::NOT_FOUND,
             "application/json; charset=utf-8",
-            br#"{"error":"Share not found or expired"}"#.to_vec(),
+            serde_json::to_vec(&CommandError::ShareUnavailable).unwrap(),
             None,
         );
     }
@@ -908,6 +919,13 @@ mod tests {
 
         let missing = request(&shares, &asset_loader, "/share/AAAAAAAAAAAAAAAAAAAAAA");
         assert!(missing.starts_with("HTTP/1.1 404 Not Found"));
+        let missing_api = request(&shares, &asset_loader, "/api/shares/AAAAAAAAAAAAAAAAAAAAAA");
+        assert!(missing_api.starts_with("HTTP/1.1 404 Not Found"));
+        let body = missing_api.split("\r\n\r\n").nth(1).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(body).unwrap(),
+            serde_json::json!({"code": "SHARE_UNAVAILABLE"})
+        );
     }
 
     #[test]
@@ -1038,6 +1056,7 @@ mod tests {
             &format!("/api/shares/{id}"),
         );
         assert!(response.starts_with("HTTP/1.1 404"));
+        assert!(response.contains("\"code\":\"SHARE_UNAVAILABLE\""));
         assert!(!response.contains("Expired secret"));
         assert!(state.shares.read().unwrap().is_empty());
     }

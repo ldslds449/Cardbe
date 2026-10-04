@@ -1,3 +1,4 @@
+use crate::errors::CommandError;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::time::Duration;
@@ -37,13 +38,15 @@ struct ParsedVersion {
 }
 
 #[tauri::command]
-pub async fn check_for_update(current_version: String) -> Result<Option<UpdateInfo>, String> {
+pub async fn check_for_update(current_version: String) -> Result<Option<UpdateInfo>, CommandError> {
     let config: UpdateConfig =
-        serde_json::from_str(UPDATE_CONFIG).map_err(|error| error.to_string())?;
+        serde_json::from_str(UPDATE_CONFIG).map_err(CommandError::internal)?;
     if !is_valid_github_segment(&config.github_owner)
         || !is_valid_github_segment(&config.github_repository)
     {
-        return Err("Invalid GitHub repository in update configuration".to_string());
+        return Err(CommandError::internal(
+            "Invalid GitHub repository in update configuration",
+        ));
     }
 
     let url = format!(
@@ -54,21 +57,24 @@ pub async fn check_for_update(current_version: String) -> Result<Option<UpdateIn
         .timeout(Duration::from_millis(config.request_timeout_ms))
         .user_agent("Cardbe update checker")
         .build()
-        .map_err(|error| error.to_string())?;
+        .map_err(CommandError::internal)?;
     let response = client
         .get(url)
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
-        .map_err(|error| format!("Could not contact GitHub: {error}"))?;
+        .map_err(|error| {
+            CommandError::internal(error);
+            CommandError::UpdateRequestFailed
+        })?;
 
     if !response.status().is_success() {
-        return Err(format!("GitHub returned {}", response.status()));
+        return Err(CommandError::UpdateRequestFailed);
     }
-    let releases: Vec<GitHubRelease> = response
-        .json()
-        .await
-        .map_err(|error| format!("GitHub returned invalid release data: {error}"))?;
+    let releases: Vec<GitHubRelease> = response.json().await.map_err(|error| {
+        CommandError::internal(error);
+        CommandError::UpdateReleaseDataInvalid
+    })?;
     Ok(find_update(
         &current_version,
         &releases,
@@ -171,24 +177,26 @@ fn is_allowed_external_url(value: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
+pub fn open_external_url(app: AppHandle, url: String) -> Result<(), CommandError> {
     if !is_allowed_external_url(&url) {
-        return Err("Only HTTP and HTTPS links can be opened".to_string());
+        return Err(CommandError::ExternalUrlInvalid);
     }
 
     app.opener()
         .open_url(url, None::<&str>)
-        .map_err(|error| error.to_string())
+        .map_err(CommandError::internal)
 }
 
 #[tauri::command]
-pub fn open_latest_release(app: AppHandle) -> Result<(), String> {
+pub fn open_latest_release(app: AppHandle) -> Result<(), CommandError> {
     let config: UpdateConfig =
-        serde_json::from_str(UPDATE_CONFIG).map_err(|error| error.to_string())?;
+        serde_json::from_str(UPDATE_CONFIG).map_err(CommandError::internal)?;
     if !is_valid_github_segment(&config.github_owner)
         || !is_valid_github_segment(&config.github_repository)
     {
-        return Err("Invalid GitHub repository in update configuration".to_string());
+        return Err(CommandError::internal(
+            "Invalid GitHub repository in update configuration",
+        ));
     }
 
     let url = format!(
@@ -197,7 +205,7 @@ pub fn open_latest_release(app: AppHandle) -> Result<(), String> {
     );
     app.opener()
         .open_url(url, None::<&str>)
-        .map_err(|error| error.to_string())
+        .map_err(CommandError::internal)
 }
 
 #[cfg(test)]

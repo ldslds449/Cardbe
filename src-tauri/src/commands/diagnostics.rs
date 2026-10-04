@@ -1,3 +1,4 @@
+use crate::errors::CommandError;
 use serde::Serialize;
 use std::{
     fs::{self, File},
@@ -42,7 +43,7 @@ fn build_commit() -> Option<String> {
 }
 
 #[tauri::command]
-pub fn get_diagnostics(app: AppHandle) -> Result<DiagnosticInfo, String> {
+pub fn get_diagnostics(app: AppHandle) -> Result<DiagnosticInfo, CommandError> {
     Ok(DiagnosticInfo {
         app_version: app.package_info().version.to_string(),
         build_commit: build_commit(),
@@ -78,12 +79,12 @@ pub fn log_frontend(level: String, target: String, message: String) {
 }
 
 #[tauri::command]
-pub fn open_log_folder(app: AppHandle) -> Result<(), String> {
+pub fn open_log_folder(app: AppHandle) -> Result<(), CommandError> {
     let directory = log_dir(&app)?;
-    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&directory).map_err(CommandError::internal)?;
     app.opener()
         .open_path(directory.to_string_lossy().into_owned(), None::<&str>)
-        .map_err(|error| error.to_string())
+        .map_err(CommandError::internal)
 }
 
 fn log_files(directory: &Path) -> Result<Vec<PathBuf>, String> {
@@ -109,7 +110,7 @@ fn log_files(directory: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
-fn redact_diagnostic_logs(mut text: String) -> String {
+pub(crate) fn redact_diagnostic_logs(mut text: String) -> String {
     for home in [std::env::var("USERPROFILE"), std::env::var("HOME")]
         .into_iter()
         .filter_map(Result::ok)
@@ -247,28 +248,28 @@ fn redact_sensitive_values(text: &str) -> String {
 }
 
 #[tauri::command]
-pub fn export_debug_information(app: AppHandle, destination: String) -> Result<(), String> {
+pub fn export_debug_information(app: AppHandle, destination: String) -> Result<(), CommandError> {
     let destination = PathBuf::from(destination);
     if destination.file_name().is_none()
         || !destination
             .extension()
             .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
     {
-        return Err("Invalid debug log export destination".to_string());
+        return Err(CommandError::InvalidArgument);
     }
 
-    let output = File::create(&destination).map_err(|error| error.to_string())?;
+    let output = File::create(&destination).map_err(CommandError::internal)?;
     let mut zip = ZipWriter::new(output);
     for source in log_files(&log_dir(&app)?)? {
         if let Some(name) = source.file_name().and_then(|name| name.to_str()) {
-            let contents = fs::read_to_string(&source).map_err(|error| error.to_string())?;
+            let contents = fs::read_to_string(&source).map_err(CommandError::internal)?;
             zip.start_file(
                 format!("logs/{name}"),
                 SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
             )
-            .map_err(|error| error.to_string())?;
+            .map_err(CommandError::internal)?;
             zip.write_all(redact_diagnostic_logs(contents).as_bytes())
-                .map_err(|error| error.to_string())?;
+                .map_err(CommandError::internal)?;
         }
     }
 
@@ -283,14 +284,14 @@ pub fn export_debug_information(app: AppHandle, destination: String) -> Result<(
         "system-info.json",
         SimpleFileOptions::default().compression_method(CompressionMethod::Deflated),
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(CommandError::internal)?;
     zip.write_all(
         serde_json::to_string_pretty(&info)
-            .map_err(|error| error.to_string())?
+            .map_err(CommandError::internal)?
             .as_bytes(),
     )
-    .map_err(|error| error.to_string())?;
-    zip.finish().map_err(|error| error.to_string())?;
+    .map_err(CommandError::internal)?;
+    zip.finish().map_err(CommandError::internal)?;
     log::info!(target: "diagnostics", "Exported debug information");
     Ok(())
 }

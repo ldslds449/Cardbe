@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+  import { m } from "$lib/paraglide/messages";
   import type { Editor } from "@tiptap/core";
   import BoldIcon from "@lucide/svelte/icons/bold";
   import CodeIcon from "@lucide/svelte/icons/code";
@@ -27,7 +28,7 @@
     $props();
   let linkOpen = $state(false);
   let linkHref = $state("");
-  let linkError = $state("");
+  let linkError = $state<"required" | "invalid" | "">("");
   let linkSelection = $state<{ from: number; to: number } | null>(null);
   function isActive(name: string, attributes?: Record<string, unknown>) {
     void revision;
@@ -72,7 +73,7 @@
       "input",
     )!;
     if (!linkHref.trim()) {
-      linkError = "Enter a link URL.";
+      linkError = "required";
       input.focus();
       return;
     }
@@ -82,7 +83,7 @@
       .setLink({ href: linkHref.trim() })
       .run();
     if (!linked) {
-      linkError = "This URL is not allowed. Use a safe link URL.";
+      linkError = "invalid";
       input.focus();
       return;
     }
@@ -93,7 +94,7 @@
 <div
   class="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-1 border-b bg-background/95 p-2 text-foreground shadow-sm backdrop-blur-sm [&_[aria-pressed=true]]:bg-primary [&_[aria-pressed=true]]:text-primary-foreground [&_[aria-pressed=true]:hover]:bg-primary/80"
   role="toolbar"
-  aria-label="Text formatting"
+  aria-label={m.editor_formatting()}
   tabindex="-1"
   onpointerdown={(event) => event.preventDefault()}
 >
@@ -101,8 +102,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Undo"
-    title="Undo"
+    aria-label={m.editor_undo()}
+    title={m.editor_undo()}
     disabled={!canUndo()}
     onclick={() => editor?.chain().focus().undo().run()}><Undo2Icon /></Button
   >
@@ -110,8 +111,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Redo"
-    title="Redo"
+    aria-label={m.editor_redo()}
+    title={m.editor_redo()}
     disabled={!canRedo()}
     onclick={() => editor?.chain().focus().redo().run()}><Redo2Icon /></Button
   >
@@ -122,8 +123,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Heading 1"
-    title="Heading 1"
+    aria-label={m.editor_heading_1()}
+    title={m.editor_heading_1()}
     aria-pressed={isActive("heading", { level: 1 })}
     onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
     ><Heading1Icon /></Button
@@ -132,8 +133,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Heading 2"
-    title="Heading 2"
+    aria-label={m.editor_heading_2()}
+    title={m.editor_heading_2()}
     aria-pressed={isActive("heading", { level: 2 })}
     onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
     ><Heading2Icon /></Button
@@ -142,8 +143,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Heading 3"
-    title="Heading 3"
+    aria-label={m.editor_heading_3()}
+    title={m.editor_heading_3()}
     aria-pressed={isActive("heading", { level: 3 })}
     onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
     ><Heading3Icon /></Button
@@ -155,8 +156,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Bold"
-    title="Bold"
+    aria-label={m.editor_bold()}
+    title={m.editor_bold()}
     aria-pressed={isActive("bold")}
     onclick={() => editor?.chain().focus().toggleBold().run()}
     ><BoldIcon /></Button
@@ -165,8 +166,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Italic"
-    title="Italic"
+    aria-label={m.editor_italic()}
+    title={m.editor_italic()}
     aria-pressed={isActive("italic")}
     onclick={() => editor?.chain().focus().toggleItalic().run()}
     ><ItalicIcon /></Button
@@ -175,8 +176,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Strike"
-    title="Strike"
+    aria-label={m.editor_strike()}
+    title={m.editor_strike()}
     aria-pressed={isActive("strike")}
     onclick={() => editor?.chain().focus().toggleStrike().run()}
     ><StrikethroughIcon /></Button
@@ -185,8 +186,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Inline code"
-    title="Inline code — format text within a sentence as code"
+    aria-label={m.editor_inline_code()}
+    title={m.editor_inline_code_help()}
     aria-pressed={isActive("code")}
     onclick={() => editor?.chain().focus().toggleCode().run()}
     ><CodeIcon /></Button
@@ -195,8 +196,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label={isActive("link") ? "Remove link" : "Add link"}
-    title={isActive("link") ? "Remove link" : "Add link"}
+    aria-label={isActive("link") ? m.editor_remove_link() : m.editor_add_link()}
+    title={isActive("link") ? m.editor_remove_link() : m.editor_add_link()}
     aria-pressed={isActive("link")}
     onclick={toggleLink}><Link2Icon /></Button
   >
@@ -207,8 +208,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Bullet list"
-    title="Bullet list"
+    aria-label={m.editor_bullet_list()}
+    title={m.editor_bullet_list()}
     aria-pressed={isActive("bulletList")}
     onclick={() => editor?.chain().focus().toggleBulletList().run()}
     ><ListIcon /></Button
@@ -217,8 +218,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Numbered list"
-    title="Numbered list"
+    aria-label={m.editor_numbered_list()}
+    title={m.editor_numbered_list()}
     aria-pressed={isActive("orderedList")}
     onclick={() => editor?.chain().focus().toggleOrderedList().run()}
     ><ListOrderedIcon /></Button
@@ -227,8 +228,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Task list"
-    title="Task list"
+    aria-label={m.editor_task_list()}
+    title={m.editor_task_list()}
     aria-pressed={isActive("taskList")}
     onclick={() => editor?.chain().focus().toggleTaskList().run()}
     ><ListChecksIcon /></Button
@@ -237,8 +238,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Blockquote"
-    title="Blockquote"
+    aria-label={m.editor_blockquote()}
+    title={m.editor_blockquote()}
     aria-pressed={isActive("blockquote")}
     onclick={() => editor?.chain().focus().toggleBlockquote().run()}
     ><QuoteIcon /></Button
@@ -247,8 +248,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Code block"
-    title="Code block"
+    aria-label={m.editor_code_block()}
+    title={m.editor_code_block()}
     aria-pressed={isActive("codeBlock")}
     onclick={() => editor?.chain().focus().toggleCodeBlock().run()}
     ><Code2Icon /></Button
@@ -257,8 +258,8 @@
     type="button"
     variant="ghost"
     size="icon-sm"
-    aria-label="Horizontal rule"
-    title="Horizontal rule"
+    aria-label={m.editor_horizontal_rule()}
+    title={m.editor_horizontal_rule()}
     onclick={() => editor?.chain().focus().setHorizontalRule().run()}
     ><MinusIcon /></Button
   >
@@ -272,13 +273,12 @@
     }}
   >
     <Dialog.Header>
-      <Dialog.Title>Add link</Dialog.Title>
-      <Dialog.Description>Enter a URL for the selected text.</Dialog.Description
-      >
+      <Dialog.Title>{m.editor_add_link()}</Dialog.Title>
+      <Dialog.Description>{m.editor_link_description()}</Dialog.Description>
     </Dialog.Header>
     <form class="grid gap-4" novalidate autocomplete="off" onsubmit={addLink}>
       <div class="grid gap-2">
-        <Label for="editor-link-url">Link URL</Label>
+        <Label for="editor-link-url">{m.editor_link_url()}</Label>
         <Input
           id="editor-link-url"
           type="text"
@@ -291,16 +291,20 @@
           oninput={() => (linkError = "")}
         />
         {#if linkError}
-          <FieldError id="editor-link-error">{linkError}</FieldError>
+          <FieldError id="editor-link-error"
+            >{linkError === "required"
+              ? m.editor_link_required()
+              : m.editor_link_invalid()}</FieldError
+          >
         {/if}
       </div>
       <Dialog.Footer>
         <Button
           type="button"
           variant="outline"
-          onclick={() => (linkOpen = false)}>Cancel</Button
+          onclick={() => (linkOpen = false)}>{m.common_cancel()}</Button
         >
-        <Button type="submit">Add link</Button>
+        <Button type="submit">{m.editor_add_link()}</Button>
       </Dialog.Footer>
     </form>
   </Dialog.Content>

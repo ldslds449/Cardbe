@@ -1,4 +1,9 @@
 <script lang="ts">
+  import {
+    parseCommandError,
+    translateCommandError,
+    type CommandError,
+  } from "$lib/command-errors";
   import * as m from "$lib/paraglide/messages.js";
   import { invoke } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
@@ -43,7 +48,7 @@
 
   let diagnostics = $state<DiagnosticInfo | null>(null);
   let diagnostics_loading = $state(false);
-  let diagnostics_error = $state<string | null>(null);
+  let diagnostics_error = $state<CommandError | null>(null);
   let dialogs_were_loaded = false;
 
   const github_url = `https://github.com/${updateConfig.githubOwner}/${updateConfig.githubRepository}`;
@@ -65,7 +70,9 @@
     try {
       diagnostics = await invoke<DiagnosticInfo>("get_diagnostics");
     } catch (error) {
-      diagnostics_error = m.ui_couldn_t_load_diagnostic_information();
+      diagnostics_error = parseCommandError(error) ?? {
+        code: "INTERNAL_ERROR",
+      };
       logger.error("diagnostics.load.failed", error);
     } finally {
       diagnostics_loading = false;
@@ -77,7 +84,7 @@
       await invoke("open_external_url", { url });
     } catch (error) {
       logger.error(event, error);
-      toast.error(m.ui_couldn_t_open_the_link());
+      toast.error(translateCommandError(error));
     }
   }
 
@@ -86,7 +93,7 @@
       await invoke("open_log_folder");
     } catch (error) {
       logger.error("diagnostics.open_log_folder.failed", error);
-      toast.error(m.ui_couldn_t_open_the_log_folder());
+      toast.error(translateCommandError(error));
     }
   }
 
@@ -138,7 +145,7 @@
       toast.success(m.ui_debug_information_exported());
     } catch (error) {
       logger.error("diagnostics.export.failed", error);
-      toast.error(m.ui_couldn_t_export_debug_information());
+      toast.error(translateCommandError(error));
     }
   }
 
@@ -274,7 +281,7 @@
       <div
         class="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
       >
-        {diagnostics_error}
+        {translateCommandError(diagnostics_error)}
       </div>
     {:else if diagnostics}
       <div class="grid gap-3 sm:grid-cols-2">

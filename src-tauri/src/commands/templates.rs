@@ -1,16 +1,17 @@
+use crate::errors::{CommandError, DomainError};
 use crate::{
     models::{StoredData, TaskTemplate},
     state::{update_stored_for_board, SharedAppData},
 };
 use tauri::State;
 
-fn find_task(data: &StoredData, task_id: i64) -> Result<crate::models::Task, String> {
+fn find_task(data: &StoredData, task_id: i64) -> Result<crate::models::Task, DomainError> {
     data.columns
         .iter()
         .flat_map(|column| column.tasks.iter())
         .find(|task| task.id == task_id)
         .cloned()
-        .ok_or_else(|| format!("Task not found: {task_id}"))
+        .ok_or(DomainError::TaskNotFound)
 }
 
 fn normalize_template_task(mut task: crate::models::Task) -> crate::models::Task {
@@ -29,12 +30,12 @@ fn normalize_template_task(mut task: crate::models::Task) -> crate::models::Task
 pub fn get_task_templates(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
-) -> Result<Vec<TaskTemplate>, String> {
+) -> Result<Vec<TaskTemplate>, CommandError> {
     let guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(CommandError::StaleBoardRequest);
     }
     Ok(guard.stored.templates.clone())
 }
@@ -45,10 +46,10 @@ pub fn save_task_template(
     task_id: i64,
     name: String,
     expected_board_id: i64,
-) -> Result<TaskTemplate, String> {
+) -> Result<TaskTemplate, CommandError> {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err("Template name cannot be empty".to_string());
+        return Err(CommandError::TemplateNameRequired);
     }
 
     update_stored_for_board(&state, expected_board_id, |data| {
@@ -62,6 +63,7 @@ pub fn save_task_template(
         data.templates.push(template.clone());
         Ok(template)
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -71,13 +73,13 @@ pub fn update_task_template(
     name: String,
     task: crate::models::Task,
     expected_board_id: i64,
-) -> Result<TaskTemplate, String> {
+) -> Result<TaskTemplate, CommandError> {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err("Template name cannot be empty".to_string());
+        return Err(CommandError::TemplateNameRequired);
     }
     if task.title.trim().is_empty() {
-        return Err("Template task title cannot be empty".to_string());
+        return Err(CommandError::TaskTitleRequired);
     }
 
     update_stored_for_board(&state, expected_board_id, |data| {
@@ -85,7 +87,7 @@ pub fn update_task_template(
             .templates
             .iter()
             .position(|template| template.id == template_id)
-            .ok_or_else(|| format!("Template not found: {template_id}"))?;
+            .ok_or(DomainError::TemplateNotFound)?;
         let template = TaskTemplate {
             id: template_id,
             name,
@@ -94,6 +96,7 @@ pub fn update_task_template(
         data.templates[index] = template.clone();
         Ok(template)
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -101,14 +104,15 @@ pub fn delete_task_template(
     state: State<'_, SharedAppData>,
     template_id: i64,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
         let index = data
             .templates
             .iter()
             .position(|template| template.id == template_id)
-            .ok_or_else(|| format!("Template not found: {template_id}"))?;
+            .ok_or(DomainError::TemplateNotFound)?;
         data.templates.remove(index);
         Ok(())
     })
+    .map_err(CommandError::from)
 }

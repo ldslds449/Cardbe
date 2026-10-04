@@ -1,5 +1,10 @@
 <script lang="ts">
   import * as m from "$lib/paraglide/messages.js";
+  import {
+    parseCommandError,
+    translateCommandError,
+    type CommandError,
+  } from "$lib/command-errors";
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import { emit } from "@tauri-apps/api/event";
@@ -50,7 +55,10 @@
   let database_ready = $state(false);
   let loading = $state(mode === "task");
   let saving = $state(false);
-  let error = $state("");
+  let error = $state<string | CommandError>("");
+  const error_message = $derived(
+    typeof error === "string" ? error : translateCommandError(error),
+  );
   let title_input = $state<HTMLInputElement | null>(null);
   let content_root = $state<HTMLElement | null>(null);
 
@@ -140,10 +148,12 @@
     }
     schedule_window_resize();
     void document.fonts?.ready?.then(schedule_window_resize);
-    void invoke<string | null>("get_startup_error")
+    void invoke<unknown>("get_startup_error")
       .then((startup_error) => {
         if (startup_error) {
-          error = startup_error;
+          error = parseCommandError(startup_error) ?? {
+            code: "INTERNAL_ERROR",
+          };
           loading = false;
           return;
         }
@@ -153,7 +163,7 @@
         }
       })
       .catch((caught) => {
-        error = m.startup_check_error({ error: String(caught) });
+        error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
         loading = false;
       });
     const handle_focus = () => {
@@ -240,7 +250,7 @@
         return;
       }
       console.error(caught);
-      error = m.quick_load_error();
+      error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
     } finally {
       if (generation === column_load_generation) {
         loading = false;
@@ -314,12 +324,7 @@
         caught,
       );
       console.error(caught);
-      error =
-        mode === "task" && String(caught).includes("board")
-          ? String(caught)
-          : mode === "task"
-            ? m.quick_task_error()
-            : m.quick_note_error();
+      error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
       await tick();
       schedule_window_resize();
       title_input?.focus();
@@ -448,7 +453,7 @@
     >
       <div aria-live="polite" class="text-xs">
         {#if error}
-          <span class="text-destructive">{error}</span>
+          <span class="text-destructive">{error_message}</span>
         {:else if mode === "task" && !loading && columns.length === 0}
           <span class="text-muted-foreground"
             >{m.ui_create_a_column_in_cardbe_before_adding_a_task()}</span

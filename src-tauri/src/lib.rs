@@ -1,6 +1,7 @@
 mod commands;
 #[cfg(desktop)]
 mod desktop;
+mod errors;
 mod loro_board;
 mod models;
 mod state;
@@ -30,17 +31,17 @@ struct StartupError {
 #[tauri::command]
 async fn get_startup_error(
     state: tauri::State<'_, StartupError>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<errors::CommandError>, errors::CommandError> {
     let mut status = state.receiver.clone();
     loop {
         let current = status.borrow().clone();
         match current {
             Some(Ok(())) => return Ok(None),
-            Some(Err(error)) => return Ok(Some(error)),
+            Some(Err(error)) => return Ok(Some(errors::CommandError::internal(error))),
             None => status
                 .changed()
                 .await
-                .map_err(|_| "Startup status unavailable".to_string())?,
+                .map_err(|_| errors::CommandError::internal("Startup status unavailable"))?,
         }
     }
 }
@@ -385,6 +386,7 @@ pub fn run() {
             import_export::import_board_as_new,
             import_export::export_all_boards,
             import_export::import_all_boards,
+            import_export::validate_all_boards_backup,
             iroh_share::create_iroh_invite,
             iroh_share::join_iroh_invite,
             iroh_share::sync_iroh_board,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { translateCommandError } from "$lib/command-errors";
   import { getLocale } from "$lib/i18n";
   import { m } from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
@@ -97,7 +98,7 @@
   let calendar_view_mode = $state<CalendarViewMode>("month");
   let calendar_show_archived = $state(false);
   let calendar_show_recurring_previews = $state(true);
-  let startup_error = $state<string | null>(null);
+  let startup_error = $state.raw<unknown>(null);
   let startup_check_finished = $state(false);
   let app_name = $state("");
   let app_name_promise: Promise<string> | undefined;
@@ -620,7 +621,7 @@
       }
     } catch (error) {
       logger.error("board.switch_share_sync.failed", error);
-      toast.error(m.board_switch_error());
+      toast.error(translateCommandError(error));
     }
   }
 
@@ -693,7 +694,7 @@
 
   onMount(() => {
     let device_request_timer: number | undefined;
-    void invoke<string | null>("get_startup_error")
+    void invoke<unknown>("get_startup_error")
       .then((error) => {
         startup_check_finished = true;
         if (error) {
@@ -716,7 +717,7 @@
         });
       })
       .catch((error) => {
-        startup_error = m.startup_check_error({ error: String(error) });
+        startup_error = error;
         startup_check_finished = true;
         requestAnimationFrame(() =>
           window.dispatchEvent(new Event("cardbe:workspace-ready")),
@@ -938,7 +939,7 @@
                 (error) => {
                   logger.warn("update.open_release.failed", error);
                   console.error("Couldn't open the GitHub release:", error);
-                  toast.error(m.ui_couldn_t_open_github_releases());
+                  toast.error(translateCommandError(error));
                 },
               );
             },
@@ -1424,7 +1425,7 @@
           </div>
           <pre
             class="max-h-[40vh] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-destructive/20 bg-muted/50 px-4 py-3 font-mono text-xs leading-relaxed text-foreground selection:bg-primary/20"
-            role="alert">{startup_error}</pre>
+            role="alert">{translateCommandError(startup_error)}</pre>
           <p class="text-xs text-muted-foreground">
             {m.ui_this_error_is_also_recorded_in_the_cardbe_app_log()}
           </p>

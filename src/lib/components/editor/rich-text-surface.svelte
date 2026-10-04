@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+  import { m } from "$lib/paraglide/messages";
   import { onMount, untrack } from "svelte";
   import { mode } from "mode-watcher";
   import "./markdown-content.css";
@@ -74,6 +75,13 @@
   const visibleSlashCommands = $derived(
     slash ? filterSlashCommands(slash.query) : [],
   );
+
+  $effect(() => {
+    slashIndex = Math.min(
+      slashIndex,
+      Math.max(0, visibleSlashCommands.length - 1),
+    );
+  });
 
   $effect(() => {
     void revision;
@@ -333,7 +341,7 @@
   {#if slash && visibleSlashCommands.length > 0}
     <div
       role="listbox"
-      aria-label="Block commands"
+      aria-label={m.editor_slash_commands()}
       class="fixed z-50 max-h-[min(20rem,calc(100vh-1rem))] w-[min(17.5rem,calc(100vw-1rem))] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
       style:left={`${slash.position.left}px`}
       style:top={`${slash.position.top}px`}

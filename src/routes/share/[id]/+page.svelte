@@ -1,6 +1,11 @@
 <script lang="ts">
   import * as m from "$lib/paraglide/messages.js";
   import { getLocale } from "$lib/i18n";
+  import {
+    parseCommandError,
+    translateCommandError,
+    type CommandError,
+  } from "$lib/command-errors";
   import { logger } from "$lib/logger";
   import { onMount } from "svelte";
   import { ModeWatcher, toggleMode } from "mode-watcher";
@@ -29,7 +34,7 @@
   };
 
   let loading = $state(true);
-  let error_message = $state("");
+  let share_error = $state<CommandError | null>(null);
   let response = $state<PublicShareResponse | null>(null);
   let columns = $state<Column[]>([]);
   let search_text = $state("");
@@ -108,10 +113,10 @@
         });
         const body = await result.json();
         if (!result.ok) {
-          throw new Error(body.error || m.ui_share_unavailable());
+          throw body;
         }
         apply_response(body as PublicShareResponse);
-        error_message = "";
+        share_error = null;
         last_checked_at = new Date();
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -123,7 +128,7 @@
         selected_task = null;
         task_dialog_open = false;
         document.title = m.ui_share_unavailable_cardbe();
-        error_message = m.ui_share_unavailable();
+        share_error = parseCommandError(error) ?? { code: "INTERNAL_ERROR" };
       } finally {
         loading = false;
         refresh_in_progress = false;
@@ -181,7 +186,7 @@
       {m.ui_loading_shared_board()}
     </div>
   </main>
-{:else if error_message || !response}
+{:else if share_error || !response}
   <main class="relative grid min-h-screen place-items-center bg-muted/30 p-6">
     <div class="absolute right-4 top-4">{@render theme_toggle()}</div>
     <section
@@ -189,7 +194,9 @@
     >
       <h1 class="text-xl font-semibold">{m.ui_share_unavailable()}</h1>
       <p class="mt-2 text-sm text-muted-foreground">
-        {error_message || m.ui_this_share_no_longer_exists()}
+        {share_error
+          ? translateCommandError(share_error)
+          : m.ui_this_share_no_longer_exists()}
       </p>
       <Button
         class="mt-5"

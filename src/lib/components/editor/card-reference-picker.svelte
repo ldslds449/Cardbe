@@ -4,6 +4,7 @@
 </script>
 
 <script lang="ts">
+  import { m } from "$lib/paraglide/messages";
   import { tick } from "svelte";
   import * as Popover from "$lib/components/ui/popover/index.js";
   import * as Command from "$lib/components/ui/command/index.js";
@@ -61,19 +62,22 @@
         variant="ghost"
         size={compact ? "icon-sm" : "sm"}
         class={compact ? "" : "h-7 select-none gap-1.5 px-2 text-xs"}
-        aria-label="Reference card"
-        title="Reference card"
+        aria-label={m.editor_reference_card()}
+        title={m.editor_reference_card()}
       >
         <Link2Icon class="size-3.5" />
-        {#if !compact}Reference card{/if}
+        {#if !compact}{m.editor_reference_card()}{/if}
       </Button>
     {/snippet}
   </Popover.Trigger>
   <Popover.Content class="w-80 p-0" align="end">
     <Command.Root>
-      <Command.Input placeholder="Search cards..." aria-label="Search cards" />
+      <Command.Input
+        placeholder={m.task_search_cards_placeholder()}
+        aria-label={m.task_search_cards()}
+      />
       <Command.List class="max-h-64">
-        <Command.Empty>No cards found.</Command.Empty>
+        <Command.Empty>{m.editor_no_cards()}</Command.Empty>
         <Command.Group value="cards">
           {#each options.filter((option) => option.task.id !== excludeTaskId) as option (option.task.id)}
             <Command.Item

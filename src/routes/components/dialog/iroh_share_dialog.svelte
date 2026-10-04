@@ -2,6 +2,11 @@
   import { formatNumber } from "$lib/i18n";
   import { getLocale } from "$lib/i18n";
   import * as m from "$lib/paraglide/messages.js";
+  import {
+    type CommandError,
+    parseCommandError,
+    translateCommandError,
+  } from "$lib/command-errors";
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
@@ -88,10 +93,10 @@
     loading_access_id = $state<string | null>(null);
   let manage_view = $state<"mine" | "received">("mine");
   let manage_view_button = $state<HTMLButtonElement | null>(null);
-  let host_error = $state<string | null>(null);
+  let host_error = $state<unknown>(null);
   let pending_only = $state(false);
   let loading_invites = $state(false);
-  let manage_error = $state<string | null>(null);
+  let manage_error = $state<unknown>(null);
   let device_action_pending = $state(false);
   let device_id_verified = $state(false);
   let updating_invite_id = $state<string | null>(null);
@@ -100,7 +105,7 @@
     devices: {},
     boards: {},
   });
-  let connection_details_error = $state<string | null>(null);
+  let connection_details_error = $state<unknown>(null);
   const visible_invites = $derived(
     invites
       .filter(
@@ -145,7 +150,9 @@
       connection_details_error = null;
     } catch (error) {
       logger.warn("iroh.connection_details.failed", error);
-      connection_details_error = m.share_connection_details_unavailable();
+      connection_details_error = parseCommandError(error) ?? {
+        code: "INTERNAL_ERROR",
+      };
     }
   }
   let network_settings = $state<IrohNetworkSettings>({
@@ -238,9 +245,9 @@
     relay_urls_text = discovery_urls_text = direct_addresses_text = "";
     clear_network_settings_error();
   }
-  let network_settings_error = $state<string | null>(null);
+  let network_settings_error = $state<unknown>(null);
   let network_settings_field_errors = $state<
-    Partial<Record<NetworkSettingsField, string>>
+    Partial<Record<NetworkSettingsField, CommandError | "port_range">>
   >({});
   let advanced_addresses_open = $state(false);
   let waiting_device_id = $state<string | null>(null);
@@ -334,7 +341,7 @@
     }
     flow = "home";
     ticket = "";
-    board.iroh_last_error = "";
+    board.iroh_last_error = null;
     permission = "viewer";
     generated = null;
     waiting_device_id = null;
@@ -348,7 +355,7 @@
   function open_join() {
     ticket = "";
     waiting_device_id = null;
-    board.iroh_last_error = "";
+    board.iroh_last_error = null;
     flow = "join";
   }
   function split_addresses(value: string) {
@@ -357,23 +364,8 @@
       .map((item) => item.trim())
       .filter(Boolean);
   }
-  function error_message(error: unknown, fallback: string) {
-    if (error instanceof Error && error.message) {
-      return error.message;
-    }
-    if (typeof error === "string" && error.trim()) {
-      return error;
-    }
-    if (
-      error &&
-      typeof error === "object" &&
-      "message" in error &&
-      typeof error.message === "string" &&
-      error.message
-    ) {
-      return error.message;
-    }
-    return fallback;
+  function error_message(error: unknown, _fallback: string) {
+    return translateCommandError(error);
   }
   function clear_network_settings_error(field?: NetworkSettingsField) {
     if (field) {
@@ -386,21 +378,14 @@
   async function set_network_settings_error(error: unknown) {
     const message = error_message(error, m.share_network_save_error());
     clear_network_settings_error();
-    if (message.startsWith("Invalid listening port:")) {
-      network_settings_field_errors.listen_port = message;
-    } else if (message.startsWith("Invalid direct address:")) {
-      network_settings_field_errors.direct_addresses = `${message}. Enter IP:port, for example 192.168.1.20:12345.`;
-    } else if (message.startsWith("Invalid relay URL:")) {
-      network_settings_field_errors.relay_urls = `${message}. Enter a URL such as https://relay.example.com.`;
-    } else if (message.startsWith("Invalid discovery service URL:")) {
-      network_settings_field_errors.discovery_urls = `${message}. Enter a compatible discovery service URL.`;
-    } else {
-      network_settings_error = message;
-    }
-    const field = Object.keys(network_settings_field_errors)[0] as
-      | NetworkSettingsField
-      | undefined;
-    if (field) {
+    const parsed = parseCommandError(error);
+    network_settings_error = parsed ?? {
+      code: "INTERNAL_ERROR",
+    };
+    const field =
+      parsed?.code === "NETWORK_SETTINGS_INVALID" ? parsed.field : undefined;
+    if (parsed?.code === "NETWORK_SETTINGS_INVALID" && field) {
+      network_settings_field_errors[field] = parsed;
       advanced_addresses_open = true;
       await tick();
       const id = {
@@ -455,19 +440,20 @@
       settings.listen_port < 0 ||
       settings.listen_port > 65535
     ) {
-      await set_network_settings_error(m.share_network_port_error());
+      clear_network_settings_error();
+      network_settings_field_errors.listen_port = "port_range";
+      advanced_addresses_open = true;
+      await tick();
+      document.getElementById("network-listen-port")?.focus();
       return;
     }
     saving_network_settings = true;
     network_settings_applied = false;
     clear_network_settings_error();
     try {
-      const restart_error = await invoke<string | null>(
-        "set_iroh_network_settings",
-        {
-          settings,
-        },
-      );
+      const restart_error = await invoke<unknown>("set_iroh_network_settings", {
+        settings,
+      });
       saved_network_settings = JSON.stringify(settings);
       invite_access = {};
       visible_qr_id = null;
@@ -516,7 +502,7 @@
       );
     } catch (e) {
       logger.error("iroh.invite_create.failed", e);
-      toast.error(m.ui_couldn_t_create_invitation());
+      toast.error(translateCommandError(e));
     } finally {
       creating = false;
     }
@@ -536,27 +522,23 @@
   async function join(silent = false) {
     const generation = wait_generation;
     joining = true;
-    board.iroh_last_error = "";
+    board.iroh_last_error = null;
     try {
       const joined = await board.join_iroh_invite(ticket, silent);
       if (generation !== wait_generation) {
-        board.iroh_last_error = "";
+        board.iroh_last_error = null;
         return;
       }
       if (joined) {
         open = false;
         return;
       }
-      if (board.iroh_last_error.startsWith("APPROVAL_REQUIRED:")) {
-        waiting_device_id = board.iroh_last_error.slice(
-          "APPROVAL_REQUIRED:".length,
-        );
-        board.iroh_last_error = "";
+      const last_error = parseCommandError(board.iroh_last_error);
+      if (last_error?.code === "SHARE_APPROVAL_REQUIRED") {
+        waiting_device_id = last_error.device_id;
+        board.iroh_last_error = null;
         await load_connection_details();
-      } else if (
-        silent &&
-        board.iroh_last_error.startsWith("Access was declined or revoked")
-      ) {
+      } else if (silent && last_error?.code === "SHARE_ACCESS_REVOKED") {
         waiting_device_id = null;
       }
     } finally {
@@ -578,7 +560,7 @@
     loading_invites = true;
     try {
       invites = await invoke<Invite[]>("list_iroh_invites");
-      host_error = await invoke<string | null>("iroh_host_error");
+      host_error = await invoke<unknown>("iroh_host_error");
       if (host_error) {
         logger.error("iroh.host.failed", host_error);
       }
@@ -587,9 +569,9 @@
       await load_connection_details();
     } catch (e) {
       logger.error("iroh.invite_list_load.failed", e);
-      manage_error = error_message(e, m.share_load_retry());
+      manage_error = parseCommandError(e) ?? { code: "INTERNAL_ERROR" };
       if (!silent) {
-        toast.error(m.ui_couldn_t_load_invitations());
+        toast.error(translateCommandError(e));
       }
     } finally {
       loading_invites = false;
@@ -623,7 +605,7 @@
       return true;
     } catch (e) {
       logger.error("iroh.device_approval.failed", e);
-      toast.error(m.ui_couldn_t_update_device());
+      toast.error(translateCommandError(e));
       return false;
     } finally {
       device_action_pending = false;
@@ -687,21 +669,23 @@
       logger.error("iroh.access_request.failed", e);
       if (
         !request_approval &&
-        /^(ACCESS_REVOKED:|INVITATION_DISABLED:|INVITATION_DELETED:|Access was declined or revoked)/.test(
-          e instanceof Error ? e.message : String(e),
-        )
+        [
+          "SHARE_ACCESS_REVOKED",
+          "INVITE_DISABLED",
+          "INVITE_NOT_FOUND",
+        ].includes(parseCommandError(e)?.code ?? "")
       ) {
         delete received_pending[board_id];
         if (received_waiting_id === board_id) {
           received_waiting_id = null;
         }
         board.iroh_access_removed[board_id] = true;
-        board.iroh_access_error[board_id] = (
-          e instanceof Error ? e.message : String(e)
-        ).replace(/^[A-Z_]+:/, "");
+        board.iroh_access_error[board_id] = parseCommandError(e) ?? {
+          code: "INTERNAL_ERROR",
+        };
       } else if (request_approval) {
         received_waiting_id = null;
-        toast.error(m.share_access_request_error());
+        toast.error(translateCommandError(e));
       }
     } finally {
       received_requesting.delete(board_id);
@@ -748,7 +732,7 @@
     } catch (e) {
       logger.error("iroh.invite_update.failed", e);
       await load();
-      toast.error(m.ui_couldn_t_update_invitation());
+      toast.error(translateCommandError(e));
     } finally {
       updating_invite_id = null;
     }
@@ -766,7 +750,7 @@
       toast.success(m.ui_invitation_deleted());
     } catch (e) {
       logger.error("iroh.invite_delete.failed", e);
-      toast.error(m.ui_couldn_t_delete_invitation());
+      toast.error(translateCommandError(e));
     } finally {
       pending_delete = null;
       delete_confirm_open = false;
@@ -785,7 +769,7 @@
       return value;
     } catch (e) {
       logger.error("iroh.invite_access_load.failed", e);
-      toast.error(m.ui_couldn_t_load_invitation());
+      toast.error(translateCommandError(e));
       return null;
     } finally {
       loading_access_id = null;
@@ -1043,7 +1027,7 @@
             )}
             {#if connection_details_error}
               <p class="mt-2 text-xs text-muted-foreground">
-                {connection_details_error}
+                {translateCommandError(connection_details_error)}
               </p>
             {/if}
           </div></Card.Root
@@ -1058,7 +1042,7 @@
             } else {
               wait_generation++;
               waiting_device_id = null;
-              board.iroh_last_error = "";
+              board.iroh_last_error = null;
             }
           }}>{m.ui_cancel_waiting()}</Button
         >
@@ -1255,7 +1239,12 @@
                         id="network-listen-port-error"
                         class="text-sm font-normal text-destructive"
                         role="alert"
-                        >{network_settings_field_errors.listen_port}</span
+                        >{network_settings_field_errors.listen_port ===
+                        "port_range"
+                          ? m.share_network_port_error()
+                          : translateCommandError(
+                              network_settings_field_errors.listen_port,
+                            )}</span
                       >
                     {/if}
                   </label>
@@ -1290,7 +1279,9 @@
                         id="network-direct-addresses-error"
                         class="text-sm font-normal text-destructive"
                         role="alert"
-                        >{network_settings_field_errors.direct_addresses}</span
+                        >{translateCommandError(
+                          network_settings_field_errors.direct_addresses,
+                        )}</span
                       >
                     {/if}
                   </label>
@@ -1324,7 +1315,9 @@
                         id="network-relay-urls-error"
                         class="text-sm font-normal text-destructive"
                         role="alert"
-                        >{network_settings_field_errors.relay_urls}</span
+                        >{translateCommandError(
+                          network_settings_field_errors.relay_urls,
+                        )}</span
                       >
                     {/if}
                   </label>
@@ -1359,7 +1352,9 @@
                         id="network-discovery-urls-error"
                         class="text-sm font-normal text-destructive"
                         role="alert"
-                        >{network_settings_field_errors.discovery_urls}</span
+                        >{translateCommandError(
+                          network_settings_field_errors.discovery_urls,
+                        )}</span
                       >
                     {/if}
                   </label>
@@ -1379,7 +1374,7 @@
               class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
               role="alert"
             >
-              {network_settings_error}
+              {translateCommandError(network_settings_error)}
             </p>
           {/if}
           <p class="text-xs text-muted-foreground" role="status">
@@ -1513,7 +1508,7 @@
             bind:value={ticket}
             placeholder="cardbe://share/..."
             aria-label={m.ui_invitation_link()}
-            oninput={() => (board.iroh_last_error = "")}
+            oninput={() => (board.iroh_last_error = null)}
           /></Card.Root
         >
         {#if board.iroh_last_error}
@@ -1521,9 +1516,7 @@
             class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
             role="alert"
           >
-            {board.iroh_last_error.startsWith("Access was declined or revoked")
-              ? m.ui_access_was_declined_or_revoked()
-              : m.share_join_error()}
+            {translateCommandError(board.iroh_last_error)}
           </p>
         {/if}
         <Button onclick={() => void join()} disabled={!ticket.trim() || joining}
@@ -1579,7 +1572,7 @@
                 class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3 text-sm text-destructive"
                 role="alert"
               >
-                <p>{manage_error}</p>
+                <p>{translateCommandError(manage_error)}</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1594,7 +1587,7 @@
             {/if}
             {#if connection_details_error}
               <p class="text-xs text-muted-foreground" role="status">
-                {connection_details_error}
+                {translateCommandError(connection_details_error)}
               </p>
             {/if}
             {#if manage_view === "mine" && host_error}
@@ -1622,8 +1615,11 @@
                         <Card.Title class="text-base">{shared.name}</Card.Title
                         ><Card.Description
                           >{board.iroh_access_removed[shared.id]
-                            ? (board.iroh_access_error[shared.id] ??
-                              m.share_access_unavailable())
+                            ? board.iroh_access_error[shared.id]
+                              ? translateCommandError(
+                                  board.iroh_access_error[shared.id],
+                                )
+                              : m.share_access_unavailable()
                             : shared.sync_status === "syncing"
                               ? m.ui_syncing_with_owner()
                               : shared.sync_status === "conflict"
@@ -1708,8 +1704,11 @@
                         class="grid gap-2 rounded-lg border border-primary/25 bg-primary/5 p-3 text-sm"
                       >
                         <span
-                          >{board.iroh_access_error[shared.id] ??
-                            m.share_access_unavailable()}
+                          >{board.iroh_access_error[shared.id]
+                            ? translateCommandError(
+                                board.iroh_access_error[shared.id],
+                              )
+                            : m.share_access_unavailable()}
                           {m.share_access_removed_help()}</span
                         ><Button
                           class="w-full"
@@ -1724,7 +1723,9 @@
                     )}
                     {#if board.iroh_sync_error[shared.id] && !board.iroh_access_removed[shared.id]}
                       <p class="text-sm text-destructive" role="status">
-                        {board.iroh_sync_error[shared.id]}
+                        {translateCommandError(
+                          board.iroh_sync_error[shared.id],
+                        )}
                       </p>
                     {/if}
                   </Card.Root>

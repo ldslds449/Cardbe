@@ -1,3 +1,4 @@
+use crate::errors::DomainError;
 use crate::{
     models::{Board, BoardRole, StoredData},
     storage::{self, Database},
@@ -92,46 +93,43 @@ pub fn update_stored<R>(
 pub fn update_stored_for_board<R>(
     state: &State<'_, SharedAppData>,
     expected_board_id: i64,
-    change: impl FnOnce(&mut StoredData) -> Result<R, String>,
-) -> Result<R, String> {
+    change: impl FnOnce(&mut StoredData) -> Result<R, DomainError>,
+) -> Result<R, DomainError> {
     let mut guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| DomainError::Internal("Application state lock is poisoned".into()))?;
     if guard.active_board_id != expected_board_id {
-        return Err(format!(
-            "Stale board request: expected board {expected_board_id}, active board is {}",
-            guard.active_board_id
-        ));
+        return Err(DomainError::StaleBoardRequest);
     }
     ensure_board_can_edit(&guard)?;
-    update_locked(&mut guard, change)
+    update_locked_typed(&mut guard, change)
 }
 
 pub fn update_stored_with_archives_for_board<R>(
     state: &State<'_, SharedAppData>,
     expected_board_id: i64,
-    change: impl FnOnce(&mut StoredData) -> Result<R, String>,
-) -> Result<R, String> {
+    change: impl FnOnce(&mut StoredData) -> Result<R, DomainError>,
+) -> Result<R, DomainError> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(DomainError::StaleBoardRequest);
     }
     ensure_board_can_edit(&guard)?;
     ensure_archives_loaded_locked(&mut guard)?;
-    update_locked(&mut guard, change)
+    update_locked_typed(&mut guard, change)
 }
 
 pub fn load_archives_for_board(
     state: &State<'_, SharedAppData>,
     expected_board_id: i64,
-) -> Result<Vec<crate::models::Archive>, String> {
+) -> Result<Vec<crate::models::Archive>, DomainError> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(DomainError::StaleBoardRequest);
     }
     ensure_archives_loaded_locked(&mut guard)?;
     Ok(guard.stored.archives.clone())
@@ -141,12 +139,12 @@ pub fn read_with_archives_for_board<R>(
     state: &State<'_, SharedAppData>,
     expected_board_id: i64,
     read: impl FnOnce(&AppData) -> R,
-) -> Result<R, String> {
+) -> Result<R, DomainError> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(DomainError::StaleBoardRequest);
     }
     ensure_archives_loaded_locked(&mut guard)?;
     Ok(read(&guard))
@@ -155,18 +153,18 @@ pub fn read_with_archives_for_board<R>(
 pub fn update_stored_with_pre_import_snapshot_for_board<R>(
     state: &State<'_, SharedAppData>,
     expected_board_id: i64,
-    change: impl FnOnce(&mut StoredData) -> Result<R, String>,
-) -> Result<(R, PathBuf), String> {
+    change: impl FnOnce(&mut StoredData) -> Result<R, DomainError>,
+) -> Result<(R, PathBuf), DomainError> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(DomainError::StaleBoardRequest);
     }
     ensure_board_can_edit(&guard)?;
     ensure_archives_loaded_locked(&mut guard)?;
     let snapshot_path = write_pre_import_snapshot(&guard)?;
-    let result = update_locked(&mut guard, change)?;
+    let result = update_locked_typed(&mut guard, change)?;
     Ok((result, snapshot_path))
 }
 
@@ -181,6 +179,13 @@ fn update_locked<R>(
     guard: &mut AppData,
     change: impl FnOnce(&mut StoredData) -> Result<R, String>,
 ) -> Result<R, String> {
+    update_locked_typed(guard, change)
+}
+
+fn update_locked_typed<R, E: From<String>>(
+    guard: &mut AppData,
+    change: impl FnOnce(&mut StoredData) -> Result<R, E>,
+) -> Result<R, E> {
     let mut candidate = guard.stored.clone();
     let result = change(&mut candidate)?;
     candidate.sort_column_tasks();
@@ -242,14 +247,14 @@ fn refresh_active_board_summary(guard: &mut AppData) -> Result<(), String> {
 
 // Backend enforcement matters: a client must not bypass the disabled UI by
 // directly invoking a mutation command for a received read-only board.
-fn ensure_board_can_edit(guard: &AppData) -> Result<(), String> {
+fn ensure_board_can_edit(guard: &AppData) -> Result<(), DomainError> {
     if guard
         .database
         .board_role(guard.active_board_id)
-        .map_err(|e| e.to_string())?
+        .map_err(DomainError::repository)?
         == BoardRole::Viewer
     {
-        Err("This shared board is read-only".into())
+        Err(DomainError::PermissionDenied)
     } else {
         Ok(())
     }
@@ -274,23 +279,23 @@ fn ensure_archives_loaded_locked(guard: &mut AppData) -> Result<(), String> {
 pub fn undo_last_change_for_board(
     state: &State<'_, SharedAppData>,
     expected_board_id: i64,
-) -> Result<bool, String> {
+) -> Result<bool, DomainError> {
     let mut guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
     undo_locked(&mut guard, expected_board_id)
 }
 
-fn undo_locked(guard: &mut AppData, expected_board_id: i64) -> Result<bool, String> {
+fn undo_locked(guard: &mut AppData, expected_board_id: i64) -> Result<bool, DomainError> {
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(DomainError::StaleBoardRequest);
     }
     ensure_board_can_edit(guard)?;
     let mut previous = guard
         .undo_history
         .last()
         .cloned()
-        .ok_or_else(|| "There is nothing to undo".to_string())?;
+        .ok_or(DomainError::NothingToUndo)?;
     previous.settings = guard.stored.settings.clone();
 
     let archives_loaded = guard.archives_loaded;

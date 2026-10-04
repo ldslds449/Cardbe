@@ -1,3 +1,4 @@
+use crate::errors::DomainError;
 use crate::models::{
     Archive, Board, BoardRole, Column, ColumnSort, IrohDeviceStatus, IrohPermission, Note,
     StoredData, SyncStatus, Task, TaskSummary, TaskTemplate, CURRENT_SCHEMA_VERSION,
@@ -491,11 +492,14 @@ impl Database {
     }
 
     pub fn board_role(&self, id: i64) -> StorageResult<BoardRole> {
-        Ok(self.connection.query_row(
-            "SELECT shared_role FROM cardbe_boards WHERE id=?1",
-            [id],
-            |row| row.get(0),
-        )?)
+        self.connection
+            .query_row(
+                "SELECT shared_role FROM cardbe_boards WHERE id=?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| DomainError::BoardNotFound.into())
     }
 
     #[cfg(test)]
@@ -511,7 +515,7 @@ impl Database {
             params![id, role, status, revision],
         )? == 0
         {
-            return Err("Board not found".into());
+            return Err(DomainError::BoardNotFound.into());
         }
         Ok(())
     }
@@ -571,7 +575,7 @@ impl Database {
             params![invite_id, node_id, status],
         )? == 0
         {
-            return Err("Device request not found".into());
+            return Err(crate::errors::DomainError::DeviceRequestNotFound.into());
         }
         Ok(())
     }
@@ -920,7 +924,7 @@ impl Database {
             "UPDATE cardbe_iroh_invites SET permission=COALESCE(?2,permission),enabled=COALESCE(?3,enabled) WHERE invite_id=?1",
             params![invite_id, permission, enabled.map(i64::from)],
         )? == 0 {
-            return Err("Invitation not found".into());
+            return Err(crate::errors::DomainError::InviteNotFound.into());
         }
         Ok(())
     }
@@ -930,7 +934,7 @@ impl Database {
             [invite_id],
         )? == 0
         {
-            return Err("Invitation not found".into());
+            return Err(crate::errors::DomainError::InviteNotFound.into());
         }
         Ok(())
     }
@@ -972,7 +976,7 @@ impl Database {
             .optional()?
             .is_none()
         {
-            return Err("Board not found".into());
+            return Err(DomainError::BoardNotFound.into());
         }
         write_board_transaction(&tx, board_id, data)?;
         if let Some(update) = loro_update.filter(|bytes| !bytes.is_empty()) {
@@ -1054,6 +1058,9 @@ impl Database {
         target_id: i64,
         column_id: i64,
     ) -> StorageResult<StoredData> {
+        if !self.board_exists(source_id)? || !self.board_exists(target_id)? {
+            return Err(DomainError::BoardNotFound.into());
+        }
         if source_id == target_id {
             return Err("Choose a different board".into());
         }
@@ -1065,13 +1072,13 @@ impl Database {
             .columns
             .iter()
             .position(|c| c.id == column_id)
-            .ok_or("Target column not found")?;
+            .ok_or(DomainError::ColumnNotFound)?;
         let (from_column, from_task) = source
             .columns
             .iter()
             .enumerate()
             .find_map(|(i, c)| c.tasks.iter().position(|t| t.id == task_id).map(|j| (i, j)))
-            .ok_or("Task not found")?;
+            .ok_or(DomainError::TaskNotFound)?;
         let mut task = source.columns[from_column].tasks.remove(from_task);
         task.id = target.allocate_task_id()?;
         for label in &task.labels {
@@ -1090,7 +1097,7 @@ impl Database {
                 |r| r.get(0),
             )?;
             if role == BoardRole::Viewer {
-                return Err("This shared board is read-only".into());
+                return Err(DomainError::PermissionDenied.into());
             }
             write_board_transaction(&tx, id, after)?;
             mark_local_board_change(&tx, id, role)?;
@@ -1123,7 +1130,7 @@ impl Database {
             |r| r.get(0),
         )?;
         if role == BoardRole::Viewer {
-            return Err("This shared board is read-only".into());
+            return Err(DomainError::PermissionDenied.into());
         }
         write_board_transaction(&tx, board_id, data)?;
         mark_local_board_change(&tx, board_id, role)?;
@@ -1182,7 +1189,7 @@ impl Database {
             |r| r.get(0),
         )?;
         if role != BoardRole::Owner {
-            return Err("Only the owner can rename a shared board".into());
+            return Err(DomainError::PermissionDenied.into());
         }
         tx.execute(
             "UPDATE cardbe_boards SET name=?2 WHERE id=?1",
@@ -1239,7 +1246,7 @@ impl Database {
             .execute("DELETE FROM cardbe_boards WHERE id = ?1", [id])?
             == 0
         {
-            return Err("Board not found".into());
+            return Err(DomainError::BoardNotFound.into());
         }
         self.loro_peers.remove(&id);
         Ok(())
@@ -1289,7 +1296,7 @@ impl Database {
             ],
         )?;
         if changed == 0 {
-            return Err(format!("Note not found: {}", note.id).into());
+            return Err(crate::errors::DomainError::NoteNotFound.into());
         }
         Ok(())
     }
@@ -1299,7 +1306,7 @@ impl Database {
             .connection
             .execute("DELETE FROM notes WHERE id = ?1", [note_id])?;
         if changed == 0 {
-            return Err(format!("Note not found: {note_id}").into());
+            return Err(crate::errors::DomainError::NoteNotFound.into());
         }
         Ok(())
     }
@@ -1358,7 +1365,7 @@ impl Database {
             |r| r.get(0),
         )?;
         if board_changed && role == BoardRole::Viewer {
-            return Err("This shared board is read-only".into());
+            return Err(DomainError::PermissionDenied.into());
         }
         let stats = persist_board_diff_transaction(
             &transaction,
@@ -2371,7 +2378,7 @@ fn mark_local_board_change(
                 params![board_id, SyncStatus::Conflict, SyncStatus::Pending],
             )?;
         }
-        _ => return Err("This shared board is read-only".into()),
+        _ => return Err(DomainError::PermissionDenied.into()),
     }
     Ok(())
 }
@@ -3093,6 +3100,27 @@ mod tests {
                 .set_shared_board(owner, role, SyncStatus::Synced, 1)
                 .unwrap();
             assert!(loaded.database.boards().unwrap()[0].is_shared);
+        }
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_boards_preserve_domain_errors_at_the_command_boundary() {
+        let dir = test_dir("missing-board-errors");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let active = loaded.database.active_board_id();
+        for error in [
+            loaded.database.board_role(-1).unwrap_err(),
+            loaded
+                .database
+                .move_task_to_board(active, 1, -1, 1)
+                .unwrap_err(),
+        ] {
+            let value =
+                serde_json::to_value(crate::errors::CommandError::repository(error)).unwrap();
+            assert_eq!(value, serde_json::json!({"code": "BOARD_NOT_FOUND"}));
         }
         drop(loaded);
         fs::remove_dir_all(dir).unwrap();
@@ -4226,6 +4254,34 @@ mod tests {
 
         database.delete_note(pinned.id).unwrap();
         assert_eq!(database.get_notes().unwrap(), vec![newer]);
+        for error in [
+            database.delete_note(pinned.id).unwrap_err(),
+            database.update_note(&pinned).unwrap_err(),
+        ] {
+            assert_eq!(
+                serde_json::to_value(crate::errors::CommandError::repository(error)).unwrap(),
+                serde_json::json!({"code": "NOTE_NOT_FOUND"})
+            );
+        }
+        database.initialize_boards(&StoredData::default()).unwrap();
+        assert_eq!(
+            serde_json::to_value(crate::errors::CommandError::repository(
+                database
+                    .update_iroh_invite("missing", None, Some(false))
+                    .unwrap_err()
+            ))
+            .unwrap(),
+            serde_json::json!({"code": "INVITE_NOT_FOUND"})
+        );
+        assert_eq!(
+            serde_json::to_value(crate::errors::CommandError::repository(
+                database
+                    .set_iroh_device_approved("missing", "device", true)
+                    .unwrap_err()
+            ))
+            .unwrap(),
+            serde_json::json!({"code": "DEVICE_REQUEST_NOT_FOUND"})
+        );
         drop(database);
         fs::remove_dir_all(dir).unwrap();
     }

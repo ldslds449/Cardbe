@@ -1,3 +1,4 @@
+use crate::errors::{CommandError, DomainError};
 use crate::{
     models::{Archive, RecurrenceFrequency, StoredData, Task, TaskSummary},
     state::{load_archives_for_board, update_stored_with_archives_for_board, SharedAppData},
@@ -20,38 +21,33 @@ pub struct ArchivePage {
     pub next_cursor: Option<String>,
 }
 
-fn parse_cursor(cursor: Option<String>) -> Result<Option<(u128, i64)>, String> {
+fn parse_cursor(cursor: Option<String>) -> Result<Option<(u128, i64)>, DomainError> {
     cursor
         .map(|value| {
-            let (time, task_id) = value
-                .split_once(':')
-                .ok_or_else(|| "Invalid archive cursor".to_string())?;
+            let (time, task_id) = value.split_once(':').ok_or(DomainError::InvalidArgument)?;
             Ok((
-                time.parse()
-                    .map_err(|_| "Invalid archive cursor".to_string())?,
-                task_id
-                    .parse()
-                    .map_err(|_| "Invalid archive cursor".to_string())?,
+                time.parse().map_err(|_| DomainError::InvalidArgument)?,
+                task_id.parse().map_err(|_| DomainError::InvalidArgument)?,
             ))
         })
         .transpose()
 }
 
-fn current_time_millis() -> Result<u128, String> {
+fn current_time_millis() -> Result<u128, DomainError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
-        .map_err(|error| error.to_string())
+        .map_err(|error| DomainError::Internal(error.to_string()))
 }
 
-fn column_index(data: &StoredData, column_id: i64) -> Result<usize, String> {
+fn column_index(data: &StoredData, column_id: i64) -> Result<usize, DomainError> {
     data.columns
         .iter()
         .position(|column| column.id == column_id)
-        .ok_or_else(|| format!("Column not found: {column_id}"))
+        .ok_or(DomainError::ColumnNotFound)
 }
 
-fn task_position(data: &StoredData, task_id: i64) -> Result<(usize, usize), String> {
+fn task_position(data: &StoredData, task_id: i64) -> Result<(usize, usize), DomainError> {
     data.columns
         .iter()
         .enumerate()
@@ -62,14 +58,14 @@ fn task_position(data: &StoredData, task_id: i64) -> Result<(usize, usize), Stri
                 .position(|task| task.id == task_id)
                 .map(|task_idx| (column_idx, task_idx))
         })
-        .ok_or_else(|| format!("Task not found: {task_id}"))
+        .ok_or(DomainError::TaskNotFound)
 }
 
 fn advance_due_time(
     due_time: u128,
     frequency: RecurrenceFrequency,
     interval: u32,
-) -> Result<u128, String> {
+) -> Result<u128, DomainError> {
     let due_time = i64::try_from(due_time).map_err(|_| "Task due time is out of range")?;
     let date = DateTime::<Utc>::from_timestamp_millis(due_time)
         .ok_or_else(|| "Task due time is invalid".to_string())?;
@@ -83,10 +79,10 @@ fn advance_due_time(
     }
     .ok_or_else(|| "The next recurring task date is out of range".to_string())?;
     u128::try_from(next.timestamp_millis())
-        .map_err(|_| "The next task date is before 1970".to_string())
+        .map_err(|_| DomainError::Internal("The next task date is before 1970".into()))
 }
 
-fn next_recurring_task(task: &Task, now: u128, id: i64) -> Result<Option<Task>, String> {
+fn next_recurring_task(task: &Task, now: u128, id: i64) -> Result<Option<Task>, DomainError> {
     let Some(recurrence) = &task.recurrence else {
         return Ok(None);
     };
@@ -119,8 +115,8 @@ fn next_recurring_task(task: &Task, now: u128, id: i64) -> Result<Option<Task>, 
 pub fn get_archives(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
-) -> Result<Vec<Archive>, String> {
-    load_archives_for_board(&state, expected_board_id)
+) -> Result<Vec<Archive>, CommandError> {
+    load_archives_for_board(&state, expected_board_id).map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -130,14 +126,14 @@ pub fn list_archives(
     cursor: Option<String>,
     query: Option<String>,
     limit: Option<usize>,
-) -> Result<ArchivePage, String> {
+) -> Result<ArchivePage, CommandError> {
     let cursor = parse_cursor(cursor)?;
     let limit = limit.unwrap_or(ARCHIVE_PAGE_SIZE).clamp(1, 100);
     let guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(CommandError::StaleBoardRequest);
     }
     let archives = guard
         .database
@@ -147,7 +143,7 @@ pub fn list_archives(
             query.as_deref().unwrap_or_default(),
             limit + 1,
         )
-        .map_err(|error| error.to_string())?;
+        .map_err(CommandError::repository)?;
     let has_more = archives.len() > limit;
     let items = archives
         .into_iter()
@@ -169,18 +165,18 @@ pub fn get_archive_task(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
     task_id: i64,
-) -> Result<Task, String> {
+) -> Result<Task, CommandError> {
     let guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
     if guard.active_board_id != expected_board_id {
-        return Err("Stale board request".into());
+        return Err(CommandError::StaleBoardRequest);
     }
     guard
         .database
         .load_archive_task(expected_board_id, task_id)
-        .map_err(|error| error.to_string())
-        .and_then(|task| task.ok_or_else(|| format!("Archived task not found: {task_id}")))
+        .map_err(CommandError::repository)
+        .and_then(|task| task.ok_or(CommandError::TaskNotFound))
 }
 
 #[tauri::command]
@@ -188,7 +184,7 @@ pub fn archive_task(
     state: State<'_, SharedAppData>,
     task_id: i64,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let time = current_time_millis()?;
     update_stored_with_archives_for_board(&state, expected_board_id, |data| {
         let (column, task_index) = task_position(data, task_id)?;
@@ -202,6 +198,7 @@ pub fn archive_task(
         data.archives.push(Archive { time, task });
         Ok(())
     })
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -209,7 +206,7 @@ pub fn archive_all_tasks(
     state: State<'_, SharedAppData>,
     column_id: i64,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let time = current_time_millis()?;
     update_stored_with_archives_for_board(&state, expected_board_id, |data| {
         let column = column_index(data, column_id)?;
@@ -229,6 +226,7 @@ pub fn archive_all_tasks(
         data.archives.extend(archives);
         Ok(())
     })
+    .map_err(CommandError::from)
 }
 
 #[cfg(test)]
@@ -294,16 +292,17 @@ pub fn unarchive_task(
     column_id: i64,
     task_id: i64,
     expected_board_id: i64,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     update_stored_with_archives_for_board(&state, expected_board_id, |data| {
         let column = column_index(data, column_id)?;
         let archive = data
             .archives
             .iter()
             .position(|archive| archive.task.id == task_id)
-            .ok_or_else(|| format!("Archived task not found: {task_id}"))?;
+            .ok_or(DomainError::TaskNotFound)?;
         let archive = data.archives.remove(archive);
         data.columns[column].tasks.push(archive.task);
         Ok(())
     })
+    .map_err(CommandError::from)
 }

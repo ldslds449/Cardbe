@@ -30,29 +30,24 @@ describe("update check interval", () => {
 });
 
 describe("update check errors", () => {
-  it("localizes HTTP errors returned by Tauri commands", () => {
-    expect(updateCheckErrorMessage("GitHub returned 403 Forbidden")).toBe(
-      "GitHub returned HTTP 403. Try again later.",
-    );
-  });
-
-  it("localizes errors from Error instances and error-like objects", () => {
-    expect(updateCheckErrorMessage(new Error("Request timed out"))).toBe(
+  it("localizes structured service errors without parsing backend wording", () => {
+    expect(updateCheckErrorMessage({ code: "UPDATE_REQUEST_FAILED" })).toBe(
       "Could not contact GitHub. Check your connection and try again.",
-    );
-    expect(updateCheckErrorMessage({ message: "Network unavailable" })).toBe(
-      "Could not contact GitHub. Check your connection and try again.",
-    );
-  });
-
-  it("provides a useful fallback for empty or unrecognized errors", () => {
-    expect(updateCheckErrorMessage("  ")).toBe("An unknown error occurred.");
-    expect(updateCheckErrorMessage(null)).toBe("An unknown error occurred.");
-    expect(updateCheckErrorMessage("Unexpected internal failure")).toBe(
-      "An unknown error occurred.",
     );
     expect(
-      updateCheckErrorMessage("GitHub returned invalid release data: EOF"),
+      updateCheckErrorMessage({ code: "UPDATE_RELEASE_DATA_INVALID" }),
     ).toBe("GitHub returned invalid release information.");
+  });
+  it("hides unknown values and legacy backend messages", () => {
+    for (const error of [
+      null,
+      "GitHub returned 403 Forbidden",
+      new Error("Request timed out"),
+      { message: "Network unavailable" },
+    ]) {
+      expect(updateCheckErrorMessage(error)).toBe(
+        "Something went wrong. Please try again.",
+      );
+    }
   });
 });

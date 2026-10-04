@@ -24,6 +24,17 @@ describe("core messages", () => {
       for (const locale of ["en", "zh-TW", "en"] as const) {
         applyLanguagePreference(locale);
         const chinese = locale === "zh-TW";
+        const catalog = chinese ? zh : en;
+        expect(m.editor_bold()).toBe(catalog.editor_bold);
+        expect(m.editor_inline_code_help()).toBe(
+          catalog.editor_inline_code_help,
+        );
+        expect(m.editor_settings()).toBe(catalog.editor_settings);
+        expect(m.editor_reference_card()).toBe(catalog.editor_reference_card);
+        expect(m.editor_link_required()).toBe(catalog.editor_link_required);
+        expect(m.ui_access_restored_conflict()).toBe(
+          catalog.ui_access_restored_conflict,
+        );
         expect(m.task_move_board()).toBe(
           chinese ? "移至其他看板" : "Move to Board",
         );
@@ -80,22 +91,16 @@ describe("core messages", () => {
         expect(m.share_access_request_error()).toBe(
           chinese ? "無法申請存取權限" : "Couldn't request access",
         );
-        expect(updateCheckErrorMessage("GitHub returned 403 Forbidden")).toBe(
-          chinese
-            ? "GitHub 回傳 HTTP 403，請稍後再試。"
-            : "GitHub returned HTTP 403. Try again later.",
+        expect(updateCheckErrorMessage({ code: "UPDATE_REQUEST_FAILED" })).toBe(
+          chinese ? zh.update_network_error : en.update_network_error,
         );
         expect(
-          updateCheckErrorMessage(
-            new Error("Could not contact GitHub: offline"),
-          ),
+          updateCheckErrorMessage({ code: "UPDATE_RELEASE_DATA_INVALID" }),
         ).toBe(
-          chinese
-            ? "無法連線至 GitHub，請檢查網路連線後再試。"
-            : "Could not contact GitHub. Check your connection and try again.",
+          chinese ? zh.update_release_data_error : en.update_release_data_error,
         );
-        expect(updateCheckErrorMessage(null)).toBe(
-          chinese ? "發生未知錯誤。" : "An unknown error occurred.",
+        expect(updateCheckErrorMessage("GitHub returned 403 Forbidden")).toBe(
+          chinese ? zh.error_internal : en.error_internal,
         );
         expect(() => parse_requested_share_link("invalid")).toThrow(
           chinese ? zh.share_link_invalid : en.share_link_invalid,

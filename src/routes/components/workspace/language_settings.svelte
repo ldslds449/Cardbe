@@ -3,7 +3,6 @@
   import * as Select from "$lib/components/ui/select/index.js";
   import { m } from "$lib/paraglide/messages.js";
   import { language, isLanguagePreference } from "$lib/i18n";
-  import { toast } from "svelte-sonner";
   import { board } from "../../board.svelte";
 
   let { open = $bindable(false) }: { open: boolean } = $props();
@@ -14,9 +13,7 @@
     }
     saving = true;
     try {
-      if (!(await board.set_language(value))) {
-        toast.error(m.settings_language_save_error());
-      }
+      await board.set_language(value);
     } finally {
       saving = false;
     }

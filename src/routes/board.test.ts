@@ -1,3 +1,5 @@
+import { open } from "@tauri-apps/plugin-dialog";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
@@ -11,6 +13,7 @@ import {
   vi,
 } from "vite-plus/test";
 import { applyLanguagePreference, language } from "$lib/i18n";
+import { translateCommandError } from "$lib/command-errors";
 
 import { BoardStore } from "./board.svelte";
 import { create_task } from "./type/task.svelte";
@@ -93,6 +96,27 @@ describe("BoardStore disposal", () => {
       "take_recovery_messages",
     ]);
   });
+});
+
+it("keeps the structured error reason and retry action for failed reads", async () => {
+  invoke_mock.mockReset();
+  vi.mocked(toast.error).mockClear();
+  const error = {
+    code: "STALE_BOARD_REQUEST",
+    detail: "private database path",
+  };
+  invoke_mock.mockRejectedValue(error);
+  const store = create_store();
+  store.update_labels();
+  await vi.waitFor(() =>
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        description: translateCommandError(error),
+        action: expect.objectContaining({ onClick: expect.any(Function) }),
+      }),
+    ),
+  );
 });
 
 describe("cross-board task moves", () => {
@@ -311,7 +335,7 @@ describe("Iroh sync", () => {
         return Promise.resolve({ boards: [saved], active_board_id: 7 });
       }
       if (command === "request_iroh_board_access") {
-        return Promise.reject("ACCESS_REVOKED:Access was declined or revoked.");
+        return Promise.reject({ code: "SHARE_ACCESS_REVOKED" });
       }
       return Promise.resolve();
     });
@@ -420,7 +444,7 @@ describe("Iroh sync", () => {
       return Promise.resolve();
     });
     await store.sync_iroh_board(7, true);
-    expect(store.iroh_sync_error[7]).toBe("Owner unreachable");
+    expect(store.iroh_sync_error[7]).toEqual({ code: "INTERNAL_ERROR" });
     store.trigger_iroh_background_sync();
     expect(attempts).toBe(1);
     store.reconnect_iroh_boards();
@@ -483,7 +507,7 @@ describe("Iroh sync", () => {
     interrupted.reject("Old endpoint was closed");
     await original;
     await vi.waitFor(() =>
-      expect(store.iroh_sync_error[7]).toBe("Owner still unreachable"),
+      expect(store.iroh_sync_error[7]).toEqual({ code: "INTERNAL_ERROR" }),
     );
     expect(store.boards[0].sync_status).toBe("pending");
   });
@@ -583,9 +607,7 @@ describe("Iroh sync", () => {
           command === "request_iroh_board_access" ||
           command === "sync_iroh_board"
         ) {
-          return Promise.reject(
-            "ACCESS_REVOKED:Access was declined or revoked. You can request access again.",
-          );
+          return Promise.reject({ code: "SHARE_ACCESS_REVOKED" });
         }
         return Promise.resolve();
       });
@@ -598,9 +620,9 @@ describe("Iroh sync", () => {
           state === "conflict" ? "conflict" : "error",
         ),
       );
-      expect(store.iroh_access_error[7]).toContain(
-        "Access was declined or revoked",
-      );
+      expect(store.iroh_access_error[7]).toEqual({
+        code: "SHARE_ACCESS_REVOKED",
+      });
       expect(toast.error).not.toHaveBeenCalled();
       if (state !== "pending") {
         expect(invoke_mock).toHaveBeenCalledWith("request_iroh_board_access", {
@@ -1290,5 +1312,101 @@ describe("column sorting", () => {
       "task_3",
       "task_1",
     ]);
+  });
+});
+
+describe("invitation join errors", () => {
+  it("uses the internal fallback for unknown failures and preserves approval errors", async () => {
+    const store = new BoardStore();
+    for (const failure of ["legacy private error", { code: "UNKNOWN" }, null]) {
+      invoke_mock.mockReset();
+      invoke_mock.mockRejectedValueOnce(failure);
+      expect(await store.join_iroh_invite("ticket")).toBe(false);
+      expect(store.iroh_last_error).toEqual({ code: "INTERNAL_ERROR" });
+      expect(toast.error).toHaveBeenLastCalledWith(
+        translateCommandError({ code: "INTERNAL_ERROR" }),
+      );
+    }
+    const approval = { code: "SHARE_APPROVAL_REQUIRED", device_id: "device" };
+    invoke_mock.mockRejectedValueOnce(approval);
+    vi.mocked(toast.error).mockClear();
+    expect(await store.join_iroh_invite("ticket")).toBe(false);
+    expect(store.iroh_last_error).toEqual(approval);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("invalid backup input", () => {
+  it("finishes backend validation before revoking links and importing", async () => {
+    vi.mocked(open).mockResolvedValue("isolated-backup.json");
+    const jsonData = '{"schema_version":1,"boards":[{"name":"Board"}]}';
+    vi.mocked(readTextFile).mockResolvedValue(jsonData);
+    const store = new BoardStore();
+    const beforeRestore = vi.fn().mockResolvedValue(undefined);
+    const calls: string[] = [];
+    invoke_mock.mockReset();
+    invoke_mock.mockImplementation((command) => {
+      calls.push(command);
+      if (command === "validate_all_boards_backup") {
+        expect(beforeRestore).not.toHaveBeenCalled();
+      }
+      if (command === "import_all_boards") {
+        expect(beforeRestore).toHaveBeenCalledOnce();
+      }
+      return Promise.resolve({ notify_enabled: false });
+    });
+    vi.spyOn(store, "get_boards").mockResolvedValue(undefined);
+    for (const method of [
+      "get_columns",
+      "update_labels",
+      "get_task_templates",
+      "get_expired_tasks",
+    ] as const) {
+      vi.spyOn(store, method).mockImplementation(() => {});
+    }
+    expect(await store.import_all_boards_from_file(false, beforeRestore)).toBe(
+      true,
+    );
+    expect(calls).toEqual([
+      "validate_all_boards_backup",
+      "import_all_boards",
+      "get_settings",
+    ]);
+    vi.restoreAllMocks();
+  });
+
+  it("reports invalid JSON and backup shapes before restoring or revoking links", async () => {
+    vi.mocked(open).mockResolvedValue("isolated-backup.json");
+    const store = new BoardStore();
+    const beforeRestore = vi.fn();
+    invoke_mock.mockReset();
+    invoke_mock.mockImplementation((command) =>
+      command === "validate_all_boards_backup"
+        ? Promise.reject({ code: "INVALID_IMPORT" })
+        : Promise.resolve(),
+    );
+    for (const json of [
+      "{",
+      "null",
+      "[]",
+      "{}",
+      '{"schema_version":1,"boards":[]}',
+      '{"schema_version":1,"boards":[{}]}',
+    ]) {
+      vi.mocked(readTextFile).mockResolvedValue(json);
+      expect(
+        await store.import_all_boards_from_file(false, beforeRestore),
+      ).toBe(false);
+      expect(toast.error).toHaveBeenLastCalledWith(
+        translateCommandError({ code: "INVALID_IMPORT" }),
+        { description: undefined },
+      );
+    }
+    expect(beforeRestore).not.toHaveBeenCalled();
+    expect(
+      invoke_mock.mock.calls.some(
+        ([command]) => command === "import_all_boards",
+      ),
+    ).toBe(false);
   });
 });

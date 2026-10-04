@@ -1,3 +1,4 @@
+use crate::errors::{CommandError, DomainError};
 use crate::{models::TaskSummary, state::SharedAppData, storage::TaskExplorerQuery};
 use tauri::State;
 
@@ -24,20 +25,20 @@ pub fn list_all_tasks(
     cursor: Option<String>,
     filter: TaskExplorerQuery,
     limit: Option<usize>,
-) -> Result<AllTaskPage, String> {
+) -> Result<AllTaskPage, CommandError> {
     let offset = cursor
         .map(|value| value.parse::<i64>())
         .transpose()
-        .map_err(|_| "Invalid task cursor".to_string())?
+        .map_err(|_| DomainError::InvalidArgument)?
         .unwrap_or(0);
     if !(0..=i64::MAX - 100).contains(&offset) {
-        return Err("Invalid task cursor".into());
+        return Err(CommandError::InvalidArgument);
     }
     if !["all", "active", "overdue", "recurring", "archived"].contains(&filter.status.as_str())
         || !["due", "title", "column", "archived"].contains(&filter.sort.as_str())
         || !["all", "due", "none"].contains(&filter.due.as_str())
     {
-        return Err("Invalid task filters".into());
+        return Err(CommandError::InvalidArgument);
     }
     let limit = limit.unwrap_or(TASK_EXPLORER_PAGE_SIZE).clamp(1, 100);
     let guard = state
@@ -46,7 +47,7 @@ pub fn list_all_tasks(
     let rows = guard
         .database
         .list_all_task_page(&filter, offset, limit + 1)
-        .map_err(|error| error.to_string())?;
+        .map_err(CommandError::repository)?;
     let has_more = rows.len() > limit;
     let items = rows
         .into_iter()

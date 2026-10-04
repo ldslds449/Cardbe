@@ -1,4 +1,8 @@
 <script lang="ts">
+  import {
+    parseCommandError,
+    translateCommandError,
+  } from "$lib/command-errors";
   import { getLocale, formatNumber } from "$lib/i18n";
   import * as m from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
@@ -528,24 +532,26 @@
       logger.error("calendar.export.failed", error);
       console.error(m.ui_couldn_t_export_calendar(), error);
       toast.error(
-        error instanceof Error &&
-          [
-            m.export_canvas_error(),
-            m.export_dpi_error(),
-            m.export_create_error(),
-            m.export_png_data_error(),
-            m.export_png_chunk_error(),
-            m.export_png_structure_error(),
-            m.export_pdf_color_error(),
-            m.export_pdf_page_error(),
-            m.export_font_empty(),
-            m.export_font_error(),
-            m.export_select_month(),
-            m.export_large_error(),
-            m.export_filename_error(),
-          ].some((message) => message === error.message)
-          ? error.message
-          : m.ui_couldn_t_export_the_calendar(),
+        parseCommandError(error)
+          ? translateCommandError(error)
+          : error instanceof Error &&
+              [
+                m.export_canvas_error(),
+                m.export_dpi_error(),
+                m.export_create_error(),
+                m.export_png_data_error(),
+                m.export_png_chunk_error(),
+                m.export_png_structure_error(),
+                m.export_pdf_color_error(),
+                m.export_pdf_page_error(),
+                m.export_font_empty(),
+                m.export_font_error(),
+                m.export_select_month(),
+                m.export_large_error(),
+                m.export_filename_error(),
+              ].some((message) => message === error.message)
+            ? error.message
+            : m.ui_couldn_t_export_the_calendar(),
       );
     } finally {
       exporting = false;

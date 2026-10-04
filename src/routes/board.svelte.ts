@@ -1,3 +1,8 @@
+import {
+  parseCommandError,
+  translateCommandError,
+  type CommandError,
+} from "$lib/command-errors";
 import { m } from "$lib/paraglide/messages.js";
 import { applyLanguagePreference, type LanguagePreference } from "$lib/i18n";
 import type { TaskExplorerQuery } from "./utils/task-explorer";
@@ -202,10 +207,10 @@ export class BoardStore {
   private iroh_last_checked_at = new Map<number, number>();
   private iroh_host_checking = false;
   private iroh_network_generation = 0;
-  iroh_last_error = $state("");
-  iroh_sync_error = $state<Record<number, string>>({});
+  iroh_last_error = $state<CommandError | null>(null);
+  iroh_sync_error = $state<Record<number, CommandError>>({});
   iroh_access_removed = $state<Record<number, boolean>>({});
-  iroh_access_error = $state<Record<number, string>>({});
+  iroh_access_error = $state<Record<number, CommandError>>({});
   iroh_last_synced_at = $state<Record<number, number>>({});
 
   async create_iroh_invite(
@@ -221,7 +226,7 @@ export class BoardStore {
   }
 
   async join_iroh_invite(ticket: string, silent = false): Promise<boolean> {
-    this.iroh_last_error = "";
+    this.iroh_last_error = null;
     try {
       const joined = await invoke<BoardSummary>("join_iroh_invite", {
         ticket,
@@ -236,18 +241,11 @@ export class BoardStore {
       return true;
     } catch (error) {
       logger.error("iroh.invite_join.failed", error);
-      this.iroh_last_error =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : m.share_join_error();
-      if (!silent && !this.iroh_last_error.startsWith("APPROVAL_REQUIRED:")) {
-        toast.error(
-          this.iroh_last_error.startsWith("Access was declined or revoked")
-            ? m.ui_access_was_declined_or_revoked()
-            : m.share_join_error(),
-        );
+      this.iroh_last_error = parseCommandError(error) ?? {
+        code: "INTERNAL_ERROR",
+      };
+      if (!silent && this.iroh_last_error.code !== "SHARE_APPROVAL_REQUIRED") {
+        toast.error(translateCommandError(this.iroh_last_error));
       }
       return false;
     }
@@ -274,14 +272,14 @@ export class BoardStore {
     }
     try {
       if (access_only) {
-        const [approved, , refreshed] = await invoke<
+        const [approved, device_id, refreshed] = await invoke<
           [boolean, string, BoardSummary?]
         >("request_iroh_board_access", {
           boardId: board_id,
           requestApproval: false,
         });
         if (!approved) {
-          throw "APPROVAL_REQUIRED:Waiting for owner approval.";
+          throw { code: "SHARE_APPROVAL_REQUIRED", device_id };
         }
         if (refreshed) {
           this.apply_iroh_conflict_refresh(refreshed);
@@ -330,26 +328,18 @@ export class BoardStore {
         return false;
       }
       logger.error("iroh.board_sync.failed", error);
-      const raw_message =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : m.share_sync_error();
-      const access_error =
-        /^(ACCESS_REVOKED|INVITATION_DISABLED|INVITATION_DELETED|APPROVAL_REQUIRED):/.test(
-          raw_message,
-        );
-      const message = raw_message.replace(
-        /^(ACCESS_REVOKED|INVITATION_DISABLED|INVITATION_DELETED|APPROVAL_REQUIRED):/,
-        "",
-      );
-      this.iroh_sync_error[board_id] = message;
-      if (
-        access_error ||
-        message.startsWith("Access was declined or revoked")
-      ) {
-        this.iroh_access_error[board_id] = message;
+      const command_error = parseCommandError(error) ?? {
+        code: "INTERNAL_ERROR",
+      };
+      this.iroh_sync_error[board_id] = command_error;
+      const access_error = [
+        "SHARE_ACCESS_REVOKED",
+        "INVITE_DISABLED",
+        "INVITE_NOT_FOUND",
+        "SHARE_APPROVAL_REQUIRED",
+      ].includes(command_error.code);
+      if (access_error) {
+        this.iroh_access_error[board_id] = command_error;
         this.iroh_access_removed = {
           ...this.iroh_access_removed,
           [board_id]: true,
@@ -372,11 +362,7 @@ export class BoardStore {
         );
       }
       if (!silent) {
-        toast.error(
-          message.startsWith("Access was declined or revoked")
-            ? m.ui_access_was_declined_or_revoked()
-            : m.share_sync_error(),
-        );
+        toast.error(translateCommandError(error));
       }
       return false;
     } finally {
@@ -402,9 +388,9 @@ export class BoardStore {
       this.boards.find((item) => item.id === board_id)?.sync_status ===
       "conflict"
     ) {
-      toast.success("Access restored. Resolve the conflict before syncing.");
+      toast.success(m.ui_access_restored_conflict());
     } else if (await this.sync_iroh_board(board_id, true)) {
-      toast.success("Access restored");
+      toast.success(m.ui_access_restored());
     }
   }
 
@@ -445,7 +431,7 @@ export class BoardStore {
       return true;
     } catch (error) {
       logger.error("iroh.conflict_resolve.failed", error);
-      toast.error(m.share_conflict_error());
+      toast.error(translateCommandError(error));
       return false;
     }
   }
@@ -568,8 +554,13 @@ export class BoardStore {
 
   // ============ Data Fetching ============
 
-  private show_data_fetch_error(message: string, retry: () => void) {
+  private show_data_fetch_error(
+    message: string,
+    error: unknown,
+    retry: () => void,
+  ) {
     toast.error(message, {
+      description: translateCommandError(error),
       action: {
         label: m.common_retry(),
         onClick: retry,
@@ -619,7 +610,7 @@ export class BoardStore {
     } catch (e: unknown) {
       logger.error("board.undo.failed", e);
       console.log(e);
-      toast.error(m.common_undo_error());
+      toast.error(translateCommandError(e));
       return false;
     } finally {
       this.undo_in_progress = false;
@@ -656,7 +647,7 @@ export class BoardStore {
       .catch((e) => {
         logger.error("board.labels_load.failed", e);
         console.log(e);
-        board.show_data_fetch_error(m.board_labels_load_error(), () =>
+        board.show_data_fetch_error(m.board_labels_load_error(), e, () =>
           board.update_labels(),
         );
       });
@@ -706,7 +697,7 @@ export class BoardStore {
           board.column_fetch_error = true;
           board.column_fetch_finish = true;
         } else {
-          board.show_data_fetch_error(m.board_columns_refresh_error(), () =>
+          board.show_data_fetch_error(m.board_columns_refresh_error(), e, () =>
             board.get_columns(),
           );
         }
@@ -818,7 +809,7 @@ export class BoardStore {
         logger.error("board.archives_load.failed", e);
         console.log(e);
         if (generation === board.board_generation) {
-          board.show_data_fetch_error(m.task_archives_load_error(), () =>
+          board.show_data_fetch_error(m.task_archives_load_error(), e, () =>
             board.get_archives(),
           );
         }
@@ -899,7 +890,7 @@ export class BoardStore {
       .catch((error) => {
         logger.error("board.archive_page_load.failed", error);
         if (request === this.archive_list_request) {
-          this.show_data_fetch_error(m.task_archives_load_error(), () =>
+          this.show_data_fetch_error(m.task_archives_load_error(), error, () =>
             this.fetch_archive_page(reset),
           );
         }
@@ -1020,7 +1011,7 @@ export class BoardStore {
       .catch((error) => {
         logger.error("board.expired_tasks_load.failed", error);
         if (request === this.expired_list_request) {
-          this.show_data_fetch_error(m.task_expired_load_error(), () =>
+          this.show_data_fetch_error(m.task_expired_load_error(), error, () =>
             this.fetch_expired_page(reset),
           );
         }
@@ -1095,7 +1086,7 @@ export class BoardStore {
         logger.error("board.all_task_page_load.failed", error);
         if (request === this.all_task_list_request) {
           this.all_task_items_error = true;
-          this.show_data_fetch_error(m.task_explorer_load_error(), () =>
+          this.show_data_fetch_error(m.task_explorer_load_error(), error, () =>
             this.fetch_all_task_page(reset),
           );
         }
@@ -1200,7 +1191,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.create.failed", e);
       console.log(e);
-      toast.error(m.board_create_error());
+      toast.error(translateCommandError(e));
       return false;
     }
   }
@@ -1219,7 +1210,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.rename.failed", e);
       console.log(e);
-      toast.error(m.board_rename_error());
+      toast.error(translateCommandError(e));
       return false;
     }
   }
@@ -1274,7 +1265,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.switch.failed", e);
       console.log(e);
-      toast.error(m.board_switch_error());
+      toast.error(translateCommandError(e));
       return false;
     }
   }
@@ -1291,7 +1282,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.delete.failed", e);
       console.log(e);
-      toast.error(m.board_delete_error());
+      toast.error(translateCommandError(e));
       return false;
     }
   }
@@ -1328,12 +1319,12 @@ export class BoardStore {
           return true;
         } catch (e: unknown) {
           logger.error("settings.notification_save.failed", e);
+          toast.error(translateCommandError(e));
           console.log("Couldn't save notification settings:", e);
           return false;
         }
       });
       if (!saved) {
-        toast.error(m.settings_notify_save_error());
         return;
       }
 
@@ -1355,6 +1346,7 @@ export class BoardStore {
         return true;
       } catch (error) {
         logger.error("settings.language_save.failed", error);
+        toast.error(translateCommandError(error));
         return false;
       }
     });
@@ -1467,7 +1459,7 @@ export class BoardStore {
         logger.error("template.load.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error(m.task_template_load_error());
+          toast.error(translateCommandError(e));
         }
       });
   }
@@ -1503,7 +1495,7 @@ export class BoardStore {
         logger.error("template.create.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error(m.task_template_save_error());
+          toast.error(translateCommandError(e));
         }
         return false;
       });
@@ -1545,7 +1537,7 @@ export class BoardStore {
         logger.error("template.update.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error(m.task_template_update_error());
+          toast.error(translateCommandError(e));
         }
         return false;
       });
@@ -1577,7 +1569,7 @@ export class BoardStore {
         logger.error("template.delete.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error(m.task_template_delete_error());
+          toast.error(translateCommandError(e));
         }
         return false;
       });
@@ -1740,7 +1732,7 @@ export class BoardStore {
           this.columns = [...this.columns];
         }
         this.refresh_labels_from_columns();
-        toast.error(m.task_add_error());
+        toast.error(translateCommandError(e));
         throw e;
       });
     this.pending_task_creations.set(pending_task_id, creation);
@@ -1823,7 +1815,7 @@ export class BoardStore {
             this.columns = [...this.columns];
             this.refresh_labels_from_columns();
           }
-          toast.error(m.task_delete_error());
+          toast.error(translateCommandError(e));
         }
         return false;
       });
@@ -1888,7 +1880,7 @@ export class BoardStore {
             this.columns = [...this.columns];
             this.refresh_labels_from_columns();
           }
-          toast.error(m.task_archive_error());
+          toast.error(translateCommandError(e));
         }
         return false;
       });
@@ -1925,7 +1917,7 @@ export class BoardStore {
           board.refresh_archives_if_loaded();
           this.show_success_with_undo(m.task_archived_all());
         })
-        .catch((e: string) => {
+        .catch((e: unknown) => {
           logger.error("task.archive_all.failed", e);
           console.log(e);
           if (generation !== board.board_generation) {
@@ -1939,7 +1931,7 @@ export class BoardStore {
             board.columns = [...board.columns];
             board.refresh_labels_from_columns();
           }
-          toast.error(m.task_archive_all_error());
+          toast.error(translateCommandError(e));
         });
     });
   }
@@ -1985,7 +1977,7 @@ export class BoardStore {
           board.get_archives();
           this.show_success_with_undo(m.task_restored());
         })
-        .catch((e: string) => {
+        .catch((e: unknown) => {
           logger.error("task.unarchive.failed", e);
           console.log(e);
           if (generation !== board.board_generation) {
@@ -2008,7 +2000,7 @@ export class BoardStore {
           board.columns = [...board.columns];
           board.archives = [...board.archives];
           board.refresh_labels_from_columns();
-          toast.error(m.task_restore_error());
+          toast.error(translateCommandError(e));
         });
     });
   }
@@ -2040,7 +2032,7 @@ export class BoardStore {
       .catch((error: unknown) => {
         logger.error("task.unarchive_from_list.failed", error);
         if (generation === this.board_generation) {
-          toast.error(m.task_restore_error());
+          toast.error(translateCommandError(error));
         }
       });
   }
@@ -2116,7 +2108,7 @@ export class BoardStore {
           board.refresh_labels_from_columns();
         }
         if (task_was_created) {
-          toast.error(m.task_update_error());
+          toast.error(translateCommandError(e));
         }
         return false;
       });
@@ -2176,10 +2168,12 @@ export class BoardStore {
 
   private async show_recovery_messages() {
     try {
-      const messages = await invoke<string[]>("take_recovery_messages");
+      const messages = await invoke<{ code: "STORAGE_RECOVERED" }[]>(
+        "take_recovery_messages",
+      );
       if (messages.length > 0) {
         toast.warning(m.backup_recovery(), {
-          description: messages.join(" "),
+          description: m.backup_recovery_description(),
           duration: 15000,
         });
       }
@@ -2238,7 +2232,7 @@ export class BoardStore {
           if (generation !== this.board_generation) {
             return;
           }
-          toast.error(m.task_move_error());
+          toast.error(translateCommandError(e));
           this.get_columns();
         });
     }, DRAG_PERSIST_DEBOUNCE_MS);
@@ -2287,7 +2281,7 @@ export class BoardStore {
       if (generation === this.board_generation) {
         this.get_columns();
       }
-      toast.error(m.task_move_error());
+      toast.error(translateCommandError(e));
       return false;
     }
   }
@@ -2324,13 +2318,13 @@ export class BoardStore {
           // Trigger reactivity for Svelte 5
           board.columns = [...board.columns];
         })
-        .catch((e: string) => {
+        .catch((e: unknown) => {
           logger.error("column.create.failed", e);
           console.log(e);
           if (generation !== board.board_generation) {
             return;
           }
-          toast.error(m.column_add_error());
+          toast.error(translateCommandError(e));
         });
     });
   }
@@ -2369,13 +2363,13 @@ export class BoardStore {
             board.columns = [...board.columns];
           }
         })
-        .catch((e: string) => {
+        .catch((e: unknown) => {
           logger.error("column.update.failed", e);
           console.log(e);
           if (generation !== board.board_generation) {
             return;
           }
-          toast.error(m.column_update_error());
+          toast.error(translateCommandError(e));
         });
     });
   }
@@ -2439,13 +2433,13 @@ export class BoardStore {
               this.can_undo = true;
             }
           })
-          .catch((e: string) => {
+          .catch((e: unknown) => {
             logger.error("column.move.failed", e);
             console.log(e);
             if (generation !== this.board_generation) {
               return;
             }
-            toast.error(m.column_move_error());
+            toast.error(translateCommandError(e));
             this.get_columns();
           });
       });
@@ -2478,13 +2472,13 @@ export class BoardStore {
           this.columns = [...this.columns];
           this.show_success_with_undo(m.column_deleted());
         })
-        .catch((e: string) => {
+        .catch((e: unknown) => {
           logger.error("column.delete.failed", e);
           console.log(e);
           if (generation !== this.board_generation) {
             return;
           }
-          toast.error(m.column_delete_error());
+          toast.error(translateCommandError(e));
         });
     });
   }
@@ -2518,7 +2512,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.export.failed", e);
       console.log(e);
-      toast.error(m.board_export_error());
+      toast.error(translateCommandError(e));
     }
   }
 
@@ -2536,7 +2530,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("backup.export.failed", e);
       console.log(e);
-      toast.error(m.backup_create_error());
+      toast.error(translateCommandError(e));
     }
   }
 
@@ -2554,17 +2548,7 @@ export class BoardStore {
         return false;
       }
       const jsonData = await readTextFile(file_path as string);
-      const parsed = JSON.parse(jsonData) as {
-        schema_version?: number;
-        boards?: unknown[];
-      };
-      if (
-        parsed.schema_version !== 1 ||
-        !Array.isArray(parsed.boards) ||
-        parsed.boards.length === 0
-      ) {
-        throw new Error(m.backup_invalid());
-      }
+      await invoke("validate_all_boards_backup", { jsonData });
       if (confirm_restore && !window.confirm(m.backup_restore_confirm())) {
         return false;
       }
@@ -2588,7 +2572,12 @@ export class BoardStore {
       toast.error(
         share_links_revoked
           ? m.backup_restore_revoked_error()
-          : m.backup_restore_error(),
+          : translateCommandError(e),
+        {
+          description: share_links_revoked
+            ? translateCommandError(e)
+            : undefined,
+        },
       );
       return false;
     }
@@ -2643,7 +2632,7 @@ export class BoardStore {
     } catch (e) {
       logger.error("board.import_as_new.failed", e);
       console.log(e);
-      toast.error(m.board_import_error());
+      toast.error(translateCommandError(e));
       return false;
     }
   }
@@ -2671,7 +2660,7 @@ export class BoardStore {
         this.can_undo = true;
         toast.success(m.backup_imported(), {
           id: "data-import-success",
-          description: `Pre-import backup: ${snapshot_path}`,
+          description: m.backup_pre_import_path({ path: snapshot_path }),
           duration: 10000,
           action: this.can_undo
             ? {
@@ -2686,7 +2675,7 @@ export class BoardStore {
         logger.error("board.import_data.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error(m.backup_import_error());
+          toast.error(translateCommandError(e));
         }
         return false;
       });

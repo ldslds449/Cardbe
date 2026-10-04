@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { translateCommandError } from "$lib/command-errors";
   import * as m from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
@@ -156,7 +157,7 @@
     } catch (error) {
       logger.error("note.load.failed", error);
       console.error(error);
-      toast.error(m.ui_couldn_t_load_notes());
+      toast.error(translateCommandError(error));
     } finally {
       loading = false;
     }
@@ -180,7 +181,7 @@
     } catch (error) {
       logger.error("note.create.failed", error);
       console.error(error);
-      toast.error(m.ui_couldn_t_create_note());
+      toast.error(translateCommandError(error));
     } finally {
       creating = false;
     }
@@ -220,7 +221,7 @@
     } catch (error) {
       logger.error("note.save.failed", error);
       console.error(error);
-      toast.error(m.ui_couldn_t_save_note());
+      toast.error(translateCommandError(error));
     }
   }
 
@@ -267,7 +268,7 @@
     } catch (error) {
       logger.error("note.delete.failed", error);
       console.error(error);
-      toast.error(m.ui_couldn_t_delete_note());
+      toast.error(translateCommandError(error));
     } finally {
       deleting_id = null;
     }

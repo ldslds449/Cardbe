@@ -1464,7 +1464,7 @@ function load_calendar_pdf_font(): Promise<ArrayBuffer> {
   calendar_pdf_font ??= invoke<ArrayBuffer>("get_calendar_pdf_font").catch(
     (error) => {
       calendar_pdf_font = undefined;
-      throw new Error(m.export_font_error(), { cause: error });
+      throw error;
     },
   );
   return calendar_pdf_font;

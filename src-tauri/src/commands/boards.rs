@@ -1,3 +1,4 @@
+use crate::errors::{CommandError, DomainError};
 use crate::{
     models::{Board, BoardRole},
     state::SharedAppData,
@@ -11,23 +12,23 @@ pub struct BoardsState {
     active_board_id: i64,
 }
 
-fn board_name(value: String) -> Result<String, String> {
+pub(super) fn board_name(value: String) -> Result<String, DomainError> {
     let value = value.trim().to_string();
     if value.is_empty() {
-        Err("Board name cannot be empty".into())
+        Err(DomainError::BoardNameRequired)
     } else {
         Ok(value)
     }
 }
 
-fn next_board_after_delete(boards: &[Board], removed_id: i64) -> Result<i64, String> {
+fn next_board_after_delete(boards: &[Board], removed_id: i64) -> Result<i64, DomainError> {
     if boards.len() <= 1 {
-        return Err("At least one board is required".into());
+        return Err(DomainError::LastBoardRequired);
     }
     let index = boards
         .iter()
         .position(|board| board.id == removed_id)
-        .ok_or("Board not found")?;
+        .ok_or(DomainError::BoardNotFound)?;
     Ok(boards
         .get(index + 1)
         .or_else(|| boards.get(index.saturating_sub(1)))
@@ -36,25 +37,25 @@ fn next_board_after_delete(boards: &[Board], removed_id: i64) -> Result<i64, Str
 }
 
 #[tauri::command]
-pub fn get_boards(state: State<'_, SharedAppData>) -> Result<BoardsState, String> {
+pub fn get_boards(state: State<'_, SharedAppData>) -> Result<BoardsState, CommandError> {
     let guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     Ok(BoardsState {
-        boards: guard.database.boards().map_err(|e| e.to_string())?,
+        boards: guard.database.boards().map_err(CommandError::repository)?,
         active_board_id: guard.active_board_id,
     })
 }
 
 #[tauri::command]
-pub fn create_board(state: State<'_, SharedAppData>, name: String) -> Result<Board, String> {
+pub fn create_board(state: State<'_, SharedAppData>, name: String) -> Result<Board, CommandError> {
     let mut guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     let board = guard
         .database
         .create_board(&board_name(name)?)
-        .map_err(|e| e.to_string())?;
+        .map_err(CommandError::repository)?;
     guard.boards.push(board.clone());
     Ok(board)
 }
@@ -64,32 +65,32 @@ pub fn rename_board(
     state: State<'_, SharedAppData>,
     board_id: i64,
     name: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let mut guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     let name = board_name(name)?;
     if guard
         .database
         .board_role(board_id)
-        .map_err(|e| e.to_string())?
+        .map_err(CommandError::repository)?
         != BoardRole::Owner
     {
-        return Err("Only the owner can rename a shared board".into());
+        return Err(CommandError::PermissionDenied);
     }
     guard
         .database
         .rename_board(board_id, &name)
-        .map_err(|e| e.to_string())?;
+        .map_err(CommandError::repository)?;
     let (revision, status) = guard
         .database
         .board_sync_state(board_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(CommandError::repository)?;
     let board = guard
         .boards
         .iter_mut()
         .find(|board| board.id == board_id)
-        .ok_or("Board not found")?;
+        .ok_or(DomainError::BoardNotFound)?;
     board.name = name;
     board.sync_revision = revision;
     board.sync_status = status;
@@ -97,17 +98,17 @@ pub fn rename_board(
 }
 
 #[tauri::command]
-pub fn switch_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<(), String> {
+pub fn switch_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<(), CommandError> {
     let mut guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     if !guard.boards.iter().any(|board| board.id == board_id) {
-        return Err("Board not found".into());
+        return Err(CommandError::BoardNotFound);
     }
     guard.stored = guard
         .database
         .load_board(board_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(CommandError::repository)?;
     guard.active_board_id = board_id;
     guard.undo_history.clear();
     guard.archives_loaded = true;
@@ -116,10 +117,10 @@ pub fn switch_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<()
 }
 
 #[tauri::command]
-pub fn delete_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<i64, String> {
+pub fn delete_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<i64, CommandError> {
     let mut guard = state
         .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     let next = next_board_after_delete(&guard.boards, board_id)?;
     let index = guard
         .boards
@@ -129,10 +130,13 @@ pub fn delete_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<i6
     guard
         .database
         .delete_board(board_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(CommandError::repository)?;
     guard.boards.remove(index);
     if board_id == guard.active_board_id {
-        guard.stored = guard.database.load_board(next).map_err(|e| e.to_string())?;
+        guard.stored = guard
+            .database
+            .load_board(next)
+            .map_err(CommandError::repository)?;
         guard.active_board_id = next;
         guard.undo_history.clear();
         guard.refresh_labels();
