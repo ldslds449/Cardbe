@@ -67,7 +67,7 @@ fn vite_port() -> u16 {
         .unwrap_or(1420)
 }
 
-fn generated_dir() -> String {
+pub(super) fn generated_dir() -> String {
     match vite_port() {
         1420 => ".svelte-kit".into(),
         port => format!(".svelte-kit-dev-{port}"),

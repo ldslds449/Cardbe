@@ -16,9 +16,9 @@ Cardbe is a local-first desktop task manager built around a flexible Kanban boar
 
 Cardbe persists its application data locally. The repository does not include a sample database or personal task data.
 
-Desktop development builds store their data in `.cardbe-debug/<port>/` at the repository root. The default port is 1420, so `pnpm dev` uses `.cardbe-debug/1420/data.sqlite3`. Release builds continue to use the system app-local-data directory; existing release data is not copied into debug. Release uses Tauri's single-instance plugin. Each Debug port has its own runtime app identifier and data-directory lock, separating WebView storage and preventing two windows from opening the same database at once. The development directory is ignored by Git.
+Desktop development builds store their data in `.cardbe-debug/<random-id>/` at the repository root. The launcher reuses an idle instance or creates one when all instances are busy, and prints its ID, data directory, and port. The stable ID also isolates WebView storage and the runtime app identifier, independently of the port. Release builds use the system app-local-data directory; existing release data is not copied into debug. The development directory is ignored by Git.
 
-To develop with two data sets from the same checkout, run `pnpm dev` in one terminal and `pnpm tauri dev 1421` in another. The second uses `.cardbe-debug/1421/data.sqlite3`. Both run Tauri's development watcher, so frontend and Rust changes rebuild independently. Additional ports use separate Cargo output under `src-tauri/target/dev-<port>/`; their first build takes longer and uses more disk space. Debug LAN shares use an available port unless `CARDBE_SHARE_DEV_PORT` is set.
+To develop with two data sets from the same checkout, run `vp run dev` in one terminal and `vp run tauri dev 1421` in another. The launcher selects separate instances and falls back to an available port if the preferred port is busy. Additional ports isolate Cargo output, SvelteKit generated files, and Vite caches; their first build takes longer and uses more disk space. Debug LAN shares use an available port unless `CARDBE_SHARE_DEV_PORT` is set.
 
 LAN sharing is opt-in: publishing a board starts a local HTTP server reachable by devices on the same network and exposes the selected task content to anyone who has the unguessable share link. Treat the link as sensitive, share only content suitable for that audience, set an expiry where appropriate, and revoke it when finished. Do not use the feature on an untrusted network.
 
@@ -52,6 +52,15 @@ pnpm dev
 
 `pnpm dev` starts the complete desktop app with sccache enabled. `pnpm frontend:dev` starts only the Vite frontend, so native features such as tray controls, notifications, file dialogs, and LAN sharing are unavailable there.
 
+If Rust compilation puts pressure on memory, limit parallel compilation in that terminal. In PowerShell:
+
+```powershell
+$env:CARGO_BUILD_JOBS = "2"
+vp run tauri dev
+```
+
+This trades compilation speed for lower peak memory usage. Adjust the value for your machine; remove the override with `Remove-Item Env:CARGO_BUILD_JOBS`. Quick task and note windows are created and loaded at startup, then hidden and reused for fast first access.
+
 ## Secret scanning
 
 `pnpm install` configures Git to use this repository's hooks. Before every commit, the
@@ -67,19 +76,19 @@ git config core.hooksPath .githooks
 
 ## Scripts
 
-| Command                                           | Description                                                            |
-| ------------------------------------------------- | ---------------------------------------------------------------------- |
-| `pnpm dev`                                        | Run the desktop app with sccache                                       |
-| `pnpm frontend:dev`                               | Run only the Vite frontend                                             |
-| `pnpm format`                                     | Format frontend files with Prettier and Rust files with rustfmt        |
-| `pnpm lint`                                       | Check frontend and Rust lint rules                                     |
-| `pnpm lint:fix`                                   | Apply frontend and Rust lint fixes                                     |
-| `pnpm tauri dev [port]`                           | Run an independent desktop development instance; defaults to port 1420 |
-| `pnpm frontend:test`                              | Run frontend unit tests                                                |
-| `pnpm check`                                      | Run frontend, formatting, and Rust checks                              |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust unit tests                                                    |
-| `pnpm frontend:build`                             | Build the frontend assets                                              |
-| `pnpm tauri build`                                | Build installable desktop bundles                                      |
+| Command                                           | Description                                                              |
+| ------------------------------------------------- | ------------------------------------------------------------------------ |
+| `pnpm dev`                                        | Run the desktop app with sccache                                         |
+| `pnpm frontend:dev`                               | Run only the Vite frontend                                               |
+| `pnpm format`                                     | Format frontend files with Prettier and Rust files with rustfmt          |
+| `pnpm lint`                                       | Check frontend and Rust lint rules                                       |
+| `pnpm lint:fix`                                   | Apply frontend and Rust lint fixes                                       |
+| `vp run tauri dev [port]`                         | Run an isolated desktop instance, optionally requesting a preferred port |
+| `pnpm frontend:test`                              | Run frontend unit tests                                                  |
+| `pnpm check`                                      | Run frontend, formatting, and Rust checks                                |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust unit tests                                                      |
+| `pnpm frontend:build`                             | Build the frontend assets                                                |
+| `pnpm tauri build`                                | Build installable desktop bundles                                        |
 
 Desktop bundles are generated under `src-tauri/target/release/bundle/` and are deliberately excluded from Git.
 

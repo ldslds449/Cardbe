@@ -810,9 +810,18 @@ mod tests {
             assert!(is_public_viewer_asset(
                 "@id/__x00__virtual:__sveltekit/environment"
             ));
-            assert!(is_public_viewer_asset(
-                ".svelte-kit/generated/client/nodes/3.js"
-            ));
+            let generated_dir = development::generated_dir();
+            assert!(is_public_viewer_asset(&format!(
+                "{generated_dir}/generated/client/nodes/3.js"
+            )));
+            let other_generated_dir = if generated_dir == ".svelte-kit" {
+                ".svelte-kit-dev-1421"
+            } else {
+                ".svelte-kit"
+            };
+            assert!(!is_public_viewer_asset(&format!(
+                "{other_generated_dir}/generated/client/nodes/3.js"
+            )));
             assert!(development_target_allowed("share/j3V_BXrcsGwtsXv6XAD1jA"));
             assert!(!development_target_allowed("share/short"));
             assert!(is_public_viewer_asset("src/routes/share/[id]/+page.svelte"));

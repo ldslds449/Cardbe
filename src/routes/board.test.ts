@@ -34,6 +34,66 @@ vi.mock("svelte-sonner", () => ({
 
 const invoke_mock = vi.mocked(invoke);
 
+describe("BoardStore disposal", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("removes recurring work and listeners and prevents delayed initialization from restarting them", async () => {
+    vi.useFakeTimers();
+    const dev_window = new EventTarget();
+    Object.assign(dev_window, { setInterval, clearInterval });
+    const dev_document = new EventTarget();
+    Object.assign(dev_document, { visibilityState: "visible" });
+    vi.stubGlobal("window", dev_window);
+    vi.stubGlobal("document", dev_document);
+    invoke_mock.mockReset();
+    invoke_mock.mockImplementation((command) => {
+      if (command === "get_settings") {
+        return Promise.resolve({ notify_enabled: true });
+      }
+      if (command === "take_recovery_messages") {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve();
+    });
+    vi.mocked(isPermissionGranted).mockResolvedValue(true);
+    const store = new BoardStore();
+    vi.spyOn(store, "get_boards").mockResolvedValue(undefined);
+    vi.spyOn(store, "update_labels").mockImplementation(() => {});
+    vi.spyOn(store, "get_columns").mockImplementation(() => {});
+    vi.spyOn(store, "get_task_templates").mockImplementation(() => {});
+    const remove_online = vi.spyOn(dev_window, "removeEventListener");
+    const remove_visibility = vi.spyOn(dev_document, "removeEventListener");
+    await store.init();
+    expect(vi.getTimerCount()).toBe(2);
+    const boards_ready = deferred<void>();
+    vi.mocked(store.get_boards).mockReturnValueOnce(boards_ready.promise);
+    const initializing = store.init();
+    store.dispose();
+    store.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(remove_online).toHaveBeenCalledWith("online", expect.any(Function));
+    expect(remove_visibility).toHaveBeenCalledWith(
+      "visibilitychange",
+      expect.any(Function),
+    );
+    invoke_mock.mockClear();
+    dev_window.dispatchEvent(new Event("online"));
+    dev_document.dispatchEvent(new Event("visibilitychange"));
+    boards_ready.resolve();
+    await initializing;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(invoke_mock.mock.calls.map(([command]) => command)).toEqual([
+      "get_settings",
+      "take_recovery_messages",
+    ]);
+  });
+});
+
 describe("cross-board task moves", () => {
   it("keeps the selected board and refreshes all tasks when move summaries arrive after a board switch", async () => {
     invoke_mock.mockReset();

@@ -260,3 +260,31 @@ pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) 
         _ => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn quick_add_windows_are_precreated_and_hidden() {
+        let config: tauri::Config =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let main = config
+            .app
+            .windows
+            .iter()
+            .find(|window| window.label == "main")
+            .unwrap();
+        assert!(main.create);
+        for label in ["quick-task", "quick-note"] {
+            let window = config
+                .app
+                .windows
+                .iter()
+                .find(|window| window.label == label)
+                .unwrap();
+            assert!(window.create);
+            assert!(!window.visible);
+            assert!(window.always_on_top && window.skip_taskbar);
+            assert!(!window.resizable && !window.decorations);
+        }
+    }
+}

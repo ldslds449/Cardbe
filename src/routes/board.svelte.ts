@@ -187,6 +187,13 @@ export class BoardStore {
   private search_request = 0;
   private search_timer: ReturnType<typeof setTimeout> | undefined;
   private iroh_sync_timer: number | undefined;
+  private disposed = false;
+  private readonly handle_online = () => this.trigger_iroh_background_sync();
+  private readonly handle_visibility_change = () => {
+    if (document.visibilityState === "visible") {
+      this.trigger_iroh_background_sync();
+    }
+  };
   private iroh_syncing = new Set<number>();
   private iroh_failures = new Map<number, number>();
   private iroh_retry_after = new Map<number, number>();
@@ -458,6 +465,9 @@ export class BoardStore {
   }
 
   trigger_iroh_background_sync(force = false) {
+    if (this.disposed) {
+      return;
+    }
     if (
       typeof document !== "undefined" &&
       document.visibilityState !== "visible"
@@ -514,22 +524,40 @@ export class BoardStore {
   }
 
   private start_iroh_background_sync() {
-    if (this.iroh_sync_timer || typeof window === "undefined") {
+    if (
+      this.disposed ||
+      this.iroh_sync_timer !== undefined ||
+      typeof window === "undefined"
+    ) {
       return;
     }
     this.iroh_sync_timer = window.setInterval(
       () => this.trigger_iroh_background_sync(),
       IROH_BACKGROUND_SYNC_MS,
     );
-    window.addEventListener("online", () =>
-      this.trigger_iroh_background_sync(),
+    window.addEventListener("online", this.handle_online);
+    document.addEventListener(
+      "visibilitychange",
+      this.handle_visibility_change,
     );
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") {
-        this.trigger_iroh_background_sync();
-      }
-    });
     this.trigger_iroh_background_sync();
+  }
+
+  dispose() {
+    this.disposed = true;
+    this.stop_expired_task_checker();
+    if (this.iroh_sync_timer !== undefined) {
+      window.clearInterval(this.iroh_sync_timer);
+      this.iroh_sync_timer = undefined;
+    }
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", this.handle_online);
+      document.removeEventListener(
+        "visibilitychange",
+        this.handle_visibility_change,
+      );
+    }
+    // Let pending user writes finish; only recurring background work is stopped.
   }
 
   // ============ Data Fetching ============
@@ -1338,7 +1366,7 @@ export class BoardStore {
   }
 
   private start_expired_task_checker() {
-    if (this.expired_task_checker !== undefined) {
+    if (this.disposed || this.expired_task_checker !== undefined) {
       return;
     }
 
@@ -2647,3 +2675,7 @@ export class BoardStore {
 
 // Singleton instance
 export const board = new BoardStore();
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => board.dispose());
+}
