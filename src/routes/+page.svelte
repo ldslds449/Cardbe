@@ -353,9 +353,7 @@
           managed_share_state.set_sync_state(
             share.id,
             "error",
-            error instanceof Error
-              ? error.message
-              : m.ui_shared_content_is_no_longer_available(),
+            m.ui_shared_content_is_no_longer_available(),
           ),
         );
         void disable_stale_share(share);
@@ -447,9 +445,7 @@
       managed_share_state.set_sync_state(
         share_id,
         "error",
-        error instanceof Error
-          ? error.message
-          : m.ui_couldn_t_update_the_shared_board(),
+        m.ui_couldn_t_update_the_shared_board(),
       );
     },
   );
@@ -624,9 +620,7 @@
       }
     } catch (error) {
       logger.error("board.switch_share_sync.failed", error);
-      toast.error(
-        error instanceof Error ? error.message : m.board_switch_error(),
-      );
+      toast.error(m.board_switch_error());
     }
   }
 
@@ -657,11 +651,7 @@
           );
         }
       }
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : m.ui_couldn_t_revoke_this_board_s_share_links(),
-      );
+      toast.error(m.ui_couldn_t_revoke_this_board_s_share_links());
       return false;
     }
   }
@@ -697,9 +687,7 @@
           m.share_revoke_restore(),
         );
       }
-      toast.error(
-        error instanceof Error ? error.message : m.share_restore_stopped(),
-      );
+      toast.error(m.share_restore_stopped());
     }
   }
 
@@ -1612,7 +1600,7 @@
           managed_share_state.set_sync_state(
             share_id,
             "error",
-            error instanceof Error ? error.message : m.share_revoke_retry(),
+            m.share_revoke_retry(),
           );
         }}
       />

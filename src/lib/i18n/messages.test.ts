@@ -74,6 +74,26 @@ describe("core messages", () => {
         expect(create_card_reference("", "task_42")).toBe(
           chinese ? "[[無標題卡片|task_42]]" : "[[Untitled card|task_42]]",
         );
+        expect(m.diagnostics_zip_archive()).toBe(
+          chinese ? "ZIP 壓縮檔" : "ZIP archive",
+        );
+        expect(m.share_access_request_error()).toBe(
+          chinese ? "無法申請存取權限" : "Couldn't request access",
+        );
+        expect(updateCheckErrorMessage("GitHub returned 403 Forbidden")).toBe(
+          chinese
+            ? "GitHub 回傳 HTTP 403，請稍後再試。"
+            : "GitHub returned HTTP 403. Try again later.",
+        );
+        expect(
+          updateCheckErrorMessage(
+            new Error("Could not contact GitHub: offline"),
+          ),
+        ).toBe(
+          chinese
+            ? "無法連線至 GitHub，請檢查網路連線後再試。"
+            : "Could not contact GitHub. Check your connection and try again.",
+        );
         expect(updateCheckErrorMessage(null)).toBe(
           chinese ? "發生未知錯誤。" : "An unknown error occurred.",
         );

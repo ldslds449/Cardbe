@@ -1336,5 +1336,11 @@
   "share_connection_paths": "技術資訊（{count} 條網路路徑）",
   "share_boards_need_access": "{count} 個共享看板需要存取權限",
   "task_expand_description": "展開描述編輯器",
-  "editor_expanded_description": "已展開的文字編輯器"
+  "editor_expanded_description": "已展開的文字編輯器",
+  "diagnostics_zip_archive": "ZIP 壓縮檔",
+  "share_access_request_error": "無法申請存取權限",
+  "share_service_unavailable": "分享服務目前無法使用，請稍後再試。",
+  "update_network_error": "無法連線至 GitHub，請檢查網路連線後再試。",
+  "update_http_error": "GitHub 回傳 HTTP {status}，請稍後再試。",
+  "update_release_data_error": "GitHub 回傳的版本資訊無效。"
 }

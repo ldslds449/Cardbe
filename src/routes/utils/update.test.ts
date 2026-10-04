@@ -30,23 +30,29 @@ describe("update check interval", () => {
 });
 
 describe("update check errors", () => {
-  it("preserves errors returned as strings by Tauri commands", () => {
+  it("localizes HTTP errors returned by Tauri commands", () => {
     expect(updateCheckErrorMessage("GitHub returned 403 Forbidden")).toBe(
-      "GitHub returned 403 Forbidden",
+      "GitHub returned HTTP 403. Try again later.",
     );
   });
 
-  it("extracts messages from Error instances and error-like objects", () => {
+  it("localizes errors from Error instances and error-like objects", () => {
     expect(updateCheckErrorMessage(new Error("Request timed out"))).toBe(
-      "Request timed out",
+      "Could not contact GitHub. Check your connection and try again.",
     );
     expect(updateCheckErrorMessage({ message: "Network unavailable" })).toBe(
-      "Network unavailable",
+      "Could not contact GitHub. Check your connection and try again.",
     );
   });
 
   it("provides a useful fallback for empty or unrecognized errors", () => {
     expect(updateCheckErrorMessage("  ")).toBe("An unknown error occurred.");
     expect(updateCheckErrorMessage(null)).toBe("An unknown error occurred.");
+    expect(updateCheckErrorMessage("Unexpected internal failure")).toBe(
+      "An unknown error occurred.",
+    );
+    expect(
+      updateCheckErrorMessage("GitHub returned invalid release data: EOF"),
+    ).toBe("GitHub returned invalid release information.");
   });
 });

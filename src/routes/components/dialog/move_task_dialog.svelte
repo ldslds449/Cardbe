@@ -1,5 +1,6 @@
 ﻿<script lang="ts">
   import * as m from "$lib/paraglide/messages.js";
+  import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
@@ -39,8 +40,9 @@
           }
         })
         .catch((e) => {
+          logger.error("task.move_columns_load.failed", e);
           if (!cancelled) {
-            error = String(e);
+            error = m.task_move_columns_error();
           }
         })
         .finally(() => {

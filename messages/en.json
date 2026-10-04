@@ -1444,5 +1444,11 @@
   "share_connection_paths": "Technical details ({count} network paths)",
   "share_boards_need_access": "{count} shared boards need access",
   "task_expand_description": "Expand description editor",
-  "editor_expanded_description": "Expanded rich text editor"
+  "editor_expanded_description": "Expanded rich text editor",
+  "diagnostics_zip_archive": "ZIP archive",
+  "share_access_request_error": "Couldn't request access",
+  "share_service_unavailable": "Sharing service is unavailable. Try again later.",
+  "update_network_error": "Could not contact GitHub. Check your connection and try again.",
+  "update_http_error": "GitHub returned HTTP {status}. Try again later.",
+  "update_release_data_error": "GitHub returned invalid release information."
 }

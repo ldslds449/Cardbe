@@ -128,7 +128,7 @@
       const date = new Date().toISOString().slice(0, 10);
       const destination = await save({
         defaultPath: `cardbe-debug-${date}.zip`,
-        filters: [{ name: "ZIP archive", extensions: ["zip"] }],
+        filters: [{ name: m.diagnostics_zip_archive(), extensions: ["zip"] }],
       });
       if (!destination) {
         return;

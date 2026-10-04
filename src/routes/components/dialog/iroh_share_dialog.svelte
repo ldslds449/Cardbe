@@ -516,9 +516,7 @@
       );
     } catch (e) {
       logger.error("iroh.invite_create.failed", e);
-      toast.error(
-        e instanceof Error ? e.message : m.ui_couldn_t_create_invitation(),
-      );
+      toast.error(m.ui_couldn_t_create_invitation());
     } finally {
       creating = false;
     }
@@ -557,7 +555,7 @@
         await load_connection_details();
       } else if (
         silent &&
-        board.iroh_last_error.startsWith(m.ui_access_was_declined_or_revoked())
+        board.iroh_last_error.startsWith("Access was declined or revoked")
       ) {
         waiting_device_id = null;
       }
@@ -581,6 +579,9 @@
     try {
       invites = await invoke<Invite[]>("list_iroh_invites");
       host_error = await invoke<string | null>("iroh_host_error");
+      if (host_error) {
+        logger.error("iroh.host.failed", host_error);
+      }
       onRequestsChanged();
       manage_error = null;
       await load_connection_details();
@@ -588,9 +589,7 @@
       logger.error("iroh.invite_list_load.failed", e);
       manage_error = error_message(e, m.share_load_retry());
       if (!silent) {
-        toast.error(
-          e instanceof Error ? e.message : m.ui_couldn_t_load_invitations(),
-        );
+        toast.error(m.ui_couldn_t_load_invitations());
       }
     } finally {
       loading_invites = false;
@@ -624,9 +623,7 @@
       return true;
     } catch (e) {
       logger.error("iroh.device_approval.failed", e);
-      toast.error(
-        e instanceof Error ? e.message : m.ui_couldn_t_update_device(),
-      );
+      toast.error(m.ui_couldn_t_update_device());
       return false;
     } finally {
       device_action_pending = false;
@@ -704,9 +701,7 @@
         ).replace(/^[A-Z_]+:/, "");
       } else if (request_approval) {
         received_waiting_id = null;
-        toast.error(
-          (e instanceof Error ? e.message : String(e)).replace(/^[A-Z_]+:/, ""),
-        );
+        toast.error(m.share_access_request_error());
       }
     } finally {
       received_requesting.delete(board_id);
@@ -753,9 +748,7 @@
     } catch (e) {
       logger.error("iroh.invite_update.failed", e);
       await load();
-      toast.error(
-        e instanceof Error ? e.message : m.ui_couldn_t_update_invitation(),
-      );
+      toast.error(m.ui_couldn_t_update_invitation());
     } finally {
       updating_invite_id = null;
     }
@@ -773,9 +766,7 @@
       toast.success(m.ui_invitation_deleted());
     } catch (e) {
       logger.error("iroh.invite_delete.failed", e);
-      toast.error(
-        e instanceof Error ? e.message : m.ui_couldn_t_delete_invitation(),
-      );
+      toast.error(m.ui_couldn_t_delete_invitation());
     } finally {
       pending_delete = null;
       delete_confirm_open = false;
@@ -794,9 +785,7 @@
       return value;
     } catch (e) {
       logger.error("iroh.invite_access_load.failed", e);
-      toast.error(
-        e instanceof Error ? e.message : m.ui_couldn_t_load_invitation(),
-      );
+      toast.error(m.ui_couldn_t_load_invitation());
       return null;
     } finally {
       loading_access_id = null;
@@ -1532,7 +1521,9 @@
             class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
             role="alert"
           >
-            {board.iroh_last_error}
+            {board.iroh_last_error.startsWith("Access was declined or revoked")
+              ? m.ui_access_was_declined_or_revoked()
+              : m.share_join_error()}
           </p>
         {/if}
         <Button onclick={() => void join()} disabled={!ticket.trim() || joining}
@@ -1611,7 +1602,7 @@
                 class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
                 role="alert"
               >
-                {m.share_service_error({ error: host_error })}
+                {m.share_service_unavailable()}
               </p>
             {/if}
             {#if manage_view === "received"}

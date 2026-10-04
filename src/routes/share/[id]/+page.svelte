@@ -123,8 +123,7 @@
         selected_task = null;
         task_dialog_open = false;
         document.title = m.ui_share_unavailable_cardbe();
-        error_message =
-          error instanceof Error ? error.message : m.ui_share_unavailable();
+        error_message = m.ui_share_unavailable();
       } finally {
         loading = false;
         refresh_in_progress = false;

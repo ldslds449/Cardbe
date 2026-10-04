@@ -451,11 +451,7 @@
     } catch (error) {
       logger.error("share.publish.failed", error);
       console.error(m.ui_couldn_t_publish_board_share(), error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : m.ui_couldn_t_publish_the_web_view(),
-      );
+      toast.error(m.ui_couldn_t_publish_the_web_view());
     } finally {
       publishing = false;
     }
@@ -494,11 +490,7 @@
       logger.error("share.disable.failed", error);
       console.error(m.ui_couldn_t_disable_board_share(), error);
       onShareRevokeError?.(target.id, error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : m.ui_couldn_t_disable_the_published_view(),
-      );
+      toast.error(m.ui_couldn_t_disable_the_published_view());
     } finally {
       revoking = false;
     }
@@ -555,11 +547,7 @@
     } catch (error) {
       logger.error("share.enable.failed", error);
       console.error(m.ui_couldn_t_enable_board_share(), error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : m.ui_couldn_t_enable_the_published_view(),
-      );
+      toast.error(m.ui_couldn_t_enable_the_published_view());
     } finally {
       publishing = false;
     }
@@ -586,11 +574,7 @@
       logger.error("share.delete.failed", error);
       console.error(m.ui_couldn_t_delete_board_share(), error);
       onShareRevokeError?.(deleted_id, error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : m.ui_couldn_t_delete_the_published_view(),
-      );
+      toast.error(m.ui_couldn_t_delete_the_published_view());
     } finally {
       revoking = false;
     }

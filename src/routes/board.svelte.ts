@@ -243,7 +243,11 @@ export class BoardStore {
             ? error
             : m.share_join_error();
       if (!silent && !this.iroh_last_error.startsWith("APPROVAL_REQUIRED:")) {
-        toast.error(this.iroh_last_error);
+        toast.error(
+          this.iroh_last_error.startsWith("Access was declined or revoked")
+            ? m.ui_access_was_declined_or_revoked()
+            : m.share_join_error(),
+        );
       }
       return false;
     }
@@ -368,7 +372,11 @@ export class BoardStore {
         );
       }
       if (!silent) {
-        toast.error(message);
+        toast.error(
+          message.startsWith("Access was declined or revoked")
+            ? m.ui_access_was_declined_or_revoked()
+            : m.share_sync_error(),
+        );
       }
       return false;
     } finally {
@@ -437,7 +445,7 @@ export class BoardStore {
       return true;
     } catch (error) {
       logger.error("iroh.conflict_resolve.failed", error);
-      toast.error(typeof error === "string" ? error : m.share_conflict_error());
+      toast.error(m.share_conflict_error());
       return false;
     }
   }
@@ -2279,7 +2287,7 @@ export class BoardStore {
       if (generation === this.board_generation) {
         this.get_columns();
       }
-      toast.error(m.task_move_error(), { description: String(e) });
+      toast.error(m.task_move_error());
       return false;
     }
   }
