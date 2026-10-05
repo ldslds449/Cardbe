@@ -11,6 +11,23 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 const MAX_FRONTEND_MESSAGE_BYTES: usize = 16 * 1024;
 
+pub(crate) fn install_panic_logging() {
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Panic payloads may contain user data or credentials; record only the call site and stack.
+        let diagnostic = redact_diagnostic_logs(format!(
+            "Rust panic at {}\n{}",
+            info.location()
+                .map(|location| location.to_string())
+                .unwrap_or_else(|| "unknown location".into()),
+            std::backtrace::Backtrace::force_capture(),
+        ));
+        log::error!(target: "panic", "{diagnostic}");
+        log::logger().flush();
+        previous_hook(info);
+    }));
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SystemInfo<'a> {
@@ -299,6 +316,41 @@ pub fn export_debug_information(app: AppHandle, destination: String) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::redact_diagnostic_logs;
+
+    #[test]
+    fn panic_logging_probe() {
+        let Some(path) = std::env::var_os("CARDBE_PANIC_LOG_TEST_FILE") else {
+            return;
+        };
+        tauri_plugin_log::fern::Dispatch::new()
+            .chain(std::fs::File::create(path).unwrap())
+            .apply()
+            .unwrap();
+        super::install_panic_logging();
+        panic!("secret-panic-payload");
+    }
+
+    #[test]
+    fn panic_logging_flushes_location_and_stack_without_payload() {
+        let path =
+            std::env::temp_dir().join(format!("cardbe-panic-log-{}.txt", std::process::id()));
+        assert!(!path.exists());
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "commands::diagnostics::tests::panic_logging_probe",
+            ])
+            .env("CARDBE_PANIC_LOG_TEST_FILE", &path)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let logged = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert!(logged.contains("Rust panic at"));
+        assert!(logged.contains("diagnostics.rs:"));
+        assert!(logged.contains("panic_logging_probe"));
+        assert!(!logged.contains("secret-panic-payload"));
+    }
 
     #[test]
     fn redacts_paths_urls_and_secret_values() {

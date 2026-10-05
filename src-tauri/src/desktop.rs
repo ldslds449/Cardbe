@@ -163,7 +163,9 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
 }
 
 pub fn set_menu_labels<R: Runtime>(app: &AppHandle<R>, labels: [String; 5]) -> Result<(), String> {
-    let menu = app.state::<Menu<R>>();
+    let menu = app
+        .try_state::<Menu<R>>()
+        .ok_or("Desktop menu is not ready")?;
     for (label, (id, shortcut)) in labels.into_iter().zip([
         ("quick-task", Some(QUICK_TASK_SHORTCUT)),
         ("quick-note", Some(QUICK_NOTE_SHORTCUT)),

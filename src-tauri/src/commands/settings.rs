@@ -74,17 +74,20 @@ pub fn set_language(
 }
 
 #[tauri::command]
-pub fn set_desktop_menu_labels(
+pub async fn set_desktop_menu_labels(
     app: tauri::AppHandle,
     labels: [String; 5],
+    startup: State<'_, crate::StartupError>,
 ) -> Result<(), CommandError> {
     #[cfg(desktop)]
     {
+        // The menu also exists when storage failed, so still localize its labels.
+        let _ = startup.wait().await?;
         crate::desktop::set_menu_labels(&app, labels).map_err(CommandError::from)
     }
     #[cfg(not(desktop))]
     {
-        let _ = (app, labels);
+        let _ = (app, labels, startup);
         Ok(())
     }
 }

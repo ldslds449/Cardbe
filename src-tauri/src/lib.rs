@@ -28,21 +28,55 @@ struct StartupError {
     receiver: watch::Receiver<Option<Result<(), String>>>,
 }
 
+impl StartupError {
+    async fn wait(&self) -> Result<Option<errors::CommandError>, errors::CommandError> {
+        let mut status = self.receiver.clone();
+        loop {
+            let current = status.borrow().clone();
+            match current {
+                Some(Ok(())) => return Ok(None),
+                Some(Err(error)) => return Ok(Some(errors::CommandError::internal(error))),
+                None => status
+                    .changed()
+                    .await
+                    .map_err(|_| errors::CommandError::internal("Startup status unavailable"))?,
+            }
+        }
+    }
+}
+
 #[tauri::command]
 async fn get_startup_error(
     state: tauri::State<'_, StartupError>,
 ) -> Result<Option<errors::CommandError>, errors::CommandError> {
-    let mut status = state.receiver.clone();
-    loop {
-        let current = status.borrow().clone();
-        match current {
-            Some(Ok(())) => return Ok(None),
-            Some(Err(error)) => return Ok(Some(errors::CommandError::internal(error))),
-            None => status
-                .changed()
+    state.wait().await
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn startup_waits_for_completion_and_preserves_storage_failure() {
+        let (sender, receiver) = watch::channel(None);
+        let state = StartupError { sender, receiver };
+        let waiting = state.wait();
+        tokio::pin!(waiting);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), &mut waiting)
                 .await
-                .map_err(|_| errors::CommandError::internal("Startup status unavailable"))?,
-        }
+                .is_err()
+        );
+        state.sender.send(Some(Ok(()))).unwrap();
+        assert!(waiting.await.unwrap().is_none());
+        state
+            .sender
+            .send(Some(Err("storage failed".into())))
+            .unwrap();
+        assert!(matches!(
+            state.wait().await.unwrap(),
+            Some(errors::CommandError::InternalError)
+        ));
     }
 }
 
@@ -193,6 +227,7 @@ mod debug_data_lock_tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    diagnostics::install_panic_logging();
     #[cfg(all(debug_assertions, desktop))]
     let port = debug_port().expect("invalid CARDBE_DEV_PORT");
     #[cfg(all(debug_assertions, desktop))]
@@ -321,28 +356,32 @@ pub fn run() {
                     .map_err(|error| format!("{error}\n\nDatabase: {}", database_path.display()))?;
                     Ok((data, database_path))
                 });
-            match startup_result {
+            let startup_status = match startup_result {
                 Ok((data, database_path)) => {
                     app.manage(Mutex::new(data));
-                    let _ = app.state::<StartupError>().sender.send(Some(Ok(())));
                     let iroh_app = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
                         let network = iroh_app.state::<iroh_share::IrohShareState>();
                         iroh_share::restore_iroh_host(&network, database_path, iroh_app.clone())
                             .await;
                     });
+                    Ok(())
                 }
                 Err(error) => {
                     log::error!(target: "storage", "Could not load application data: {error}");
-                    let _ = app.state::<StartupError>().sender.send(Some(Err(error)));
+                    Err(error)
                 }
-            }
+            };
             #[cfg(desktop)]
             desktop::setup(app)?;
             #[cfg(all(debug_assertions, desktop))]
             if let Some(window) = app.get_webview_window("main") {
                 window.set_title(&format!("Cardbe [Debug: {port}]"))?;
             }
+            let _ = app
+                .state::<StartupError>()
+                .sender
+                .send(Some(startup_status));
             Ok(())
         })
         .on_window_event(|window, event| {
