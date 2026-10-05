@@ -219,7 +219,7 @@
           <Button
             variant="ghost"
             size="icon-sm"
-            class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
             aria-label={show_content ? m.task_collapse() : m.task_expand()}
             title={show_content ? m.task_collapse() : m.task_expand()}
             onpointerup={(event) => event.currentTarget.blur()}
@@ -242,7 +242,7 @@
                   {...props}
                   variant="ghost"
                   size="icon-sm"
-                  class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                  class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100"
                   aria-label={m.task_menu()}
                   title={m.task_menu()}
                 >
@@ -317,9 +317,7 @@
             <Button
               variant="ghost"
               size="icon-sm"
-              class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground {task.pinned
-                ? 'opacity-100'
-                : 'opacity-0'} transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity aria-pressed:opacity-100 group-hover:opacity-100 focus-visible:opacity-100"
               aria-label={task.pinned ? m.task_unpin() : m.task_pin()}
               aria-pressed={task.pinned ?? false}
               title={task.pinned ? m.task_unpin() : m.task_pin()}
