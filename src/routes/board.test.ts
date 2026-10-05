@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { toast } from "svelte-sonner";
 import { isPermissionGranted } from "@tauri-apps/plugin-notification";
 import type { TaskExplorerQuery } from "./utils/task-explorer";
@@ -18,7 +19,11 @@ import { translateCommandError } from "$lib/command-errors";
 import { BoardStore } from "./board.svelte";
 import { create_task } from "./type/task.svelte";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  isTauri: () => true,
+}));
+vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(), save: vi.fn() }));
 vi.mock("@tauri-apps/plugin-fs", () => ({
   readTextFile: vi.fn(),
@@ -260,6 +265,7 @@ describe("cross-board task moves", () => {
 
 describe("language persistence", () => {
   beforeEach(() => {
+    vi.mocked(emit).mockReset();
     invoke_mock.mockReset();
     applyLanguagePreference("en");
   });
@@ -271,17 +277,26 @@ describe("language persistence", () => {
     const store = new BoardStore();
     const pending = store.set_language("zh-TW");
     expect(language.preference).toBe("en");
+    expect(emit).not.toHaveBeenCalled();
     saved.resolve();
     expect(await pending).toBe(true);
     expect(invoke_mock).toHaveBeenCalledWith("set_language", {
       language: "zh-TW",
     });
     expect(language.preference).toBe("zh-TW");
+    expect(emit).toHaveBeenCalledWith("cardbe:language-changed", "zh-TW");
   });
   it("keeps the previous language when persistence fails", async () => {
     invoke_mock.mockRejectedValue(new Error("disk unavailable"));
     expect(await new BoardStore().set_language("zh-TW")).toBe(false);
     expect(language.preference).toBe("en");
+    expect(emit).not.toHaveBeenCalled();
+  });
+  it("keeps the saved language when broadcasting fails", async () => {
+    invoke_mock.mockResolvedValue(undefined);
+    vi.mocked(emit).mockRejectedValue(new Error("window unavailable"));
+    expect(await new BoardStore().set_language("zh-TW")).toBe(true);
+    expect(language.preference).toBe("zh-TW");
   });
 });
 

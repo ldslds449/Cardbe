@@ -8,6 +8,7 @@ import { applyLanguagePreference, type LanguagePreference } from "$lib/i18n";
 import type { TaskExplorerQuery } from "./utils/task-explorer";
 import { logger } from "$lib/logger";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "svelte-sonner";
@@ -1352,6 +1353,11 @@ export class BoardStore {
     });
     if (saved) {
       applyLanguagePreference(preference);
+      try {
+        await emit("cardbe:language-changed", preference);
+      } catch (error) {
+        logger.warn("settings.language_broadcast.failed", error);
+      }
     }
     return saved;
   }

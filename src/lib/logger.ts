@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 type LogContext = Record<string, unknown>;
@@ -74,6 +74,10 @@ async function write(
   const metadata = serialize(error, context);
   const message = metadata ? `${event} ${metadata}` : event;
   try {
+    if (!isTauri()) {
+      console[level](message);
+      return;
+    }
     await invoke("log_frontend", {
       level,
       target: `frontend.${scope || "app"}`,

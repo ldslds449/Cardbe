@@ -1,6 +1,12 @@
 <script lang="ts">
   import * as m from "$lib/paraglide/messages.js";
-  import { getLocale } from "$lib/i18n";
+  import {
+    getLocale,
+    language,
+    applyLanguagePreference,
+    isLanguagePreference,
+  } from "$lib/i18n";
+  import * as Select from "$lib/components/ui/select/index.js";
   import {
     parseCommandError,
     translateCommandError,
@@ -68,6 +74,19 @@
     task_dialog_open = true;
   }
 
+  const language_storage_key = "cardbe.share.language";
+  function change_language(value: string) {
+    if (!isLanguagePreference(value)) {
+      return;
+    }
+    applyLanguagePreference(value);
+    try {
+      localStorage.setItem(language_storage_key, value);
+    } catch (error) {
+      logger.warn("share.language_save.failed", error);
+    }
+  }
+
   function apply_response(body: PublicShareResponse) {
     if (body.updated_at === response?.updated_at) {
       return;
@@ -85,10 +104,14 @@
         task_dialog_open = false;
       }
     }
-    document.title = `${body.snapshot.title} · Cardbe`;
   }
 
   onMount(() => {
+    try {
+      applyLanguagePreference(localStorage.getItem(language_storage_key));
+    } catch (error) {
+      logger.warn("share.language_load.failed", error);
+    }
     const controller = new AbortController();
     const open_card = (event: Event) => {
       const task_id = (event as CustomEvent<{ taskId?: string }>).detail
@@ -127,7 +150,6 @@
         columns = [];
         selected_task = null;
         task_dialog_open = false;
-        document.title = m.ui_share_unavailable_cardbe();
         share_error = parseCommandError(error) ?? { code: "INTERNAL_ERROR" };
       } finally {
         loading = false;
@@ -150,12 +172,37 @@
 </script>
 
 <svelte:head>
+  <title
+    >{response
+      ? `${response.snapshot.title} · Cardbe`
+      : share_error
+        ? m.ui_share_unavailable_cardbe()
+        : m.ui_loading_shared_board()}</title
+  >
   <meta name="robots" content="noindex,nofollow" />
 </svelte:head>
 
 <ModeWatcher />
 
 {#snippet theme_toggle()}
+  <Select.Root
+    type="single"
+    value={language.preference}
+    onValueChange={change_language}
+  >
+    <Select.Trigger aria-label={m.settings_language()} class="shrink-0">
+      {language.preference === "en"
+        ? "English"
+        : language.preference === "zh-TW"
+          ? "繁體中文"
+          : m.settings_language_system()}
+    </Select.Trigger>
+    <Select.Content>
+      <Select.Item value="system">{m.settings_language_system()}</Select.Item>
+      <Select.Item value="en">English</Select.Item>
+      <Select.Item value="zh-TW">繁體中文</Select.Item>
+    </Select.Content>
+  </Select.Root>
   <Button
     onclick={toggleMode}
     variant="outline"
@@ -175,7 +222,9 @@
 
 {#if loading}
   <main class="relative grid min-h-screen place-items-center bg-muted/30 p-6">
-    <div class="absolute right-4 top-4">{@render theme_toggle()}</div>
+    <div class="absolute right-4 top-4 flex items-center gap-2">
+      {@render theme_toggle()}
+    </div>
     <div
       class="flex items-center gap-3 text-sm text-muted-foreground"
       role="status"
@@ -188,7 +237,9 @@
   </main>
 {:else if share_error || !response}
   <main class="relative grid min-h-screen place-items-center bg-muted/30 p-6">
-    <div class="absolute right-4 top-4">{@render theme_toggle()}</div>
+    <div class="absolute right-4 top-4 flex items-center gap-2">
+      {@render theme_toggle()}
+    </div>
     <section
       class="w-full max-w-md rounded-xl border bg-card p-8 text-center shadow-sm"
     >
@@ -216,15 +267,18 @@
     <header
       class="z-30 shrink-0 border-b bg-background/95 px-5 py-3 shadow-xs backdrop-blur"
     >
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="min-w-0">
+      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+        <div class="min-w-0 sm:row-span-2">
           <div
             class="flex items-center gap-2 text-xs font-medium text-muted-foreground"
           >
             <WifiIcon class="size-3.5" />
             {m.ui_live_read_only_lan_share()}
           </div>
-          <h1 class="truncate text-xl font-semibold tracking-tight">
+          <h1
+            class="truncate text-xl font-semibold tracking-tight"
+            title={response.snapshot.title}
+          >
             {response.snapshot.title}
           </h1>
           <p class="text-xs text-muted-foreground">
@@ -234,7 +288,13 @@
           </p>
         </div>
 
-        <div class="flex w-full items-center gap-2 sm:w-auto">
+        <div class="flex items-center justify-end gap-2">
+          {@render theme_toggle()}
+        </div>
+
+        <div
+          class="col-span-2 flex min-w-0 items-center gap-2 sm:col-span-1 sm:col-start-2"
+        >
           <label class="relative min-w-0 flex-1 sm:w-72">
             <SearchIcon
               class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -263,7 +323,6 @@
               class={refresh_in_progress ? "size-4 animate-spin" : "size-4"}
             />
           </Button>
-          {@render theme_toggle()}
         </div>
       </div>
 

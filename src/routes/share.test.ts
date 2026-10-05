@@ -12,7 +12,10 @@ import {
 import { create_column } from "./type/column.svelte";
 import { create_task } from "./type/task.svelte";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  isTauri: () => true,
+}));
 
 describe("board sharing", () => {
   it("groups enabled shares so each board needs only one column fetch", () => {

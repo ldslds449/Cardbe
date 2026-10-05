@@ -6,6 +6,7 @@
   import Sonner from "$lib/components/ui/sonner/sonner.svelte";
   import { onMount } from "svelte";
   import { invoke, isTauri } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import {
     applyLanguagePreference,
     getLocale,
@@ -38,11 +39,45 @@
   });
 
   onMount(() => {
-    if (isTauri()) {
+    let disposed = false;
+    let unlistenLanguage: UnlistenFn | undefined;
+    let languageRevision = 0;
+    const loadLanguage = () => {
+      const revision = ++languageRevision;
       void invoke<{ language?: string }>("get_settings")
-        .then((settings) => applyLanguagePreference(settings.language))
+        .then((settings) => {
+          if (!disposed && revision === languageRevision) {
+            applyLanguagePreference(settings.language);
+          }
+        })
         .catch((error) => logger.warn("settings.language_load.failed", error));
+    };
+    if (isTauri()) {
+      void listen("cardbe:language-changed", (event) => {
+        languageRevision++;
+        applyLanguagePreference(event.payload);
+      })
+        .then((unlisten) => {
+          if (disposed) {
+            unlisten();
+          } else {
+            unlistenLanguage = unlisten;
+            loadLanguage();
+          }
+        })
+        .catch((error) => {
+          logger.warn("settings.language_listen.failed", error);
+          if (!disposed) {
+            loadLanguage();
+          }
+        });
+      window.addEventListener("focus", loadLanguage);
     }
+    const cleanupLanguage = () => {
+      disposed = true;
+      unlistenLanguage?.();
+      window.removeEventListener("focus", loadLanguage);
+    };
     const uninstallErrorLogging = installGlobalErrorLogging();
     logger.info("app.mounted");
     const dismiss_startup = () =>
@@ -58,6 +93,7 @@
 
     if (dev) {
       return () => {
+        cleanupLanguage();
         uninstallErrorLogging();
         window.removeEventListener("cardbe:workspace-ready", dismiss_startup);
       };
@@ -68,6 +104,7 @@
     document.addEventListener("contextmenu", preventBrowserContextMenu);
 
     return () => {
+      cleanupLanguage();
       uninstallErrorLogging();
       window.removeEventListener("cardbe:workspace-ready", dismiss_startup);
       document.removeEventListener("contextmenu", preventBrowserContextMenu);

@@ -1,12 +1,35 @@
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 
 const invoke = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+const isTauri = vi.hoisted(() => vi.fn().mockReturnValue(true));
+vi.mock("@tauri-apps/api/core", () => ({ invoke, isTauri }));
 
 import { logger } from "./logger";
 
 describe("frontend logger", () => {
-  beforeEach(() => invoke.mockClear());
+  beforeEach(() => {
+    invoke.mockClear();
+    isTauri.mockReturnValue(true);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(["debug", "info", "warn", "error"] as const)(
+    "uses the browser console for %s without invoking Tauri",
+    (level) => {
+      isTauri.mockReturnValue(false);
+      const output = vi.spyOn(console, level).mockImplementation(() => {});
+      logger[level]("share.browser_event");
+      expect(output).toHaveBeenCalledWith("share.browser_event");
+      expect(invoke).not.toHaveBeenCalled();
+    },
+  );
 
   it("records a fixed event without including a caught error", async () => {
     logger.error("note.save.failed");

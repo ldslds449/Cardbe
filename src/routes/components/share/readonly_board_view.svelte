@@ -40,10 +40,17 @@
         .filter(task_matches_search)
         .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false))}
       <Card.Root class="w-[320px] shrink-0 gap-2 bg-muted/35 py-3">
-        <Card.Header class="px-4">
-          <Card.Title class="flex items-center justify-between gap-3 text-base">
-            <span class="truncate">{column.name}</span>
-            <Badge variant="secondary" class="font-normal tabular-nums">
+        <Card.Header class="min-w-0 px-4">
+          <Card.Title
+            class="flex min-w-0 items-center justify-between gap-3 text-base"
+          >
+            <span class="min-w-0 flex-1 truncate" title={column.name}
+              >{column.name}</span
+            >
+            <Badge
+              variant="secondary"
+              class="shrink-0 font-normal tabular-nums"
+            >
               {formatNumber(visible_tasks.length)}
             </Badge>
           </Card.Title>
