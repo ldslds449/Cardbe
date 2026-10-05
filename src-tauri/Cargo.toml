@@ -1,6 +1,6 @@
 [package]
 name = "Cardbe"
-version = "1.1.0"
+version = "1.1.1"
 description = "A Tasks Manager"
 authors = ["malecat"]
 license = "Apache-2.0"
