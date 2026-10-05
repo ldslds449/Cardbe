@@ -312,6 +312,8 @@
   "task_archive_action": "封存任務",
   "task_due_date": "到期",
   "common_retry": "重試",
+  "share_settings_read_failed": "無法讀取分享設定，原有資料已保留。請重試以重新載入。",
+  "share_settings_write_failed": "無法儲存分享設定，已保留先前的設定。請重試以重新載入，再重新操作。",
   "board_labels_load_error": "無法載入標籤",
   "board_columns_refresh_error": "無法重新整理欄位",
   "task_archives_load_error": "無法載入封存任務",

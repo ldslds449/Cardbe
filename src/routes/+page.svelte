@@ -512,11 +512,13 @@
           logger.error("share.restore.failed", error);
           console.error(`Couldn't restore shares for board ${board_id}`, error);
           for (const share of shares) {
-            await disable_stale_share(share);
+            managed_share_state.set_sync_state(
+              share.id,
+              "error",
+              m.ui_couldn_t_update_the_shared_board(),
+            );
           }
-          toast.error(
-            m.ui_sharing_was_stopped_for_a_link_whose_board_no_longer_exists(),
-          );
+          toast.error(translateCommandError(error));
         }
       }),
     );
@@ -528,12 +530,11 @@
     try {
       share_sync_queue.retire(share.id);
       await revoke_share(share);
-      if (
-        managed_share_state.shares.some(
-          (candidate) => candidate.id === share.id,
-        )
-      ) {
-        managed_share_state.forget(share.id);
+      const current = managed_share_state.shares.find(
+        (candidate) => candidate.id === share.id,
+      );
+      if (current) {
+        save_managed_share({ ...current, enabled: false }, "");
         toast.error(m.share_stopped_named({ name: share.title }));
       }
     } catch (error) {
@@ -632,17 +633,18 @@
           share_sync_queue.retire(share.id);
         }
       }
-      await revoke_managed_shares((share) => share.board_id === id);
+      const forget_shares = await revoke_managed_shares(
+        (share) => share.board_id === id,
+      );
       const deleted = await board.delete_board(id);
       if (deleted) {
+        forget_shares();
         reset_board_scoped_ui();
       }
       return deleted;
     } catch (error) {
       logger.error("board.delete_share_revoke.failed", error);
-      // `revoke_managed_shares` forgets each link only after its own revoke
-      // succeeds. The remaining links are still live, but their queues were
-      // retired above, so make their terminal failure visible and retryable.
+      // Revoked links remain configured but disabled until deletion succeeds.
       for (const share of managed_share_state.shares) {
         if (share.board_id === id) {
           managed_share_state.set_sync_state(
@@ -666,21 +668,22 @@
   }
 
   async function restore_everything() {
+    let forget_shares: (() => void) | undefined;
     try {
       if (
         await board.import_all_boards_from_file(true, async () => {
           for (const share of managed_share_state.shares) {
             share_sync_queue.retire(share.id);
           }
-          await revoke_managed_shares(() => true);
+          forget_shares = await revoke_managed_shares(() => true);
         })
       ) {
+        forget_shares?.();
         reset_board_scoped_ui();
       }
     } catch (error) {
       logger.error("backup.restore_share_revoke.failed", error);
-      // Successfully revoked links have already been forgotten. Only links
-      // still present failed to revoke and must not be left as Updating.
+      // Keep configurations on failure, including links already revoked.
       for (const share of managed_share_state.shares) {
         managed_share_state.set_sync_state(
           share.id,
@@ -713,6 +716,14 @@
           restore_managed_share_state(
             board.boards.length === 1 ? board.boards[0].id : undefined,
           );
+          if (managed_share_state.storage_error) {
+            toast.error(
+              managed_share_state.storage_error === "read"
+                ? m.share_settings_read_failed()
+                : m.share_settings_write_failed(),
+            );
+            return;
+          }
           await restore_all_managed_shares();
         });
       })
@@ -1592,6 +1603,14 @@
         active_board_id={board.active_board_id}
         boards={board.boards}
         onRetireShare={(share_id) => share_sync_queue.retire(share_id)}
+        onRetryShareStorage={async () => {
+          restore_managed_share_state(
+            board.boards.length === 1 ? board.boards[0].id : undefined,
+          );
+          if (!managed_share_state.storage_error) {
+            await restore_all_managed_shares();
+          }
+        }}
         onShareRevokeError={(share_id, error) => {
           if (
             !managed_share_state.shares.some((share) => share.id === share_id)

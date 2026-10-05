@@ -40,6 +40,7 @@
     type ColumnSerialized,
   } from "../../type/column.svelte";
   import type { BoardRole } from "../../board.svelte";
+  import { managed_share_state } from "../../share-state.svelte";
   import {
     build_share_snapshot,
     forget_managed_share,
@@ -62,6 +63,7 @@
     boards,
     onRetireShare,
     onShareRevokeError,
+    onRetryShareStorage,
   }: {
     open: boolean;
     columns: Column[];
@@ -70,6 +72,7 @@
     boards: Array<{ id: number; name: string; shared_role?: BoardRole }>;
     onRetireShare?: (share_id: string) => void;
     onShareRevokeError?: (share_id: string, error: unknown) => void;
+    onRetryShareStorage: () => Promise<void>;
   } = $props();
 
   let share = $state<ManagedShare | null>(null);
@@ -86,6 +89,16 @@
   let context_menu_share_id = $state<string | null>(null);
   let publishing = $state(false);
   let revoking = $state(false);
+  let retrying_storage = $state(false);
+
+  async function retry_share_storage() {
+    retrying_storage = true;
+    try {
+      await onRetryShareStorage();
+    } finally {
+      retrying_storage = false;
+    }
+  }
   let delete_confirm_open = $state(false);
   let editing = $state(false);
   // A share can belong to any board, even while another board is open in the
@@ -433,8 +446,6 @@
         selected_board_id ?? undefined,
       );
       updated_share.board_id = selected_board_id ?? undefined;
-      share = updated_share;
-      requested_link = "";
       save_managed_share(
         updated_share,
         share_content_signature(
@@ -444,6 +455,8 @@
           title,
         ),
       );
+      share = updated_share;
+      requested_link = "";
       load_share(updated_share, false);
       toast.success(
         was_update
@@ -603,6 +616,27 @@
         {m.share_web_description()}
       </Dialog.Description>
     </Dialog.Header>
+
+    {#if managed_share_state.storage_error}
+      <div
+        class="mx-6 mb-4 flex items-center gap-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm"
+        role="alert"
+      >
+        <p class="flex-1">
+          {managed_share_state.storage_error === "read"
+            ? m.share_settings_read_failed()
+            : m.share_settings_write_failed()}
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={retrying_storage || publishing || revoking}
+          onclick={retry_share_storage}
+        >
+          {m.common_retry()}
+        </Button>
+      </div>
+    {/if}
 
     <div
       class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:grid-cols-[16rem_minmax(0,1fr)] md:grid-rows-1"
@@ -774,7 +808,7 @@
                 </ContextMenu.Root>
               {/each}
             </div>
-          {:else}
+          {:else if !managed_share_state.storage_error}
             <div class="px-2 py-3 text-center">
               <p class="text-xs text-muted-foreground">
                 {m.ui_no_published_views_yet()}

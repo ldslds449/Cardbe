@@ -5,9 +5,11 @@ import {
   group_enabled_shares_by_board,
   parse_requested_share_link,
   publish_share,
+  revoke_managed_shares,
   share_content_signature,
   type ManagedShare,
 } from "./share";
+import { managed_share_state } from "./share-state.svelte";
 
 import { create_column } from "./type/column.svelte";
 import { create_task } from "./type/task.svelte";
@@ -18,6 +20,46 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 describe("board sharing", () => {
+  it("preserves configurations when revocation only partly succeeds", async () => {
+    const first: ManagedShare = {
+      id: "first_link_abcdefghijklmn",
+      url: "http://192.168.1.20:12345/share/first_link_abcdefghijklmn",
+      title: "Roadmap",
+      updated_at: "2026-09-01T12:00:00Z",
+      expires_at: null,
+      selected_column_ids: [],
+      selected_task_ids: [],
+      board_id: 1,
+    };
+    const second = { ...first, id: "second_link_abcdefghijklmn" };
+    managed_share_state.shares = [first, second];
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce({ code: "INTERNAL_ERROR" });
+    try {
+      await expect(revoke_managed_shares(() => true)).rejects.toEqual({
+        code: "INTERNAL_ERROR",
+      });
+      expect(managed_share_state.shares).toEqual([
+        { ...first, enabled: false },
+        second,
+      ]);
+      vi.mocked(invoke).mockResolvedValue(undefined);
+      const forget_shares = await revoke_managed_shares(() => true);
+      expect(managed_share_state.shares).toEqual([
+        { ...first, enabled: false },
+        { ...second, enabled: false },
+      ]);
+      forget_shares();
+      expect(managed_share_state.shares).toEqual([]);
+    } finally {
+      managed_share_state.shares = [];
+      managed_share_state.published_signatures = {};
+      managed_share_state.sync_states = {};
+      vi.mocked(invoke).mockReset();
+    }
+  });
   it("groups enabled shares so each board needs only one column fetch", () => {
     const base = {
       url: "http://192.168.1.20:12345/share/j3V_BXrcsGwtsXv6XAD1jA",

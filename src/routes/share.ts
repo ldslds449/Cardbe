@@ -260,6 +260,7 @@ export async function publish_share(
   reactivate = false,
   board_id?: number,
 ): Promise<ManagedShare> {
+  managed_share_state.ensure_writable();
   const requested =
     !existing && requested_link?.trim()
       ? parse_requested_share_link(requested_link)
@@ -299,10 +300,21 @@ export async function revoke_share(share: ManagedShare): Promise<void> {
 
 export async function revoke_managed_shares(
   predicate: (share: ManagedShare) => boolean,
-): Promise<void> {
+): Promise<() => void> {
   const targets = [...managed_share_state.shares].filter(predicate);
   for (const share of targets) {
     await revoke_share(share);
-    managed_share_state.forget(share.id);
+    const current = managed_share_state.shares.find(
+      (candidate) => candidate.id === share.id,
+    );
+    if (current) {
+      managed_share_state.save({ ...current, enabled: false }, "");
+    }
   }
+  // Forget only after the caller's destructive operation has succeeded.
+  return () => {
+    for (const share of targets) {
+      managed_share_state.forget(share.id);
+    }
+  };
 }

@@ -342,6 +342,8 @@
   "task_archive_action": "Archive Task",
   "task_due_date": "Due",
   "common_retry": "Retry",
+  "share_settings_read_failed": "Sharing settings could not be read. Existing data has been preserved. Retry to load it again.",
+  "share_settings_write_failed": "Sharing settings could not be saved. Previous settings have been kept. Retry to reload them, then make your changes again.",
   "board_labels_load_error": "Couldn't load labels",
   "board_columns_refresh_error": "Couldn't refresh columns",
   "task_archives_load_error": "Couldn't load archives",
