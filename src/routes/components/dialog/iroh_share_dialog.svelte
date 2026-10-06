@@ -1787,9 +1787,12 @@
                       class="group flex w-full items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <span
-                        >Invitation settings · {invite.permission === "viewer"
-                          ? m.board_read_only()
-                          : m.board_can_edit()}</span
+                        >{m.share_invitation_settings({
+                          permission:
+                            invite.permission === "viewer"
+                              ? m.board_read_only()
+                              : m.board_can_edit(),
+                        })}</span
                       >
                       <ChevronDownIcon
                         class="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"

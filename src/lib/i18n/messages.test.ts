@@ -25,6 +25,11 @@ describe("core messages", () => {
         applyLanguagePreference(locale);
         const chinese = locale === "zh-TW";
         const catalog = chinese ? zh : en;
+        for (const permission of [m.board_read_only(), m.board_can_edit()]) {
+          expect(m.share_invitation_settings({ permission })).toBe(
+            `${chinese ? "邀請設定・" : "Invitation settings · "}${permission}`,
+          );
+        }
         expect(m.editor_bold()).toBe(catalog.editor_bold);
         expect(m.editor_inline_code_help()).toBe(
           catalog.editor_inline_code_help,

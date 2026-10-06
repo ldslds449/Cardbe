@@ -1436,7 +1436,7 @@
   "share_no_pending": "No devices are waiting for approval.",
   "share_created_date": "Created {date}",
   "share_access_removed_help": "Your local board is safe. Request access again; the owner must approve it. If the invitation was deleted or disabled, ask the owner for a new invitation or to enable sharing.",
-  "share_invitation_settings": "Invitation settings ? {permission}",
+  "share_invitation_settings": "Invitation settings · {permission}",
   "share_permission_for": "Access permission for {name}",
   "share_pending_filter": "With pending device requests ({count})",
   "share_owner_sync": "Each board syncs with its owner.",
