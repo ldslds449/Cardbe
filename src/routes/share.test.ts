@@ -6,6 +6,7 @@ import {
   parse_requested_share_link,
   publish_share,
   revoke_managed_shares,
+  resolve_share_selection,
   share_content_signature,
   type ManagedShare,
 } from "./share";
@@ -20,6 +21,34 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 describe("board sharing", () => {
+  it("publishes an empty label result and resumes without exposing other cards", () => {
+    const task = create_task("task_2", "Shared", "", "", undefined, undefined, [
+      "public",
+    ]);
+    const column = create_column("column_1", "Todo", "", [
+      task,
+      create_task("task_3", "Private"),
+    ]);
+    const snapshot = () => {
+      const selection = resolve_share_selection([column], [], [], ["public"]);
+      return build_share_snapshot(
+        [column],
+        selection.selected_column_ids,
+        selection.selected_task_ids,
+        "Board",
+        new Date(0),
+        true,
+      );
+    };
+    expect(snapshot().columns[0].tasks.map((task) => task.id)).toEqual([2]);
+    task.labels = [];
+    expect(snapshot().columns).toEqual([]);
+    expect(share_content_signature([column], [], [], "Board", true)).toBe(
+      JSON.stringify(snapshot()),
+    );
+    task.labels = ["public"];
+    expect(snapshot().columns[0].tasks.map((task) => task.id)).toEqual([2]);
+  });
   it("preserves configurations when revocation only partly succeeds", async () => {
     const first: ManagedShare = {
       id: "first_link_abcdefghijklmn",
@@ -38,8 +67,14 @@ describe("board sharing", () => {
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce({ code: "INTERNAL_ERROR" });
     try {
-      await expect(revoke_managed_shares(() => true)).rejects.toEqual({
+      await expect(
+        revoke_managed_shares(() => true, "board_deleted"),
+      ).rejects.toEqual({
         code: "INTERNAL_ERROR",
+      });
+      expect(invoke).toHaveBeenNthCalledWith(1, "revoke_lan_share", {
+        shareId: first.id,
+        reason: "board_deleted",
       });
       expect(managed_share_state.shares).toEqual([
         { ...first, enabled: false },

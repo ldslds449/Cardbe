@@ -141,7 +141,7 @@ fn validate_snapshot(snapshot: &Value) -> Result<(), DomainError> {
         .get("columns")
         .and_then(Value::as_array)
         .ok_or(DomainError::ShareSnapshotInvalid)?;
-    if columns.is_empty() || columns.len() > 50 {
+    if columns.len() > 50 {
         return Err(DomainError::ShareLimitExceeded);
     }
     let task_count = columns
@@ -195,6 +195,11 @@ fn is_private_lan_address(ip: IpAddr) -> bool {
     }
 }
 
+fn share_log_ref(share_id: &str) -> String {
+    // Correlate lifecycle events without logging the capability that grants access.
+    BASE64.encode(&Sha256::digest(share_id.as_bytes())[..9])
+}
+
 impl LanShareState {
     fn replace_share(
         &self,
@@ -221,7 +226,9 @@ impl LanShareState {
             .map_err(|_| "LAN share data lock is poisoned".to_string())?;
         // Each capability ID represents an independently managed share. Updating
         // one link must not invalidate other active links.
-        shares.insert(share_id, share);
+        let share_ref = share_log_ref(&share_id);
+        let updated = shares.insert(share_id, share).is_some();
+        log::info!(target: "share", "share.publish.completed share_ref={share_ref} updated={updated} allow_reactivate={allow_reactivate}");
         Ok(())
     }
 
@@ -344,49 +351,79 @@ pub fn publish_lan_share(
     allow_reactivate: bool,
     preferred_port: Option<u16>,
 ) -> Result<LanShareResponse, CommandError> {
-    let board_id = board_id.ok_or(DomainError::BoardNotFound)?;
-    let guard = board_state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
-    if guard
-        .database
-        .board_role(board_id)
-        .map_err(CommandError::repository)?
-        != crate::models::BoardRole::Owner
-    {
-        return Err(CommandError::PermissionDenied);
-    }
-    drop(guard);
-    if !valid_share_id(&share_id) {
-        return Err(CommandError::InvalidArgument);
-    }
-    validate_snapshot(&snapshot)?;
-    let expires_at = parse_expiration(expires_at)?;
-    let (host, port) = state.ensure_server(&app, preferred_port)?;
-    let updated_at = Utc::now().to_rfc3339();
-    state.replace_share(
-        share_id.clone(),
-        LanShare {
-            snapshot,
-            updated_at: updated_at.clone(),
-            expires_at,
-        },
-        allow_reactivate,
-    )?;
-    Ok(LanShareResponse {
-        id: share_id.clone(),
-        url: format!("http://{host}:{port}/share/{share_id}"),
-        updated_at,
-        expires_at: expires_at.map(|value| value.to_rfc3339()),
+    let share_ref = share_log_ref(&share_id);
+    log::info!(target: "share", "share.publish.started share_ref={share_ref} board_id={board_id:?} allow_reactivate={allow_reactivate}");
+    let result = (|| {
+        let board_id = board_id.ok_or(DomainError::BoardNotFound)?;
+        let guard = board_state
+            .lock()
+            .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+        if guard
+            .database
+            .board_role(board_id)
+            .map_err(CommandError::repository)?
+            != crate::models::BoardRole::Owner
+        {
+            return Err(CommandError::PermissionDenied);
+        }
+        drop(guard);
+        if !valid_share_id(&share_id) {
+            return Err(CommandError::InvalidArgument);
+        }
+        validate_snapshot(&snapshot)?;
+        let expires_at = parse_expiration(expires_at)?;
+        let (host, port) = state.ensure_server(&app, preferred_port)?;
+        let updated_at = Utc::now().to_rfc3339();
+        state.replace_share(
+            share_id.clone(),
+            LanShare {
+                snapshot,
+                updated_at: updated_at.clone(),
+                expires_at,
+            },
+            allow_reactivate,
+        )?;
+        Ok(LanShareResponse {
+            id: share_id.clone(),
+            url: format!("http://{host}:{port}/share/{share_id}"),
+            updated_at,
+            expires_at: expires_at.map(|value| value.to_rfc3339()),
+        })
+    })();
+    result.inspect_err(|error| {
+        let public_error = serde_json::to_value(error).unwrap_or_default();
+        log::warn!(target: "share", "share.publish.failed share_ref={share_ref} board_id={board_id:?} code={}", public_error["code"]);
     })
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShareRevokeReason {
+    ManualDisable,
+    StaleSelection,
+    LinkDeleted,
+    BoardDeleted,
+    BackupRestore,
 }
 
 #[tauri::command]
 pub fn revoke_lan_share(
     state: State<'_, LanShareState>,
     share_id: String,
+    reason: Option<ShareRevokeReason>,
 ) -> Result<(), CommandError> {
-    state.revoke(share_id).map_err(CommandError::from)
+    let share_ref = share_log_ref(&share_id);
+    let result = state.revoke(share_id).map_err(CommandError::from);
+    match &result {
+        Ok(()) => {
+            log::info!(target: "share", "share.revoked share_ref={share_ref} reason={reason:?}")
+        }
+        Err(error) => {
+            let public_error = serde_json::to_value(error).unwrap_or_default();
+            log::warn!(target: "share", "share.revoke.failed share_ref={share_ref} reason={reason:?} code={}", public_error["code"]);
+        }
+    }
+    result
 }
 
 fn lan_router(state: LanHttpState) -> Router {
@@ -394,6 +431,21 @@ fn lan_router(state: LanHttpState) -> Router {
 }
 
 async fn lan_request(AxumState(state): AxumState<LanHttpState>, request: Request) -> Response {
+    let category = if request.uri().path().starts_with("/api/shares/") {
+        "snapshot"
+    } else if request.uri().path().starts_with("/share/") {
+        "page"
+    } else {
+        "asset"
+    };
+    let response = lan_request_inner(state, request).await;
+    if response.status().is_client_error() || response.status().is_server_error() {
+        log::warn!(target: "share", "share.http.failed category={category} status={}", response.status().as_u16());
+    }
+    response
+}
+
+async fn lan_request_inner(state: LanHttpState, request: Request) -> Response {
     #[cfg(dev)]
     if matches!(&state.assets, ViewerAssets::Vite(_)) {
         // A share URL grants access to development assets. Knowing the LAN
@@ -700,6 +752,7 @@ fn active_share(shares: &Arc<RwLock<HashMap<String, LanShare>>>, id: &str) -> Op
         .is_some_and(|expires_at| expires_at <= Utc::now())
     {
         guard.remove(id);
+        log::info!(target: "share", "share.expired share_ref={}", share_log_ref(id));
         return None;
     }
     Some(share.clone())
@@ -709,6 +762,30 @@ fn active_share(shares: &Arc<RwLock<HashMap<String, LanShare>>>, id: &str) -> Op
 mod tests {
     use super::*;
     use tower::ServiceExt;
+
+    #[test]
+    fn lifecycle_log_references_hide_capabilities_and_reasons_are_typed() {
+        let id = "j3V_BXrcsGwtsXv6XAD1jA";
+        assert_eq!(share_log_ref(id), share_log_ref(id));
+        assert_ne!(share_log_ref(id), share_log_ref("another-private-link"));
+        assert!(!share_log_ref(id).contains(id));
+        assert!(matches!(
+            serde_json::from_str::<ShareRevokeReason>(r#""stale_selection""#).unwrap(),
+            ShareRevokeReason::StaleSelection
+        ));
+        assert!(serde_json::from_str::<ShareRevokeReason>(r#""arbitrary private text""#).is_err());
+    }
+
+    #[test]
+    fn browser_error_reports_are_not_accepted() {
+        let response = request_with_method(
+            &Arc::new(RwLock::new(HashMap::new())),
+            &test_asset_loader(),
+            "POST",
+            "/api/share-logs/j3V_BXrcsGwtsXv6XAD1jA",
+        );
+        assert!(response.starts_with("HTTP/1.1 405 "));
+    }
 
     fn test_asset_loader() -> AssetLoader {
         Arc::new(|path| {
@@ -876,6 +953,10 @@ mod tests {
 
     #[test]
     fn serves_active_memory_snapshot_and_rejects_unknown_ids() {
+        assert!(validate_snapshot(&serde_json::json!({
+            "schema_version": 1, "title": "Empty label result", "columns": []
+        }))
+        .is_ok());
         let id = "j3V_BXrcsGwtsXv6XAD1jA";
         let shares = Arc::new(RwLock::new(HashMap::from([(
             id.to_string(),

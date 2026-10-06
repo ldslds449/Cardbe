@@ -86,6 +86,7 @@ export function build_share_snapshot(
   selected_task_ids: string[],
   title: string,
   now = new Date(),
+  allow_empty = false,
 ): ShareSnapshot {
   const normalized_title = title.trim();
   if (!normalized_title) {
@@ -110,7 +111,7 @@ export function build_share_snapshot(
         .map(serialize_task),
     }));
 
-  if (shared_columns.length === 0) {
+  if (shared_columns.length === 0 && !allow_empty) {
     throw new Error(m.share_column_required());
   }
   if (shared_columns.length > MAX_SHARED_COLUMNS) {
@@ -141,6 +142,7 @@ export function share_content_signature(
   selected_column_ids: string[],
   selected_task_ids: string[],
   title: string,
+  allow_empty = false,
 ): string {
   return JSON.stringify(
     build_share_snapshot(
@@ -149,6 +151,7 @@ export function share_content_signature(
       selected_task_ids,
       title,
       new Date(0),
+      allow_empty,
     ),
   );
 }
@@ -294,16 +297,27 @@ export async function publish_share(
   };
 }
 
-export async function revoke_share(share: ManagedShare): Promise<void> {
-  await invoke("revoke_lan_share", { shareId: share.id });
+export type ShareRevokeReason =
+  | "manual_disable"
+  | "stale_selection"
+  | "link_deleted"
+  | "board_deleted"
+  | "backup_restore";
+
+export async function revoke_share(
+  share: ManagedShare,
+  reason: ShareRevokeReason = "manual_disable",
+): Promise<void> {
+  await invoke("revoke_lan_share", { shareId: share.id, reason });
 }
 
 export async function revoke_managed_shares(
   predicate: (share: ManagedShare) => boolean,
+  reason: ShareRevokeReason = "manual_disable",
 ): Promise<() => void> {
   const targets = [...managed_share_state.shares].filter(predicate);
   for (const share of targets) {
-    await revoke_share(share);
+    await revoke_share(share, reason);
     const current = managed_share_state.shares.find(
       (candidate) => candidate.id === share.id,
     );

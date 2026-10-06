@@ -429,6 +429,8 @@
         effective_selection.selected_column_ids,
         effective_selection.selected_task_ids,
         title,
+        new Date(),
+        selected_labels.length > 0,
       );
       const updated_share = await publish_share(
         snapshot,
@@ -453,6 +455,7 @@
           effective_selection.selected_column_ids,
           effective_selection.selected_task_ids,
           title,
+          selected_labels.length > 0,
         ),
       );
       share = updated_share;
@@ -540,6 +543,8 @@
         selection.selected_column_ids,
         selection.selected_task_ids,
         target.title,
+        new Date(),
+        Boolean(target.selected_labels?.length),
       );
       const enabled_share = await publish_share(
         snapshot,
@@ -559,6 +564,7 @@
           selection.selected_column_ids,
           selection.selected_task_ids,
           target.title,
+          Boolean(target.selected_labels?.length),
         ),
       );
       if (share?.id === target.id) {
@@ -586,7 +592,7 @@
     const deleted_id = share.id;
     try {
       onRetireShare?.(deleted_id);
-      await revoke_share(share);
+      await revoke_share(share, "link_deleted");
       forget_managed_share(deleted_id);
       const remaining = load_managed_shares().filter(
         (candidate) => candidate.id !== deleted_id,
@@ -1345,7 +1351,8 @@
           <Button
             disabled={publishing ||
               revoking ||
-              effective_selection.selected_column_ids.length === 0}
+              (effective_selection.selected_column_ids.length === 0 &&
+                selected_labels.length === 0)}
             onclick={() => void publish()}
           >
             <RefreshCwIcon />
@@ -1355,7 +1362,8 @@
           <Button
             disabled={publishing ||
               revoking ||
-              effective_selection.selected_column_ids.length === 0}
+              (effective_selection.selected_column_ids.length === 0 &&
+                selected_labels.length === 0)}
             onclick={() => void publish()}
           >
             {publishing

@@ -831,6 +831,23 @@ describe("Undo scope and shared Task Explorer updates", () => {
 });
 
 describe("initial board loading", () => {
+  it("keeps a switched board unready until its own columns arrive", async () => {
+    invoke_mock.mockReset();
+    const columns = deferred<[]>();
+    invoke_mock.mockImplementation((command) =>
+      command === "get_columns" ? columns.promise : Promise.resolve([]),
+    );
+    const store = create_store();
+    store.column_fetch_finish = true;
+    store.column_fetch_error = true;
+    await store.switch_board(9);
+    expect(store.active_board_id).toBe(9);
+    expect(store.column_fetch_finish).toBe(false);
+    expect(store.column_fetch_error).toBe(false);
+    columns.resolve([]);
+    await vi.waitFor(() => expect(store.column_fetch_finish).toBe(true));
+    store.dispose();
+  });
   beforeEach(() => {
     invoke_mock.mockReset();
   });

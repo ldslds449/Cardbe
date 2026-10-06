@@ -1233,6 +1233,8 @@ export class BoardStore {
       this.task_move_timers.clear();
       this.column_move_timers.clear();
       await invoke("switch_board", { boardId: id });
+      this.column_fetch_finish = false;
+      this.column_fetch_error = false;
       this.active_board_id = id;
       this.archives = [];
       this.archive_items = [];

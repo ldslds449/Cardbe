@@ -323,7 +323,11 @@
         is_managed_share_enabled(share) &&
         share.board_id === board.active_board_id,
     );
-    if (shares.length === 0 || !board.column_fetch_finish) {
+    if (
+      shares.length === 0 ||
+      !board.column_fetch_finish ||
+      board.column_fetch_error
+    ) {
       return;
     }
 
@@ -344,6 +348,7 @@
           selection.selected_column_ids,
           selection.selected_task_ids,
           share.title,
+          Boolean(share.selected_labels?.length),
         );
         if (signature !== managed_share_state.published_signatures[share.id]) {
           pending.push({ share, signature });
@@ -403,6 +408,8 @@
         selection.selected_column_ids,
         selection.selected_task_ids,
         next.share.title,
+        new Date(),
+        Boolean(next.share.selected_labels?.length),
       );
       const refreshed = await with_share_sync_timeout(
         publish_share(
@@ -487,6 +494,7 @@
           selection.selected_column_ids,
           selection.selected_task_ids,
           share.title,
+          Boolean(share.selected_labels?.length),
         );
         if (signature !== managed_share_state.published_signatures[share.id]) {
           await sync_managed_share(share, signature, columns);
@@ -529,7 +537,7 @@
   ) {
     try {
       share_sync_queue.retire(share.id);
-      await revoke_share(share);
+      await revoke_share(share, "stale_selection");
       const current = managed_share_state.shares.find(
         (candidate) => candidate.id === share.id,
       );
@@ -572,6 +580,7 @@
           selection.selected_column_ids,
           selection.selected_task_ids,
           share.title,
+          Boolean(share.selected_labels?.length),
         );
         if (signature !== managed_share_state.published_signatures[share.id]) {
           await sync_managed_share(share, signature);
@@ -635,6 +644,7 @@
       }
       const forget_shares = await revoke_managed_shares(
         (share) => share.board_id === id,
+        "board_deleted",
       );
       const deleted = await board.delete_board(id);
       if (deleted) {
@@ -675,7 +685,10 @@
           for (const share of managed_share_state.shares) {
             share_sync_queue.retire(share.id);
           }
-          forget_shares = await revoke_managed_shares(() => true);
+          forget_shares = await revoke_managed_shares(
+            () => true,
+            "backup_restore",
+          );
         })
       ) {
         forget_shares?.();
