@@ -2091,7 +2091,7 @@
       <Label
         for="device-id-verified"
         class="block text-sm leading-5 peer-disabled:opacity-100"
-        >I compared the full device ID with the person requesting access.</Label
+        >{m.share_device_id_verified()}</Label
       >
     </div>
     <AlertDialog.Footer

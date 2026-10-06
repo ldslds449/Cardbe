@@ -53,7 +53,15 @@ export default defineConfig({
     sveltekit(),
   ]),
   optimizeDeps: {
-    include: ["@tauri-apps/api/dpi", "@tauri-apps/api/window"],
+    // Keep late-discovered imports from rebuilding shared chunks and reloading
+    // all desktop windows. Prebundle the CommonJS PDF dependencies explicitly.
+    noDiscovery: true,
+    include: [
+      "@tauri-apps/api/dpi",
+      "@tauri-apps/api/window",
+      "pdf-lib",
+      "@pdf-lib/fontkit",
+    ],
   },
   // Custom ports use their own generated config and dependency cache.
   ...(isCustomPort

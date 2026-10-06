@@ -79,7 +79,7 @@
     <span class="truncate font-medium text-foreground" title={active_board_name}
       >{active_board_name}</span
     >
-    {#if shared_role !== "owner"}
+    {#if shared_role !== "owner" || onSync}
       <Badge variant="secondary" class="hidden shrink-0 sm:inline-flex"
         >{shared_role === "viewer"
           ? m.share_read_only()
@@ -107,21 +107,21 @@
                   : m.share_background()}
         </span>
       {/if}
-      {#if onSync}
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          disabled={sync_status === "syncing" || sync_status === "conflict"}
-          onclick={onSync}
-          aria-label={m.share_sync_board()}
-          title={sync_status === "conflict"
-            ? m.share_resolve_conflict()
-            : m.share_sync()}
-          ><RefreshCwIcon
-            class={sync_status === "syncing" ? "animate-spin" : ""}
-          /></Button
-        >
-      {/if}
+    {/if}
+    {#if onSync}
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        disabled={sync_status === "syncing" || sync_status === "conflict"}
+        onclick={onSync}
+        aria-label={m.share_sync_board()}
+        title={sync_status === "conflict"
+          ? m.share_resolve_conflict()
+          : m.share_sync()}
+        ><RefreshCwIcon
+          class={sync_status === "syncing" ? "animate-spin" : ""}
+        /></Button
+      >
     {/if}
   </div>
 </div>

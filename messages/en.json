@@ -240,6 +240,23 @@
   "common_undo_error": "Couldn't undo the last action",
   "common_undo": "Undo",
   "share_synced": "Shared board synced",
+  "share_owner_sync_no_editors": "No approved editors to sync with yet.",
+  "share_owner_sync_partial": [
+    {
+      "declarations": [
+        "input synced",
+        "input failed",
+        "local syncedFormatted = synced: number",
+        "local failedFormatted = failed: number",
+        "local failedPlural = failed: plural"
+      ],
+      "selectors": ["failedPlural"],
+      "match": {
+        "failedPlural=one": "Synced with {syncedFormatted}; {failedFormatted} device could not be synced. Keep both apps open and try again.",
+        "failedPlural=*": "Synced with {syncedFormatted}; {failedFormatted} devices could not be synced. Keep both apps open and try again."
+      }
+    }
+  ],
   "board_search_empty": "No cards match \"{query}\".",
   "board_imported_named": "Imported as \"{name}\"",
   "task_checklist_progress": [
@@ -693,6 +710,7 @@
   "ui_waiting_for_approval": "Waiting for approval",
   "ui_your_device_id_compare_this_with_the_owner": "Your device ID · compare this with the owner",
   "ui_copy_device_id": "Copy device ID",
+  "share_device_id_verified": "I compared the full device ID with the person requesting access.",
   "ui_cancel_waiting": "Cancel waiting",
   "ui_share_a_board": "Share a board",
   "ui_choose_a_board_and_give_people_viewing_or_editing_access": "Choose a board and give people viewing or editing access.",

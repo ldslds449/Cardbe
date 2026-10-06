@@ -340,6 +340,43 @@ describe("Iroh sync", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([
+    [1, 0, true],
+    [1, 1, false],
+    [0, 1, false],
+    [0, 0, true],
+  ])(
+    "reports owner sync results (%i synced, %i failed)",
+    async (synced, failed, success) => {
+      const store = create_store();
+      store.boards[0].is_shared = true;
+      vi.mocked(toast.success).mockClear();
+      vi.mocked(toast.warning).mockClear();
+      invoke_mock.mockResolvedValue({
+        board: store.boards[0],
+        content_changed: synced > 0,
+        owner_sync: { synced_devices: synced, failed_devices: failed },
+      });
+      const fetch_columns = vi
+        .spyOn(store, "get_columns")
+        .mockImplementation(() => {});
+      vi.spyOn(store, "update_labels").mockImplementation(() => {});
+      vi.spyOn(store, "get_task_templates").mockImplementation(() => {});
+      vi.spyOn(store, "get_expired_tasks").mockImplementation(() => {});
+      store.can_undo = true;
+      expect(await store.sync_iroh_board(7)).toBe(success);
+      expect(Boolean(store.iroh_last_synced_at[7])).toBe(synced > 0);
+      expect(fetch_columns).toHaveBeenCalledTimes(synced > 0 ? 1 : 0);
+      expect(store.can_undo).toBe(synced === 0);
+      if (failed > 0 || synced === 0) {
+        expect(toast.warning).toHaveBeenCalledOnce();
+        expect(toast.success).not.toHaveBeenCalled();
+      } else {
+        expect(toast.success).toHaveBeenCalledOnce();
+      }
+    },
+  );
+
   it("restores revoked access without syncing an unresolved conflict", async () => {
     const store = create_store();
     store.boards[0].shared_role = "editor";

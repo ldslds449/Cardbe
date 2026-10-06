@@ -94,6 +94,7 @@ interface BoardsState {
 interface IrohSyncResult {
   board: BoardSummary;
   content_changed: boolean;
+  owner_sync?: { synced_devices: number; failed_devices: number } | null;
 }
 
 interface ArchivePageSerialized {
@@ -290,12 +291,13 @@ export class BoardStore {
         delete this.iroh_sync_error[board_id];
         return true;
       }
-      const { board: synced, content_changed } = await invoke<IrohSyncResult>(
-        "sync_iroh_board",
-        {
-          boardId: board_id,
-        },
-      );
+      const {
+        board: synced,
+        content_changed,
+        owner_sync,
+      } = await invoke<IrohSyncResult>("sync_iroh_board", {
+        boardId: board_id,
+      });
       this.iroh_failures.delete(board_id);
       this.iroh_retry_after.delete(board_id);
       delete this.iroh_sync_error[board_id];
@@ -306,10 +308,12 @@ export class BoardStore {
       this.boards = this.boards.map((board) =>
         board.id === synced.id ? synced : board,
       );
-      this.iroh_last_synced_at = {
-        ...this.iroh_last_synced_at,
-        [synced.id]: Date.now(),
-      };
+      if (!owner_sync || owner_sync.synced_devices > 0) {
+        this.iroh_last_synced_at = {
+          ...this.iroh_last_synced_at,
+          [synced.id]: Date.now(),
+        };
+      }
       if (board_id === this.active_board_id && content_changed) {
         this.can_undo = false;
         this.reload_active_board_data();
@@ -318,9 +322,20 @@ export class BoardStore {
         void this.fetch_all_task_page(true);
       }
       if (!silent) {
-        toast.success(m.share_synced());
+        if (owner_sync?.failed_devices) {
+          toast.warning(
+            m.share_owner_sync_partial({
+              synced: owner_sync.synced_devices,
+              failed: owner_sync.failed_devices,
+            }),
+          );
+        } else if (owner_sync && owner_sync.synced_devices === 0) {
+          toast.warning(m.share_owner_sync_no_editors());
+        } else {
+          toast.success(m.share_synced());
+        }
       }
-      return true;
+      return !owner_sync?.failed_devices;
     } catch (error) {
       if (network_generation !== this.iroh_network_generation) {
         if (!access_only && previous_status) {

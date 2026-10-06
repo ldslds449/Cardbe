@@ -234,6 +234,21 @@
   "common_undo_error": "無法復原上次操作",
   "common_undo": "復原",
   "share_synced": "已同步分享的看板",
+  "share_owner_sync_no_editors": "目前沒有已核准且可編輯的裝置可供同步。",
+  "share_owner_sync_partial": [
+    {
+      "declarations": [
+        "input synced",
+        "input failed",
+        "local syncedFormatted = synced: number",
+        "local failedFormatted = failed: number"
+      ],
+      "selectors": [],
+      "match": {
+        "*": "已與 {syncedFormatted} 個裝置同步；{failedFormatted} 個裝置無法同步。請保持雙方的 Cardbe 開啟後再試一次。"
+      }
+    }
+  ],
   "board_search_empty": "找不到符合「{query}」的卡片。",
   "board_imported_named": "已匯入為「{name}」",
   "task_checklist_progress": [
@@ -645,6 +660,7 @@
   "ui_waiting_for_approval": "等待核准",
   "ui_your_device_id_compare_this_with_the_owner": "你的裝置 ID · 請與看板擁有者核對",
   "ui_copy_device_id": "複製裝置 ID",
+  "share_device_id_verified": "我已與申請存取的人核對完整的裝置 ID。",
   "ui_cancel_waiting": "取消等待",
   "ui_share_a_board": "分享看板",
   "ui_choose_a_board_and_give_people_viewing_or_editing_access": "選擇看板，並設定其他人的檢視或編輯權限。",

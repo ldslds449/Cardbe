@@ -30,6 +30,24 @@ describe("core messages", () => {
             `${chinese ? "邀請設定・" : "Invitation settings · "}${permission}`,
           );
         }
+        expect(m.share_device_id_verified()).toBe(
+          catalog.share_device_id_verified,
+        );
+        expect(m.share_owner_sync_no_editors()).toBe(
+          catalog.share_owner_sync_no_editors,
+        );
+        for (const [synced, failed] of [
+          [0, 1],
+          [1, 1],
+          [2, 2],
+          [1234, 2],
+        ]) {
+          expect(m.share_owner_sync_partial({ synced, failed })).toBe(
+            chinese
+              ? `已與 ${formatNumber(synced)} 個裝置同步；${formatNumber(failed)} 個裝置無法同步。請保持雙方的 Cardbe 開啟後再試一次。`
+              : `Synced with ${formatNumber(synced)}; ${formatNumber(failed)} ${failed === 1 ? "device" : "devices"} could not be synced. Keep both apps open and try again.`,
+          );
+        }
         expect(m.editor_bold()).toBe(catalog.editor_bold);
         expect(m.editor_inline_code_help()).toBe(
           catalog.editor_inline_code_help,

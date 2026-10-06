@@ -1567,7 +1567,9 @@
           ? board.iroh_last_synced_at[active_board_summary.id]
           : undefined}
         onSync={active_board_summary &&
-        active_board_summary.shared_role !== "owner"
+        (active_board_summary.shared_role === "editor" ||
+          (active_board_summary.shared_role === "owner" &&
+            active_board_summary.is_shared))
           ? () => void board.sync_iroh_board(active_board_summary.id)
           : undefined}
         onSwitchView={switch_view}
