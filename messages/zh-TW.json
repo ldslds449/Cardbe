@@ -708,7 +708,7 @@
   "share_device_wait_description": "請等待看板擁有者核准此裝置，核准狀態會自動更新。",
   "share_device_invite_description": "每個裝置都須先在「管理分享」中核准才能加入。你也可以建立其他邀請，分別管理不同對象的存取權。",
   "share_conflict_description": "請先開啟看板，確認本機版本。若採用擁有者的版本，系統會先將你的版本另存為新看板；若保留你的版本，則會取代擁有者的變更，但前提是對方尚未再次更新。",
-  "share_invite_delete_description": "刪除後，其他人將無法再透過此邀請同步；已取得的看板仍會保留在各自的裝置上。",
+  "share_invite_delete_description": "其他人將無法再透過此邀請同步。更新後的 Cardbe 會在下次連線確認邀請已刪除時，清除接收的看板及尚未同步的修改。已匯出的檔案與備份無法收回。",
   "template_use_description": "選擇任務範本，並指定新卡片要新增至哪個欄位。",
   "help_export_description": "匯出前，系統會先隱藏記錄檔中的敏感資訊。",
   "export_entry_count": [
@@ -796,7 +796,7 @@
   "import_board_description": "將建立名為「{name}」的新看板，現有看板不會受到影響。",
   "import_task_column_description": "貼上任務分享文字，即可匯入至「{name}」。",
   "share_review_description": "請透過可信任的管道，與申請者核對此 ID。核准後，裝置將取得「{permission}」權限；遭拒的裝置仍可再次提出申請。",
-  "share_revoke_description": "此裝置將無法再同步「{name}」，但本機副本仍會保留；裝置之後也可重新申請存取權。",
+  "share_revoke_description": "此裝置將無法再同步「{name}」。更新後的 Cardbe 會在下次連線確認權限已撤銷時，清除本機副本及尚未同步的修改。已匯出的檔案與備份無法收回。之後仍可經擁有者核准重新加入。",
   "share_owned_count": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],
@@ -1343,7 +1343,7 @@
   "share_disabled_invitation_help": "此邀請已停用。核准結果會儲存，但須啟用分享後此裝置才能同步。",
   "share_no_pending": "目前沒有待核准的裝置。",
   "share_created_date": "建立於 {date}",
-  "share_access_removed_help": "本機看板仍安全保留。請再次申請存取並等待擁有者核准。若邀請已刪除或停用，請向擁有者索取新邀請或請對方啟用分享。",
+  "share_access_removed_help": "分享暫停或等待核准時，本機看板會保留。請重新申請存取，或請擁有者啟用邀請。確認裝置權限已撤銷或邀請已刪除後，將清除本機共享看板及尚未同步的修改。",
   "share_invitation_settings": "邀請設定・{permission}",
   "share_permission_for": "{name} 的存取權限",
   "share_pending_filter": "有待核准的裝置申請（{count}）",
@@ -1447,5 +1447,13 @@
   "editor_slash_task_list_description": "建立待辦清單",
   "editor_slash_blockquote_description": "引用他人的話",
   "editor_slash_code_block_description": "撰寫程式碼區塊",
-  "editor_slash_horizontal_rule_description": "用分隔線區分內容"
+  "editor_slash_horizontal_rule_description": "用分隔線區分內容",
+  "share_access_terminated": "此共享看板的存取權限已永久撤銷。",
+  "share_replacement_board_name": "我的看板",
+  "share_invitation_deleted_error": "此共享看板的邀請已刪除。",
+  "share_removed_notice_title": "共享看板已移除",
+  "share_removed_notice_invitation": "擁有者已刪除「{name}」的邀請，此裝置上的副本與尚未同步的修改已清除。",
+  "share_removed_notice_revoked": "擁有者已撤銷你對「{name}」的存取權限，此裝置上的副本與尚未同步的修改已清除。",
+  "share_removed_notice_switched": "已切換至「{name}」。",
+  "share_removed_notice_acknowledge": "我知道了"
 }

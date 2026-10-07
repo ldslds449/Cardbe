@@ -548,7 +548,7 @@ fn access_error_code(error: &str) -> Option<SnapshotErrorCode> {
         Some(SnapshotErrorCode::AccessRevoked)
     } else if error == "Invitation is disabled" {
         Some(SnapshotErrorCode::InvitationDisabled)
-    } else if error == "Invitation was revoked" || error == "Invitation was revoked or disabled" {
+    } else if error == "Invitation was revoked" {
         Some(SnapshotErrorCode::InvitationDeleted)
     } else if error.starts_with("Waiting for owner approval") {
         Some(SnapshotErrorCode::ApprovalRequired)
@@ -583,14 +583,26 @@ fn snapshot_access_revoked(snapshot: &Snapshot) -> bool {
 fn snapshot_failure(snapshot: &Snapshot, device_id: String) -> ShareError {
     if snapshot_requires_approval(snapshot) {
         ShareError::ApprovalRequired { device_id }
-    } else if snapshot_access_revoked(snapshot)
-        || matches!(
-            snapshot
-                .error_code
-                .or_else(|| snapshot.error.as_deref().and_then(access_error_code)),
-            Some(SnapshotErrorCode::InvitationDisabled | SnapshotErrorCode::InvitationDeleted)
-        )
+    } else if snapshot_access_revoked(snapshot) {
+        ShareError::AccessTerminated
+    } else if matches!(
+        snapshot
+            .error_code
+            .or_else(|| snapshot.error.as_deref().and_then(access_error_code)),
+        Some(SnapshotErrorCode::InvitationDeleted)
+    ) {
+        ShareError::InvitationDeleted
+    } else if matches!(
+        snapshot
+            .error_code
+            .or_else(|| snapshot.error.as_deref().and_then(access_error_code)),
+        Some(SnapshotErrorCode::InvitationDisabled)
+    ) {
+        ShareError::InvitationDisabled
+    } else if snapshot.error_code.is_none()
+        && snapshot.error.as_deref() == Some("Invitation was revoked or disabled")
     {
+        // Older peers cannot distinguish a pause from permanent revocation.
         ShareError::AccessRevoked
     } else {
         ShareError::Internal("Remote sharing request failed".into())
@@ -1185,7 +1197,7 @@ mod tests {
         };
         assert!(matches!(
             validate_sync_snapshot(&response),
-            Err(crate::errors::ShareError::AccessRevoked)
+            Err(crate::errors::ShareError::AccessTerminated)
         ));
         response.name = "Board with a conflict".into();
         assert!(validate_sync_snapshot(&response).is_ok());
@@ -1207,10 +1219,11 @@ mod tests {
                 .status_only
         );
         for (message, code) in [
-            ("Invitation was revoked", "SHARE_ACCESS_REVOKED"),
-            ("Invitation is disabled", "SHARE_ACCESS_REVOKED"),
-            ("Access was declined or revoked", "SHARE_ACCESS_REVOKED"),
+            ("Invitation was revoked", "SHARE_INVITATION_DELETED"),
+            ("Invitation is disabled", "INVITE_DISABLED"),
+            ("Access was declined or revoked", "SHARE_ACCESS_TERMINATED"),
             ("Waiting for owner approval", "SHARE_APPROVAL_REQUIRED"),
+            ("Invitation was revoked or disabled", "SHARE_ACCESS_REVOKED"),
         ] {
             let response = Snapshot {
                 ok: false,
@@ -1342,13 +1355,23 @@ mod tests {
             Some("Access was declined or revoked. You can request access again.".into());
         assert_eq!(
             serialize(&snapshot),
-            serde_json::json!({"code": "SHARE_ACCESS_REVOKED"})
+            serde_json::json!({"code": "SHARE_ACCESS_TERMINATED"})
         );
         snapshot.error = Some("private exception token=secret".into());
         snapshot.error_code = Some(SnapshotErrorCode::AccessRevoked);
         assert_eq!(
             serialize(&snapshot),
-            serde_json::json!({"code": "SHARE_ACCESS_REVOKED"})
+            serde_json::json!({"code": "SHARE_ACCESS_TERMINATED"})
+        );
+        snapshot.error_code = Some(SnapshotErrorCode::InvitationDeleted);
+        assert_eq!(
+            serialize(&snapshot),
+            serde_json::json!({"code": "SHARE_INVITATION_DELETED"})
+        );
+        snapshot.error_code = Some(SnapshotErrorCode::InvitationDisabled);
+        assert_eq!(
+            serialize(&snapshot),
+            serde_json::json!({"code": "INVITE_DISABLED"})
         );
         snapshot.error_code = Some(SnapshotErrorCode::Unknown);
         assert_eq!(
@@ -1697,9 +1720,17 @@ mod tests {
             drop(restarted);
         }
         drop(in_flight);
-        let restarted = super::bind_endpoint(&config, key.clone(), &network)
-            .await
-            .unwrap();
+        // The endpoint's background tasks may release the Windows socket later.
+        let restarted = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                if let Ok(endpoint) = super::bind_endpoint(&config, key.clone(), &network).await {
+                    break endpoint;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the released fixed UDP port should become available");
         assert_eq!(restarted.id(), key.public());
         assert!(restarted
             .bound_sockets()
@@ -2271,8 +2302,8 @@ pub async fn restore_iroh_host(
     path: std::path::PathBuf,
     app_handle: AppHandle,
 ) {
-    let has_invites = match Database::open(path.clone()).and_then(|db| db.iroh_invites()) {
-        Ok(invites) => invites.iter().any(|invite| invite.4),
+    let has_invites = match Database::open(path.clone()).and_then(|db| db.iroh_host_required()) {
+        Ok(required) => required,
         Err(error) => {
             log::error!(target: "iroh", "Could not inspect saved invitations while restoring the board-sharing service: {error}");
             return;
@@ -2311,10 +2342,8 @@ pub async fn ensure_iroh_host(
             guard.database.path().to_path_buf(),
             guard
                 .database
-                .iroh_invites()
-                .map_err(CommandError::repository)?
-                .iter()
-                .any(|invite| invite.4),
+                .iroh_host_required()
+                .map_err(CommandError::repository)?,
         )
     };
     if active {
@@ -2336,10 +2365,7 @@ pub(crate) async fn stop_host_if_idle(network: &IrohShareState) -> Result<(), St
         .map(|hosted| hosted.path.clone());
     if let Some(path) = path {
         let active = Database::open(path)
-            .and_then(|db| {
-                Ok(!db.iroh_remote_tickets()?.is_empty()
-                    || db.iroh_invites()?.iter().any(|invite| invite.4))
-            })
+            .and_then(|db| Ok(!db.iroh_remote_tickets()?.is_empty() || db.iroh_host_required()?))
             .map_err(|e| e.to_string())?;
         if !active {
             let hosted = network
@@ -2387,10 +2413,8 @@ pub(crate) async fn restart_host_if_running(
             .is_empty()
             && !guard
                 .database
-                .iroh_invites()
+                .iroh_host_required()
                 .map_err(|error| error.to_string())?
-                .iter()
-                .any(|invite| invite.4)
         {
             return Ok(());
         }
@@ -2793,7 +2817,7 @@ async fn request_iroh_board_access_inner(
     app_handle: tauri::AppHandle,
     network: State<'_, IrohShareState>,
     board_id: i64,
-    request_approval: bool,
+    _request_approval: bool,
 ) -> Result<(bool, String, Option<Board>), ShareError> {
     let (remote, key) = {
         let mut guard = app
@@ -2830,11 +2854,9 @@ async fn request_iroh_board_access_inner(
         let request = Request {
             invite_id: remote.invite_id.clone(),
             secret: remote.secret.clone(),
-            action: if request_approval {
-                IrohAction::Request
-            } else {
-                IrohAction::Pull
-            },
+            // Existing copies must observe revocation before requesting access again.
+            // Only joining an invitation may reset a revoked device to pending.
+            action: IrohAction::Pull,
             loro_state_vector: Vec::new(),
             loro_update: Vec::new(),
             known_revision: None,

@@ -289,6 +289,8 @@ export class BoardStore {
         this.iroh_failures.delete(board_id);
         this.iroh_retry_after.delete(board_id);
         delete this.iroh_sync_error[board_id];
+        delete this.iroh_access_error[board_id];
+        this.iroh_access_removed[board_id] = false;
         return true;
       }
       const {
@@ -347,6 +349,9 @@ export class BoardStore {
       const command_error = parseCommandError(error) ?? {
         code: "INTERNAL_ERROR",
       };
+      if (await this.remove_revoked_iroh_board(board_id, command_error)) {
+        return false;
+      }
       this.iroh_sync_error[board_id] = command_error;
       const access_error = [
         "SHARE_ACCESS_REVOKED",
@@ -419,6 +424,71 @@ export class BoardStore {
     );
   }
 
+  iroh_removal_notices = $state<
+    Array<{
+      board_name: string;
+      reason: "SHARE_ACCESS_TERMINATED" | "SHARE_INVITATION_DELETED";
+      switched_to: string | null;
+    }>
+  >([]);
+
+  private iroh_removing = new Set<number>();
+
+  async remove_revoked_iroh_board(board_id: number, error: unknown) {
+    const reason = parseCommandError(error)?.code;
+    if (
+      reason !== "SHARE_ACCESS_TERMINATED" &&
+      reason !== "SHARE_INVITATION_DELETED"
+    ) {
+      return false;
+    }
+    const shared = this.boards.find((item) => item.id === board_id);
+    if (!shared) {
+      return true;
+    }
+    if (shared.shared_role === "owner") {
+      return false;
+    }
+    if (this.iroh_removing.has(board_id)) {
+      return true;
+    }
+    this.iroh_removing.add(board_id);
+    const was_active = this.active_board_id === board_id;
+    try {
+      // Keep the app's last-board invariant without retaining the revoked copy.
+      if (
+        this.boards.length === 1 &&
+        !(await this.create_board(m.share_replacement_board_name()))
+      ) {
+        return false;
+      }
+      if (!(await this.delete_board(board_id))) {
+        return false;
+      }
+      delete this.iroh_access_removed[board_id];
+      delete this.iroh_access_error[board_id];
+      delete this.iroh_sync_error[board_id];
+      delete this.iroh_last_synced_at[board_id];
+      this.iroh_failures.delete(board_id);
+      this.iroh_retry_after.delete(board_id);
+      this.iroh_last_checked_at.delete(board_id);
+      if (this.all_task_list_filter) {
+        void this.fetch_all_task_page(true);
+      }
+      this.iroh_removal_notices.push({
+        board_name: shared.name,
+        reason,
+        switched_to: was_active
+          ? (this.boards.find((item) => item.id === this.active_board_id)
+              ?.name ?? null)
+          : null,
+      });
+      return true;
+    } finally {
+      this.iroh_removing.delete(board_id);
+    }
+  }
+
   async resolve_iroh_conflict(
     board_id: number,
     keep_local: boolean,
@@ -447,6 +517,9 @@ export class BoardStore {
       return true;
     } catch (error) {
       logger.error("iroh.conflict_resolve.failed", error);
+      if (await this.remove_revoked_iroh_board(board_id, error)) {
+        return false;
+      }
       toast.error(translateCommandError(error));
       return false;
     }
@@ -499,7 +572,6 @@ export class BoardStore {
     )) {
       if (
         item.shared_role !== "owner" &&
-        !this.iroh_access_removed[item.id] &&
         !this.iroh_syncing.has(item.id) &&
         this.iroh_syncing.size < 2 &&
         Date.now() >= (this.iroh_retry_after.get(item.id) ?? 0)

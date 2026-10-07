@@ -13,7 +13,11 @@ import {
   it,
   vi,
 } from "vite-plus/test";
-import { applyLanguagePreference, language } from "$lib/i18n";
+import { applyLanguagePreference, getLocale, language } from "$lib/i18n";
+import {
+  getLocale as runtimeGetLocale,
+  overwriteGetLocale,
+} from "$lib/paraglide/runtime";
 import { translateCommandError } from "$lib/command-errors";
 
 import { BoardStore } from "./board.svelte";
@@ -376,6 +380,174 @@ describe("Iroh sync", () => {
       }
     },
   );
+
+  it.each(
+    ["SHARE_ACCESS_TERMINATED", "SHARE_INVITATION_DELETED"].flatMap((reason) =>
+      ["synced", "pending", "conflict"].map((status) => ({ reason, status })),
+    ),
+  )(
+    "removes $status boards for $reason and queues an explanation",
+    async ({ reason, status }) => {
+      const store = create_store();
+      store.boards[0].shared_role = "editor";
+      store.boards[0].sync_status = status;
+      store.boards.push({ ...store.boards[0], id: 8, shared_role: "owner" });
+      store.can_undo = true;
+      vi.spyOn(store, "get_columns").mockImplementation(() => {});
+      vi.spyOn(store, "update_labels").mockImplementation(() => {});
+      vi.spyOn(store, "get_task_templates").mockImplementation(() => {});
+      invoke_mock.mockImplementation((command) => {
+        if (
+          command === "sync_iroh_board" ||
+          command === "request_iroh_board_access"
+        ) {
+          return Promise.reject({ code: reason });
+        }
+        if (command === "delete_board") {
+          return Promise.resolve(8);
+        }
+        return Promise.resolve();
+      });
+      expect(await store.sync_iroh_board(7, true, status === "conflict")).toBe(
+        false,
+      );
+      expect(invoke_mock).toHaveBeenCalledWith("delete_board", { boardId: 7 });
+      expect(store.boards.map((board) => board.id)).toEqual([8]);
+      expect(store.active_board_id).toBe(8);
+      expect(store.can_undo).toBe(false);
+      expect(store.iroh_removal_notices).toEqual([
+        { board_name: "Test board", reason, switched_to: "Test board" },
+      ]);
+    },
+  );
+
+  it.each([
+    "INVITE_DISABLED",
+    "SHARE_APPROVAL_REQUIRED",
+    "SHARE_ACCESS_REVOKED",
+    "INTERNAL_ERROR",
+  ])(
+    "retains local data for %s and never removes an owned board",
+    async (code) => {
+      const store = create_store();
+      store.boards[0].shared_role = "viewer";
+      expect(
+        await store.remove_revoked_iroh_board(7, { code, device_id: "device" }),
+      ).toBe(false);
+      store.boards[0].shared_role = "owner";
+      expect(
+        await store.remove_revoked_iroh_board(7, {
+          code: "SHARE_ACCESS_TERMINATED",
+        }),
+      ).toBe(false);
+      expect(invoke_mock).not.toHaveBeenCalled();
+      expect(store.boards).toHaveLength(1);
+    },
+  );
+
+  it.each(["en", "zh-TW"] as const)(
+    "replaces the last revoked board in %s",
+    async (locale) => {
+      const originalGetLocale = runtimeGetLocale;
+      overwriteGetLocale(getLocale);
+      applyLanguagePreference(locale);
+      try {
+        const store = create_store();
+        store.boards[0].shared_role = "viewer";
+        const replacement = { ...store.boards[0], id: 8, shared_role: "owner" };
+        vi.spyOn(store, "get_columns").mockImplementation(() => {});
+        vi.spyOn(store, "update_labels").mockImplementation(() => {});
+        vi.spyOn(store, "get_task_templates").mockImplementation(() => {});
+        invoke_mock.mockImplementation((command) => {
+          if (command === "create_board") {
+            return Promise.resolve(replacement);
+          }
+          if (command === "delete_board") {
+            return Promise.resolve(8);
+          }
+          return Promise.resolve();
+        });
+        expect(
+          await store.remove_revoked_iroh_board(7, {
+            code: "SHARE_ACCESS_TERMINATED",
+          }),
+        ).toBe(true);
+        expect(invoke_mock).toHaveBeenCalledWith("create_board", {
+          name: locale === "en" ? "My board" : "我的看板",
+        });
+        expect(store.boards).toEqual([replacement]);
+        expect(store.active_board_id).toBe(8);
+      } finally {
+        applyLanguagePreference("en");
+        overwriteGetLocale(originalGetLocale);
+      }
+    },
+  );
+
+  it("retries cleanup after a storage failure", async () => {
+    const store = create_store();
+    store.boards[0].shared_role = "viewer";
+    store.boards.push({ ...store.boards[0], id: 8, shared_role: "owner" });
+    const saved = [...store.boards];
+    invoke_mock.mockImplementation((command) => {
+      if (command === "sync_iroh_board") {
+        return Promise.reject({ code: "SHARE_ACCESS_TERMINATED" });
+      }
+      if (command === "delete_board") {
+        return Promise.reject({ code: "INTERNAL_ERROR" });
+      }
+      if (command === "get_boards") {
+        return Promise.resolve({ boards: saved, active_board_id: 7 });
+      }
+      return Promise.resolve();
+    });
+    await store.sync_iroh_board(7, true);
+    expect(store.boards).toHaveLength(2);
+    expect(store.iroh_access_removed[7]).not.toBe(true);
+    expect(store.iroh_removal_notices).toEqual([]);
+  });
+
+  it("queues each removed board once and does not claim a switch for inactive boards", async () => {
+    const store = create_store();
+    store.boards[0].shared_role = "viewer";
+    store.boards.push({ ...store.boards[0], id: 8, name: "Second board" });
+    store.boards.push({ ...store.boards[0], id: 9, shared_role: "owner" });
+    store.active_board_id = 9;
+    invoke_mock.mockResolvedValue(9);
+    await store.remove_revoked_iroh_board(7, {
+      code: "SHARE_INVITATION_DELETED",
+    });
+    await store.remove_revoked_iroh_board(8, {
+      code: "SHARE_ACCESS_TERMINATED",
+    });
+    await store.remove_revoked_iroh_board(7, {
+      code: "SHARE_INVITATION_DELETED",
+    });
+    expect(store.iroh_removal_notices).toEqual([
+      {
+        board_name: "Test board",
+        reason: "SHARE_INVITATION_DELETED",
+        switched_to: null,
+      },
+      {
+        board_name: "Second board",
+        reason: "SHARE_ACCESS_TERMINATED",
+        switched_to: null,
+      },
+    ]);
+    expect(invoke_mock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps checking paused boards so later deletion can be detected", () => {
+    invoke_mock.mockResolvedValue(undefined);
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    const store = create_store();
+    store.boards[0].shared_role = "viewer";
+    store.iroh_access_removed[7] = true;
+    const sync = vi.spyOn(store, "sync_iroh_board").mockResolvedValue(false);
+    store.trigger_iroh_background_sync();
+    expect(sync).toHaveBeenCalledWith(7, true, false);
+  });
 
   it("restores revoked access without syncing an unresolved conflict", async () => {
     const store = create_store();

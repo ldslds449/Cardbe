@@ -938,6 +938,16 @@ impl Database {
         }
         Ok(())
     }
+    /// Deleted invitations still need an endpoint to report revocation to offline peers.
+    // ponytail: retain the endpoint indefinitely; retire it only with peer acknowledgements.
+    pub fn iroh_host_required(&self) -> StorageResult<bool> {
+        Ok(self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM cardbe_iroh_invites WHERE enabled=1) OR EXISTS(SELECT 1 FROM cardbe_global_metadata WHERE key='iroh_has_revocations')",
+            [],
+            |row| row.get(0),
+        )?)
+    }
+
     pub fn iroh_endpoint_seed(&mut self) -> StorageResult<String> {
         if let Some(seed) = self
             .connection
@@ -1599,6 +1609,11 @@ impl Database {
             CREATE TABLE IF NOT EXISTS cardbe_iroh_remotes(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,invitation TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS cardbe_iroh_conflicts(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,revision INTEGER NOT NULL,name TEXT NOT NULL,permission TEXT NOT NULL,payload TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS cardbe_loro_docs(board_id INTEGER PRIMARY KEY REFERENCES cardbe_boards(id) ON DELETE CASCADE,payload BLOB NOT NULL);")?;
+        // Persist only an activation marker, never deleted invitation secrets.
+        // The trigger also covers board cascades and backup restoration.
+        tx.execute_batch("CREATE TRIGGER IF NOT EXISTS cardbe_iroh_record_revocation AFTER DELETE ON cardbe_iroh_invites BEGIN
+            INSERT INTO cardbe_global_metadata(key,value) VALUES('iroh_has_revocations','1') ON CONFLICT(key) DO NOTHING;
+            END;")?;
         for sql in [
             "ALTER TABLE cardbe_boards ADD COLUMN shared_role TEXT NOT NULL DEFAULT 'owner'",
             "ALTER TABLE cardbe_boards ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'local'",
@@ -3011,6 +3026,138 @@ fn quarantine_file(path: &Path, name: &str, error: &dyn std::fmt::Display) -> St
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn access_probes_preserve_revocation_until_a_fresh_join_request() {
+        let dir = test_dir("iroh-revocation-probe");
+        let mut loaded = load(&dir).unwrap();
+        let db = &mut loaded.database;
+        db.save_iroh_invite(
+            "invite",
+            db.active_board_id(),
+            "secret",
+            IrohPermission::Editor,
+        )
+        .unwrap();
+        db.iroh_device_access("invite", "secret", "device", true)
+            .unwrap();
+        db.set_iroh_device_approved("invite", "device", true)
+            .unwrap();
+        db.set_iroh_device_approved("invite", "device", false)
+            .unwrap();
+        assert_eq!(
+            db.iroh_device_access("invite", "secret", "device", false)
+                .unwrap(),
+            Some(IrohDeviceStatus::Revoked)
+        );
+        assert_eq!(
+            db.iroh_device_access("invite", "secret", "device", true)
+                .unwrap(),
+            Some(IrohDeviceStatus::Pending)
+        );
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn deleting_received_board_clears_scoped_data_and_preserves_local_boards() {
+        let dir = test_dir("iroh-revoked-copy");
+        let mut loaded = load(&dir).unwrap();
+        let db = &mut loaded.database;
+        let local_id = db.active_board_id();
+        let note = db
+            .create_note_with_content(1, "Local note".into(), "Keep".into())
+            .unwrap();
+        let data: StoredData = serde_json::from_value(serde_json::json!({
+            "columns": [{"id": 1, "name": "Shared column", "tasks": [{"id": 1, "title": "Shared task"}]}],
+            "archives": [{"time": 1, "task": {"id": 2, "title": "Archived task"}}],
+            "templates": [{"id": 1, "name": "Shared template", "task": {"title": "Template task"}}]
+        })).unwrap();
+        let doc =
+            crate::loro_board::apply_local_delta(None, &StoredData::default(), &data).unwrap();
+        let received = db
+            .create_received_board(
+                "Shared",
+                &data,
+                IrohPermission::Editor,
+                1,
+                "ticket",
+                Some(&doc),
+            )
+            .unwrap();
+        db.save_iroh_conflict(
+            received.id,
+            2,
+            "Shared",
+            IrohPermission::Editor,
+            &data,
+            Some(&doc),
+        )
+        .unwrap();
+        let mut pending = data.clone();
+        pending.columns[0].tasks[0].title = "Unsent local edit".into();
+        db.replace_board_as_local_edit(received.id, &pending)
+            .unwrap();
+        assert!(db.iroh_loro_update(received.id).unwrap().is_some());
+        db.delete_board(received.id).unwrap();
+        assert!(db.board_exists(local_id).unwrap());
+        assert!(!db.board_exists(received.id).unwrap());
+        assert!(db.iroh_remote(received.id).unwrap().is_none());
+        assert!(db.iroh_conflict(received.id).unwrap().is_none());
+        assert!(db.iroh_loro_update(received.id).unwrap().is_none());
+        for table in [
+            "cardbe_columns",
+            "cardbe_tasks",
+            "cardbe_archives",
+            "cardbe_templates",
+            "cardbe_board_metadata",
+        ] {
+            let remaining: i64 = db
+                .connection
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {table} WHERE board_id=?1"),
+                    [received.id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(remaining, 0);
+        }
+        assert!(db
+            .get_notes()
+            .unwrap()
+            .iter()
+            .any(|item| item.id == note.id));
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn deleted_invitations_keep_revocation_service_available_after_restart() {
+        for cascade in [false, true] {
+            let dir = test_dir("iroh-revocation-host");
+            let mut loaded = load(&dir).unwrap();
+            let db = &mut loaded.database;
+            assert!(!db.iroh_host_required().unwrap());
+            let board = db.create_board("Shared").unwrap();
+            db.save_iroh_invite("invite", board.id, "secret", IrohPermission::Viewer)
+                .unwrap();
+            assert!(db.iroh_host_required().unwrap());
+            db.update_iroh_invite("invite", None, Some(false)).unwrap();
+            assert!(!db.iroh_host_required().unwrap());
+            if cascade {
+                db.delete_board(board.id).unwrap();
+            } else {
+                db.delete_iroh_invite("invite").unwrap();
+            }
+            assert!(db.iroh_invites().unwrap().is_empty());
+            assert!(db.iroh_host_required().unwrap());
+            drop(loaded);
+            let reopened = load(&dir).unwrap();
+            assert!(reopened.database.iroh_host_required().unwrap());
+            drop(reopened);
+            fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
     #[test]
     fn local_writer_is_stable_until_snapshot_replacement_or_reopen() {
         let dir = test_dir("loro-session-peer");

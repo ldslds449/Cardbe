@@ -283,6 +283,19 @@
       0,
     ),
   );
+  $effect(() => {
+    const current_ids = new Set(received_boards.map((shared) => shared.id));
+    for (const id of Object.keys(received_pending).map(Number)) {
+      if (!current_ids.has(id)) {
+        stopped_waiting.add(id);
+        delete received_pending[id];
+      }
+    }
+    if (received_waiting_id !== null && !current_ids.has(received_waiting_id)) {
+      stopped_waiting.add(received_waiting_id);
+      received_waiting_id = null;
+    }
+  });
   onMount(() => {
     const timer = window.setInterval(() => {
       if (open && flow === "manage") {
@@ -667,6 +680,14 @@
       }
     } catch (e) {
       logger.error("iroh.access_request.failed", e);
+      if (await board.remove_revoked_iroh_board(board_id, e)) {
+        delete received_pending[board_id];
+        stopped_waiting.add(board_id);
+        if (received_waiting_id === board_id) {
+          received_waiting_id = null;
+        }
+        return;
+      }
       if (
         !request_approval &&
         [

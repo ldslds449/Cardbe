@@ -133,6 +133,8 @@ pub enum CommandError {
     UpdateRequestFailed,
     UpdateReleaseDataInvalid,
     ShareAccessRevoked,
+    ShareAccessTerminated,
+    ShareInvitationDeleted,
     ShareApprovalRequired {
         device_id: String,
     },
@@ -156,6 +158,9 @@ pub enum CommandError {
 pub enum ShareError {
     ApprovalRequired { device_id: String },
     AccessRevoked,
+    AccessTerminated,
+    InvitationDeleted,
+    InvitationDisabled,
     SyncConflict,
     Domain(DomainError),
     Internal(String),
@@ -180,6 +185,9 @@ impl From<ShareError> for CommandError {
         match error {
             ShareError::ApprovalRequired { device_id } => Self::ShareApprovalRequired { device_id },
             ShareError::AccessRevoked => Self::ShareAccessRevoked,
+            ShareError::AccessTerminated => Self::ShareAccessTerminated,
+            ShareError::InvitationDeleted => Self::ShareInvitationDeleted,
+            ShareError::InvitationDisabled => Self::InviteDisabled,
             ShareError::SyncConflict => Self::ShareSyncConflict,
             ShareError::Domain(error) => error.into(),
             ShareError::Internal(source) => Self::internal(source),

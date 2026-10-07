@@ -758,7 +758,7 @@
   "share_device_wait_description": "The owner needs to approve this device. This screen checks automatically.",
   "share_device_invite_description": "Approve each device in Manage sharing before it can join. Create another invitation to manage access separately.",
   "share_conflict_description": "Open the board to review your local version. Using the owner's version saves your local version as a separate board first. Keeping yours will replace the owner's changes if their version has not changed again.",
-  "share_invite_delete_description": "People can no longer use this invitation to sync. Boards they already received stay on their devices.",
+  "share_invite_delete_description": "People can no longer use this invitation to sync. Updated Cardbe apps will remove the received board, including unsynced changes, when they next connect and confirm the deletion. Exported files and backups cannot be recalled.",
   "template_use_description": "Choose a reusable task and the column where the new card should be created.",
   "help_export_description": "Logs in exported packages are redacted before they leave this device.",
   "export_entry_count": [
@@ -855,7 +855,7 @@
   "import_board_description": "A new board named “{name}” will be created. Your existing boards will not be changed.",
   "import_task_column_description": "Paste task sharing text to import it into “{name}”.",
   "share_review_description": "Confirm this ID with the person requesting access through a trusted channel. Approval grants this invitation's {permission} permission. Rejected devices may request again later.",
-  "share_revoke_description": "This device will no longer be able to sync {name}. Its local copy stays on the device, and it can request access again later.",
+  "share_revoke_description": "This device will no longer be able to sync {name}. Updated Cardbe apps will remove its local copy, including unsynced changes, when they next connect and confirm the revocation. Exported files and backups cannot be recalled. It can join again with owner approval.",
   "share_owned_count": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],
@@ -1453,7 +1453,7 @@
   "share_disabled_invitation_help": "This invitation is disabled. Approval will be saved, but sharing must be enabled before this device can sync.",
   "share_no_pending": "No devices are waiting for approval.",
   "share_created_date": "Created {date}",
-  "share_access_removed_help": "Your local board is safe. Request access again; the owner must approve it. If the invitation was deleted or disabled, ask the owner for a new invitation or to enable sharing.",
+  "share_access_removed_help": "Your local board is retained while sharing is paused or approval is pending. Request access again or ask the owner to enable the invitation. Confirmed device revocation or invitation deletion removes the local shared board, including unsynced changes.",
   "share_invitation_settings": "Invitation settings · {permission}",
   "share_permission_for": "Access permission for {name}",
   "share_pending_filter": "With pending device requests ({count})",
@@ -1557,5 +1557,13 @@
   "editor_slash_task_list_description": "Create a checklist",
   "editor_slash_blockquote_description": "Quote another person",
   "editor_slash_code_block_description": "Write a fenced code block",
-  "editor_slash_horizontal_rule_description": "Separate sections with a rule"
+  "editor_slash_horizontal_rule_description": "Separate sections with a rule",
+  "share_access_terminated": "Access to this shared board has been permanently revoked.",
+  "share_replacement_board_name": "My board",
+  "share_invitation_deleted_error": "The invitation for this shared board has been deleted.",
+  "share_removed_notice_title": "Shared board removed",
+  "share_removed_notice_invitation": "The owner deleted the invitation for “{name}”. Its copy on this device, including any unsynced changes, has been removed.",
+  "share_removed_notice_revoked": "The owner revoked your access to “{name}”. Its copy on this device, including any unsynced changes, has been removed.",
+  "share_removed_notice_switched": "Switched to “{name}”.",
+  "share_removed_notice_acknowledge": "Got it"
 }
