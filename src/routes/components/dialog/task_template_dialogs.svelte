@@ -144,7 +144,7 @@
                   </Button>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="destructive"
                     size="icon-sm"
                     aria-label={m.template_delete_named({
                       name: template.name,
@@ -172,7 +172,11 @@
   </Dialog.Content>
 </Dialog.Root>
 
-<Dialog.Root bind:open={save_open}>
+<Dialog.Root
+  bind:open={save_open}
+  draft={save_template_name}
+  busy={saving_template}
+>
   <Dialog.Content class="sm:max-w-[425px]">
     <Dialog.Header>
       <Dialog.Title>{m.ui_save_task_template()}</Dialog.Title>

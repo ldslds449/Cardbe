@@ -224,10 +224,11 @@
       <AlertDialog.Footer>
         <AlertDialog.Cancel>{m.common_cancel()}</AlertDialog.Cancel>
         <AlertDialog.Action
+          variant="destructive"
           onclick={() => {
             delete_confirm_open = false;
             onDeleteColumn();
-          }}>{m.common_confirm()}</AlertDialog.Action
+          }}>{m.common_delete()}</AlertDialog.Action
         >
       </AlertDialog.Footer>
     </AlertDialog.Content>

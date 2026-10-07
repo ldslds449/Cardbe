@@ -19,7 +19,7 @@
   } = $props();
 </script>
 
-<Dialog.Root bind:open>
+<Dialog.Root bind:open draft={name}>
   <Dialog.Content class="sm:max-w-[425px]">
     <Dialog.Header>
       <Dialog.Title>{m.column_create()}</Dialog.Title>

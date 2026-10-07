@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmUnsavedChanges } from "$lib/unsaved-changes";
   import * as m from "$lib/paraglide/messages.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
@@ -52,7 +53,7 @@
   </Dialog.Content>
 </Dialog.Root>
 
-<Dialog.Root bind:open={import_open}>
+<Dialog.Root bind:open={import_open} draft={import_text}>
   <Dialog.Content class="sm:max-w-2xl">
     <Dialog.Header>
       <Dialog.Title>{m.task_import()}</Dialog.Title>
@@ -84,8 +85,10 @@
         <Button
           type="button"
           variant="outline"
-          onclick={() => {
-            import_open = false;
+          onclick={async () => {
+            if (await confirmUnsavedChanges()) {
+              import_open = false;
+            }
           }}
         >
           {m.common_cancel()}

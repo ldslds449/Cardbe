@@ -1,4 +1,8 @@
 <script lang="ts">
+  import {
+    confirmUnsavedChanges,
+    registerUnsavedChanges,
+  } from "$lib/unsaved-changes";
   import * as m from "$lib/paraglide/messages.js";
   import {
     parseCommandError,
@@ -141,6 +145,9 @@
   }
 
   onMount(() => {
+    const unregister_draft = registerUnsavedChanges(
+      () => title !== "" || details !== "",
+    );
     mounted = true;
     const resize_observer = new ResizeObserver(schedule_window_resize);
     if (content_root) {
@@ -197,6 +204,7 @@
     document.addEventListener("keydown", handle_keydown);
     requestAnimationFrame(() => title_input?.focus());
     return () => {
+      unregister_draft();
       mounted = false;
       resize_observer.disconnect();
       if (resize_frame !== undefined) {
@@ -266,8 +274,13 @@
   }
 
   async function close_quick_window() {
+    if (!(await confirmUnsavedChanges())) {
+      return;
+    }
     try {
       await quick_window.hide();
+      title = "";
+      details = "";
     } catch (caught) {
       logger.warn("quick_add.window_hide.failed", caught);
       console.error("Couldn't hide the quick-add window", caught);

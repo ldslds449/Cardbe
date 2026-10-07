@@ -33,8 +33,8 @@
     </AlertDialog.Header>
     <AlertDialog.Footer>
       <AlertDialog.Cancel>{m.common_cancel()}</AlertDialog.Cancel>
-      <AlertDialog.Action onclick={confirm_delete}
-        >{m.common_confirm()}</AlertDialog.Action
+      <AlertDialog.Action variant="destructive" onclick={confirm_delete}
+        >{m.common_delete()}</AlertDialog.Action
       >
     </AlertDialog.Footer>
   </AlertDialog.Content>

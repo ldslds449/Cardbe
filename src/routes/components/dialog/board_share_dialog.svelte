@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmUnsavedChanges } from "$lib/unsaved-changes";
   import {
     parseCommandError,
     translateCommandError,
@@ -101,10 +102,24 @@
   }
   let delete_confirm_open = $state(false);
   let editing = $state(false);
+  let draft_version = $state(0);
+  let initial_draft = "";
   // A share can belong to any board, even while another board is open in the
   // workspace. Keep its content loaded locally so managing a link never
   // changes the user's current board.
   let selected_board_id = $state<number | null>(null);
+  const share_draft = $derived(
+    JSON.stringify({
+      title,
+      selected_column_ids: [...selected_column_ids].sort(),
+      selected_task_ids: [...selected_task_ids].sort(),
+      selected_labels: [...selected_labels].sort(),
+      expiration_enabled,
+      expiration_date: expiration_date.toString(),
+      requested_link,
+      selected_board_id,
+    }),
+  );
   let loaded_board_id = $state<number | null>(null);
   const owned_boards = $derived(
     boards.filter(
@@ -241,12 +256,25 @@
     reuse_link_open = false;
     requested_link = "";
     context_menu_share_id = null;
+    initial_draft = share_draft;
+    draft_version++;
   }
 
   async function select_share(
     candidate: ManagedShare | null,
     editing_state = candidate === null,
   ): Promise<boolean> {
+    if (
+      !(await confirmUnsavedChanges(
+        () =>
+          initialized_for_open &&
+          open &&
+          editing &&
+          share_draft !== initial_draft,
+      ))
+    ) {
+      return false;
+    }
     const target_board_id =
       candidate?.board_id ??
       (owned_boards.some((board) => board.id === active_board_id)
@@ -263,6 +291,12 @@
     if (!owned_boards.some((board) => board.id === board_id)) {
       return;
     }
+    if (
+      board_id === selected_board_id ||
+      !(await confirmUnsavedChanges(() => share_draft !== initial_draft))
+    ) {
+      return;
+    }
     if (!(await load_board_content(board_id))) {
       return;
     }
@@ -273,11 +307,13 @@
     title = `${board_name(board_id)} board`;
   }
 
-  function cancel_editing() {
+  async function cancel_editing() {
     if (!share) {
       return;
     }
-    load_share(share);
+    if (await confirmUnsavedChanges(() => share_draft !== initial_draft)) {
+      load_share(share);
+    }
   }
 
   $effect(() => {
@@ -612,7 +648,12 @@
   }
 </script>
 
-<Dialog.Root bind:open>
+<Dialog.Root
+  bind:open
+  draft={share_draft}
+  draftVersion={draft_version}
+  busy={publishing}
+>
   <Dialog.Content
     class="flex h-[min(90vh,48rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
   >
@@ -648,7 +689,7 @@
       class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:grid-cols-[16rem_minmax(0,1fr)] md:grid-rows-1"
     >
       <aside
-        class="flex max-h-52 min-h-0 flex-col gap-3 overflow-y-auto border-b bg-muted/20 p-4 md:max-h-none md:border-b-0 md:border-r"
+        class="flex max-h-52 min-h-0 min-w-0 flex-col gap-3 overflow-y-auto border-b bg-muted/20 p-4 md:max-h-none md:border-b-0 md:border-r"
         aria-label={m.ui_published_web_views()}
       >
         <section class="grid gap-2.5" aria-labelledby="existing-shares-heading">
@@ -724,7 +765,7 @@
                         title={`${candidate.title} — Right-click for actions`}
                       >
                         <span class="flex min-w-0 items-center gap-2">
-                          <span class="truncate text-sm font-medium"
+                          <span class="min-w-0 truncate text-sm font-medium"
                             >{candidate.title}</span
                           >
                           <span
@@ -734,7 +775,10 @@
                               : "Disabled"}
                           ></span>
                         </span>
-                        <span class="text-xs text-muted-foreground">
+                        <span
+                          class="block min-w-0 truncate text-xs text-muted-foreground"
+                          title={board_name(candidate.board_id)}
+                        >
                           <span
                             class={candidate_enabled
                               ? "text-success"
@@ -857,7 +901,7 @@
                 >
                   <PowerIcon class="size-4" />
                 </div>
-                <div class="min-w-0">
+                <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-2">
                     <h3 class="font-semibold">
                       {editing ? m.ui_edit_published_view() : share.title}
@@ -874,13 +918,16 @@
                     class="mt-1 flex items-center gap-1.5 text-sm text-foreground"
                   >
                     <LayoutDashboardIcon
-                      class="size-3.5 text-muted-foreground"
+                      class="size-3.5 shrink-0 text-muted-foreground"
                       aria-hidden="true"
                     />
-                    <span class="text-muted-foreground"
+                    <span class="shrink-0 text-muted-foreground"
                       >{m.ui_source_board()}</span
                     >
-                    <span class="font-medium">{board_name(share.board_id)}</span
+                    <span
+                      class="min-w-0 truncate font-medium"
+                      title={board_name(share.board_id)}
+                      >{board_name(share.board_id)}</span
                     >
                   </p>
                   <p class="mt-1 text-sm text-muted-foreground">
@@ -970,11 +1017,11 @@
               </p>
             </div>
             <div class="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
-              <div>
+              <div class="min-w-0">
                 <div class="text-xs font-medium text-muted-foreground">
                   {m.ui_source_board()}
                 </div>
-                <p class="mt-1 text-sm font-medium">
+                <p class="mt-1 break-words text-sm font-medium">
                   {board_name(share.board_id)}
                 </p>
               </div>
@@ -1030,10 +1077,12 @@
                   ? ""
                   : String(selected_board_id)}
                 disabled={publishing || loading_board_content}
-                onchange={(event) =>
-                  void select_new_share_board(
-                    Number(event.currentTarget.value),
-                  )}
+                onchange={(event) => {
+                  const target = Number(event.currentTarget.value);
+                  event.currentTarget.value =
+                    selected_board_id === null ? "" : String(selected_board_id);
+                  void select_new_share_board(target);
+                }}
                 class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-10 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-[3px] disabled:opacity-50"
               >
                 {#each owned_boards as target (target.id)}

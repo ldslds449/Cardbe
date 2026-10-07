@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmUnsavedChanges } from "$lib/unsaved-changes";
   import { translateCommandError } from "$lib/command-errors";
   import { getLocale } from "$lib/i18n";
   import { m } from "$lib/paraglide/messages.js";
@@ -632,6 +633,9 @@
   async function switch_board(id: number) {
     if (id === board.active_board_id) {
       board_panel_open = false;
+      return;
+    }
+    if (!(await confirmUnsavedChanges())) {
       return;
     }
     try {

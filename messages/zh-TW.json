@@ -1338,6 +1338,7 @@
   "share_network_discovery_help_urls": "每行輸入一個相容服務的網址。留空以使用預設服務，自訂網址會取代預設探索服務。",
   "share_network_enable_discovery": "啟用自動裝置探索後即可編輯此欄位。",
   "share_network_enable_transport": "請啟用直接或中繼連線，讓裝置能夠傳輸資料。",
+  "share_network_discard_title": "要捨棄尚未套用的變更嗎？",
   "share_network_discard_help": "連線設定將維持先前儲存的值。",
   "share_network_discard": "捨棄變更",
   "share_disabled_invitation_help": "此邀請已停用。核准結果會儲存，但須啟用分享後此裝置才能同步。",
@@ -1455,5 +1456,9 @@
   "share_removed_notice_invitation": "擁有者已刪除「{name}」的邀請，此裝置上的副本與尚未同步的修改已清除。",
   "share_removed_notice_revoked": "擁有者已撤銷你對「{name}」的存取權限，此裝置上的副本與尚未同步的修改已清除。",
   "share_removed_notice_switched": "已切換至「{name}」。",
-  "share_removed_notice_acknowledge": "我知道了"
+  "share_removed_notice_acknowledge": "我知道了",
+  "unsaved_changes_title": "要捨棄尚未儲存的變更嗎？",
+  "unsaved_changes_description": "你的變更尚未儲存，現在離開將會失去這些修改。",
+  "unsaved_changes_keep_editing": "繼續編輯",
+  "unsaved_changes_discard": "捨棄並離開"
 }

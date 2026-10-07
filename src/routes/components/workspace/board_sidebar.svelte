@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { confirmUnsavedChanges } from "$lib/unsaved-changes";
   import { formatNumber } from "$lib/i18n";
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
@@ -248,7 +249,7 @@
   </div>
 {/if}
 
-<Dialog.Root bind:open={create_open}
+<Dialog.Root bind:open={create_open} draft={new_name} busy={saving}
   ><Dialog.Content class="sm:max-w-sm"
     ><Dialog.Header
       ><Dialog.Title>{m.board_create()}</Dialog.Title><Dialog.Description
@@ -273,7 +274,12 @@
         <Button
           type="button"
           variant="outline"
-          onclick={() => (create_open = false)}>{m.common_cancel()}</Button
+          disabled={saving}
+          onclick={async () => {
+            if (await confirmUnsavedChanges()) {
+              create_open = false;
+            }
+          }}>{m.common_cancel()}</Button
         ><Button type="submit" disabled={!new_name.trim() || saving}
           >{m.common_create()}</Button
         >
@@ -281,7 +287,7 @@
     </form></Dialog.Content
   ></Dialog.Root
 >
-<Dialog.Root bind:open={rename_open}
+<Dialog.Root bind:open={rename_open} draft={rename_name} busy={saving}
   ><Dialog.Content class="sm:max-w-sm"
     ><Dialog.Header
       ><Dialog.Title>{m.board_rename()}</Dialog.Title><Dialog.Description
@@ -305,7 +311,12 @@
         <Button
           type="button"
           variant="outline"
-          onclick={() => (rename_open = false)}>{m.common_cancel()}</Button
+          disabled={saving}
+          onclick={async () => {
+            if (await confirmUnsavedChanges()) {
+              rename_open = false;
+            }
+          }}>{m.common_cancel()}</Button
         ><Button type="submit" disabled={!rename_name.trim() || saving}
           >{m.common_save()}</Button
         >
@@ -326,8 +337,10 @@
     ><AlertDialog.Footer
       ><AlertDialog.Cancel disabled={saving}
         >{m.common_cancel()}</AlertDialog.Cancel
-      ><AlertDialog.Action disabled={saving} onclick={() => void remove()}
-        >{m.common_delete()}</AlertDialog.Action
+      ><AlertDialog.Action
+        variant="destructive"
+        disabled={saving}
+        onclick={() => void remove()}>{m.common_delete()}</AlertDialog.Action
       ></AlertDialog.Footer
     ></AlertDialog.Content
   ></AlertDialog.Root

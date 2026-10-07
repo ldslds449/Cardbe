@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { registerUnsavedChanges } from "$lib/unsaved-changes";
   import { formatNumber } from "$lib/i18n";
   import { getLocale } from "$lib/i18n";
   import * as m from "$lib/paraglide/messages.js";
@@ -173,6 +174,7 @@
   let network_settings_applied = $state(false);
   let network_restart_failed = $state(false);
   let discard_network_open = $state(false);
+  let close_after_discard = false;
   const network_draft = $derived(
     JSON.stringify({
       direct_ip_enabled: network_settings.direct_ip_enabled,
@@ -222,13 +224,23 @@
       network_settings.listen_port,
     ),
   );
-  function leave_network(discard = false) {
+  function leave_network(discard = false, close = false) {
     if (saving_network_settings) {
       return;
     }
-    if (!discard && flow === "network" && network_dirty) {
+    if (
+      !discard &&
+      flow === "network" &&
+      !loading_network_settings &&
+      network_dirty
+    ) {
+      close_after_discard = close;
       discard_network_open = true;
       return;
+    }
+    discard_network_open = false;
+    if (close) {
+      open = false;
     }
     flow = "home";
   }
@@ -297,6 +309,13 @@
     }
   });
   onMount(() => {
+    const unregister_draft = registerUnsavedChanges(
+      () =>
+        open &&
+        flow === "network" &&
+        !loading_network_settings &&
+        network_dirty,
+    );
     const timer = window.setInterval(() => {
       if (open && flow === "manage") {
         void load(true);
@@ -316,7 +335,10 @@
         }
       }
     }, 5000);
-    return () => window.clearInterval(timer);
+    return () => {
+      unregister_draft();
+      window.clearInterval(timer);
+    };
   });
   $effect(() => {
     if (open && (show_requests || show_received)) {
@@ -928,7 +950,7 @@
       if (flow === "network") {
         event.preventDefault();
         if (!discard_network_open) {
-          leave_network();
+          leave_network(false, true);
         }
       }
     }}
@@ -942,14 +964,16 @@
       } else if (flow === "network") {
         event.preventDefault();
         if (!discard_network_open) {
-          leave_network();
+          leave_network(false, true);
         }
       }
     }}
     class={(flow === "manage" || flow === "network") &&
     received_waiting_id === null
       ? "flex h-[min(42rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-xl"
-      : "max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-xl"}
+      : flow === "share" && received_waiting_id === null
+        ? "flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-xl"
+        : "max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-xl"}
   >
     {#if flow === "network"}
       <Button
@@ -959,7 +983,8 @@
         disabled={saving_network_settings}
         aria-label={m.share_back_to_sharing()}
         title={m.share_back_to_sharing()}
-        onclick={() => leave_network()}><XIcon class="size-4" /></Button
+        onclick={() => leave_network(false, true)}
+        ><XIcon class="size-4" /></Button
       >
     {/if}
     <Dialog.Header class={flow === "network" ? "pr-6" : ""}>
@@ -989,7 +1014,7 @@
       {/if}
     </Dialog.Header>
     <div
-      class={(flow === "manage" || flow === "network") &&
+      class={(flow === "manage" || flow === "network" || flow === "share") &&
       received_waiting_id === null
         ? "flex min-h-0 flex-1 flex-col gap-4"
         : flow === "home"
@@ -1421,7 +1446,8 @@
                 variant="outline"
                 class="min-w-24"
                 disabled={saving_network_settings}
-                onclick={() => leave_network(true)}>{m.common_cancel()}</Button
+                onclick={() => leave_network(false, true)}
+                >{m.common_cancel()}</Button
               >
               <Button
                 class="min-w-24"
@@ -1441,76 +1467,85 @@
           </div>
         </div>
       {:else if flow === "share"}
-        <div class="grid gap-4">
-          <label class="grid gap-2 text-sm font-medium"
-            >{m.board_title()}<Select.Root
-              type="single"
-              value={selected_board_id?.toString() ?? ""}
-              onValueChange={(v) => {
-                selected_board_id = v ? Number(v) : null;
-                invalidate();
-              }}
-              ><Select.Trigger class="w-full"
-                >{selected_board?.name ?? m.ui_choose_a_board()}</Select.Trigger
-              ><Select.Content
-                >{#each owned_boards as item}
-                  <Select.Item value={item.id.toString()}
-                    >{item.name}</Select.Item
-                  >
-                {/each}</Select.Content
-              ></Select.Root
-            ></label
-          ><label class="grid gap-2 text-sm font-medium"
-            >{m.ui_permission()}<Select.Root
-              type="single"
-              value={permission}
-              onValueChange={(v) => {
-                permission = v as "viewer" | "editor";
-                invalidate();
-              }}
-              ><Select.Trigger class="w-full"
-                >{permission === "viewer"
-                  ? m.board_read_only()
-                  : m.board_can_edit()}</Select.Trigger
-              ><Select.Content
-                ><Select.Item value="viewer">{m.board_read_only()}</Select.Item
-                ><Select.Item value="editor">{m.board_can_edit()}</Select.Item
-                ></Select.Content
-              ></Select.Root
-            ></label
-          >
-          {#if generated}
-            <Card.Root class="gap-3 bg-muted/30 p-4 shadow-none"
-              ><div class="flex items-center justify-between gap-2">
-                <Card.Title class="text-base">{generated.board_name}</Card.Title
-                ><Badge variant="secondary"
-                  >{generated.permission === "viewer"
+        <ScrollArea
+          class="min-h-0 [&>[data-slot=scroll-area-viewport]]:max-h-[calc(100dvh-15rem)]"
+          orientation="vertical"
+          scrollbarYClasses="w-2"
+        >
+          <div class="grid gap-4 pr-3 pb-1">
+            <label class="grid gap-2 text-sm font-medium"
+              >{m.board_title()}<Select.Root
+                type="single"
+                value={selected_board_id?.toString() ?? ""}
+                onValueChange={(v) => {
+                  selected_board_id = v ? Number(v) : null;
+                  invalidate();
+                }}
+                ><Select.Trigger class="w-full"
+                  >{selected_board?.name ??
+                    m.ui_choose_a_board()}</Select.Trigger
+                ><Select.Content
+                  >{#each owned_boards as item}
+                    <Select.Item value={item.id.toString()}
+                      >{item.name}</Select.Item
+                    >
+                  {/each}</Select.Content
+                ></Select.Root
+              ></label
+            ><label class="grid gap-2 text-sm font-medium"
+              >{m.ui_permission()}<Select.Root
+                type="single"
+                value={permission}
+                onValueChange={(v) => {
+                  permission = v as "viewer" | "editor";
+                  invalidate();
+                }}
+                ><Select.Trigger class="w-full"
+                  >{permission === "viewer"
                     ? m.board_read_only()
-                    : m.board_can_edit()}</Badge
-                >
-              </div>
-              <div
-                class="qr mx-auto aspect-square w-full max-w-56 overflow-hidden rounded-md bg-white p-2"
-              >
-                {@html generated.qr}
-              </div>
-              <Button variant="outline" onclick={() => void copy()}
-                >{m.ui_copy_invitation_link()}</Button
-              ><Card.Description
-                >{m.share_device_invite_description()}</Card.Description
-              ></Card.Root
+                    : m.board_can_edit()}</Select.Trigger
+                ><Select.Content
+                  ><Select.Item value="viewer"
+                    >{m.board_read_only()}</Select.Item
+                  ><Select.Item value="editor">{m.board_can_edit()}</Select.Item
+                  ></Select.Content
+                ></Select.Root
+              ></label
             >
-          {/if}
-          <Button
-            onclick={() => void create()}
-            disabled={creating || selected_board_id === null}
-            >{creating
-              ? m.ui_creating()
-              : generated
-                ? m.ui_create_new_invitation()
-                : m.ui_create_invitation()}</Button
-          >
-        </div>
+            {#if generated}
+              <Card.Root class="gap-3 bg-muted/30 p-4 shadow-none"
+                ><div class="flex items-center justify-between gap-2">
+                  <Card.Title class="text-base"
+                    >{generated.board_name}</Card.Title
+                  ><Badge variant="secondary"
+                    >{generated.permission === "viewer"
+                      ? m.board_read_only()
+                      : m.board_can_edit()}</Badge
+                  >
+                </div>
+                <div
+                  class="qr mx-auto aspect-square w-full max-w-56 overflow-hidden rounded-md bg-white p-2"
+                >
+                  {@html generated.qr}
+                </div>
+                <Button variant="outline" onclick={() => void copy()}
+                  >{m.ui_copy_invitation_link()}</Button
+                ><Card.Description
+                  >{m.share_device_invite_description()}</Card.Description
+                ></Card.Root
+              >
+            {/if}
+            <Button
+              onclick={() => void create()}
+              disabled={creating || selected_board_id === null}
+              >{creating
+                ? m.ui_creating()
+                : generated
+                  ? m.ui_create_new_invitation()
+                  : m.ui_create_invitation()}</Button
+            >
+          </div>
+        </ScrollArea>
       {:else if flow === "join"}
         <Card.Root class="gap-4 border-primary/20 bg-muted/20 p-5 shadow-none"
           ><div class="flex items-center gap-3">
@@ -2017,14 +2052,17 @@
 <AlertDialog.Root bind:open={discard_network_open}>
   <AlertDialog.Content>
     <AlertDialog.Header>
-      <AlertDialog.Title>Discard unapplied changes?</AlertDialog.Title>
+      <AlertDialog.Title>{m.share_network_discard_title()}</AlertDialog.Title>
       <AlertDialog.Description
         >{m.share_network_discard_help()}</AlertDialog.Description
       >
     </AlertDialog.Header>
     <AlertDialog.Footer>
-      <AlertDialog.Cancel>Keep editing</AlertDialog.Cancel>
-      <AlertDialog.Action onclick={() => leave_network(true)}
+      <AlertDialog.Cancel>{m.unsaved_changes_keep_editing()}</AlertDialog.Cancel
+      >
+      <AlertDialog.Action
+        variant="destructive"
+        onclick={() => leave_network(true, close_after_discard)}
         >{m.share_network_discard()}</AlertDialog.Action
       >
     </AlertDialog.Footer>
@@ -2043,7 +2081,7 @@
           pending_delete = null;
           delete_confirm_open = false;
         }}>{m.common_cancel()}</AlertDialog.Cancel
-      ><AlertDialog.Action onclick={() => void remove()}
+      ><AlertDialog.Action variant="destructive" onclick={() => void remove()}
         >{m.ui_delete_invitation()}</AlertDialog.Action
       ></AlertDialog.Footer
     ></AlertDialog.Content

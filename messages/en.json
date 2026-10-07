@@ -1448,6 +1448,7 @@
   "share_network_discovery_help_urls": "One compatible service URL per line. Leave empty for the default service. Custom URLs replace the default discovery service.",
   "share_network_enable_discovery": "Enable automatic device discovery to edit this field.",
   "share_network_enable_transport": "Enable direct or relay connections so devices can transfer data.",
+  "share_network_discard_title": "Discard unapplied changes?",
   "share_network_discard_help": "Your connection settings will keep their previously saved values.",
   "share_network_discard": "Discard changes",
   "share_disabled_invitation_help": "This invitation is disabled. Approval will be saved, but sharing must be enabled before this device can sync.",
@@ -1565,5 +1566,9 @@
   "share_removed_notice_invitation": "The owner deleted the invitation for “{name}”. Its copy on this device, including any unsynced changes, has been removed.",
   "share_removed_notice_revoked": "The owner revoked your access to “{name}”. Its copy on this device, including any unsynced changes, has been removed.",
   "share_removed_notice_switched": "Switched to “{name}”.",
-  "share_removed_notice_acknowledge": "Got it"
+  "share_removed_notice_acknowledge": "Got it",
+  "unsaved_changes_title": "Discard unsaved changes?",
+  "unsaved_changes_description": "Your changes have not been saved. Leaving now will discard them.",
+  "unsaved_changes_keep_editing": "Keep editing",
+  "unsaved_changes_discard": "Discard and leave"
 }

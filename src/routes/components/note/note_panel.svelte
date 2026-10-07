@@ -1,4 +1,8 @@
 <script lang="ts">
+  import {
+    confirmUnsavedChanges,
+    registerUnsavedChanges,
+  } from "$lib/unsaved-changes";
   import { translateCommandError } from "$lib/command-errors";
   import * as m from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
@@ -67,6 +71,9 @@
   let reference_start = $state<number | undefined>(undefined);
   const save_timers = new Map<number, ReturnType<typeof setTimeout>>();
   const save_versions = new Map<number, number>();
+  const unsaved_notes = new Set<number>();
+  let reload_requested = false;
+  let edit_generation = 0;
 
   const selected_note = $derived(notes.find((note) => note.id === selected_id));
   function handle_note_change(content: string) {
@@ -133,10 +140,17 @@
   onDestroy(flush_saves);
 
   onMount(() => {
+    const unregister_drafts = registerUnsavedChanges(
+      () => unsaved_notes.size > 0,
+    );
     const data_changed_listener = listen<{ kind?: string }>(
       "cardbe:data-changed",
       (event) => {
         if (event.payload.kind !== "note") {
+          return;
+        }
+        if (unsaved_notes.size > 0) {
+          reload_requested = true;
           return;
         }
         loaded = false;
@@ -145,14 +159,30 @@
         }
       },
     );
-    return () => void data_changed_listener.then((unlisten) => unlisten());
+    return () => {
+      unregister_drafts();
+      void data_changed_listener.then((unlisten) => unlisten());
+    };
   });
 
   async function load_notes() {
+    if (unsaved_notes.size > 0) {
+      reload_requested = true;
+      return;
+    }
+    reload_requested = false;
     loading = true;
+    const generation = edit_generation;
     try {
-      notes = await invoke<Note[]>("get_notes");
-      selected_id = notes[0]?.id ?? null;
+      const fetched_notes = await invoke<Note[]>("get_notes");
+      if (unsaved_notes.size > 0 || generation !== edit_generation) {
+        reload_requested = true;
+        return;
+      }
+      notes = fetched_notes;
+      selected_id = notes.some((note) => note.id === selected_id)
+        ? selected_id
+        : (notes[0]?.id ?? null);
       loaded = true;
     } catch (error) {
       logger.error("note.load.failed", error);
@@ -160,6 +190,9 @@
       toast.error(translateCommandError(error));
     } finally {
       loading = false;
+      if (reload_requested && open && unsaved_notes.size === 0) {
+        void load_notes();
+      }
     }
   }
 
@@ -188,6 +221,8 @@
   }
 
   function queue_save(note: Note) {
+    edit_generation++;
+    unsaved_notes.add(note.id);
     const existing = save_timers.get(note.id);
     if (existing) {
       clearTimeout(existing);
@@ -217,6 +252,10 @@
       if (index !== -1 && save_versions.get(saved.id) === version) {
         notes[index].created_at = saved.created_at;
         notes[index].updated_at = saved.updated_at;
+        unsaved_notes.delete(saved.id);
+        if (unsaved_notes.size === 0 && reload_requested && open && !loading) {
+          void load_notes();
+        }
       }
     } catch (error) {
       logger.error("note.save.failed", error);
@@ -257,6 +296,7 @@
       await save_note(note, save_versions.get(note.id) ?? 0);
       await enqueue(() => invoke("delete_note", { id: note.id }));
       save_versions.delete(note.id);
+      unsaved_notes.delete(note.id);
       const index = notes.findIndex((candidate) => candidate.id === note.id);
       if (index !== -1) {
         notes.splice(index, 1);
@@ -278,6 +318,22 @@
     selected_id = note_id;
   }
 
+  async function set_open(value: boolean) {
+    if (value) {
+      open = true;
+      return;
+    }
+    flush_saves();
+    await enqueue(async () => undefined);
+    if (await confirmUnsavedChanges(() => unsaved_notes.size > 0)) {
+      if (unsaved_notes.size > 0) {
+        unsaved_notes.clear();
+        loaded = false;
+      }
+      open = false;
+    }
+  }
+
   function select_note_with_keyboard(event: KeyboardEvent, note_id: number) {
     if (event.key !== "Enter" && event.key !== " ") {
       return;
@@ -287,7 +343,7 @@
   }
 </script>
 
-<Sheet.Root bind:open>
+<Sheet.Root bind:open={() => open, (value) => void set_open(value)}>
   <Sheet.Content
     class="gap-0"
     resizable

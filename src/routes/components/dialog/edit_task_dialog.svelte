@@ -296,11 +296,11 @@
   />
 {/snippet}
 
-<Dialog.Root bind:open>
+<Dialog.Root bind:open draft={{ task, template_name }} busy={submitting}>
   <Dialog.Content
     bind:ref={dialog_content_ref}
     class="pb-0 outline-none"
-    interactOutsideBehavior="ignore"
+    interactOutsideBehavior="close"
     onOpenAutoFocus={(event) => {
       event.preventDefault();
       if (auto_focus_title) {

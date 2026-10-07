@@ -25,6 +25,19 @@ describe("core messages", () => {
         applyLanguagePreference(locale);
         const chinese = locale === "zh-TW";
         const catalog = chinese ? zh : en;
+        expect(m.share_network_discard_title()).toBe(
+          catalog.share_network_discard_title,
+        );
+        expect(m.unsaved_changes_title()).toBe(catalog.unsaved_changes_title);
+        expect(m.unsaved_changes_description()).toBe(
+          catalog.unsaved_changes_description,
+        );
+        expect(m.unsaved_changes_keep_editing()).toBe(
+          catalog.unsaved_changes_keep_editing,
+        );
+        expect(m.unsaved_changes_discard()).toBe(
+          catalog.unsaved_changes_discard,
+        );
         for (const permission of [m.board_read_only(), m.board_can_edit()]) {
           expect(m.share_invitation_settings({ permission })).toBe(
             `${chinese ? "邀請設定・" : "Invitation settings · "}${permission}`,

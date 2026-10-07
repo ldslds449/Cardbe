@@ -4,6 +4,7 @@
   import { dev } from "$app/environment";
   import "../app.css";
   import Sonner from "$lib/components/ui/sonner/sonner.svelte";
+  import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
   import { onMount } from "svelte";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -115,4 +116,5 @@
 <svelte:window onlanguagechange={refreshSystemLocale} />
 
 {@render children()}
+<UnsavedChangesDialog />
 <Sonner expand closeButton closeButtonAriaLabel={m.notification_close()} />
