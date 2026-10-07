@@ -40,7 +40,7 @@
     <div class="flex max-h-[85vh] min-h-0 flex-col overflow-hidden">
       <Dialog.Header class="min-w-0 shrink-0">
         <Dialog.Title
-          class="max-w-full break-all pe-8"
+          class="max-w-full break-normal [overflow-wrap:anywhere] pe-8"
           style="color: {task ? display_task_color(task.color) : ''};"
         >
           {task?.title ?? m.task_details()}

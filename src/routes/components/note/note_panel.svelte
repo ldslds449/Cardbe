@@ -365,7 +365,9 @@
                     select_note_with_keyboard(event, note.id)}
                 >
                   <div class="flex items-start gap-2">
-                    <span class="min-w-0 flex-1 truncate text-sm font-semibold">
+                    <span
+                      class="min-w-0 flex-1 break-normal [overflow-wrap:anywhere] text-sm font-semibold"
+                    >
                       {note.title.trim() || m.note_untitled()}
                     </span>
                     {#if note.pinned}
@@ -399,7 +401,7 @@
           <div class="flex flex-wrap items-center gap-2 border-b p-3">
             <Textarea
               rows={1}
-              class="min-h-9 min-w-24 flex-1 resize-none border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
+              class="min-h-9 min-w-24 flex-1 resize-none break-normal border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
               placeholder={m.note_name()}
               aria-label={m.note_name()}
               disabled={deleting_id === selected_note.id}
@@ -515,7 +517,7 @@
           >
           <Textarea
             rows={1}
-            class="min-h-9 min-w-0 resize-none border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
+            class="min-h-9 min-w-0 resize-none break-normal border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
             placeholder={m.note_name()}
             aria-label={m.note_name()}
             disabled={deleting_id === selected_note.id}

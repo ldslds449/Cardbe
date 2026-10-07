@@ -166,7 +166,9 @@
   >
     <Card.Header class="w-full px-4">
       <Card.Title
-        class="break-all {onTogglePin && !read_only ? 'pr-24' : 'pr-16'}"
+        class="break-normal [overflow-wrap:anywhere] {onTogglePin && !read_only
+          ? 'pr-24'
+          : 'pr-16'}"
         style="color: {display_task_color(task.color)};"
       >
         {task.title}
