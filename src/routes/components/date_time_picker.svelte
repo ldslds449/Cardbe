@@ -85,9 +85,9 @@
     );
     time = new Time(
       value.getHours(),
-      Math.floor(value.getMinutes() / 5) * 5,
-      0,
-      0,
+      value.getMinutes(),
+      value.getSeconds(),
+      value.getMilliseconds(),
     );
     mode = date_has_time(value) ? "datetime" : "date";
   });
