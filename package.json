@@ -16,7 +16,7 @@
     "frontend:test": "vp test run",
     "frontend:test:watch": "vp test",
     "test": "pnpm frontend:test && cargo test --manifest-path src-tauri/Cargo.toml --locked",
-    "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --emit-ts-declarations --strategy custom-cardbe baseLocale",
+    "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --output-structure locale-modules --emit-ts-declarations --strategy custom-cardbe baseLocale",
     "check": "pnpm i18n:compile && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && pnpm format:check && pnpm lint",
     "check:watch": "pnpm i18n:compile && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "node scripts/tauri.mjs"
