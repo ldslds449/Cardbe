@@ -1,6 +1,6 @@
 use crate::errors::{CommandError, DomainError};
 use crate::{models::TaskSummary, state::SharedAppData, storage::TaskExplorerQuery};
-use tauri::State;
+use tauri::Manager;
 
 const TASK_EXPLORER_PAGE_SIZE: usize = 50;
 
@@ -20,8 +20,8 @@ pub struct AllTaskPage {
 }
 
 #[tauri::command]
-pub fn list_all_tasks(
-    state: State<'_, SharedAppData>,
+pub async fn list_all_tasks(
+    app: tauri::AppHandle,
     cursor: Option<String>,
     filter: TaskExplorerQuery,
     limit: Option<usize>,
@@ -40,14 +40,27 @@ pub fn list_all_tasks(
     {
         return Err(CommandError::InvalidArgument);
     }
+    if filter
+        .search_options
+        .is_some_and(|options| !options.valid())
+    {
+        return Err(CommandError::InvalidArgument);
+    }
     let limit = limit.unwrap_or(TASK_EXPLORER_PAGE_SIZE).clamp(1, 100);
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
-    let rows = guard
-        .database
-        .list_all_task_page(&filter, offset, limit + 1)
-        .map_err(CommandError::repository)?;
+    let path = {
+        let state = app.state::<SharedAppData>();
+        let guard = state
+            .lock()
+            .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+        guard.database.path().to_owned()
+    };
+    let rows = tauri::async_runtime::spawn_blocking(move || {
+        crate::storage::Database::open_search_reader(path)
+            .and_then(|reader| reader.list_all_task_page(&filter, offset, limit + 1))
+            .map_err(CommandError::repository)
+    })
+    .await
+    .map_err(CommandError::internal)??;
     let has_more = rows.len() > limit;
     let items = rows
         .into_iter()

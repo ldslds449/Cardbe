@@ -1,3 +1,9 @@
+export interface SearchOptions {
+  candidate_limit?: number;
+  result_limit?: number;
+  rrf_k?: number;
+}
+
 export interface TaskExplorerQuery {
   query: string;
   board_ids: number[] | null;
@@ -10,6 +16,7 @@ export interface TaskExplorerQuery {
   archive_start: number | null;
   archive_end: number | null;
   now: number;
+  search_options?: SearchOptions;
 }
 
 export function date_range_bounds(

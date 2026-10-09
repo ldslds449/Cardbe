@@ -3,7 +3,7 @@ use crate::{
     models::{Column, ColumnSort, StoredData, Task},
     state::{undo_last_change_for_board, update_stored_for_board, SharedAppData},
 };
-use tauri::State;
+use tauri::{Manager, State};
 
 fn column_index(data: &StoredData, column_id: i64) -> Result<usize, DomainError> {
     data.columns
@@ -63,21 +63,44 @@ pub fn get_board_columns(
 }
 
 #[tauri::command]
-pub fn search_tasks(
-    state: State<'_, SharedAppData>,
+pub async fn search_tasks(
+    app: tauri::AppHandle,
     query: String,
     expected_board_id: i64,
+    options: Option<crate::search::SearchOptions>,
 ) -> Result<Vec<i64>, CommandError> {
+    if options.is_some_and(|options| !options.valid()) {
+        return Err(CommandError::InvalidArgument);
+    }
+    let path = {
+        let state = app.state::<SharedAppData>();
+        let guard = state
+            .lock()
+            .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+        if guard.active_board_id != expected_board_id {
+            return Err(CommandError::StaleBoardRequest);
+        }
+        guard.database.path().to_owned()
+    };
+    let ids = tauri::async_runtime::spawn_blocking(move || {
+        let reader =
+            crate::storage::Database::open_search_reader(path).map_err(CommandError::repository)?;
+        match options {
+            Some(options) => reader.search_tasks_with_options(expected_board_id, &query, options),
+            None => reader.search_tasks(expected_board_id, &query),
+        }
+        .map_err(CommandError::repository)
+    })
+    .await
+    .map_err(CommandError::internal)??;
+    let state = app.state::<SharedAppData>();
     let guard = state
         .lock()
         .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }
-    guard
-        .database
-        .search_tasks(expected_board_id, &query)
-        .map_err(CommandError::repository)
+    Ok(ids)
 }
 
 #[tauri::command]

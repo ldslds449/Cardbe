@@ -43,6 +43,134 @@ pub struct TaskExplorerQuery {
     pub archive_start: Option<i64>,
     pub archive_end: Option<i64>,
     pub now: i64,
+    pub search_options: Option<crate::search::SearchOptions>,
+}
+
+// Shared eligibility is applied before either engine selects its Top K.
+const TASK_SEARCH_CTE: &str = "WITH tasks AS (
+             SELECT s.rowid AS search_id, s.board_id, b.name AS board_name, c.name AS column_name,
+                    t.column_id, s.archived, s.task_id, a.archived_at,
+                    CASE WHEN s.archived=0 THEN t.payload ELSE a.payload END AS payload
+             FROM cardbe_task_search s
+             JOIN cardbe_boards b ON b.id=s.board_id
+             LEFT JOIN cardbe_tasks t
+               ON s.archived=0 AND t.board_id=s.board_id AND t.id=s.task_id
+             LEFT JOIN cardbe_columns c
+               ON s.archived=0 AND c.board_id=t.board_id AND c.id=t.column_id
+             LEFT JOIN cardbe_archives a
+               ON s.archived=1 AND a.board_id=s.board_id AND a.task_id=s.task_id
+             WHERE (?2 IS NULL OR s.board_id IN (SELECT value FROM json_each(?2)))
+             ), summaries AS (
+               SELECT *, json_extract(payload, '$.due_time') AS due_time,
+                      json_extract(payload, '$.title') AS title,
+                      json_extract(payload, '$.recurrence') AS recurrence
+               FROM tasks
+             )
+             , eligible AS (SELECT * FROM summaries
+             WHERE (?3 IS NULL OR column_id=?3)
+               AND (CASE ?4
+                 WHEN 'active' THEN archived=0
+                 WHEN 'archived' THEN archived=1
+                 WHEN 'overdue' THEN archived=0 AND due_time<?5
+                 WHEN 'recurring' THEN archived=0 AND recurrence IS NOT NULL
+                 ELSE 1 END)
+               AND (CASE ?6 WHEN 'none' THEN due_time IS NULL
+                           WHEN 'due' THEN due_time IS NOT NULL ELSE 1 END)
+               AND (?7 IS NULL OR due_time>=?7)
+               AND (?8 IS NULL OR due_time<?8)
+               AND (archived=0 OR ((?9 IS NULL OR CAST(archived_at AS INTEGER)>=?9)
+                                 AND (?10 IS NULL OR CAST(archived_at AS INTEGER)<?10)))
+)";
+
+fn search_params(filter: &TaskExplorerQuery) -> StorageResult<Vec<rusqlite::types::Value>> {
+    use rusqlite::types::Value;
+    let opt = |value: Option<i64>| value.map(Value::Integer).unwrap_or(Value::Null);
+    Ok(vec![
+        Value::Null,
+        filter
+            .board_ids
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?
+            .map(Value::Text)
+            .unwrap_or(Value::Null),
+        opt(filter.column_id),
+        Value::Text(filter.status.clone()),
+        Value::Integer(filter.now),
+        Value::Text(filter.due.clone()),
+        opt(filter.due_start),
+        opt(filter.due_end),
+        opt(filter.archive_start),
+        opt(filter.archive_end),
+    ])
+}
+
+fn hybrid_search(
+    connection: &Connection,
+    filter: &TaskExplorerQuery,
+    options: crate::search::SearchOptions,
+) -> StorageResult<Vec<i64>> {
+    use crate::search::{fuse, title_priority, FuzzySearch};
+    let query = filter.query.trim();
+    if !options.valid() {
+        return Err(DomainError::InvalidArgument.into());
+    }
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+    let started = std::time::Instant::now();
+    let lowercase_query = query.to_lowercase();
+    let mut values = search_params(filter)?;
+    values.push(rusqlite::types::Value::Text(if query.chars().count() < 3 {
+        query.to_owned()
+    } else {
+        format!("\"{}\"", query.replace('"', "\"\""))
+    }));
+    values.push(rusqlite::types::Value::Integer(i64::try_from(
+        options.candidate_limit,
+    )?));
+    let sql = if query.chars().count() < 3 {
+        format!(
+            "{TASK_SEARCH_CTE} SELECT e.search_id,e.title FROM eligible e
+            JOIN cardbe_task_search s ON s.rowid=e.search_id
+            WHERE instr(lower(s.body),lower(?11))>0 ORDER BY e.search_id LIMIT ?12"
+        )
+    } else {
+        format!(
+            "{TASK_SEARCH_CTE} SELECT e.search_id,e.title FROM cardbe_task_fts
+            JOIN eligible e ON e.search_id=cardbe_task_fts.rowid
+            WHERE cardbe_task_fts MATCH ?11 ORDER BY bm25(cardbe_task_fts),e.search_id LIMIT ?12"
+        )
+    };
+    let mut statement = connection.prepare(&sql)?;
+    let fts = statement
+        .query_map(rusqlite::params_from_iter(&values), |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                title_priority(&row.get::<_, String>(1)?, &lowercase_query),
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let fts_elapsed = started.elapsed();
+    let fuzzy_started = std::time::Instant::now();
+    // ponytail: large scopes scan every title; add a cache only after release profiling justifies it.
+    let sql = format!("{TASK_SEARCH_CTE} SELECT search_id,title FROM eligible");
+    let mut statement = connection.prepare(&sql)?;
+    let values = search_params(filter)?;
+    let mut rows = statement.query(rusqlite::params_from_iter(&values))?;
+    let mut fuzzy = FuzzySearch::new(query, options.candidate_limit);
+    let mut scanned = 0;
+    while let Some(row) = rows.next()? {
+        fuzzy.push(row.get(0)?, &row.get::<_, String>(1)?);
+        scanned += 1;
+    }
+    let fuzzy = fuzzy.finish();
+    let fuzzy_elapsed = fuzzy_started.elapsed();
+    let merge_started = std::time::Instant::now();
+    let results = fuse(&fts, &fuzzy, options);
+    log::debug!(target: "storage.search", "scanned={} fts_us={} fuzzy_us={} merge_us={} total_us={} results={}",
+        scanned, fts_elapsed.as_micros(), fuzzy_elapsed.as_micros(), merge_started.elapsed().as_micros(), started.elapsed().as_micros(), results.len());
+    Ok(results)
 }
 
 pub struct IrohConflict {
@@ -168,6 +296,21 @@ pub struct PersistStats {
 }
 
 impl Database {
+    pub(crate) fn open_search_reader(path: PathBuf) -> StorageResult<Self> {
+        let connection =
+            Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        connection.busy_timeout(std::time::Duration::from_secs(5))?;
+        // All search stages see one snapshot, without holding the application state lock.
+        connection.execute_batch("BEGIN")?;
+        Ok(Self {
+            connection,
+            path,
+            positions: DatabasePositions::default(),
+            active_board_id: 0,
+            loro_peers: HashMap::new(),
+        })
+    }
+
     pub(crate) fn open(path: PathBuf) -> StorageResult<Self> {
         let connection = Connection::open(&path)?;
         let sqlite_user_version: i64 =
@@ -257,35 +400,37 @@ impl Database {
     }
 
     pub fn search_tasks(&self, board_id: i64, query: &str) -> StorageResult<Vec<i64>> {
-        let query = query.trim();
-        if query.is_empty() {
-            return Ok(Vec::new());
-        }
+        self.search_tasks_with_options(board_id, query, crate::search::SearchOptions::default())
+    }
 
-        let is_short_query = query.chars().count() < 3;
-        let mut statement = if is_short_query {
-            // ponytail: trigram FTS needs three characters, so short queries scan board text.
-            self.connection.prepare(
-                "SELECT task_id FROM cardbe_task_search
-                 WHERE board_id=?1 AND instr(lower(body),lower(?2))>0",
-            )?
-        } else {
-            self.connection.prepare(
-                "SELECT DISTINCT s.task_id
-                 FROM cardbe_task_fts JOIN cardbe_task_search s ON s.rowid=cardbe_task_fts.rowid
-                 WHERE cardbe_task_fts MATCH ?1 AND s.board_id=?2",
-            )?
+    pub fn search_tasks_with_options(
+        &self,
+        board_id: i64,
+        query: &str,
+        options: crate::search::SearchOptions,
+    ) -> StorageResult<Vec<i64>> {
+        let filter = TaskExplorerQuery {
+            query: query.to_owned(),
+            board_ids: Some(vec![board_id]),
+            ..Default::default()
         };
-        let ids = if is_short_query {
-            statement
-                .query_map(params![board_id, query], |row| row.get(0))?
-                .collect::<Result<Vec<_>, _>>()?
-        } else {
-            let phrase = format!("\"{}\"", query.replace('"', "\"\""));
-            statement
-                .query_map(params![phrase, board_id], |row| row.get(0))?
-                .collect::<Result<Vec<_>, _>>()?
-        };
+        let rowids = hybrid_search(&self.connection, &filter, options)?;
+        let mut statement = self.connection.prepare(
+            "SELECT s.task_id FROM json_each(?1) ranked
+                 JOIN cardbe_task_search s ON s.rowid=ranked.value
+                 ORDER BY CAST(ranked.key AS INTEGER)",
+        )?;
+        let rows = statement.query_map([serde_json::to_string(&rowids)?], |row| {
+            row.get::<_, i64>(0)
+        })?;
+        let mut ids = Vec::with_capacity(rowids.len());
+        let mut seen = std::collections::HashSet::new();
+        for id in rows {
+            let id = id?;
+            if seen.insert(id) {
+                ids.push(id);
+            }
+        }
         Ok(ids)
     }
 
@@ -1857,43 +2002,27 @@ impl Database {
         offset: i64,
         limit: usize,
     ) -> StorageResult<Vec<AllTaskRow>> {
-        // ponytail: OFFSET keeps all sort modes simple; use keyset cursors if deep pages become slow.
-        let mut statement = self.connection.prepare(
-            "WITH tasks AS (
-             SELECT s.board_id, b.name AS board_name, c.name AS column_name,
-                    t.column_id, s.archived, s.task_id, a.archived_at,
-                    CASE WHEN s.archived=0 THEN t.payload ELSE a.payload END AS payload
-             FROM cardbe_task_search s
-             JOIN cardbe_boards b ON b.id=s.board_id
-             LEFT JOIN cardbe_tasks t
-               ON s.archived=0 AND t.board_id=s.board_id AND t.id=s.task_id
-             LEFT JOIN cardbe_columns c
-               ON s.archived=0 AND c.board_id=t.board_id AND c.id=t.column_id
-             LEFT JOIN cardbe_archives a
-               ON s.archived=1 AND a.board_id=s.board_id AND a.task_id=s.task_id
-             WHERE (?1='' OR instr(lower(s.body),lower(?1))>0)
-               AND (?2 IS NULL OR s.board_id IN (SELECT value FROM json_each(?2)))
-             ), summaries AS (
-               SELECT *, json_extract(payload, '$.due_time') AS due_time,
-                      json_extract(payload, '$.title') AS title,
-                      json_extract(payload, '$.recurrence') AS recurrence
-               FROM tasks
-             )
+        if filter
+            .search_options
+            .is_some_and(|options| !options.valid())
+        {
+            return Err(DomainError::InvalidArgument.into());
+        }
+        // shortcut: OFFSET slows deep pages; use keyset cursors if profiling justifies it.
+        let matches = if filter.query.trim().is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&hybrid_search(
+                &self.connection,
+                filter,
+                filter.search_options.unwrap_or_default(),
+            )?)?)
+        };
+        let sql = format!(
+            "{TASK_SEARCH_CTE}
              SELECT board_id, board_name, column_name, archived_at, payload
-             FROM summaries
-             WHERE (?3 IS NULL OR column_id=?3)
-               AND (CASE ?4
-                 WHEN 'active' THEN archived=0
-                 WHEN 'archived' THEN archived=1
-                 WHEN 'overdue' THEN archived=0 AND due_time<?5
-                 WHEN 'recurring' THEN archived=0 AND recurrence IS NOT NULL
-                 ELSE 1 END)
-               AND (CASE ?6 WHEN 'none' THEN due_time IS NULL
-                           WHEN 'due' THEN due_time IS NOT NULL ELSE 1 END)
-               AND (?7 IS NULL OR due_time>=?7)
-               AND (?8 IS NULL OR due_time<?8)
-               AND (archived=0 OR ((?9 IS NULL OR CAST(archived_at AS INTEGER)>=?9)
-                                 AND (?10 IS NULL OR CAST(archived_at AS INTEGER)<?10)))
+             FROM eligible
+             WHERE (?1 IS NULL OR search_id IN (SELECT value FROM json_each(?1)))
              ORDER BY
                CASE WHEN ?11='due' THEN due_time IS NULL END,
                CASE WHEN ?11='due' THEN due_time END,
@@ -1901,11 +2030,12 @@ impl Database {
                CASE WHEN ?11='column' THEN column_name END COLLATE NOCASE,
                title COLLATE NOCASE, board_id, archived, task_id
              LIMIT ?12 OFFSET ?13",
-        )?;
+        );
+        let mut statement = self.connection.prepare(&sql)?;
         let rows = statement
             .query_map(
                 params![
-                    filter.query.trim(),
+                    matches,
                     filter
                         .board_ids
                         .as_ref()
@@ -3500,6 +3630,331 @@ mod tests {
 
         drop(loaded);
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn hybrid_search_ranking_filters_and_live_changes() {
+        let dir = test_dir("hybrid-search");
+        let mut loaded = load(&dir).unwrap();
+        let first = loaded.database.active_board_id();
+        let second = loaded.database.create_board("Second").unwrap().id;
+        let task = |id, title: &str, description: &str| Task {
+            id,
+            title: title.into(),
+            description: description.into(),
+            due_time: Some(10),
+            ..Task::default()
+        };
+        let mut data = StoredData {
+            columns: vec![Column {
+                id: 1,
+                name: "Todo".into(),
+                color: String::new(),
+                sort_order: Default::default(),
+                tasks: vec![
+                    task(1, "Alpha", ""),
+                    task(2, "Alpha beta", ""),
+                    task(3, "a long phrase", ""),
+                    task(4, "Notes", "alpha in description"),
+                    task(5, "臺灣工作報告", ""),
+                    task(6, "🚀 工作報告", ""),
+                    task(7, "臺灣 Release", ""),
+                ],
+            }],
+            archives: vec![Archive {
+                time: 100,
+                task: task(8, "a long phrase", ""),
+            }],
+            ..StoredData::default()
+        };
+        loaded
+            .database
+            .replace_board_as_local_edit(first, &data)
+            .unwrap();
+        loaded
+            .database
+            .replace_board_as_local_edit(second, &data)
+            .unwrap();
+        let ids = loaded.database.search_tasks(first, "alpha").unwrap();
+        assert_eq!(&ids[..2], &[1, 2]);
+        assert_eq!(ids.len(), 5);
+        for id in [3, 4, 8] {
+            assert!(ids.contains(&id));
+        }
+        assert_eq!(ids, loaded.database.search_tasks(first, "alpha").unwrap());
+        for (query, id) in [("臺報", 5), ("🚀報", 6), ("臺R", 7)] {
+            assert_eq!(
+                loaded.database.search_tasks(first, query).unwrap(),
+                vec![id]
+            );
+        }
+        assert!(loaded
+            .database
+            .search_tasks(first, "  ")
+            .unwrap()
+            .is_empty());
+        assert!(loaded
+            .database
+            .search_tasks(first, "missing-xyz")
+            .unwrap()
+            .is_empty());
+        let mut filter = TaskExplorerQuery {
+            query: "alpha".into(),
+            status: "active".into(),
+            sort: "title".into(),
+            search_options: Some(crate::search::SearchOptions {
+                candidate_limit: 1,
+                result_limit: 2,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let invalid_filter = TaskExplorerQuery {
+            search_options: Some(crate::search::SearchOptions {
+                candidate_limit: 0,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let error = loaded
+            .database
+            .list_all_task_page(&invalid_filter, 0, 10)
+            .err()
+            .unwrap();
+        assert!(matches!(
+            error.downcast_ref::<DomainError>(),
+            Some(DomainError::InvalidArgument)
+        ));
+        // Board restrictions must precede Top K, even when another board has identical IDs.
+        filter.board_ids = Some(vec![second]);
+        let rows = loaded.database.list_all_task_page(&filter, 0, 10).unwrap();
+        assert!(!rows.is_empty());
+        assert!(rows
+            .iter()
+            .all(|row| row.board_id == second && row.archived_at.is_none()));
+        filter.search_options = None;
+        filter.board_ids = None;
+        assert_eq!(
+            loaded
+                .database
+                .list_all_task_page(&filter, 0, 10)
+                .unwrap()
+                .len(),
+            8
+        );
+        filter.board_ids = Some(vec![first]);
+        let all = loaded.database.list_all_task_page(&filter, 0, 10).unwrap();
+        let page = loaded.database.list_all_task_page(&filter, 1, 2).unwrap();
+        assert_eq!(
+            page.iter().map(|row| row.task.id).collect::<Vec<_>>(),
+            all[1..3].iter().map(|row| row.task.id).collect::<Vec<_>>()
+        );
+        filter.status = "archived".into();
+        assert_eq!(
+            loaded.database.list_all_task_page(&filter, 0, 10).unwrap()[0]
+                .task
+                .id,
+            8
+        );
+        filter.archive_start = Some(101);
+        assert!(loaded
+            .database
+            .list_all_task_page(&filter, 0, 10)
+            .unwrap()
+            .is_empty());
+        filter.archive_start = None;
+        filter.status = "active".into();
+        filter.column_id = Some(99);
+        assert!(loaded
+            .database
+            .list_all_task_page(&filter, 0, 10)
+            .unwrap()
+            .is_empty());
+        filter.column_id = Some(1);
+        filter.due_start = Some(11);
+        assert!(loaded
+            .database
+            .list_all_task_page(&filter, 0, 10)
+            .unwrap()
+            .is_empty());
+        filter.due_start = None;
+        filter.status = "overdue".into();
+        filter.now = 11;
+        assert_eq!(
+            loaded
+                .database
+                .list_all_task_page(&filter, 0, 10)
+                .unwrap()
+                .len(),
+            4
+        );
+        filter.due = "none".into();
+        assert!(loaded
+            .database
+            .list_all_task_page(&filter, 0, 10)
+            .unwrap()
+            .is_empty());
+
+        data.columns[0].tasks[0].title = "Delta".into();
+        data.columns[0].tasks.retain(|task| task.id != 2);
+        let archived = data.columns[0].tasks.remove(1);
+        data.archives.push(Archive {
+            time: 200,
+            task: archived,
+        });
+        data.columns[0].tasks.push(task(9, "Alphabet", ""));
+        loaded
+            .database
+            .replace_board_as_local_edit(first, &data)
+            .unwrap();
+        let reader = Database::open_search_reader(loaded.database.path().to_owned()).unwrap();
+        let ids = reader.search_tasks(first, "alpha").unwrap();
+        assert!(!ids.contains(&1) && !ids.contains(&2));
+        assert!(ids.contains(&3) && ids.contains(&9));
+        drop(reader);
+        let restored = data.archives.pop().unwrap().task;
+        data.columns[0].tasks.push(restored);
+        loaded
+            .database
+            .replace_board_as_local_edit(first, &data)
+            .unwrap();
+        filter.due = "all".into();
+        filter.status = "active".into();
+        assert!(loaded
+            .database
+            .list_all_task_page(&filter, 0, 10)
+            .unwrap()
+            .iter()
+            .any(|row| row.task.id == 3));
+        loaded
+            .database
+            .move_task_to_board(first, 9, second, 1)
+            .unwrap();
+        assert!(!loaded
+            .database
+            .search_tasks(first, "alphabet")
+            .unwrap()
+            .contains(&9));
+        // Moving allocates a fresh ID on the destination board.
+        let moved = loaded.database.search_tasks(second, "alphabet").unwrap();
+        assert!(!moved.is_empty());
+        assert_eq!(
+            loaded
+                .database
+                .load_task(second, moved[0])
+                .unwrap()
+                .unwrap()
+                .title,
+            "Alphabet"
+        );
+        data.columns[0].tasks = vec![task(10, "Remote release notes", "")];
+        data.archives.clear();
+        loaded
+            .database
+            .apply_iroh_snapshot(first, "Shared", IrohPermission::Viewer, 20, &data, None)
+            .unwrap();
+        assert_eq!(
+            loaded.database.search_tasks(first, "rrn").unwrap(),
+            vec![10]
+        );
+        assert!(loaded
+            .database
+            .search_tasks(first, "alpha")
+            .unwrap()
+            .is_empty());
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    #[ignore = "Synthetic search benchmark: run alone with --ignored --nocapture"]
+    fn hybrid_search_benchmark() {
+        struct SearchLogger;
+        impl log::Log for SearchLogger {
+            fn enabled(&self, metadata: &log::Metadata) -> bool {
+                metadata.target() == "storage.search"
+            }
+            fn log(&self, record: &log::Record) {
+                if self.enabled(record.metadata()) {
+                    println!("{}", record.args());
+                }
+            }
+            fn flush(&self) {}
+        }
+        static LOGGER: SearchLogger = SearchLogger;
+        log::set_logger(&LOGGER).unwrap();
+        log::set_max_level(log::LevelFilter::Debug);
+        for size in [1_000, 10_000, 50_000, 100_000] {
+            let dir = test_dir(&format!("hybrid-bench-{size}"));
+            let mut loaded = load(&dir).unwrap();
+            let board = loaded.database.active_board_id();
+            let data = StoredData {
+                columns: vec![Column {
+                    id: 1,
+                    name: "Todo".into(),
+                    color: String::new(),
+                    sort_order: Default::default(),
+                    tasks: vec![],
+                }],
+                ..Default::default()
+            };
+            loaded
+                .database
+                .replace_board_as_local_edit(board, &data)
+                .unwrap();
+            let started = std::time::Instant::now();
+            let tx = loaded.database.connection.transaction().unwrap();
+            {
+                let mut insert = tx.prepare("INSERT INTO cardbe_tasks(board_id,id,column_id,position,payload) VALUES(?1,?2,1,?2,?3)").unwrap();
+                for id in 1..=size {
+                    let task = Task {
+                        id,
+                        title: format!("Release planning task {id} 臺灣 🚀"),
+                        description: "Public changelog and release documentation".into(),
+                        ..Default::default()
+                    };
+                    insert
+                        .execute(params![board, id, serde_json::to_string(&task).unwrap()])
+                        .unwrap();
+                }
+            }
+            tx.commit().unwrap();
+            println!(
+                "tasks={size} fixture_and_fts_init_ms={} pid={}",
+                started.elapsed().as_millis(),
+                std::process::id()
+            );
+            for query in ["release", "rpt", "臺🚀", "no-match-xyz"] {
+                println!("query={query}");
+                for _ in 0..3 {
+                    let reader =
+                        Database::open_search_reader(loaded.database.path().to_owned()).unwrap();
+                    let started = std::time::Instant::now();
+                    let ids = reader.search_tasks(board, query).unwrap();
+                    assert!(ids.len() <= crate::search::SearchOptions::default().result_limit);
+                    println!("command_storage_us={}", started.elapsed().as_micros());
+                }
+            }
+            #[cfg(windows)]
+            {
+                let memory = std::process::Command::new("powershell.exe")
+                    .args([
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-Command",
+                        &format!("(Get-Process -Id {}).PeakWorkingSet64", std::process::id()),
+                    ])
+                    .output()
+                    .unwrap();
+                assert!(memory.status.success());
+                println!(
+                    "tasks={size} process_peak_working_set_bytes={}",
+                    String::from_utf8(memory.stdout).unwrap().trim()
+                );
+            }
+            drop(loaded);
+            fs::remove_dir_all(dir).unwrap();
+        }
     }
 
     #[test]

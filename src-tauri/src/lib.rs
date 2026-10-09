@@ -4,6 +4,7 @@ mod desktop;
 mod errors;
 mod loro_board;
 mod models;
+mod search;
 mod state;
 mod storage;
 
