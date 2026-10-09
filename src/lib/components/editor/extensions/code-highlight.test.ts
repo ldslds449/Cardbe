@@ -13,6 +13,12 @@ describe("editor code highlighting", () => {
   it("uses shared Shiki colors and keeps token positions across lines", async () => {
     await loadHighlightLanguage("typescript");
     const code = "const answer = 42;\n// 中文";
+    // Warm the grammar so cold regex compilation cannot hit Shiki's time limit.
+    getHighlighter().codeToTokensBase(code, {
+      lang: "typescript",
+      theme: "cardbe",
+      tokenizeTimeLimit: 0,
+    });
     const editor = new Editor({
       element: null,
       extensions: createEditorExtensions(),
@@ -31,7 +37,7 @@ describe("editor code highlighting", () => {
       });
       const decorations = codeHighlightKey.getState(state)!.find();
       const tokens = getHighlighter()
-        .codeToTokensBase(code, { lang: "typescript", theme: "github-dark" })
+        .codeToTokensBase(code, { lang: "typescript", theme: "cardbe" })
         .flat();
       expect(decorations).toHaveLength(
         tokens.filter((token) => token.content.length && token.color).length,

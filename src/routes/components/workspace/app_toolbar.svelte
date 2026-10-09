@@ -2,7 +2,6 @@
   import { formatNumber } from "$lib/i18n";
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
-  import { toggleMode } from "mode-watcher";
   import BellIcon from "@lucide/svelte/icons/bell";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
@@ -13,13 +12,11 @@
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
   import LinkIcon from "@lucide/svelte/icons/link";
   import ListTodoIcon from "@lucide/svelte/icons/list-todo";
-  import MoonIcon from "@lucide/svelte/icons/moon";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import RadioTowerIcon from "@lucide/svelte/icons/radio-tower";
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
   import SearchIcon from "@lucide/svelte/icons/search";
   import XIcon from "@lucide/svelte/icons/x";
-  import SunIcon from "@lucide/svelte/icons/sun";
 
   import { Button } from "$lib/components/ui/button/index.js";
   import * as InputGroup from "$lib/components/ui/input-group/index.js";
@@ -208,7 +205,7 @@
           <Menubar.Trigger>{m.settings_title()}</Menubar.Trigger>
           <Menubar.Content>
             <Menubar.Item onclick={() => (settings_open = true)}
-              >{m.settings_language()}</Menubar.Item
+              >{m.settings_title()}</Menubar.Item
             >
           </Menubar.Content>
         </Menubar.Menu>
@@ -425,22 +422,6 @@
           />
         </Button>
       </div>
-
-      <Button
-        onclick={toggleMode}
-        variant="outline"
-        size="icon-sm"
-        class="flex-none"
-        aria-label={m.settings_theme_toggle()}
-        title={m.settings_theme_toggle()}
-      >
-        <SunIcon
-          class="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 !transition-all dark:-rotate-90 dark:scale-0"
-        />
-        <MoonIcon
-          class="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 !transition-all dark:rotate-0 dark:scale-100"
-        />
-      </Button>
     </div>
   </div>
 </Menubar.Root>

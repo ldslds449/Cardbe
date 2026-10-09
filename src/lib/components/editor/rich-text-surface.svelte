@@ -1,14 +1,12 @@
 ﻿<script lang="ts">
   import { m } from "$lib/paraglide/messages";
   import { onMount, untrack } from "svelte";
-  import { mode } from "mode-watcher";
   import "./markdown-content.css";
   import type { Editor } from "@tiptap/core";
   import { Editor as TiptapEditor } from "@tiptap/core";
   import { cn } from "$lib/utils.js";
   import { filterSlashCommands } from "./commands/slashCommands";
   import { createEditorExtensions } from "./extensions";
-  import { codeHighlightKey } from "./extensions/code-highlight";
   import EditorToolbar from "./menus/editor-toolbar.svelte";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -275,18 +273,6 @@
       instance.destroy();
       editor = null;
     };
-  });
-
-  $effect(() => {
-    void mode.current;
-    const instance = editor;
-    if (instance) {
-      untrack(() =>
-        instance.view.dispatch(
-          instance.state.tr.setMeta(codeHighlightKey, true),
-        ),
-      );
-    }
   });
 
   $effect(() => {

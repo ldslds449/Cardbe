@@ -61,6 +61,65 @@ pub async fn set_iroh_network_settings(
         .map(CommandError::internal))
 }
 
+fn valid_theme(theme: &str) -> bool {
+    matches!(
+        theme,
+        "system"
+            | "light"
+            | "dark"
+            | "morandi-sage"
+            | "morandi-rose"
+            | "morandi-blue"
+            | "morandi-sand"
+            | "morandi-dark-sage"
+            | "morandi-dark-blue"
+            | "morandi-dark-mauve"
+            | "morandi-dark-cocoa"
+    )
+}
+
+#[tauri::command]
+pub fn set_theme(state: State<'_, SharedAppData>, theme: String) -> Result<(), CommandError> {
+    if !valid_theme(&theme) {
+        return Err(crate::errors::DomainError::InvalidArgument.into());
+    }
+    update_stored(&state, |data| {
+        data.settings.theme = Some(theme);
+        Ok(())
+    })
+    .map_err(CommandError::from)
+}
+
+#[cfg(test)]
+mod theme_tests {
+    #[test]
+    fn theme_allowlist_and_legacy_settings() {
+        for id in [
+            "system",
+            "light",
+            "dark",
+            "morandi-sage",
+            "morandi-rose",
+            "morandi-blue",
+            "morandi-sand",
+            "morandi-dark-sage",
+            "morandi-dark-blue",
+            "morandi-dark-mauve",
+            "morandi-dark-cocoa",
+        ] {
+            assert!(super::valid_theme(id));
+        }
+        assert!(!super::valid_theme("custom"));
+        let legacy: crate::models::Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(legacy.theme, None);
+        let mut settings = legacy;
+        settings.theme = Some("morandi-dark-sage".into());
+        let restored: crate::models::Settings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(restored, settings);
+    }
+}
+
 #[tauri::command]
 pub fn set_language(
     state: State<'_, SharedAppData>,

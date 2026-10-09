@@ -8,7 +8,6 @@
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { ModeWatcher } from "mode-watcher";
   import { toast } from "svelte-sonner";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Spinner } from "$lib/components/ui/spinner/index.js";
@@ -1420,8 +1419,6 @@
 </script>
 
 <div class="flex h-screen min-h-0 flex-col bg-background">
-  <ModeWatcher />
-
   {#if startup_error}
     <main
       class="grid min-h-0 flex-1 place-items-center overflow-y-auto bg-muted/30 p-6"

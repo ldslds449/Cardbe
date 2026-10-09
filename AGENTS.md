@@ -16,6 +16,15 @@
 - Preserve keyboard interaction, focus management, form labels, and accessibility. Prefer existing Bits UI / shadcn-svelte components for new interactions.
 - Trace existing callers and data flow before making the smallest necessary change. Reuse utilities and installed packages; do not add abstractions or dependencies for speculative needs.
 
+## Application Themes
+
+- Keep theme metadata in `src/lib/theme/themes.ts` and localized names in both message catalogs. Reuse the shadcn-svelte Button for theme selection with pressed state, keyboard activation, focus styling, and CSS-based palette previews.
+- `theme-manager.svelte.ts` owns the selected preference; `theme-provider.svelte` uses mode-watcher as the sole runtime owner of the root `.dark` class, color scheme, and `data-theme`. System resolves to Classic Light/Dark; fixed themes ignore OS appearance changes. Preserve the public share viewer's Classic Light/Dark toggle.
+- Persist the optional `Settings.theme` through existing SQLite settings metadata and `set_theme`, outside board synchronization and Undo. Missing values migrate the existing mode-watcher preference; invalid IDs resolve to System.
+- Apply selection immediately, but update the `cardbe-theme` startup cache only after successful backend writes. On failure, restore the previous selection and show a translated command error. Keep the backend authoritative, propagate desktop changes through the Tauri event, and reload settings on window focus.
+- Validate and restore the startup cache in `src/app.html` before the visible startup screen and coordinate mode-watcher storage. Keep palette tokens in `static/themes.css`, loaded in the document head, and Tailwind semantic mappings in `src/app.css`. Preserve AA text contrast, existing light/dark status colors, and independent user-authored colors and export palettes.
+- When adding a theme, update the registry, both catalogs, CSS tokens, startup validation list, and backend allowlist in `src-tauri/src/commands/settings.rs`. Preserve validation at both trust boundaries and extend allowlist/parity tests; run theme, contrast, startup, and persistence tests with the relevant project checks.
+
 ## Undo Scope and Planning
 
 - Undo is limited to eligible user operations initiated on the current local computer. Track operation origin explicitly; receiving or persisting a remote change locally does not make it a local operation.

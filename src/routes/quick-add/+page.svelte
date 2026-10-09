@@ -15,7 +15,6 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { LogicalSize } from "@tauri-apps/api/dpi";
   import { onMount, tick } from "svelte";
-  import { ModeWatcher } from "mode-watcher";
 
   import CheckIcon from "@lucide/svelte/icons/check";
   import ListTodoIcon from "@lucide/svelte/icons/list-todo";
@@ -355,7 +354,6 @@
   bind:this={content_root}
   class="flex select-none flex-col bg-background p-4 pb-6 text-foreground"
 >
-  <ModeWatcher />
   <header class="mb-3 shrink-0 flex items-center justify-between">
     <div class="flex items-center gap-3">
       <div

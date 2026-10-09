@@ -256,6 +256,8 @@ impl Default for IrohNetworkSettings {
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Settings {
     #[serde(default)]
+    pub theme: Option<String>,
+    #[serde(default)]
     pub language: LanguagePreference,
     #[serde(default)]
     pub notify_enabled: bool,
@@ -272,6 +274,7 @@ fn default_true() -> bool {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            theme: None,
             language: LanguagePreference::default(),
             notify_enabled: false,
             global_shortcuts_enabled: true,

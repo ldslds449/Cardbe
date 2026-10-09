@@ -1460,5 +1460,16 @@
   "unsaved_changes_title": "要捨棄尚未儲存的變更嗎？",
   "unsaved_changes_description": "你的變更尚未儲存，現在離開將會失去這些修改。",
   "unsaved_changes_keep_editing": "繼續編輯",
-  "unsaved_changes_discard": "捨棄並離開"
+  "unsaved_changes_discard": "捨棄並離開",
+  "theme_title": "外觀",
+  "theme_description": "選擇主題。「跟隨系統」只會依作業系統的外觀設定，自動切換經典淺色與深色。",
+  "theme_system": "跟隨系統",
+  "theme_morandi_sage": "鼠尾草",
+  "theme_morandi_rose": "玫瑰",
+  "theme_morandi_blue": "霧藍",
+  "theme_morandi_sand": "沙色",
+  "theme_morandi_dark_sage": "深色鼠尾草",
+  "theme_morandi_dark_blue": "深色霧藍",
+  "theme_morandi_dark_mauve": "深色藕紫",
+  "theme_morandi_dark_cocoa": "深色可可"
 }

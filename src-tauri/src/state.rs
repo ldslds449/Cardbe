@@ -433,6 +433,7 @@ mod tests {
         assert!(app.undo_history[0].columns.is_empty());
         update_locked(&mut app, |data| {
             data.settings.notify_enabled = !data.settings.notify_enabled;
+            data.settings.theme = Some("morandi-dark-blue".into());
             data.settings.iroh_network.listen_port = 12345;
             Ok(())
         })

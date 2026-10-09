@@ -1,13 +1,17 @@
-import { createHighlighterCoreSync } from "shiki/core";
+import { createHighlighterCoreSync, createCssVariablesTheme } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import ts from "shiki/langs/typescript.mjs";
-import github_dark from "shiki/themes/github-dark.mjs";
-import github_light from "shiki/themes/github-light.mjs";
 import { bundledLanguages, bundledLanguagesAlias } from "shiki/langs";
 
 // This variable is private to this module and created ONLY ONCE
 const highlighter = createHighlighterCoreSync({
-  themes: [github_light, github_dark],
+  themes: [
+    createCssVariablesTheme({
+      name: "cardbe",
+      variablePrefix: "--code-",
+      fontStyle: false,
+    }),
+  ],
   langs: [ts],
   engine: createJavaScriptRegexEngine(),
 });

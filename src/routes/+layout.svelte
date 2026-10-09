@@ -3,6 +3,7 @@
   import "$lib/i18n/locale.svelte";
   import { dev } from "$app/environment";
   import "../app.css";
+  import ThemeProvider from "$lib/theme/theme-provider.svelte";
   import Sonner from "$lib/components/ui/sonner/sonner.svelte";
   import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
   import { onMount } from "svelte";
@@ -115,6 +116,7 @@
 
 <svelte:window onlanguagechange={refreshSystemLocale} />
 
+<ThemeProvider />
 {@render children()}
 <UnsavedChangesDialog />
 <Sonner expand closeButton closeButtonAriaLabel={m.notification_close()} />

@@ -136,7 +136,7 @@
     ></button>
     <section
       id="board-drawer"
-      class="fixed top-12 left-4 z-40 flex h-[min(60dvh,calc(100dvh-4rem))] w-64 flex-col overflow-hidden rounded-md border bg-background shadow-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150"
+      class="fixed top-12 left-4 z-40 flex h-[min(60dvh,calc(100dvh-4rem))] w-64 flex-col overflow-hidden rounded-md border bg-board-sidebar shadow-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150"
       role="navigation"
       aria-label={m.board_list()}
     >

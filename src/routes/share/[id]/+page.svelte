@@ -14,7 +14,7 @@
   } from "$lib/command-errors";
   import { logger } from "$lib/logger";
   import { onMount } from "svelte";
-  import { ModeWatcher, toggleMode } from "mode-watcher";
+  import { toggleTheme as toggleMode } from "$lib/theme/theme-manager.svelte";
   import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
   import KanbanIcon from "@lucide/svelte/icons/kanban";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -181,8 +181,6 @@
   >
   <meta name="robots" content="noindex,nofollow" />
 </svelte:head>
-
-<ModeWatcher />
 
 {#snippet theme_toggle()}
   <Select.Root

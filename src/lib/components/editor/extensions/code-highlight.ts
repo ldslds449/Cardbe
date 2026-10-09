@@ -2,7 +2,6 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node } from "@tiptap/pm/model";
-import { mode } from "mode-watcher";
 import { bundledLanguages } from "shiki/langs";
 import { logger } from "$lib/logger";
 import {
@@ -46,7 +45,7 @@ export const CodeHighlight = Extension.create({
           lang: highlighter.getLoadedLanguages().includes(language)
             ? language
             : "text",
-          theme: mode.current === "light" ? "github-light" : "github-dark",
+          theme: "cardbe",
         });
         let offset = position + 1;
         for (const line of tokens) {

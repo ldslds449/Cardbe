@@ -5067,6 +5067,7 @@ mod tests {
         second.columns[0].name = "Second column".into();
         second.columns[0].tasks[0].title = "Second task".into();
         let settings = crate::models::Settings {
+            theme: Some("morandi-dark-sage".into()),
             language: crate::models::LanguagePreference::TraditionalChinese,
             notify_enabled: true,
             global_shortcuts_enabled: false,
@@ -5113,6 +5114,7 @@ mod tests {
         assert_eq!(reopened.stored.columns[0].tasks[0].title, "Second task");
         assert!(reopened.stored.columns[0].tasks[0].pinned);
         assert_eq!(reopened.database.get_notes().unwrap(), notes);
+        assert_eq!(reopened.stored.settings, settings);
         drop(reopened);
         fs::remove_dir_all(dir).unwrap();
     }

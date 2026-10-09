@@ -10,11 +10,18 @@ describe("Markdown code highlighting", () => {
     ["json", '{ "answer": 42 }'],
     ["rust", "let answer = 42;"],
     ["csharp", "var answer = 42;"],
-  ])("loads and highlights %s in both themes", async (lang, code) => {
+  ])("loads and highlights %s with theme variables", async (lang, code) => {
     await loadHighlightLanguage(lang);
-    for (const theme of ["github-light", "github-dark"]) {
+    // Warm cold grammar regexes before checking the rendered tokens.
+    getHighlighter().codeToTokensBase(code, {
+      lang,
+      theme: "cardbe",
+      tokenizeTimeLimit: 0,
+    });
+    for (const theme of ["cardbe"]) {
       const html = getHighlighter().codeToHtml(code, { lang, theme });
-      expect(html).toContain('<span style="color:');
+      expect(html).toContain('<span style="color:var(--code-token-');
+      expect(html).toContain("background-color:var(--code-background)");
       if (lang === "python") {
         expect(html).toContain("    ");
       }
@@ -52,7 +59,7 @@ describe("Markdown code highlighting", () => {
           rehypeShikiFromHighlighter,
           getHighlighter(),
           {
-            theme: "github-dark",
+            theme: "cardbe",
             fallbackLanguage: "text",
           },
         ],

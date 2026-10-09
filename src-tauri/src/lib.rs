@@ -248,6 +248,9 @@ pub fn run() {
         Err(std::env::VarError::NotPresent) => None,
         Err(error) => panic!("invalid development instance guard: {error}"),
     };
+    // Track ACL inputs read by generate_context! so compiler caches invalidate permission changes.
+    const _: &str = include_str!(concat!(env!("OUT_DIR"), "/capabilities.json"));
+    const _: &str = include_str!(concat!(env!("OUT_DIR"), "/acl-manifests.json"));
     #[allow(unused_mut)]
     let mut context = tauri::generate_context!();
     #[cfg(all(debug_assertions, desktop))]
@@ -455,6 +458,7 @@ pub fn run() {
             settings::get_iroh_network_settings,
             settings::set_iroh_network_settings,
             settings::set_language,
+            settings::set_theme,
             settings::set_desktop_menu_labels,
             settings::take_recovery_messages,
             get_startup_error,

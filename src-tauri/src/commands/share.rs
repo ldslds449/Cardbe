@@ -97,7 +97,7 @@ fn valid_share_id(id: &str) -> bool {
 }
 
 fn production_asset_allowed(path: &str) -> bool {
-    path == "favicon.png"
+    matches!(path, "favicon.png" | "themes.css")
         || (path.starts_with("_app/")
             && !path.contains("..")
             && !path.contains('\\')
@@ -885,6 +885,9 @@ mod tests {
 
     #[test]
     fn viewer_asset_allowlist_rejects_paths_outside_the_frontend() {
+        assert!(is_public_viewer_asset("themes.css"));
+        assert!(!is_public_viewer_asset("../themes.css"));
+        assert!(!is_public_viewer_asset("themes.css/../secret.txt"));
         assert!(is_public_viewer_asset("_app/immutable/entry/app.js"));
         assert!(!is_public_viewer_asset("_app/../index.html"));
         assert!(!is_public_viewer_asset("secret.txt"));

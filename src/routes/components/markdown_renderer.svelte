@@ -2,7 +2,6 @@
   import { logger } from "$lib/logger";
   import "$lib/components/editor/markdown-content.css";
   import * as m from "$lib/paraglide/messages.js";
-  import { mode } from "mode-watcher";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
 
@@ -184,15 +183,13 @@
 
   const shikiPlugin = $derived.by(() => {
     void highlight_revision;
-    const activeTheme =
-      mode.current === "light" ? "github-light" : "github-dark";
 
     return {
       rehypePlugin: [
         rehypeShikiFromHighlighter,
         sharedHighlighter, // The same instance is reused here
         {
-          theme: activeTheme,
+          theme: "cardbe",
           fallbackLanguage: "text",
         },
       ],
