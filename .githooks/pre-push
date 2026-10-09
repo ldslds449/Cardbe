@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+
+set -eu
+
+# Compilation rewrites generated files watched by Vite; keep it out of commits.
+exec pnpm check
