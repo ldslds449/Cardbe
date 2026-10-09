@@ -2,6 +2,7 @@ mod commands;
 #[cfg(desktop)]
 mod desktop;
 mod errors;
+mod link_preview;
 mod loro_board;
 mod models;
 mod search;
@@ -393,6 +394,8 @@ pub fn run() {
             desktop::handle_window_event(window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            commands::link_preview::get_link_preview,
+            commands::link_preview::get_link_preview_image,
             board::get_columns,
             board::get_board_columns,
             board::search_tasks,

@@ -13,6 +13,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 const isCustomPort = port !== 1420;
 const ownGeneratedDir = `/.svelte-kit-dev-${port}/`;
+const projectRoot = path.resolve(".").replaceAll("\\", "/");
 
 // Keep the editor's base config available when only a custom-port instance runs.
 if (isCustomPort && !existsSync(".svelte-kit/tsconfig.json")) {
@@ -88,6 +89,9 @@ export default defineConfig({
         const normalizedPath = filePath.replaceAll("\\", "/");
         return (
           normalizedPath.includes("/src-tauri/") ||
+          normalizedPath.startsWith(`${projectRoot}/.cardbe-debug/`) ||
+          normalizedPath.startsWith(`${projectRoot}/build/`) ||
+          (isCustomPort && normalizedPath.includes("/.svelte-kit/")) ||
           (normalizedPath.includes("/.svelte-kit-dev-") &&
             !normalizedPath.includes(ownGeneratedDir))
         );

@@ -311,8 +311,24 @@ impl Database {
         })
     }
 
+    pub fn get_link_preview(
+        &self,
+        url: &str,
+        now: i64,
+    ) -> Result<Option<crate::link_preview::LinkPreview>, DomainError> {
+        crate::link_preview::cache::read(&self.connection, url, now)
+    }
+
+    pub fn cache_link_preview(
+        &self,
+        preview: &crate::link_preview::LinkPreview,
+    ) -> Result<(), DomainError> {
+        crate::link_preview::cache::write(&self.connection, preview)
+    }
+
     pub(crate) fn open(path: PathBuf) -> StorageResult<Self> {
         let connection = Connection::open(&path)?;
+        crate::link_preview::cache::initialize(&connection)?;
         let sqlite_user_version: i64 =
             connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         log::debug!(

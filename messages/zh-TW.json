@@ -1471,5 +1471,7 @@
   "theme_morandi_dark_sage": "深色鼠尾草",
   "theme_morandi_dark_blue": "深色霧藍",
   "theme_morandi_dark_mauve": "深色藕紫",
-  "theme_morandi_dark_cocoa": "深色可可"
+  "theme_morandi_dark_cocoa": "深色可可",
+  "link_preview_unavailable": "無法取得網頁預覽",
+  "link_preview_loading": "正在載入連結預覽"
 }

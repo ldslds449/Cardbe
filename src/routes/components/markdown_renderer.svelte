@@ -8,6 +8,7 @@
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import Link2Icon from "@lucide/svelte/icons/link-2";
+  import LinkPreview from "$lib/components/link-preview.svelte";
 
   import Markdown from "svelte-exmarkdown";
   import type { HastNode, Plugin } from "svelte-exmarkdown";
@@ -281,7 +282,7 @@
           <span class="min-w-0">{@render children?.()}</span>
         </a>
       {:else}
-        <a
+        <LinkPreview
           {...rest}
           href={safe_href}
           class="{className} font-medium text-primary underline underline-offset-4 hover:opacity-80"
@@ -291,7 +292,7 @@
           onclick={(event) => void open_external_link(event, href)}
         >
           {@render children?.()}
-        </a>
+        </LinkPreview>
       {/if}
     {/snippet}
     {#snippet input(props)}

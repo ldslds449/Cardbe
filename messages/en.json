@@ -1581,5 +1581,7 @@
   "theme_morandi_dark_sage": "Dark Sage",
   "theme_morandi_dark_blue": "Dark Blue",
   "theme_morandi_dark_mauve": "Dark Mauve",
-  "theme_morandi_dark_cocoa": "Dark Cocoa"
+  "theme_morandi_dark_cocoa": "Dark Cocoa",
+  "link_preview_unavailable": "Preview unavailable",
+  "link_preview_loading": "Loading link preview"
 }

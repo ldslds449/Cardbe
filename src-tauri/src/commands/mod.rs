@@ -5,6 +5,7 @@ pub mod calendar_export;
 pub mod diagnostics;
 pub mod import_export;
 pub mod iroh_share;
+pub mod link_preview;
 pub mod notes;
 pub mod notifications;
 pub mod settings;

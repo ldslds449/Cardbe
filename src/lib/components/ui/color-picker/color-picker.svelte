@@ -7,7 +7,7 @@
   import * as Command from "$lib/components/ui/command";
   import * as ButtonGroup from "$lib/components/ui/button-group";
   import { Input } from "$lib/components/ui/input";
-  import { untrack } from "svelte";
+  import { onDestroy, untrack } from "svelte";
 
   type ColorFormat = "hex" | "rgb" | "hsl" | "oklch";
 
@@ -31,6 +31,8 @@
   let a = $state(1);
   let activeFormat = $state<ColorFormat>(untrack(() => defaultFormat));
   let isDragging = $state(false);
+  let stopDrag: (() => void) | undefined;
+  onDestroy(() => stopDrag?.());
 
   let sbRef: HTMLDivElement | undefined = $state();
   let hueRef: HTMLDivElement | undefined = $state();
@@ -346,20 +348,27 @@
     e: MouseEvent | TouchEvent,
     fn: (e: MouseEvent | TouchEvent) => void,
   ) {
+    stopDrag?.();
     isDragging = true;
     fn(e);
     const move = (e: MouseEvent | TouchEvent) => fn(e);
     const stop = () => {
+      stopDrag = undefined;
       isDragging = false;
       window.removeEventListener("mousemove", move);
       window.removeEventListener("touchmove", move);
       window.removeEventListener("mouseup", stop);
       window.removeEventListener("touchend", stop);
+      window.removeEventListener("touchcancel", stop);
+      window.removeEventListener("blur", stop);
     };
+    stopDrag = stop;
     window.addEventListener("mousemove", move);
     window.addEventListener("touchmove", move);
     window.addEventListener("mouseup", stop);
     window.addEventListener("touchend", stop);
+    window.addEventListener("touchcancel", stop);
+    window.addEventListener("blur", stop);
   }
 
   function handleSbChange(e: MouseEvent | TouchEvent) {

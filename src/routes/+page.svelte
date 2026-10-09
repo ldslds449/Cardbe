@@ -722,9 +722,13 @@
   }
 
   onMount(() => {
+    let disposed = false;
     let device_request_timer: number | undefined;
     void invoke<unknown>("get_startup_error")
       .then((error) => {
+        if (disposed) {
+          return;
+        }
         startup_check_finished = true;
         if (error) {
           startup_error = error;
@@ -739,6 +743,9 @@
           5000,
         );
         void board.init().then(async () => {
+          if (disposed) {
+            return;
+          }
           restore_managed_share_state(
             board.boards.length === 1 ? board.boards[0].id : undefined,
           );
@@ -754,6 +761,9 @@
         });
       })
       .catch((error) => {
+        if (disposed) {
+          return;
+        }
         startup_error = error;
         startup_check_finished = true;
         requestAnimationFrame(() =>
@@ -903,6 +913,7 @@
       }
     });
     return () => {
+      disposed = true;
       if (device_request_timer !== undefined) {
         window.clearInterval(device_request_timer);
       }
