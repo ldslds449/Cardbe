@@ -6,7 +6,11 @@
   import CheckIcon from "@lucide/svelte/icons/check";
 </script>
 
-<fieldset class="space-y-3" disabled={!themeState.ready || themeState.saving}>
+<fieldset
+  class="space-y-3"
+  disabled={!themeState.ready}
+  aria-busy={themeState.saving}
+>
   <legend class="text-sm font-medium">{m.theme_title()}</legend>
   <p class="text-sm text-muted-foreground">{m.theme_description()}</p>
   <Button
