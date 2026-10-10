@@ -110,7 +110,12 @@
       columnRequest++;
       return;
     }
-    untrack(() => void action(refresh));
+    untrack(() => {
+      void action(refresh);
+      if (editing) {
+        void refreshColumns();
+      }
+    });
     const generation = session;
     const timer = setInterval(() => {
       if (!pending) {
@@ -129,7 +134,6 @@
   });
   async function chooseBoard(value: string, preserve = false) {
     boardId = value;
-    const request = ++columnRequest;
     columns = [];
     if (editing) {
       for (const field of editing.settings) {
@@ -141,6 +145,11 @@
         }
       }
     }
+    await refreshColumns();
+  }
+  async function refreshColumns() {
+    const value = boardId;
+    const request = ++columnRequest;
     if (!value) {
       return;
     }
@@ -284,8 +293,19 @@
   value: string,
   options: { value: string; label: string }[],
   change: (value: string) => void,
+  refreshOptions?: () => Promise<void>,
 )}
-  <Select.Root type="single" {value} onValueChange={change} disabled={pending}>
+  <Select.Root
+    type="single"
+    {value}
+    onValueChange={change}
+    onOpenChange={(open) => {
+      if (open) {
+        void refreshOptions?.();
+      }
+    }}
+    disabled={pending}
+  >
     <Select.Trigger {id} class="w-full"
       >{options.find((option) => option.value === value)?.label ??
         m.plugin_select()}</Select.Trigger
@@ -553,6 +573,7 @@
                     (value) =>
                       (config[field.key] =
                         field.type === "column" ? Number(value) : value),
+                    field.type === "column" ? refreshColumns : undefined,
                   )}
                 {:else if field.type === "secret"}
                   <Input
