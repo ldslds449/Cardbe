@@ -38,6 +38,7 @@ export interface PluginPackage {
   storage_schema_version: number;
   description: PluginText;
   domains: string[];
+  allow_custom_domains?: boolean;
   settings: PluginSetting[];
   error_codes: string[];
   log_codes: string[];
@@ -50,7 +51,10 @@ export interface PluginInstance {
   config: Record<string, unknown>;
   secret_fields: string[];
   allowed_domains: string[];
+  pending_domain?: { domain: string; run_id: string; trigger: string } | null;
   enabled: boolean;
+  needs_review?: boolean;
+  credentials_need_review?: boolean;
   interval_seconds: number;
   last_run_at?: number;
   last_run_status?: PluginRun["status"] | null;
@@ -59,13 +63,56 @@ export interface PluginInstance {
   last_error?: CommandError;
   running: boolean;
 }
+export interface PluginUpdatePreview {
+  token: string;
+  current_version: string;
+  package: PluginPackage;
+  requires_review: boolean;
+}
+export type PluginPackageSelection =
+  | { kind: "installed"; package: PluginPackage }
+  | {
+      kind: "update";
+      current_package: PluginPackage;
+      preview: PluginUpdatePreview;
+    };
+export function isNewerPluginVersion(current: string, next: string): boolean {
+  const parse = (value: string) => {
+    if (
+      value.length > 62 ||
+      !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)
+    ) {
+      return null;
+    }
+    const parts = value.split(".").map(BigInt);
+    return parts.every((part) => part <= 18446744073709551615n) ? parts : null;
+  };
+  const oldVersion = parse(current),
+    newVersion = parse(next);
+  if (!oldVersion || !newVersion) {
+    return false;
+  }
+  for (let index = 0; index < 3; index++) {
+    if (newVersion[index] !== oldVersion[index]) {
+      return newVersion[index] > oldVersion[index];
+    }
+  }
+  return false;
+}
+
 export interface PluginRun {
   id: string;
   instance_id: string;
   trigger: string;
   started_at: number;
   finished_at?: number;
-  status: "running" | "success" | "failed" | "cancelled" | "interrupted";
+  status:
+    | "running"
+    | "success"
+    | "failed"
+    | "cancelled"
+    | "interrupted"
+    | "awaiting_permission";
   error?: CommandError;
   logs: { level: string; code: string; count: number }[];
   created: number;

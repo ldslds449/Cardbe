@@ -50,6 +50,7 @@ pub struct RuntimeOutput {
 pub enum RuntimeError {
     InvalidComponent,
     PermissionDenied,
+    AuthorizationRequired(String),
     Network,
     ResourceLimit,
     Timeout,
@@ -65,6 +66,7 @@ impl RuntimeError {
         match self {
             Self::InvalidComponent => "INVALID_COMPONENT",
             Self::PermissionDenied => "PERMISSION_DENIED",
+            Self::AuthorizationRequired(_) => "PERMISSION_DENIED",
             Self::Network => "NETWORK_FAILED",
             Self::ResourceLimit => "RESOURCE_LIMIT",
             Self::Timeout => "TIMEOUT",
@@ -100,6 +102,9 @@ impl bindings::cardbe::plugin::host::Host for HostState {
         &mut self,
         url: String,
     ) -> Result<bindings::cardbe::plugin::types::HttpResponse, String> {
+        if let Some(error) = self.failure.as_ref() {
+            return Err(error.code().to_owned());
+        }
         self.requests += 1;
         let result = if self.requests > 100 {
             Err(RuntimeError::ResourceLimit)
@@ -121,7 +126,9 @@ impl bindings::cardbe::plugin::host::Host for HostState {
             }
             Err(error) => {
                 let code = error.code().to_owned();
-                self.failure = Some(error);
+                if self.failure.is_none() {
+                    self.failure = Some(error);
+                }
                 Err(code)
             }
         }
@@ -138,9 +145,9 @@ impl HostState {
         &mut self,
         url: &str,
     ) -> Result<bindings::cardbe::plugin::types::HttpResponse, RuntimeError> {
-        http::authorized_url(url, &self.policy)?;
         #[cfg(test)]
         if let Some(fixtures) = self.fixtures.as_mut() {
+            http::authorized_url(url, &self.policy)?;
             return fixtures.pop_front().ok_or(RuntimeError::Network);
         }
         self.handle.block_on(http::get(
@@ -185,20 +192,7 @@ fn execute_inner(
     if cancel.load(Ordering::Acquire) {
         return Err(RuntimeError::Cancelled);
     }
-    let mut config = Config::new();
-    config
-        .wasm_component_model(true)
-        .consume_fuel(true)
-        .epoch_interruption(true);
-    config.max_wasm_stack(512 * 1024);
-    let engine = Engine::new(&config).map_err(|_| RuntimeError::InvalidComponent)?;
-    let component = Component::new(&engine, bytes).map_err(|_| RuntimeError::InvalidComponent)?;
-    let mut linker = Linker::new(&engine);
-    bindings::Importer::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
-        &mut linker,
-        |state: &mut HostState| state,
-    )
-    .map_err(|_| RuntimeError::InvalidComponent)?;
+    let (engine, component, linker) = prepare_component(bytes)?;
     let deadline = Instant::now() + timeout;
     let state = HostState {
         limits: StoreLimitsBuilder::new()
@@ -253,16 +247,17 @@ fn execute_inner(
             board_json: input.board_json,
             cursor: input.cursor,
         };
-        let result = instance.call_run(&mut store, &context).map_err(|_| {
+        let result = instance.call_run(&mut store, &context);
+        if let Some(error) = store.data_mut().failure.take() {
+            return Err(error);
+        }
+        let result = result.map_err(|_| {
             if store.get_fuel().unwrap_or(0) == 0 {
                 RuntimeError::ResourceLimit
             } else {
                 RuntimeError::Trap
             }
         })?;
-        if let Some(error) = store.data_mut().failure.take() {
-            return Err(error);
-        }
         if cancel.load(Ordering::Acquire) {
             return Err(RuntimeError::Cancelled);
         }
@@ -327,6 +322,13 @@ fn execute_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn update_validation_checks_the_host_contract_without_executing_the_guest() {
+        assert!(validate_component(&component("runtime-fixture")).is_ok());
+        assert!(validate_component(b"invalid").is_err());
+        assert!(validate_component(b"(component)").is_err());
+        assert!(validate_component(b"(component (import \"wasi:cli/run\" (instance)))").is_err());
+    }
     fn input(config: &str) -> RuntimeInput {
         RuntimeInput {
             instance_id: "instance".into(),
@@ -339,7 +341,10 @@ mod tests {
     fn policy() -> HttpPolicy {
         HttpPolicy {
             allowed_domains: vec!["api.example.com".into()],
+            requested_domains: vec![],
+            allow_custom_domains: false,
             token: None,
+            token_domain: None,
             error_codes: vec!["HTTP_FAILED".into()],
             log_codes: vec!["ALLOWED_LOG".into()],
         }
@@ -486,4 +491,34 @@ mod tests {
         .await
         .unwrap();
     }
+}
+
+fn prepare_component(bytes: &[u8]) -> Result<(Engine, Component, Linker<HostState>), RuntimeError> {
+    let mut config = Config::new();
+    config
+        .wasm_component_model(true)
+        .consume_fuel(true)
+        .epoch_interruption(true);
+    config.max_wasm_stack(512 * 1024);
+    let engine = Engine::new(&config).map_err(|_| RuntimeError::InvalidComponent)?;
+    let component = Component::new(&engine, bytes).map_err(|_| RuntimeError::InvalidComponent)?;
+    let mut linker = Linker::new(&engine);
+    bindings::Importer::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+        &mut linker,
+        |state: &mut HostState| state,
+    )
+    .map_err(|_| RuntimeError::InvalidComponent)?;
+    Ok((engine, component, linker))
+}
+
+pub fn validate_component(bytes: &[u8]) -> Result<(), RuntimeError> {
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err(RuntimeError::ResourceLimit);
+    }
+    let (_, component, linker) = prepare_component(bytes)?;
+    let pre = linker
+        .instantiate_pre(&component)
+        .map_err(|_| RuntimeError::InvalidComponent)?;
+    bindings::ImporterPre::new(pre).map_err(|_| RuntimeError::InvalidComponent)?;
+    Ok(())
 }

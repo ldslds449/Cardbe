@@ -405,8 +405,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::plugins::get_plugin_state,
             commands::plugins::install_plugin_package,
+            commands::plugins::confirm_plugin_update,
+            commands::plugins::discard_plugin_update,
             commands::plugins::remove_plugin_package,
             commands::plugins::save_plugin_instance,
+            commands::plugins::resolve_plugin_domain,
             commands::plugins::remove_plugin_instance,
             commands::plugins::set_plugin_enabled,
             commands::plugins::run_plugin_instance,

@@ -6,9 +6,11 @@
     type DragDropEvent,
   } from "@tauri-apps/api/webview";
   import { open as openFile } from "@tauri-apps/plugin-dialog";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { Badge } from "$lib/components/ui/badge/index.js";
   import { Tabs } from "bits-ui";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
@@ -33,6 +35,9 @@
     pluginLogMessage,
     pluginDefaults,
     pluginText,
+    isNewerPluginVersion,
+    type PluginUpdatePreview,
+    type PluginPackageSelection,
     type PluginState,
     type PluginPackage,
     type PluginInstance,
@@ -40,7 +45,10 @@
   } from "$lib/plugins";
   import { board, type BoardSummary } from "../../board.svelte";
 
-  let { open = $bindable(false) }: { open: boolean } = $props();
+  let {
+    open = $bindable(false),
+    onReviewDomain,
+  }: { open: boolean; onReviewDomain?: (id: string) => void } = $props();
   let pluginState = $state<PluginState>({
     packages: [],
     instances: [],
@@ -76,6 +84,10 @@
   let secrets = $state<Record<string, string>>({});
   let savedSecrets = $state<string[]>([]);
   let domains = $state<string[]>([]);
+  let customDomains = $state<string[]>([]);
+  const availableDomains = $derived([
+    ...new Set([...(editing?.domains ?? []), ...customDomains]),
+  ]);
   let enabled = $state(false);
   let interval = $state<number | undefined>(0);
   let consent = $state(false);
@@ -98,6 +110,35 @@
     kind: "package" | "instance";
     id: string;
   } | null>(null);
+  let updateTarget = $state<PluginPackage | null>(null);
+  let updatePreview = $state<PluginUpdatePreview | null>(null);
+  let updateSuccess = $state(false);
+  const addedUpdateDomains = $derived(
+    updatePreview?.package.domains.filter(
+      (domain) => !updateTarget?.domains.includes(domain),
+    ) ?? [],
+  );
+  const changedUpdateSettings = $derived(
+    updatePreview && updateTarget
+      ? [
+          ...updatePreview.package.settings.filter(
+            (field) =>
+              JSON.stringify(field) !==
+              JSON.stringify(
+                updateTarget?.settings.find(
+                  (previous) => previous.key === field.key,
+                ),
+              ),
+          ),
+          ...updateTarget.settings.filter(
+            (field) =>
+              !updatePreview?.package.settings.some(
+                (next) => next.key === field.key,
+              ),
+          ),
+        ]
+      : [],
+  );
 
   async function refresh() {
     if (refreshRequest) {
@@ -152,6 +193,8 @@
       historyId = null;
       runs = [];
       installation = null;
+      removal = null;
+      closeUpdate();
       return;
     }
     untrack(() => {
@@ -221,10 +264,27 @@
     editing = pkg;
     instanceId = instance?.id;
     name = instance?.name ?? pluginText(pkg.name);
-    config = instance ? { ...instance.config } : pluginDefaults(pkg);
+    config = instance
+      ? Object.fromEntries(
+          Object.entries(instance.config).filter(([key]) =>
+            pkg.settings.some(
+              (field) => field.key === key && field.type !== "secret",
+            ),
+          ),
+        )
+      : pluginDefaults(pkg);
     secrets = {};
-    savedSecrets = instance?.secret_fields ?? [];
-    domains = [...(instance?.allowed_domains ?? [])];
+    savedSecrets = instance?.credentials_need_review
+      ? []
+      : (instance?.secret_fields ?? []).filter((key) =>
+          pkg.settings.some(
+            (field) => field.key === key && field.type === "secret",
+          ),
+        );
+    domains = (instance?.allowed_domains ?? []).filter(
+      (domain) => pkg.domains.includes(domain) || pkg.allow_custom_domains,
+    );
+    customDomains = domains.filter((domain) => !pkg.domains.includes(domain));
     enabled = instance?.enabled ?? false;
     interval = instance?.interval_seconds ?? 0;
     consent = false;
@@ -267,6 +327,7 @@
     const pkg = editing;
     await action(async () => {
       await invoke("save_plugin_instance", {
+        packageVersion: pkg.version,
         instance: {
           id: instanceId ?? null,
           plugin_id: pkg.id,
@@ -301,17 +362,78 @@
       }
     });
   }
+  function closeUpdate() {
+    const token = updatePreview?.token;
+    updateTarget = null;
+    updatePreview = null;
+    updateSuccess = false;
+    if (token) {
+      void invoke("discard_plugin_update", { token }).catch((cause) => {
+        if (open) {
+          error = parseCommandError(cause) ?? { code: "INTERNAL_ERROR" };
+        }
+      });
+    }
+  }
+  async function showUpdate(
+    target: PluginPackage,
+    preview: PluginUpdatePreview,
+  ) {
+    if (preview.current_version !== target.version) {
+      await invoke("discard_plugin_update", { token: preview.token });
+      throw { code: "PLUGIN_UPDATE_STALE" };
+    }
+    if (
+      preview.package.id !== target.id ||
+      preview.package.api_version !== target.api_version ||
+      preview.package.storage_schema_version !==
+        target.storage_schema_version ||
+      !isNewerPluginVersion(preview.current_version, preview.package.version)
+    ) {
+      await invoke("discard_plugin_update", { token: preview.token });
+      throw { code: "INVALID_ARGUMENT" };
+    }
+    error = null;
+    updateTarget = target;
+    updatePreview = preview;
+    updateSuccess = false;
+  }
+  async function confirmUpdate() {
+    const preview = updatePreview;
+    if (!preview) {
+      return;
+    }
+    await action(async () => {
+      await invoke("confirm_plugin_update", { token: preview.token });
+      updateSuccess = true;
+      updatePreview = null;
+    });
+  }
   async function installPackage(input: { path: string } | { url: string }) {
     const generation = session;
     const source =
       "path" in input ? (input.path.split(/[\\/]/).at(-1) ?? input.path) : null;
     installation = { status: "installing", source };
     try {
-      const pkg = await invoke<PluginPackage>("install_plugin_package", input);
-      if (generation === session) {
-        installation = { status: "success", source, package: pkg };
-        return pkg;
+      const selection = await invoke<PluginPackageSelection>(
+        "install_plugin_package",
+        input,
+      );
+      if (generation !== session) {
+        if (selection.kind === "update") {
+          await invoke("discard_plugin_update", {
+            token: selection.preview.token,
+          });
+        }
+        return;
       }
+      if (selection.kind === "update") {
+        await showUpdate(selection.current_package, selection.preview);
+        installation = null;
+        return selection.preview.package;
+      }
+      installation = { status: "success", source, package: selection.package };
+      return selection.package;
     } catch (cause) {
       if (generation === session) {
         installation = {
@@ -323,7 +445,14 @@
     }
   }
   async function handlePluginDrop(event: DragDropEvent) {
-    if (!open || pending || editing || !dropZone || event.type === "leave") {
+    if (
+      !open ||
+      pending ||
+      editing ||
+      updateTarget ||
+      !dropZone ||
+      event.type === "leave"
+    ) {
       dragging = false;
       return;
     }
@@ -514,6 +643,7 @@
       failed: m.plugin_failed(),
       cancelled: m.plugin_cancelled(),
       interrupted: m.plugin_interrupted(),
+      awaiting_permission: m.plugin_awaiting_permission(),
     }[value];
   }
 </script>
@@ -561,7 +691,7 @@
   ondrop={preventFileNavigation}
 />
 
-<Dialog.Root bind:open>
+<Dialog.Root bind:open busy={pending}>
   <Dialog.Content
     bind:ref={dialogContent}
     tabindex={-1}
@@ -582,6 +712,24 @@
       scrollbarYClasses="[&_[data-slot=scroll-area-thumb]]:bg-muted-foreground/50"
     >
       <div class="space-y-6 py-1 ps-1 pe-4">
+        <Field.Field orientation="horizontal" class="rounded-md border p-3">
+          <Field.Content>
+            <Field.Label for="plugin-safe-mode"
+              >{m.plugin_safe_mode()}</Field.Label
+            >
+            <Field.Description id="plugin-safe-mode-help"
+              >{m.plugin_safe_mode_help()}</Field.Description
+            >
+          </Field.Content>
+          <Switch
+            id="plugin-safe-mode"
+            checked={pluginState.safe_mode}
+            disabled={pending || !loaded}
+            aria-describedby="plugin-safe-mode-help"
+            onCheckedChange={(enabled) =>
+              void action(() => invoke("set_plugin_safe_mode", { enabled }))}
+          />
+        </Field.Field>
         {#if error && !editing}<p role="alert" class="text-sm text-destructive">
             {pluginErrorMessage(error)}
           </p>{/if}
@@ -733,25 +881,6 @@
             ><RefreshCwIcon />{m.plugin_refresh()}</Button
           >
         </div>
-        {#if pluginState.safe_mode}<p
-            class="rounded-md border bg-muted p-3 text-sm"
-          >
-            {m.plugin_safe_mode_help()}
-          </p>{/if}
-        {#if removal}
-          <div role="alert" class="space-y-2 rounded-md border p-3">
-            <p class="text-sm">{m.plugin_remove_help()}</p>
-            <div class="flex gap-2">
-              <Button variant="destructive" disabled={pending} onclick={remove}
-                >{m.common_delete()}</Button
-              ><Button
-                variant="outline"
-                disabled={pending}
-                onclick={() => (removal = null)}>{m.common_cancel()}</Button
-              >
-            </div>
-          </div>
-        {/if}
         {#if loaded && !pluginState.packages.length}<p
             class="text-sm text-muted-foreground"
           >
@@ -784,8 +913,10 @@
                   size="sm"
                   variant="destructive"
                   disabled={pending}
-                  onclick={() => (removal = { kind: "package", id: pkg.id })}
-                  >{m.common_delete()}</Button
+                  onclick={() => {
+                    error = null;
+                    removal = { kind: "package", id: pkg.id };
+                  }}>{m.common_delete()}</Button
                 >
               </div>
             </div>
@@ -797,7 +928,7 @@
                     <Switch
                       id={"plugin-enable-" + instance.id}
                       checked={instance.enabled}
-                      disabled={pending}
+                      disabled={pending || instance.needs_review}
                       onCheckedChange={(enabled) =>
                         void action(() =>
                           invoke("set_plugin_enabled", {
@@ -810,6 +941,35 @@
                     >
                   </div>
                 </div>
+                <div
+                  class="space-y-1"
+                  role="group"
+                  aria-labelledby={"plugin-approved-domains-" + instance.id}
+                >
+                  <p
+                    id={"plugin-approved-domains-" + instance.id}
+                    class="text-sm text-muted-foreground"
+                  >
+                    {m.plugin_approved_domains()}
+                  </p>
+                  {#if instance.allowed_domains.length}
+                    <ul class="flex flex-wrap gap-1.5">
+                      {#each instance.allowed_domains as domain (domain)}
+                        <li class="min-w-0 max-w-full">
+                          <Badge
+                            variant="outline"
+                            class="max-w-full whitespace-normal break-all"
+                            >{domain}</Badge
+                          >
+                        </li>
+                      {/each}
+                    </ul>
+                  {:else}
+                    <p class="text-sm text-muted-foreground">
+                      {m.plugin_no_approved_domains()}
+                    </p>
+                  {/if}
+                </div>
                 <p class="text-sm text-muted-foreground">
                   {m.plugin_last_run({
                     time: instance.last_run_at
@@ -817,6 +977,12 @@
                       : m.plugin_never(),
                   })}
                 </p>
+                {#if instance.needs_review}<p
+                    role="status"
+                    class="text-sm text-muted-foreground"
+                  >
+                    {m.plugin_update_instance_review()}
+                  </p>{/if}
                 <p class="text-sm text-muted-foreground">
                   {instance.interval_seconds
                     ? m.plugin_schedule_summary({
@@ -842,10 +1008,19 @@
                     {pluginErrorMessage(instance.last_error)}
                   </p>{/if}
                 <div class="flex flex-wrap gap-2">
+                  {#if instance.pending_domain}<Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending || pluginState.safe_mode}
+                      onclick={() => onReviewDomain?.(instance.id)}
+                      >{m.plugin_review_domain()}</Button
+                    >{/if}
                   <Button
                     size="sm"
                     disabled={pending ||
                       !instance.enabled ||
+                      instance.needs_review ||
+                      !!instance.pending_domain ||
                       instance.running ||
                       pluginState.safe_mode}
                     onclick={() => void run(instance)}>{m.plugin_run()}</Button
@@ -880,30 +1055,133 @@
                     size="sm"
                     variant="destructive"
                     disabled={pending}
-                    onclick={() =>
-                      (removal = { kind: "instance", id: instance.id })}
-                    >{m.common_delete()}</Button
+                    onclick={() => {
+                      error = null;
+                      removal = { kind: "instance", id: instance.id };
+                    }}>{m.common_delete()}</Button
                   >
                 </div>
               </div>
             {/each}
           </section>
         {/each}
-        <div class="flex items-center justify-between gap-4 border-t pt-4">
-          <Label for="plugin-safe-mode" class="text-sm text-muted-foreground"
-            >{m.plugin_safe_mode()}</Label
-          >
-          <Switch
-            id="plugin-safe-mode"
-            checked={pluginState.safe_mode}
-            disabled={pending}
-            onCheckedChange={(enabled) =>
-              void action(() => invoke("set_plugin_safe_mode", { enabled }))}
-          />
-        </div>
       </div>
     </ScrollArea>
   </Dialog.Content>
+  <AlertDialog.Root
+    open={removal !== null}
+    onOpenChange={(value) => {
+      if (!value && !pending) {
+        removal = null;
+      }
+    }}
+  >
+    <AlertDialog.Content>
+      <AlertDialog.Header>
+        <AlertDialog.Title>{m.common_delete()}</AlertDialog.Title>
+        <AlertDialog.Description
+          >{m.plugin_remove_help()}</AlertDialog.Description
+        >
+      </AlertDialog.Header>
+      {#if error}<p role="alert" class="text-sm text-destructive">
+          {pluginErrorMessage(error)}
+        </p>{/if}
+      <AlertDialog.Footer>
+        <AlertDialog.Cancel disabled={pending}
+          >{m.common_cancel()}</AlertDialog.Cancel
+        >
+        <Button variant="destructive" disabled={pending} onclick={remove}>
+          {#if pending}<Spinner aria-hidden="true" />{/if}{m.common_delete()}
+        </Button>
+      </AlertDialog.Footer>
+    </AlertDialog.Content>
+  </AlertDialog.Root>
+  <Dialog.Root
+    bind:open={
+      () => updateTarget !== null,
+      (value) => {
+        if (!value) {
+          closeUpdate();
+        }
+      }
+    }
+    busy={pending}
+  >
+    <Dialog.Content class="flex max-h-[85dvh] flex-col overflow-hidden">
+      <Dialog.Header>
+        <Dialog.Title
+          >{m.plugin_update_title({
+            name: pluginText(updateTarget?.name ?? null),
+          })}</Dialog.Title
+        >
+        <Dialog.Description>{m.plugin_update_help()}</Dialog.Description>
+      </Dialog.Header>
+      <ScrollArea class="min-h-0 flex-1">
+        <div class="space-y-4 pe-4">
+          {#if updateSuccess}
+            <p role="status" class="text-sm">{m.plugin_update_success()}</p>
+          {:else if updatePreview}
+            <p class="text-sm font-medium">
+              {m.plugin_update_versions({
+                current: updatePreview.current_version,
+                next: updatePreview.package.version,
+              })}
+            </p>
+            {#if addedUpdateDomains.length}
+              <div class="space-y-2">
+                <h3 class="text-sm font-medium">
+                  {m.plugin_update_added_domains()}
+                </h3>
+                <ul class="list-inside list-disc text-sm">
+                  {#each addedUpdateDomains as domain (domain)}<li
+                      class="break-all"
+                    >
+                      {domain}
+                    </li>{/each}
+                </ul>
+              </div>
+            {/if}
+            {#if updatePreview.package.allow_custom_domains && !updateTarget?.allow_custom_domains}
+              <p class="text-sm">{m.plugin_update_custom_domains()}</p>
+            {/if}
+            {#if changedUpdateSettings.length}
+              <div class="space-y-2">
+                <h3 class="text-sm font-medium">
+                  {m.plugin_update_changed_settings()}
+                </h3>
+                <ul class="list-inside list-disc text-sm">
+                  {#each changedUpdateSettings as field (field.key)}<li
+                      class="break-words"
+                    >
+                      {pluginText(field.label) || field.key}
+                    </li>{/each}
+                </ul>
+              </div>
+            {/if}
+            {#if updatePreview.requires_review}
+              <p class="text-sm text-muted-foreground">
+                {m.plugin_update_review_help()}
+              </p>
+            {/if}
+          {/if}
+          {#if pending}<p role="status" class="flex items-center gap-2 text-sm">
+              <Spinner aria-hidden="true" />{m.plugin_update_working()}
+            </p>{/if}
+          {#if error}<p role="alert" class="text-sm text-destructive">
+              {pluginErrorMessage(error)}
+            </p>{/if}
+        </div>
+      </ScrollArea>
+      <Dialog.Footer class="shrink-0 border-t pt-4">
+        <Button variant="outline" disabled={pending} onclick={closeUpdate}>
+          {updateSuccess ? m.common_close() : m.common_cancel()}
+        </Button>
+        {#if updatePreview}<Button disabled={pending} onclick={confirmUpdate}
+            >{m.plugin_update()}</Button
+          >{/if}
+      </Dialog.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
   <Dialog.Root
     bind:open={
       () => open && historyId !== null,
@@ -1254,7 +1532,7 @@
               <Field.Description id="plugin-permissions-help"
                 >{m.plugin_permissions_help()}</Field.Description
               >
-              {#if editing.domains.length && !domains.length}
+              {#if availableDomains.length && !domains.length}
                 <Field.Description
                   id="plugin-api-permissions-hint"
                   role="status"
@@ -1268,12 +1546,13 @@
                 </Field.Description>
               {/if}
               <Field.Group data-slot="checkbox-group">
-                {#each editing.domains as domain (domain)}
+                {#each availableDomains as domain (domain)}
                   <Field.Field orientation="horizontal" data-disabled={pending}>
                     <Checkbox
                       id={"plugin-domain-" + domain}
                       checked={domains.includes(domain)}
-                      disabled={pending}
+                      disabled={pending ||
+                        (!domains.includes(domain) && domains.length >= 16)}
                       aria-describedby={!domains.length
                         ? "plugin-permissions-help plugin-api-permissions-hint"
                         : "plugin-permissions-help"}
@@ -1291,6 +1570,22 @@
                         >{m.plugin_allow_api_domain({ domain })}</Field.Label
                       ></Field.Content
                     >
+                    {#if customDomains.includes(domain)}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={pending}
+                        aria-label={m.plugin_remove_host({ domain })}
+                        onclick={() => {
+                          customDomains = customDomains.filter(
+                            (value) => value !== domain,
+                          );
+                          domains = domains.filter((value) => value !== domain);
+                          consent = false;
+                        }}>{m.common_delete()}</Button
+                      >
+                    {/if}
                   </Field.Field>
                 {/each}
                 <Field.Field

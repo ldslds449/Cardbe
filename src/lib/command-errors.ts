@@ -41,6 +41,9 @@ const coreMessages = {
   SHARE_SYNC_CONFLICT: () => m.share_conflict_error(),
   SHARE_FAILED: () => m.share_sync_error(),
   INTERNAL_ERROR: () => m.error_internal(),
+  PLUGIN_UPDATE_NOT_NEWER: () => m.plugin_update_not_newer(),
+  PLUGIN_UPDATE_BUSY: () => m.plugin_update_busy(),
+  PLUGIN_UPDATE_STALE: () => m.plugin_update_stale(),
 };
 
 export type NetworkSettingsField =

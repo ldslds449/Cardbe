@@ -44,7 +44,15 @@ pub struct PluginPackage {
     #[serde(default)]
     pub domains: Vec<String>,
     #[serde(default)]
+    pub allow_custom_domains: bool,
+    #[serde(default)]
     pub settings: Vec<SettingField>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PendingDomain {
+    pub domain: String,
+    pub run_id: String,
+    pub trigger: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginInstance {
@@ -56,7 +64,13 @@ pub struct PluginInstance {
     #[serde(default)]
     pub secret_fields: Vec<String>,
     pub allowed_domains: Vec<String>,
+    #[serde(default)]
+    pub pending_domain: Option<PendingDomain>,
     pub enabled: bool,
+    #[serde(default)]
+    pub needs_review: bool,
+    #[serde(default)]
+    pub credentials_need_review: bool,
     pub interval_seconds: u64,
     pub last_run_at: Option<i64>,
     #[serde(default)]
@@ -66,6 +80,31 @@ pub struct PluginInstance {
     pub last_error: Option<CommandError>,
     #[serde(default)]
     pub running: bool,
+}
+pub struct PreparedPluginUpdate {
+    pub token: String,
+    pub previous_version: String,
+    pub package: PluginPackage,
+    pub manifest: Vec<u8>,
+    pub component: Vec<u8>,
+}
+#[derive(Serialize)]
+pub struct PluginUpdatePreview {
+    pub token: String,
+    pub current_version: String,
+    pub package: PluginPackage,
+    pub requires_review: bool,
+}
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PluginPackageSelection {
+    Installed {
+        package: PluginPackage,
+    },
+    Update {
+        current_package: PluginPackage,
+        preview: Box<PluginUpdatePreview>,
+    },
 }
 #[derive(Clone, Deserialize)]
 pub struct InstanceInput {

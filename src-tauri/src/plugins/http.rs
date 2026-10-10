@@ -14,19 +14,37 @@ use std::{
 #[derive(Clone, Default)]
 pub struct HttpPolicy {
     pub allowed_domains: Vec<String>,
+    pub requested_domains: Vec<String>,
+    pub allow_custom_domains: bool,
     pub token: Option<String>,
+    pub token_domain: Option<String>,
     pub error_codes: Vec<String>,
     pub log_codes: Vec<String>,
 }
+impl HttpPolicy {
+    fn bearer_token(&self, url: &Url) -> Option<&str> {
+        if self.allowed_domains.len() == 1 && self.token_domain.as_deref() == url.host_str() {
+            self.token.as_deref()
+        } else {
+            None
+        }
+    }
+}
+#[cfg(test)]
 pub(crate) fn authorized_url(value: &str, policy: &HttpPolicy) -> Result<Url, RuntimeError> {
-    let url = safe_url(value).ok_or(RuntimeError::PermissionDenied)?;
-    if url.scheme() != "https"
-        || url.port_or_known_default() != Some(443)
-        || !policy
-            .allowed_domains
-            .iter()
-            .any(|domain| Some(domain.as_str()) == url.host_str())
+    let url = request_url(value)?;
+    if !policy
+        .allowed_domains
+        .iter()
+        .any(|domain| Some(domain.as_str()) == url.host_str())
     {
+        return Err(RuntimeError::PermissionDenied);
+    }
+    Ok(url)
+}
+fn request_url(value: &str) -> Result<Url, RuntimeError> {
+    let url = safe_url(value).ok_or(RuntimeError::PermissionDenied)?;
+    if url.scheme() != "https" || url.port_or_known_default() != Some(443) {
         return Err(RuntimeError::PermissionDenied);
     }
     Ok(url)
@@ -60,11 +78,9 @@ pub(crate) async fn get(
                 .build()
                 .map_err(|_| RuntimeError::Network)?;
             let mut request = client.get(url.clone()).header("Accept", "application/json");
-            // shortcut: one bearer secret for one approved origin, add named scopes before supporting multiple credentialed origins.
-            if policy.allowed_domains.len() == 1 {
-                if let Some(token) = &policy.token {
-                    request = request.bearer_auth(token);
-                }
+            // shortcut: bearer auth is limited to the single manifest origin, add named scopes for custom or multiple credentialed origins.
+            if let Some(token) = policy.bearer_token(&url) {
+                request = request.bearer_auth(token);
             }
             request.send().await.map_err(|_| RuntimeError::Network)
         },
@@ -82,12 +98,23 @@ async fn get_with<
     resolve: impl FnOnce(String) -> R,
     request: impl FnOnce(Url, Vec<SocketAddr>) -> F,
 ) -> Result<super::runtime::bindings::cardbe::plugin::types::HttpResponse, RuntimeError> {
-    let url = authorized_url(value, policy)?;
+    let url = request_url(value)?;
     let operation = async {
         let host = url
             .host_str()
             .ok_or(RuntimeError::PermissionDenied)?
             .to_owned();
+        let authorized = policy.allowed_domains.contains(&host);
+        if !authorized
+            && (policy.allowed_domains.len() >= 16
+                || !(policy.allow_custom_domains || policy.requested_domains.contains(&host))
+                || !crate::commands::plugins::valid_domains(std::slice::from_ref(&host)))
+        {
+            return Err(RuntimeError::PermissionDenied);
+        }
+        if !authorized {
+            return Err(RuntimeError::AuthorizationRequired(host));
+        }
         let addresses = resolve(host).await?;
         if !public_addresses(&addresses) {
             return Err(RuntimeError::PermissionDenied);
@@ -177,6 +204,23 @@ mod tests {
             assert!(authorized_url(url, &policy()).is_err(), "{url}");
         }
     }
+    #[test]
+    fn multiple_hosts_are_exact_and_custom_hosts_never_receive_manifest_credentials() {
+        let mut policy = policy();
+        policy.token = Some("fixture-token".into());
+        policy.token_domain = Some("api.github.com".into());
+        let original = Url::parse("https://api.github.com").unwrap();
+        let custom = Url::parse("https://custom.example.com").unwrap();
+        assert_eq!(policy.bearer_token(&original), Some("fixture-token"));
+        policy.allowed_domains.push("custom.example.com".into());
+        assert!(authorized_url(custom.as_str(), &policy).is_ok());
+        assert!(authorized_url(original.as_str(), &policy).is_ok());
+        assert!(authorized_url("https://custom.example.com.evil.test", &policy).is_err());
+        assert_eq!(policy.bearer_token(&custom), None);
+        assert_eq!(policy.bearer_token(&original), None);
+        policy.allowed_domains = vec!["custom.example.com".into()];
+        assert_eq!(policy.bearer_token(&custom), None);
+    }
     async fn mock_response(bytes: Vec<u8>) -> Response {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -241,6 +285,100 @@ mod tests {
         assert_eq!(result.body, b"{}");
         assert!(!result.headers.iter().any(|(key, _)| key == "set-cookie"));
     }
+    #[tokio::test]
+    async fn unapproved_public_hosts_require_permission_before_sending_any_request() {
+        for custom in [false, true] {
+            let policy = HttpPolicy {
+                requested_domains: if custom {
+                    vec![]
+                } else {
+                    vec!["new.example.com".into()]
+                },
+                allow_custom_domains: custom,
+                ..Default::default()
+            };
+            let result = get_with(
+                "https://NEW.example.com/private?token=never-exposed",
+                &policy,
+                cancel(),
+                deadline(),
+                |_| async { panic!("no DNS request before approval") },
+                |_, _| async { panic!("no HTTP request before approval") },
+            )
+            .await;
+            assert!(
+                matches!(result, Err(RuntimeError::AuthorizationRequired(domain)) if domain == "new.example.com")
+            );
+        }
+        for (url, policy, address) in [
+            (
+                "https://new.example.com",
+                HttpPolicy {
+                    allowed_domains: vec!["new.example.com".into()],
+                    ..Default::default()
+                },
+                "127.0.0.1:443",
+            ),
+            (
+                "https://new.example.com",
+                HttpPolicy::default(),
+                "93.184.216.34:443",
+            ),
+            (
+                "https://api.github.com.evil.example",
+                policy(),
+                "93.184.216.34:443",
+            ),
+            (
+                "http://new.example.com",
+                HttpPolicy {
+                    allow_custom_domains: true,
+                    ..Default::default()
+                },
+                "93.184.216.34:443",
+            ),
+            (
+                "https://new.example.com:444",
+                HttpPolicy {
+                    allow_custom_domains: true,
+                    ..Default::default()
+                },
+                "93.184.216.34:443",
+            ),
+            (
+                "https://user:secret@new.example.com",
+                HttpPolicy {
+                    allow_custom_domains: true,
+                    ..Default::default()
+                },
+                "93.184.216.34:443",
+            ),
+            (
+                "https://new.example.com",
+                HttpPolicy {
+                    allowed_domains: (0..16).map(|i| format!("host{i}.example.com")).collect(),
+                    allow_custom_domains: true,
+                    ..Default::default()
+                },
+                "93.184.216.34:443",
+            ),
+        ] {
+            let result = get_with(
+                url,
+                &policy,
+                cancel(),
+                deadline(),
+                |_| async { Ok(vec![address.parse().unwrap()]) },
+                |_, _| async { panic!("unsafe or undeclared hosts cannot send requests") },
+            )
+            .await;
+            assert!(
+                matches!(result, Err(RuntimeError::PermissionDenied)),
+                "{url}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn redirects_declared_and_streamed_size_limits_are_rejected() {
         for bytes in [b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\nLocation: http://127.0.0.1/private\r\n\r\n".to_vec(),b"HTTP/1.1 200 OK\r\nContent-Length: 2097153\r\n\r\n".to_vec(),[b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec(),vec![b'x';2097153]].concat()] {

@@ -26,6 +26,7 @@
   import HelpDialogs from "./help_dialogs.svelte";
   import LanguageSettings from "./language_settings.svelte";
   import PluginSettings from "./plugin_settings.svelte";
+  import PluginPermissions from "./plugin_permissions.svelte";
 
   import { board } from "../../board.svelte";
   import type { WorkspaceView } from "./workspace";
@@ -90,6 +91,7 @@
   let about_open = $state(false);
   let settings_open = $state(false);
   let plugins_open = $state(false);
+  let reviewPluginDomain = $state<string | null>(null);
   let diagnostics_open = $state(false);
 </script>
 
@@ -217,6 +219,7 @@
       </div>
     </div>
 
+    <PluginPermissions bind:review={reviewPluginDomain} />
     {#if pending_device_count > 0}
       <Button
         variant="outline"
@@ -438,4 +441,7 @@
   {onCheckForUpdates}
 />
 <LanguageSettings bind:open={settings_open} />
-<PluginSettings bind:open={plugins_open} />
+<PluginSettings
+  bind:open={plugins_open}
+  onReviewDomain={(id) => (reviewPluginDomain = id)}
+/>

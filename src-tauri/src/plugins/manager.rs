@@ -24,6 +24,7 @@ use tauri::{Emitter, Manager};
 pub enum ManagerError {
     Domain(DomainError),
     Host(PluginHostError),
+    AuthorizationRequired(String),
 }
 impl From<DomainError> for ManagerError {
     fn from(error: DomainError) -> Self {
@@ -40,6 +41,7 @@ impl From<ManagerError> for CommandError {
         match error {
             ManagerError::Domain(error) => error.into(),
             ManagerError::Host(error) => error.into(),
+            ManagerError::AuthorizationRequired(_) => CommandError::PermissionDenied,
         }
     }
 }
@@ -52,6 +54,7 @@ fn lock_error() -> DomainError {
 #[derive(Default)]
 pub struct PluginManager {
     pub active: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    pub update: Mutex<Option<PreparedPluginUpdate>>,
     pub safe_mode: AtomicBool,
     initialized: AtomicBool,
 }
@@ -135,12 +138,20 @@ fn reserve(
     active: &mut HashMap<String, Arc<AtomicBool>>,
     id: &str,
     cancel: Arc<AtomicBool>,
-) -> Result<(), DomainError> {
-    if active.len() >= 2 || active.contains_key(id) {
+    wait_for_capacity: bool,
+) -> Result<bool, DomainError> {
+    if active.contains_key(id) {
         return Err(DomainError::InvalidArgument);
     }
+    if active.len() >= 2 {
+        return if wait_for_capacity {
+            Ok(false)
+        } else {
+            Err(DomainError::InvalidArgument)
+        };
+    }
     active.insert(id.to_owned(), cancel);
-    Ok(())
+    Ok(true)
 }
 struct Reservation {
     app: tauri::AppHandle,
@@ -204,6 +215,7 @@ fn disable_preparation(
 }
 fn same_authorization(original: &PluginInstance, current: &PluginInstance) -> bool {
     current.enabled
+        && !current.needs_review
         && current.plugin_id == original.plugin_id
         && current.board_id == original.board_id
         && current.config == original.config
@@ -231,6 +243,9 @@ fn runtime_error(
     error: runtime::RuntimeError,
 ) -> (ManagerError, Option<u32>) {
     match error {
+        runtime::RuntimeError::AuthorizationRequired(domain) => {
+            (ManagerError::AuthorizationRequired(domain), None)
+        }
         runtime::RuntimeError::Guest {
             code,
             retry_after_seconds,
@@ -286,17 +301,26 @@ async fn execute(
     cancel: Arc<AtomicBool>,
 ) -> Result<RuntimeOutput, (ManagerError, Option<u32>)> {
     let preparation = (|| -> Result<_, ManagerError> {
-        let path = package_root(app)?.join(&package.id).join("component.wasm");
+        let root = package_root(app)?.join(&package.id);
+        let path = {
+            let state = app.state::<SharedAppData>();
+            let guard = state.lock().map_err(|_| lock_error())?;
+            match storage::revision(guard.database.plugin_connection(), &package.id)? {
+                Some(revision) => root.join(revision).join("component.wasm"),
+                None => root.join("component.wasm"),
+            }
+        };
         let namespace = secret_namespace(app, &instance.id)?;
-        let token = instance
-            .secret_fields
-            .first()
+        let token = credential_key(instance, package)
             .map(|key| secret(&namespace, key))
             .transpose()?
             .flatten();
         let policy = HttpPolicy {
             allowed_domains: instance.allowed_domains.clone(),
+            requested_domains: package.domains.clone(),
+            allow_custom_domains: package.allow_custom_domains,
             token,
+            token_domain: package.domains.first().cloned(),
             error_codes: package.error_codes.clone(),
             log_codes: package.log_codes.clone(),
         };
@@ -319,19 +343,43 @@ async fn execute(
     })?
     .map_err(|error| runtime_error(package, error))
 }
+fn credential_key<'a>(instance: &'a PluginInstance, package: &PluginPackage) -> Option<&'a str> {
+    instance
+        .secret_fields
+        .iter()
+        .find(|key| {
+            !instance.credentials_need_review
+                && package
+                    .settings
+                    .iter()
+                    .any(|field| field.kind == "secret" && field.key == **key)
+        })
+        .map(String::as_str)
+}
 pub async fn run(
     app: tauri::AppHandle,
     instance_id: String,
     trigger: &str,
 ) -> Result<PluginRun, ManagerError> {
     let manager = app.state::<PluginManager>();
-    if manager.safe_mode.load(Ordering::SeqCst) || !manager.initialized.load(Ordering::SeqCst) {
-        return Err(DomainError::PermissionDenied.into());
-    }
     let cancel = Arc::new(AtomicBool::new(false));
-    {
-        let mut active = manager.active.lock().map_err(|_| lock_error())?;
-        reserve(&mut active, &instance_id, cancel.clone())?;
+    loop {
+        if manager.safe_mode.load(Ordering::SeqCst) || !manager.initialized.load(Ordering::SeqCst) {
+            return Err(DomainError::PermissionDenied.into());
+        }
+        let reserved = {
+            let mut active = manager.active.lock().map_err(|_| lock_error())?;
+            reserve(
+                &mut active,
+                &instance_id,
+                cancel.clone(),
+                trigger == "permission",
+            )?
+        };
+        if reserved {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     }
     let _reservation = Reservation {
         app: app.clone(),
@@ -345,7 +393,7 @@ pub async fn run(
             .into_iter()
             .find(|instance| instance.id == instance_id)
             .ok_or(DomainError::InvalidArgument)?;
-        if !instance.enabled {
+        if !instance.enabled || instance.needs_review || instance.pending_domain.is_some() {
             return Err(DomainError::PermissionDenied.into());
         }
         match guard
@@ -381,11 +429,7 @@ pub async fn run(
             )?;
             return Err(DomainError::InvalidArgument.into());
         };
-        if instance
-            .allowed_domains
-            .iter()
-            .any(|domain| !package.domains.contains(domain))
-        {
+        if !crate::commands::plugins::valid_instance_domains(&package, &instance.allowed_domains) {
             disable_preparation(
                 connection,
                 &instance,
@@ -495,6 +539,18 @@ pub async fn run(
                         }
                     }
                 }
+                Err((ManagerError::AuthorizationRequired(domain), _)) => {
+                    record.status = "awaiting_permission".into();
+                    let current = current
+                        .as_mut()
+                        .expect("Authorization checked instance existence");
+                    current.last_error = None;
+                    current.pending_domain = Some(PendingDomain {
+                        domain,
+                        run_id: record.id.clone(),
+                        trigger: record.trigger.clone(),
+                    });
+                }
                 Err((error, wait)) => {
                     record.status = "failed".into();
                     record.error = Some(error.into());
@@ -518,12 +574,16 @@ pub async fn run(
             }
             current.last_run_at = record.finished_at;
             current.last_run_status = Some(record.status.clone());
-            current.next_run_at = next_run(
-                record.finished_at.unwrap_or_else(now),
-                current.interval_seconds,
-                current.failures,
-                retry,
-            );
+            current.next_run_at = if current.pending_domain.is_some() {
+                None
+            } else {
+                next_run(
+                    record.finished_at.unwrap_or_else(now),
+                    current.interval_seconds,
+                    current.failures,
+                    retry,
+                )
+            };
             storage::put(&transaction, "instance", &current.id, current)?;
         }
         storage::put(&transaction, "run", &record.id, &record)?;
@@ -587,6 +647,7 @@ pub fn start_scheduler(app: tauri::AppHandle) {
             }
             for instance in state.instances {
                 if instance.enabled
+                    && instance.pending_domain.is_none()
                     && !instance.running
                     && instance.interval_seconds >= 60
                     && instance.next_run_at.is_none_or(|next| next <= now())
@@ -604,6 +665,22 @@ pub fn start_scheduler(app: tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn updated_credentials_are_not_reused_for_changed_destinations_or_removed_fields() {
+        let package: PluginPackage = serde_json::from_value(serde_json::json!({
+            "id":"example", "name":"Example", "version":"1.1.0", "api_version":"1.0.0",
+            "storage_schema_version":1,"settings":[{"key":"token","type":"secret","label":"Token"}]
+        }))
+        .unwrap();
+        let mut instance = instance("one");
+        instance.secret_fields = vec!["retired_token".into(), "token".into()];
+        assert_eq!(credential_key(&instance, &package), Some("token"));
+        instance.credentials_need_review = true;
+        assert_eq!(credential_key(&instance, &package), None);
+        instance.credentials_need_review = false;
+        instance.secret_fields = vec!["retired_token".into()];
+        assert_eq!(credential_key(&instance, &package), None);
+    }
     #[test]
     fn expected_preparation_failure_disables_only_affected_instance() {
         let connection = rusqlite::Connection::open_in_memory().unwrap();
@@ -733,7 +810,10 @@ mod tests {
             config: Default::default(),
             secret_fields: vec![],
             allowed_domains: vec![],
+            pending_domain: None,
             enabled: true,
+            needs_review: false,
+            credentials_need_review: false,
             interval_seconds: 60,
             last_run_at: None,
             last_run_status: None,
@@ -746,12 +826,20 @@ mod tests {
     #[test]
     fn reservations_bound_parallelism_and_prevent_duplicates() {
         let mut active = HashMap::new();
-        assert!(reserve(&mut active, "one", Arc::new(AtomicBool::new(false))).is_ok());
-        assert!(reserve(&mut active, "one", Arc::new(AtomicBool::new(false))).is_err());
-        assert!(reserve(&mut active, "two", Arc::new(AtomicBool::new(false))).is_ok());
-        assert!(reserve(&mut active, "three", Arc::new(AtomicBool::new(false))).is_err());
+        assert!(reserve(&mut active, "one", Arc::new(AtomicBool::new(false)), false).is_ok());
+        assert!(reserve(&mut active, "one", Arc::new(AtomicBool::new(false)), false).is_err());
+        assert!(reserve(&mut active, "two", Arc::new(AtomicBool::new(false)), false).is_ok());
+        assert!(reserve(
+            &mut active,
+            "three",
+            Arc::new(AtomicBool::new(false)),
+            false
+        )
+        .is_err());
+        assert!(!reserve(&mut active, "three", Arc::new(AtomicBool::new(false)), true).unwrap());
+        assert!(reserve(&mut active, "one", Arc::new(AtomicBool::new(false)), true).is_err());
         active.remove("one");
-        assert!(reserve(&mut active, "three", Arc::new(AtomicBool::new(false))).is_ok());
+        assert!(reserve(&mut active, "three", Arc::new(AtomicBool::new(false)), true).unwrap());
     }
     #[test]
     fn schedules_backoff_and_retry_are_bounded() {

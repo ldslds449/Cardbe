@@ -1,13 +1,41 @@
 import { describe, expect, it } from "vite-plus/test";
+import { m } from "$lib/paraglide/messages.js";
 import {
   invalidPluginSettings,
   pluginDefaults,
   pluginText,
   pluginErrorMessage,
   pluginLogMessage,
+  isNewerPluginVersion,
   type PluginPackage,
   type PluginSetting,
 } from "./plugins";
+
+it("compares stable plugin releases numerically and rejects malformed versions and downgrades", () => {
+  for (const [current, next] of [
+    ["1.9.9", "1.10.0"],
+    ["1.9.9", "2.0.0"],
+    ["1.0.0", "1.0.1"],
+    ["9007199254740992.0.0", "9007199254740993.0.0"],
+  ]) {
+    expect(isNewerPluginVersion(current, next)).toBe(true);
+    expect(isNewerPluginVersion(next, current)).toBe(false);
+  }
+  for (const version of [
+    "1.0.0",
+    "0.9.9",
+    "1.0",
+    "01.2.0",
+    "1.1.0-beta",
+    "1.1.0+build",
+    "18446744073709551616.0.0",
+    "1. 1.0",
+    "1.1.-1",
+  ]) {
+    expect(isNewerPluginVersion("1.0.0", version)).toBe(false);
+  }
+});
+
 import {
   applyLanguagePreference,
   formatNumber,
@@ -69,6 +97,35 @@ describe("plugin settings", () => {
       for (const locale of ["en", "zh-TW", "en"] as const) {
         applyLanguagePreference(locale);
         const catalog = locale === "en" ? en : zh;
+        expect(m.plugin_approved_domains()).toBe(
+          catalog.plugin_approved_domains,
+        );
+        expect(m.plugin_no_approved_domains()).toBe(
+          catalog.plugin_no_approved_domains,
+        );
+        expect(m.plugin_domain_request_help()).toBe(
+          catalog.plugin_domain_request_help,
+        );
+        expect(
+          m.plugin_domain_request_description({
+            name: "Example",
+            domain: "api.example.com",
+          }),
+        ).toBe(
+          catalog.plugin_domain_request_description
+            .replace("{name}", "Example")
+            .replace("{domain}", "api.example.com"),
+        );
+        for (const count of [0, 1, 1234]) {
+          expect(
+            m.plugin_pending_permissions({ count: formatNumber(count) }),
+          ).toBe(
+            catalog.plugin_pending_permissions.replace(
+              "{count}",
+              formatNumber(count),
+            ),
+          );
+        }
         expect(pluginText({ en: "English", "zh-TW": "中文" })).toBe(
           locale === "en" ? "English" : "中文",
         );

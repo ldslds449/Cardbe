@@ -147,6 +147,9 @@ pub enum CommandError {
     PluginExecutionFailed {
         plugin_id: String,
     },
+    PluginUpdateNotNewer,
+    PluginUpdateBusy,
+    PluginUpdateStale,
     PluginError {
         plugin_id: String,
         plugin_error: PluginUserError,

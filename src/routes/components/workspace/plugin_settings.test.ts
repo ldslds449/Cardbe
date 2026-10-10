@@ -4,6 +4,7 @@ import { transpile } from "typescript";
 import { expect, it, vi } from "vite-plus/test";
 import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { parseCommandError } from "$lib/command-errors";
+import { isNewerPluginVersion } from "$lib/plugins";
 
 const source = readFileSync(
   new URL("./plugin_settings.svelte", import.meta.url),
@@ -282,16 +283,35 @@ const installPackageSource = source.slice(
 );
 
 function setupInstall(invoke: ReturnType<typeof vi.fn>) {
+  const updateFunctions = parse(source, { modern: true })
+    .instance!.content.body.filter(
+      (node) =>
+        node.type === "FunctionDeclaration" &&
+        ["showUpdate", "confirmUpdate", "closeUpdate"].includes(node.id!.name),
+    )
+    .map((node) => {
+      const { start, end } = node as typeof node & {
+        start: number;
+        end: number;
+      };
+      return source.slice(start, end);
+    })
+    .join("\n");
   return new Function(
     "invoke",
     "parseCommandError",
+    "isNewerPluginVersion",
     transpile(`
-    let session = 0, installation = null;
+    let session = 0, installation = null, open=true, error=null,
+      updateTarget=null,updatePreview=null,updateSuccess=false;
+    async function action(work){try{await work();}catch(cause){error=parseCommandError(cause)??{code:"INTERNAL_ERROR"};}}
+    ${updateFunctions}
     ${installPackageSource}
-    return { installPackage, state: () => installation,
-      close: () => { session++; installation = null; } };
+    return { installPackage, confirmUpdate, closeUpdate, state: () => installation,
+      updateState:()=>({updatePreview,updateSuccess,error}),
+      close: () => { session++; open=false; installation = null; closeUpdate(); } };
   `),
-  )(invoke, parseCommandError);
+  )(invoke, parseCommandError, isNewerPluginVersion);
 }
 
 it("shows the selected filename while installing and preserves the successful package", async () => {
@@ -309,7 +329,7 @@ it("shows the selected filename while installing and preserves the successful pa
     source: "release.zip",
   });
   const pkg = { id: "sample", name: { en: "Sample", "zh-TW": "範例" } };
-  resolve(pkg);
+  resolve({ kind: "installed", package: pkg });
   await pending;
   expect(settings.state()).toEqual({
     status: "success",
@@ -358,7 +378,9 @@ it("does not restore installation feedback after the dialog has closed", async (
       .catch(() => undefined);
     settings.close();
     settle(
-      failed ? { code: "INVALID_ARGUMENT" } : { id: "sample", name: "Sample" },
+      failed
+        ? { code: "INVALID_ARGUMENT" }
+        : { kind: "installed", package: { id: "sample", name: "Sample" } },
     );
     await pending;
     expect(settings.state()).toBeNull();
@@ -372,7 +394,10 @@ it("offers ZIP and manifest files and installs the selected local package", asyn
   )!;
   const { start, end } = node as typeof node & { start: number; end: number };
   const openFile = vi.fn().mockResolvedValue("release.zip");
-  const invoke = vi.fn().mockResolvedValue({ id: "sample", name: "Sample" });
+  const invoke = vi.fn().mockResolvedValue({
+    kind: "installed",
+    package: { id: "sample", name: "Sample" },
+  });
   const install = new Function(
     "openFile",
     "installPackage",
@@ -401,7 +426,7 @@ it("offers ZIP and manifest files and installs the selected local package", asyn
   expect(invoke).not.toHaveBeenCalled();
 });
 
-function setupDrop(options = {}) {
+function setupDrop(options: Record<string, unknown> = {}) {
   const node = parse(source, { modern: true }).instance!.content.body.find(
     (node) =>
       node.type === "FunctionDeclaration" &&
@@ -409,7 +434,12 @@ function setupDrop(options = {}) {
   )!;
   const { start, end } = node as typeof node & { start: number; end: number };
   const bounds = { left: 10, right: 200, top: 20, bottom: 160 };
-  const invoke = vi.fn().mockResolvedValue({ id: "sample", name: "Sample" });
+  const invoke = vi.fn().mockResolvedValue(
+    options.response ?? {
+      kind: "installed",
+      package: { id: "sample", name: "Sample" },
+    },
+  );
   const settings = new Function(
     "options",
     "invoke",
@@ -417,7 +447,8 @@ function setupDrop(options = {}) {
     "window",
     "parseCommandError",
     transpile(`
-    let open = options.open ?? true, pending = options.pending ?? false, editing = options.editing ?? null;
+    let open = options.open ?? true, pending = options.pending ?? false, editing = options.editing ?? null, updateTarget=options.updateTarget??null;
+    async function showUpdate(target){updateTarget=target;}
     let dropZone = options.hidden ? null : {
       getBoundingClientRect: () => options.bounds,
       closest: () => ({ getBoundingClientRect: () => options.viewport ?? options.bounds })
@@ -425,7 +456,7 @@ function setupDrop(options = {}) {
     let dragging = false, error = null, installation = null, session = 0;
     ${installPackageSource}
     ${source.slice(start, end)}
-    return { handlePluginDrop, state: () => ({ dragging, error, installation }) };
+    return { handlePluginDrop, updateTarget:()=>updateTarget, state: () => ({ dragging, error, installation }) };
   `),
   )(
     { bounds, ...options },
@@ -464,6 +495,7 @@ it("ignores drops outside the visible local panel or while installation is unava
     { open: false },
     { pending: true },
     { editing: {} },
+    { updateTarget: {} },
     { hidden: true },
     { viewport: { left: 10, right: 200, top: 80, bottom: 160 } },
   ]) {
@@ -672,4 +704,210 @@ it("keeps board creation open with a safe error and rejects blank names", async 
   invoke.mockClear();
   await setupCreateBoard(invoke, " ").createBoard();
   expect(invoke).not.toHaveBeenCalled();
+});
+
+it("shows removal confirmation outside the scrolling plugin list and retains failures", () => {
+  const confirmation = source.slice(
+    source.indexOf("  <AlertDialog.Root"),
+    source.indexOf("  </AlertDialog.Root>"),
+  );
+  expect(source.indexOf("  <AlertDialog.Root")).toBeGreaterThan(
+    source.indexOf("    </ScrollArea>"),
+  );
+  expect(confirmation).toContain("open={removal !== null}");
+  expect(confirmation).toContain("!value && !pending");
+  expect(confirmation).toContain("pluginErrorMessage(error)");
+  expect(confirmation).toContain("onclick={remove}");
+  expect(confirmation).not.toContain("AlertDialog.Action");
+});
+
+const updatePreview = {
+  token: "review-token",
+  current_version: "1.0.0",
+  requires_review: false,
+  package: {
+    id: "sample",
+    version: "1.1.0",
+    api_version: "1.0.0",
+    storage_schema_version: 1,
+  },
+};
+const updateSelection = {
+  kind: "update",
+  current_package: { ...updatePreview.package, version: "1.0.0" },
+  preview: updatePreview,
+};
+it("routes dropped update packages through the same entry without applying them", async () => {
+  const settings = setupDrop({ response: updateSelection });
+  await settings.handlePluginDrop({
+    type: "drop",
+    paths: ["new.zip"],
+    position: new PhysicalPosition(100, 100),
+  });
+  expect(settings.invoke).toHaveBeenCalledExactlyOnceWith(
+    "install_plugin_package",
+    { path: "new.zip" },
+  );
+  expect(settings.updateTarget()).toEqual(updateSelection.current_package);
+  expect(settings.state().installation).toBeNull();
+});
+it.each([{ path: "new.zip" }, { url: "https://example.com/new.zip" }])(
+  "uses the installation entry to preview updates without applying them (%s)",
+  async (input) => {
+    const invoke = vi.fn().mockResolvedValue(updateSelection),
+      settings = setupInstall(invoke);
+    await settings.installPackage(input);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      "install_plugin_package",
+      input,
+    );
+    expect(settings.state()).toBeNull();
+    expect(settings.updateState().updatePreview).toEqual(updatePreview);
+    await settings.confirmUpdate();
+    expect(invoke).toHaveBeenLastCalledWith("confirm_plugin_update", {
+      token: "review-token",
+    });
+    expect(settings.updateState()).toEqual({
+      updatePreview: null,
+      updateSuccess: true,
+      error: null,
+    });
+  },
+);
+it("preserves update preview for retry after a structured apply failure", async () => {
+  const invoke = vi
+    .fn()
+    .mockResolvedValueOnce(updateSelection)
+    .mockRejectedValueOnce({ code: "PLUGIN_UPDATE_BUSY" });
+  const settings = setupInstall(invoke);
+  await settings.installPackage({ path: "new.zip" });
+  await settings.confirmUpdate();
+  expect(settings.updateState()).toEqual({
+    updatePreview,
+    updateSuccess: false,
+    error: { code: "PLUGIN_UPDATE_BUSY" },
+  });
+});
+it("discards a late update preview after the settings dialog closes", async () => {
+  let resolve!: (value: unknown) => void;
+  const invoke = vi
+    .fn()
+    .mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    )
+    .mockResolvedValue(undefined);
+  const settings = setupInstall(invoke),
+    loading = settings.installPackage({ path: "new.zip" });
+  settings.close();
+  resolve(updateSelection);
+  await loading;
+  expect(settings.updateState().updatePreview).toBeNull();
+  expect(invoke).toHaveBeenLastCalledWith("discard_plugin_update", {
+    token: "review-token",
+  });
+});
+it("rejects incompatible or non-newer automatic update previews", async () => {
+  for (const change of [
+    { id: "other" },
+    { api_version: "2.0.0" },
+    { storage_schema_version: 2 },
+    { version: "0.9.0" },
+  ]) {
+    const invoke = vi.fn().mockResolvedValue({
+      ...updateSelection,
+      preview: {
+        ...updatePreview,
+        package: { ...updatePreview.package, ...change },
+      },
+    });
+    const settings = setupInstall(invoke);
+    await settings.installPackage({ path: "new.zip" });
+    expect(settings.state().error).toEqual({ code: "INVALID_ARGUMENT" });
+    expect(settings.updateState().updatePreview).toBeNull();
+    expect(invoke).toHaveBeenLastCalledWith("discard_plugin_update", {
+      token: "review-token",
+    });
+  }
+});
+it("rejects stale automatic update previews", async () => {
+  const invoke = vi.fn().mockResolvedValue({
+    ...updateSelection,
+    preview: { ...updatePreview, current_version: "1.0.1" },
+  });
+  const settings = setupInstall(invoke);
+  await settings.installPackage({ path: "new.zip" });
+  expect(settings.state().error).toEqual({ code: "PLUGIN_UPDATE_STALE" });
+  expect(invoke).toHaveBeenLastCalledWith("discard_plugin_update", {
+    token: "review-token",
+  });
+});
+it("discards cancelled updates without applying them", async () => {
+  const invoke = vi.fn().mockResolvedValue(updateSelection),
+    settings = setupInstall(invoke);
+  await settings.installPackage({ path: "new.zip" });
+  settings.closeUpdate();
+  expect(settings.updateState().updatePreview).toBeNull();
+  expect(invoke).toHaveBeenLastCalledWith("discard_plugin_update", {
+    token: "review-token",
+  });
+  expect(
+    invoke.mock.calls.some(([command]) => command === "confirm_plugin_update"),
+  ).toBe(false);
+});
+it("opens updated settings with preserved values, no new grants, and credentials requiring review", () => {
+  const node = parse(source, { modern: true }).instance!.content.body.find(
+    (node) => node.type === "FunctionDeclaration" && node.id!.name === "edit",
+  )!;
+  const { start, end } = node as typeof node & { start: number; end: number };
+  const edit = new Function(
+    "pluginText",
+    "pluginDefaults",
+    transpile(`
+    let editing=null,instanceId,name,config,secrets,savedSecrets,domains,customDomains,
+      enabled,interval,consent,invalid,saveAttempted,historyId,error;
+    async function chooseBoard(){}
+    ${source.slice(start, end)}
+    return (pkg,instance)=>{edit(pkg,instance);return {config,savedSecrets,domains,enabled};};
+  `),
+  )(
+    () => "Plugin",
+    () => ({}),
+  );
+  const pkg = {
+    id: "sample",
+    domains: ["new.example.com"],
+    settings: [
+      { key: "title", type: "text" },
+      { key: "token", type: "secret" },
+    ],
+  };
+  const instance = {
+    id: "one",
+    name: "Instance",
+    board_id: 1,
+    config: { title: "Keep", removed: "Retired" },
+    secret_fields: ["token"],
+    allowed_domains: ["old.example.com"],
+    enabled: false,
+    credentials_need_review: true,
+  };
+  expect(edit(pkg, instance)).toEqual({
+    config: { title: "Keep" },
+    savedSecrets: [],
+    domains: [],
+    enabled: false,
+  });
+  expect(
+    edit(
+      { ...pkg, allow_custom_domains: true },
+      { ...instance, credentials_need_review: false },
+    ),
+  ).toEqual({
+    config: { title: "Keep" },
+    savedSecrets: ["token"],
+    domains: ["old.example.com"],
+    enabled: false,
+  });
 });
