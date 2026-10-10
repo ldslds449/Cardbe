@@ -149,6 +149,8 @@
     session++;
     if (!open) {
       closeEditor();
+      historyId = null;
+      runs = [];
       installation = null;
       return;
     }
@@ -393,6 +395,15 @@
       unlisten?.();
     };
   });
+  async function showHistory(id: string) {
+    historyId = id;
+    runs = [];
+    editing = null;
+    secrets = {};
+    await action(async () => {
+      await refreshRequest;
+    });
+  }
   async function run(instance: PluginInstance) {
     const generation = session;
     error = null;
@@ -862,12 +873,8 @@
                     size="sm"
                     variant="outline"
                     disabled={pending}
-                    onclick={() => {
-                      historyId = instance.id;
-                      editing = null;
-                      secrets = {};
-                      void action(refresh);
-                    }}>{m.plugin_logs()}</Button
+                    onclick={() => void showHistory(instance.id)}
+                    >{m.plugin_logs()}</Button
                   >
                   <Button
                     size="sm"
@@ -882,49 +889,6 @@
             {/each}
           </section>
         {/each}
-        {#if historyId}
-          <section
-            class="space-y-3 rounded-lg border p-4"
-            aria-label={m.plugin_logs()}
-          >
-            <h3 class="font-semibold">{m.plugin_logs()}</h3>
-            {#if !runs.length}<p class="text-sm text-muted-foreground">
-                {m.plugin_no_runs()}
-              </p>{/if}
-            {#each runs as run (run.id)}<div class="space-y-2 border-t pt-3">
-                <p class="text-sm font-medium">
-                  {formatDateTime(run.started_at)} · {status(run.status)} · {run.trigger ===
-                  "manual"
-                    ? m.plugin_manual_trigger()
-                    : m.plugin_schedule_trigger()}
-                </p>
-                <p class="text-sm">
-                  {m.plugin_run_counts({
-                    created: formatNumber(run.created),
-                    updated: formatNumber(run.updated),
-                  })}
-                </p>
-                {#if run.finished_at}<p class="text-xs text-muted-foreground">
-                    {m.plugin_duration({
-                      seconds: formatNumber(
-                        (run.finished_at - run.started_at) / 1000,
-                        { maximumFractionDigits: 1 },
-                      ),
-                    })}
-                  </p>{/if}{#if run.error}<p class="text-sm text-destructive">
-                    {pluginErrorMessage(run.error)}
-                  </p>{/if}
-                <p class="break-all font-mono text-xs text-muted-foreground">
-                  {run.id}
-                </p>
-                {#each run.logs as log, i (i)}<p
-                    class="whitespace-pre-wrap break-words font-mono text-xs"
-                  >
-                    {pluginLogMessage(log)}
-                  </p>{/each}
-              </div>{/each}
-          </section>
-        {/if}
         <div class="flex items-center justify-between gap-4 border-t pt-4">
           <Label for="plugin-safe-mode" class="text-sm text-muted-foreground"
             >{m.plugin_safe_mode()}</Label
@@ -940,6 +904,74 @@
       </div>
     </ScrollArea>
   </Dialog.Content>
+  <Dialog.Root
+    bind:open={
+      () => open && historyId !== null,
+      (value) => {
+        if (!value) historyId = null;
+      }
+    }
+  >
+    <Dialog.Content
+      class="flex h-[85dvh] max-h-200 flex-col overflow-hidden sm:max-w-2xl"
+    >
+      <Dialog.Header>
+        <Dialog.Title>{m.plugin_logs()}</Dialog.Title>
+        <Dialog.Description
+          >{pluginState.instances.find((instance) => instance.id === historyId)
+            ?.name ?? m.plugin_logs()}</Dialog.Description
+        >
+      </Dialog.Header>
+      <ScrollArea type="always" class="min-h-0 flex-1">
+        <div class="space-y-3 py-1 ps-1 pe-4">
+          {#if error}<p role="alert" class="text-sm text-destructive">
+              {pluginErrorMessage(error)}
+            </p>{/if}
+          {#if pending && !runs.length}<p
+              role="status"
+              class="text-sm text-muted-foreground"
+            >
+              {m.ui_loading()}
+            </p>
+          {:else if !runs.length}<p class="text-sm text-muted-foreground">
+              {m.plugin_no_runs()}
+            </p>{/if}
+          {#each runs as run (run.id)}<div class="space-y-2 border-t pt-3">
+              <p class="text-sm font-medium">
+                {formatDateTime(run.started_at)} · {status(run.status)} · {run.trigger ===
+                "manual"
+                  ? m.plugin_manual_trigger()
+                  : m.plugin_schedule_trigger()}
+              </p>
+              <p class="text-sm">
+                {m.plugin_run_counts({
+                  created: formatNumber(run.created),
+                  updated: formatNumber(run.updated),
+                })}
+              </p>
+              {#if run.finished_at}<p class="text-xs text-muted-foreground">
+                  {m.plugin_duration({
+                    seconds: formatNumber(
+                      (run.finished_at - run.started_at) / 1000,
+                      { maximumFractionDigits: 1 },
+                    ),
+                  })}
+                </p>{/if}{#if run.error}<p class="text-sm text-destructive">
+                  {pluginErrorMessage(run.error)}
+                </p>{/if}
+              <p class="break-all font-mono text-xs text-muted-foreground">
+                {run.id}
+              </p>
+              {#each run.logs as log, i (i)}<p
+                  class="whitespace-pre-wrap break-words font-mono text-xs"
+                >
+                  {pluginLogMessage(log)}
+                </p>{/each}
+            </div>{/each}
+        </div>
+      </ScrollArea>
+    </Dialog.Content>
+  </Dialog.Root>
 </Dialog.Root>
 
 {#if editing}
@@ -1072,7 +1104,7 @@
                   {:else if field.type === "column"}
                     <div class="flex items-center gap-2">
                       <div class="min-w-0 flex-1">
-                        {#if columnsLoading || !columns.length}
+                        {#if !columns.length}
                           <Input
                             id={"plugin-field-" + field.key}
                             value={columnsLoading
@@ -1097,7 +1129,9 @@
                       </div>
                       <Button
                         variant="outline"
-                        disabled={pending || !boardId || columnsLoading}
+                        disabled={pending ||
+                          !boardId ||
+                          (columnsLoading && !columns.length)}
                         onclick={() => {
                           newColumnName = "";
                           newColumnError = null;

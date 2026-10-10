@@ -10,6 +10,129 @@ const source = readFileSync(
   "utf8",
 );
 
+it("keeps the column picker mounted while refreshing existing options", () => {
+  const columnField = source.slice(
+    source.indexOf('{:else if field.type === "column"}'),
+    source.indexOf('{:else if field.type === "select"}'),
+  );
+  const condition = columnField.match(/\{#if ([^}]+)\}/)![1];
+  const showsPlaceholder = new Function(
+    "columns",
+    "columnsLoading",
+    `return ${condition};`,
+  );
+  expect(showsPlaceholder([{ id: 7, name: "Todo" }], true)).toBe(false);
+  expect(showsPlaceholder([], true)).toBe(true);
+  expect(showsPlaceholder([], false)).toBe(true);
+});
+
+it("keeps new-column enabled during background refresh but guards initial loading", () => {
+  const columnField = source.slice(
+    source.indexOf('{:else if field.type === "column"}'),
+    source.indexOf('{:else if field.type === "select"}'),
+  );
+  const condition = columnField.match(/disabled=\{([^}]+)\}/)![1];
+  const isDisabled = new Function(
+    "pending",
+    "boardId",
+    "columnsLoading",
+    "columns",
+    `return ${condition};`,
+  );
+  const columns = [{ id: 7, name: "Todo" }];
+  expect(isDisabled(false, "1", true, columns)).toBe(false);
+  expect(isDisabled(false, "1", false, columns)).toBe(false);
+  expect(isDisabled(false, "1", true, [])).toBe(true);
+  expect(isDisabled(false, "1", false, [])).toBe(false);
+  expect(isDisabled(false, "", false, [])).toBe(true);
+  expect(isDisabled(true, "1", false, columns)).toBe(true);
+});
+
+function setupHistory(invoke: ReturnType<typeof vi.fn>) {
+  const functions = parse(source, { modern: true })
+    .instance!.content.body.filter(
+      (node) =>
+        node.type === "FunctionDeclaration" &&
+        ["refresh", "action", "showHistory"].includes(node.id!.name),
+    )
+    .map((node) => {
+      const { start, end } = node as typeof node & {
+        start: number;
+        end: number;
+      };
+      return source.slice(start, end);
+    })
+    .join("\n");
+  return new Function(
+    "invoke",
+    "parseCommandError",
+    transpile(`
+      let session = 0, historyId = null, runs = [{ id: "previous" }],
+        editing = {}, secrets = { token: "draft" }, pending = false,
+        error = null, refreshRequest = null, pluginState = null, loaded = false;
+      ${functions}
+      return { refresh, showHistory,
+        close: () => { session++; historyId = null; runs = []; },
+        state: () => ({ historyId, runs, error, pending, editing, secrets }) };
+    `),
+  )(invoke, parseCommandError);
+}
+
+it("opens history and fetches the selected instance after an in-flight poll", async () => {
+  let resolve!: (value: unknown) => void;
+  const invoke = vi.fn().mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
+  invoke.mockImplementation((command) =>
+    Promise.resolve(command === "get_plugin_runs" ? [{ id: "new" }] : {}),
+  );
+  const settings = setupHistory(invoke);
+  const poll = settings.refresh();
+  const opening = settings.showHistory("instance-2");
+  expect(settings.state()).toMatchObject({
+    historyId: "instance-2",
+    runs: [],
+    pending: true,
+    editing: null,
+    secrets: {},
+  });
+  resolve({});
+  await poll;
+  await opening;
+  expect(invoke).toHaveBeenCalledWith("get_plugin_runs", {
+    instanceId: "instance-2",
+  });
+  expect(settings.state().runs).toEqual([{ id: "new" }]);
+  expect(settings.state().pending).toBe(false);
+});
+
+it("reports history failures safely and ignores results after closing", async () => {
+  const failed = setupHistory(
+    vi.fn().mockRejectedValue({ code: "INTERNAL_ERROR" }),
+  );
+  await failed.showHistory("instance-1");
+  expect(failed.state().error).toEqual({ code: "INTERNAL_ERROR" });
+  expect(failed.state().pending).toBe(false);
+
+  let resolve!: (value: unknown) => void;
+  const invoke = vi.fn().mockImplementation((command) =>
+    command === "get_plugin_runs"
+      ? new Promise((done) => {
+          resolve = done;
+        })
+      : Promise.resolve({}),
+  );
+  const settings = setupHistory(invoke);
+  const opening = settings.showHistory("instance-1");
+  await vi.waitFor(() => expect(resolve).toBeTypeOf("function"));
+  settings.close();
+  resolve([{ id: "late" }]);
+  await opening;
+  expect(settings.state().runs).toEqual([]);
+});
+
 it("uses inline validation instead of browser form popups", () => {
   const forms = source.match(/<form\b[^>]*>/g)!;
   expect(forms).toHaveLength(4);
