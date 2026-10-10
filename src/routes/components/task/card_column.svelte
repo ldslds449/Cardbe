@@ -1,6 +1,8 @@
 <script lang="ts">
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
+  import { formatNumber } from "$lib/i18n";
+  import { Badge } from "$lib/components/ui/badge/index.js";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
@@ -114,6 +116,13 @@
                 }}
               ></EditableLabel>
             </div>
+            <Badge
+              variant="secondary"
+              class="mx-2 shrink-0 font-normal tabular-nums"
+              aria-label={m.task_count({ count: numberTasks })}
+            >
+              {formatNumber(numberTasks)}
+            </Badge>
             {#if column.sort_order !== "custom"}
               <button
                 type="button"
