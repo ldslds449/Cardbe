@@ -270,16 +270,16 @@ pub struct LoadedData {
 }
 
 pub struct Database {
-    connection: Connection,
+    pub(crate) connection: Connection,
     path: PathBuf,
-    positions: DatabasePositions,
+    pub(crate) positions: DatabasePositions,
     active_board_id: i64,
     // Writer identities live only for this database session, never in backups.
-    loro_peers: HashMap<i64, crate::loro_board::LocalPeer>,
+    pub(crate) loro_peers: HashMap<i64, crate::loro_board::LocalPeer>,
 }
 
 #[derive(Clone, Default)]
-struct DatabasePositions {
+pub(crate) struct DatabasePositions {
     columns: HashMap<i64, i64>,
     tasks: HashMap<i64, i64>,
 }
@@ -1844,7 +1844,7 @@ impl Database {
         Ok(())
     }
 
-    fn load_board_positions(&self, board_id: i64) -> StorageResult<DatabasePositions> {
+    pub(crate) fn load_board_positions(&self, board_id: i64) -> StorageResult<DatabasePositions> {
         Ok(DatabasePositions {
             columns: load_board_positions(&self.connection, "cardbe_columns", board_id)?,
             tasks: load_board_positions(&self.connection, "cardbe_tasks", board_id)?,
@@ -2367,7 +2367,7 @@ fn persist_diff_transaction(
     Ok(stats)
 }
 
-fn persist_board_diff_transaction(
+pub(crate) fn persist_board_diff_transaction(
     tx: &Transaction<'_>,
     board_id: i64,
     before: &StoredData,
@@ -2521,7 +2521,7 @@ fn write_board_transaction(
     Ok(())
 }
 
-fn mark_local_board_change(
+pub(crate) fn mark_local_board_change(
     tx: &Transaction<'_>,
     board_id: i64,
     role: BoardRole,
@@ -2544,7 +2544,7 @@ fn mark_local_board_change(
     Ok(())
 }
 
-fn persist_loro_local_delta(
+pub(crate) fn persist_loro_local_delta(
     tx: &Transaction<'_>,
     board_id: i64,
     before: &StoredData,

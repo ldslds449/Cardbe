@@ -8,6 +8,7 @@ pub mod iroh_share;
 pub mod link_preview;
 pub mod notes;
 pub mod notifications;
+pub mod plugins;
 pub mod settings;
 pub mod share;
 pub mod task_explorer;

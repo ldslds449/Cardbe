@@ -46,3 +46,9 @@ vite.config.ts.timestamp-*
 !.vscode/extensions.json
 .idea/
 .vitest/
+
+# Plugin component build outputs
+/plugins/*/target/
+/plugins/*/dist/
+/src-tauri/test-fixtures/**/target/
+/src-tauri/test-fixtures/**/dist/

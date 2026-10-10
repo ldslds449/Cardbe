@@ -14,6 +14,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: pnpm/action-setup@v4
         with:
           version: 12.8.1
@@ -24,13 +26,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+      - run: cargo install wasm-tools --version 1.259.0 --locked
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test
       - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           CARDBE_BUILD_COMMIT: ${{ github.sha }}
-        run: pnpm tauri build
+        run: pnpm tauri build -- --locked

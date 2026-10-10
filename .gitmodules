@@ -1,0 +1,3 @@
+[submodule "src-tauri/plugin-api"]
+	path = src-tauri/plugin-api
+	url = https://github.com/ldslds449/cardbe-plugin-api

@@ -57,6 +57,19 @@ log = "0.4.34"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 nucleo-matcher = "0.3.1"
 scraper = "0.27.0"
+wasmtime = { version = "49", default-features = false, features = [
+  "component-model",
+  "cranelift",
+  "runtime",
+  "std",
+  "wat",
+] }
+keyring = { version = "3", features = [
+  "windows-native",
+  "apple-native",
+  "sync-secret-service",
+] }
+
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

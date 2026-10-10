@@ -1,7 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NetworkSettingsField {
     ListenPort,
@@ -93,7 +93,7 @@ impl fmt::Display for DomainError {
 
 impl std::error::Error for DomainError {}
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CommandError {
     ShareUnavailable,
@@ -249,13 +249,24 @@ impl From<DomainError> for CommandError {
 
 /// Plugin params are shallow, bounded JSON scalars. Hosts must approve public
 /// fields against each plugin's schema; credentials and exceptions are forbidden.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PluginUserError {
     code: String,
     params: serde_json::Map<String, serde_json::Value>,
 }
 
-#[allow(dead_code)] // Contract only: Cardbe has no custom plugin runtime yet.
+impl<'de> Deserialize<'de> for PluginUserError {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct PublicError {
+            code: String,
+            params: serde_json::Map<String, serde_json::Value>,
+        }
+        let value = PublicError::deserialize(deserializer)?;
+        Self::new(value.code, value.params)
+            .ok_or_else(|| serde::de::Error::custom("Invalid plugin error"))
+    }
+}
 impl PluginUserError {
     pub fn new(code: String, params: serde_json::Map<String, serde_json::Value>) -> Option<Self> {
         if code.is_empty()
@@ -394,5 +405,24 @@ mod tests {
                 .clone()
         )
         .is_none());
+    }
+}
+#[cfg(test)]
+mod plugin_persistence_error_tests {
+    use super::*;
+    #[test]
+    fn persisted_plugin_errors_revalidate_public_params() {
+        assert!(serde_json::from_str::<PluginUserError>(
+            r#"{"code":"FAILED","params":{"nested":{"secret":"no"}}}"#
+        )
+        .is_err());
+        assert!(
+            serde_json::from_str::<PluginUserError>(r#"{"code":"invalid","params":{}}"#).is_err()
+        );
+        let error = PluginUserError::new("FAILED".into(), serde_json::Map::new()).unwrap();
+        assert!(
+            serde_json::from_str::<PluginUserError>(&serde_json::to_string(&error).unwrap())
+                .is_ok()
+        );
     }
 }

@@ -1,7 +1,7 @@
 pub mod cache;
 mod fetcher;
 mod parser;
-mod safety;
+pub(crate) mod safety;
 
 use reqwest::Url;
 use serde::{Deserialize, Serialize};

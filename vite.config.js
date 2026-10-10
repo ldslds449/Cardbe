@@ -29,12 +29,17 @@ export default defineConfig({
   lint: {
     categories: { correctness: "error" },
     rules: { curly: "error", "typescript/no-this-alias": "off" },
+    ignorePatterns: ["src-tauri/plugin-api/**"],
   },
   fmt: {
     printWidth: 80,
     sortPackageJson: false,
     svelte: {},
-    ignorePatterns: ["pnpm-lock.yaml", "src/lib/paraglide/**"],
+    ignorePatterns: [
+      "pnpm-lock.yaml",
+      "src/lib/paraglide/**",
+      "src-tauri/plugin-api/**",
+    ],
   },
   test: {
     // Vitest v4 compatibility: preserve mock call history.

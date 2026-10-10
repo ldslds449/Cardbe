@@ -5,6 +5,7 @@ mod errors;
 mod link_preview;
 mod loro_board;
 mod models;
+mod plugins;
 mod search;
 mod state;
 mod storage;
@@ -364,6 +365,14 @@ pub fn run() {
             let startup_status = match startup_result {
                 Ok((data, database_path)) => {
                     app.manage(Mutex::new(data));
+                    app.manage(plugins::manager::PluginManager::default());
+                    match plugins::manager::initialize(app.handle()) {
+                        Ok(()) => plugins::manager::start_scheduler(app.handle().clone()),
+                        Err(_) => {
+                            app.state::<plugins::manager::PluginManager>().safe_mode.store(true, std::sync::atomic::Ordering::SeqCst);
+                            log::warn!(target: "plugins", "Plugin initialization failed; plugins disabled for this session");
+                        }
+                    }
                     let iroh_app = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
                         let network = iroh_app.state::<iroh_share::IrohShareState>();
@@ -394,6 +403,16 @@ pub fn run() {
             desktop::handle_window_event(window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            commands::plugins::get_plugin_state,
+            commands::plugins::install_plugin_package,
+            commands::plugins::remove_plugin_package,
+            commands::plugins::save_plugin_instance,
+            commands::plugins::remove_plugin_instance,
+            commands::plugins::set_plugin_enabled,
+            commands::plugins::run_plugin_instance,
+            commands::plugins::cancel_plugin_run,
+            commands::plugins::get_plugin_runs,
+            commands::plugins::set_plugin_safe_mode,
             commands::link_preview::get_link_preview,
             commands::link_preview::get_link_preview_image,
             board::get_columns,

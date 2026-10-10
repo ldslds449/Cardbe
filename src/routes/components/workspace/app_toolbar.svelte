@@ -25,6 +25,7 @@
   import { cn } from "$lib/utils";
   import HelpDialogs from "./help_dialogs.svelte";
   import LanguageSettings from "./language_settings.svelte";
+  import PluginSettings from "./plugin_settings.svelte";
 
   import { board } from "../../board.svelte";
   import type { WorkspaceView } from "./workspace";
@@ -88,6 +89,7 @@
   } = $props();
   let about_open = $state(false);
   let settings_open = $state(false);
+  let plugins_open = $state(false);
   let diagnostics_open = $state(false);
 </script>
 
@@ -206,6 +208,9 @@
           <Menubar.Content>
             <Menubar.Item onclick={() => (settings_open = true)}
               >{m.settings_title()}</Menubar.Item
+            >
+            <Menubar.Item onclick={() => (plugins_open = true)}
+              >{m.plugin_title()}</Menubar.Item
             >
           </Menubar.Content>
         </Menubar.Menu>
@@ -433,3 +438,4 @@
   {onCheckForUpdates}
 />
 <LanguageSettings bind:open={settings_open} />
+<PluginSettings bind:open={plugins_open} />
