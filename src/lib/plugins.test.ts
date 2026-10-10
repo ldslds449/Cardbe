@@ -43,6 +43,18 @@ const fields: PluginSetting[] = [
   { key: "token", label: "Token", type: "secret", required: true },
 ];
 describe("plugin settings", () => {
+  it("accepts column zero but rejects negative columns and board zero", () => {
+    const settings: PluginSetting[] = [
+      { key: "column", label: "Column", type: "column", required: true },
+      { key: "board", label: "Board", type: "board", required: true },
+    ];
+    expect(
+      invalidPluginSettings(settings, { column: 0, board: 1 }, {}, []),
+    ).toEqual([]);
+    expect(
+      invalidPluginSettings(settings, { column: -1, board: 0 }, {}, []),
+    ).toEqual(["column", "board"]);
+  });
   it("keeps Taiwanese translations and switches generic diagnostics live", () => {
     expect(zh.plugin_title).toBe("外掛程式");
     for (const [key, value] of Object.entries(zh)) {

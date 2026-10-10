@@ -68,13 +68,47 @@ pub fn get_plugin_state(app: tauri::AppHandle) -> Result<PluginState, CommandErr
     manager::snapshot(&app).map_err(CommandError::from)
 }
 #[tauri::command]
-pub fn install_plugin_package(
+pub async fn install_plugin_package(
     app: tauri::AppHandle,
-    path: String,
+    path: Option<String>,
+    url: Option<String>,
 ) -> Result<PluginPackage, CommandError> {
+    let archive = match (path.as_ref(), url.as_ref()) {
+        (None, Some(url)) => Some(crate::plugins::package::download(url).await?),
+        (Some(_), None) => None,
+        _ => return Err(CommandError::InvalidArgument),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let (bytes, component) = if let Some(archive) = archive {
+            crate::plugins::package::unpack(archive)?
+        } else {
+            read_local_package(path.ok_or(CommandError::InvalidArgument)?)?
+        };
+        install_package(app, bytes, component)
+    })
+    .await
+    .map_err(CommandError::internal)?
+}
+
+fn read_local_package(path: String) -> Result<(Vec<u8>, Vec<u8>), CommandError> {
     let selected = std::path::PathBuf::from(path)
         .canonicalize()
         .map_err(CommandError::internal)?;
+    if selected
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+    {
+        if std::fs::metadata(&selected)
+            .map_err(CommandError::internal)?
+            .len()
+            > 20 * 1024 * 1024
+        {
+            return Err(CommandError::InvalidArgument);
+        }
+        return crate::plugins::package::unpack(
+            std::fs::read(selected).map_err(CommandError::internal)?,
+        );
+    }
     let root = if selected.is_file() {
         selected
             .parent()
@@ -107,6 +141,16 @@ pub fn install_plugin_package(
         return Err(CommandError::InvalidArgument);
     }
     let bytes = std::fs::read(&manifest).map_err(CommandError::internal)?;
+    Ok((
+        bytes,
+        std::fs::read(component).map_err(CommandError::internal)?,
+    ))
+}
+fn install_package(
+    app: tauri::AppHandle,
+    bytes: Vec<u8>,
+    component: Vec<u8>,
+) -> Result<PluginPackage, CommandError> {
     let package: PluginPackage =
         serde_json::from_slice(&bytes).map_err(|_| CommandError::InvalidArgument)?;
     if !valid_id(&package.id)
@@ -185,7 +229,7 @@ pub fn install_plugin_package(
         return Err(CommandError::InvalidArgument);
     }
     let install_result = (|| -> Result<(), CommandError> {
-        std::fs::copy(component, destination.join("component.wasm"))
+        std::fs::write(destination.join("component.wasm"), component)
             .map_err(CommandError::internal)?;
         std::fs::write(destination.join("manifest.json"), bytes).map_err(CommandError::internal)?;
         storage::put(

@@ -1,0 +1,2 @@
+# Git metadata changes must not restart the desktop app.
+/plugin-api/.git

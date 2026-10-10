@@ -405,6 +405,41 @@ mod tests {
     }
 
     #[test]
+    fn explicit_board_column_creation_preserves_active_board_and_undo() {
+        let dir = std::env::temp_dir().join(format!(
+            "cardbe-column-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let mut app = app_data(&dir, StoredData::default());
+        let active = app.active_board_id;
+        let target = app.database.create_board("Target").unwrap().id;
+        let id =
+            crate::commands::board::add_column_to_board_locked(&mut app, target, " Todo ".into())
+                .unwrap();
+        assert_eq!(app.active_board_id, active);
+        assert!(app.stored.columns.is_empty());
+        assert!(app.undo_history.is_empty());
+        let data = app.database.read_board_complete(target).unwrap();
+        assert_eq!(data.columns[0].id, id);
+        assert_eq!(data.columns[0].name, "Todo");
+        assert!(
+            crate::commands::board::add_column_to_board_locked(&mut app, target, " ".into())
+                .is_err()
+        );
+        crate::commands::board::add_column_to_board_locked(&mut app, active, "Active".into())
+            .unwrap();
+        assert!(!undo_locked(&mut app, active).unwrap());
+        assert!(app.stored.columns.is_empty());
+        drop(app);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn successful_updates_are_kept_for_undo() {
         let dir = std::env::temp_dir().join(format!(
             "cardbe-undo-{}-{}",

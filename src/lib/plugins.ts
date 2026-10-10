@@ -124,7 +124,9 @@ export function invalidPluginSettings(
       }
       if (field.type === "board" || field.type === "column") {
         return (
-          typeof value !== "number" || !Number.isSafeInteger(value) || value < 1
+          typeof value !== "number" ||
+          !Number.isSafeInteger(value) ||
+          value < (field.type === "column" ? 0 : 1)
         );
       }
       if (field.type === "select") {

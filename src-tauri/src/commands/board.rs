@@ -390,3 +390,62 @@ pub fn update_task(
     })
     .map_err(CommandError::from)
 }
+
+#[tauri::command]
+pub fn add_column_to_board(
+    state: State<'_, SharedAppData>,
+    board_id: i64,
+    name: String,
+) -> Result<i64, CommandError> {
+    let mut guard = state
+        .lock()
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    add_column_to_board_locked(&mut guard, board_id, name)
+}
+pub(crate) fn add_column_to_board_locked(
+    guard: &mut crate::state::AppData,
+    board_id: i64,
+    name: String,
+) -> Result<i64, CommandError> {
+    if !guard
+        .database
+        .board_exists(board_id)
+        .map_err(CommandError::repository)?
+    {
+        return Err(CommandError::BoardNotFound);
+    }
+    let mut data = guard
+        .database
+        .read_board_complete(board_id)
+        .map_err(CommandError::repository)?;
+    if name.trim().is_empty() {
+        return Err(CommandError::InvalidArgument);
+    }
+    let id = data.allocate_column_id()?;
+    data.columns.push(Column {
+        id,
+        name: name.trim().to_owned(),
+        color: String::new(),
+        sort_order: ColumnSort::Custom,
+        tasks: Vec::new(),
+    });
+    let (revision, status) = guard
+        .database
+        .replace_board_as_local_edit(board_id, &data)
+        .map_err(CommandError::repository)?;
+    if board_id == guard.active_board_id {
+        // Preserve the lazily-loaded archive contract for the active in-memory
+        // view while the complete database write keeps archives intact.
+        if !guard.archives_loaded {
+            data.archives.clear();
+        }
+        let previous = std::mem::replace(&mut guard.stored, data);
+        guard.record_board_undo(previous);
+        guard.refresh_labels();
+    }
+    if let Some(board) = guard.boards.iter_mut().find(|board| board.id == board_id) {
+        board.sync_revision = revision;
+        board.sync_status = status;
+    }
+    Ok(id)
+}

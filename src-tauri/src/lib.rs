@@ -417,6 +417,7 @@ pub fn run() {
             commands::link_preview::get_link_preview_image,
             board::get_columns,
             board::get_board_columns,
+            board::add_column_to_board,
             board::search_tasks,
             board::get_labels,
             boards::get_boards,
