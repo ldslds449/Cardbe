@@ -18,6 +18,8 @@ pub struct SettingOption {
 pub struct SettingField {
     pub key: String,
     pub label: LocalizedText,
+    #[serde(default)]
+    pub description: LocalizedText,
     #[serde(rename = "type")]
     pub kind: String,
     #[serde(default)]
@@ -147,4 +149,30 @@ pub fn now() -> i64 {
 }
 pub fn id() -> String {
     iroh::SecretKey::generate().public().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn setting_descriptions_are_optional_and_preserve_localized_text() {
+        let mut value = serde_json::json!({"key":"url","label":"URL","type":"text"});
+        let field: SettingField = serde_json::from_value(value.clone()).unwrap();
+        assert!(matches!(field.description, LocalizedText::Empty));
+        for description in [
+            serde_json::Value::Null,
+            serde_json::json!("API base URL"),
+            serde_json::json!({"en":"API base URL","zh-TW":"API 基底網址"}),
+        ] {
+            value["description"] = description.clone();
+            let field: SettingField = serde_json::from_value(value.clone()).unwrap();
+            assert_eq!(
+                serde_json::to_value(field).unwrap()["description"],
+                description
+            );
+        }
+        value["description"] = serde_json::json!({"en":42});
+        assert!(serde_json::from_value::<SettingField>(value).is_err());
+    }
 }

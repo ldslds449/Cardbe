@@ -11,6 +11,28 @@ const source = readFileSync(
   "utf8",
 );
 
+it("shows localized field help only when a description is available", () => {
+  const help = source.slice(
+    source.indexOf("{#snippet fieldHelp"),
+    source.indexOf("{#snippet picker"),
+  );
+  const condition = help.match(/\{#if ([^}]+)\}/)![1];
+  const visible = new Function(
+    "field",
+    "pluginText",
+    `return Boolean(${condition});`,
+  );
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  for (const description of [undefined, null, "", "  "]) {
+    expect(visible({ description }, text)).toBe(false);
+  }
+  expect(visible({ description: "Field meaning" }, text)).toBe(true);
+  expect(help).toContain('type="button"');
+  expect(help).toContain("m.plugin_field_help");
+  expect(help).toContain("<Popover.Content");
+  expect(help).toContain("{pluginText(field.description ?? null)}");
+});
+
 it("keeps the column picker mounted while refreshing existing options", () => {
   const columnField = source.slice(
     source.indexOf('{:else if field.type === "column"}'),

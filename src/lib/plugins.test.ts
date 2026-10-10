@@ -97,6 +97,9 @@ describe("plugin settings", () => {
       for (const locale of ["en", "zh-TW", "en"] as const) {
         applyLanguagePreference(locale);
         const catalog = locale === "en" ? en : zh;
+        expect(m.plugin_field_help({ label: "JQL" })).toBe(
+          locale === "en" ? "Help for JQL" : "JQL的欄位說明",
+        );
         expect(m.plugin_approved_domains()).toBe(
           catalog.plugin_approved_domains,
         );

@@ -1557,5 +1557,6 @@
   "plugin_update_working": "正在驗證或套用更新…",
   "plugin_update_not_newer": "請選擇比目前已安裝版本更新的外掛套件。",
   "plugin_update_busy": "此外掛正在執行，請等待完成或取消執行後再重試更新。",
-  "plugin_update_stale": "外掛版本或更新預覽已變更，請關閉此視窗並重新開啟後再試。"
+  "plugin_update_stale": "外掛版本或更新預覽已變更，請關閉此視窗並重新開啟後再試。",
+  "plugin_field_help": "{label}的欄位說明"
 }

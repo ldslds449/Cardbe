@@ -1667,5 +1667,6 @@
   "plugin_update_working": "Validating or applying update…",
   "plugin_update_not_newer": "Choose a plugin version newer than the installed version.",
   "plugin_update_busy": "This plugin is running. Wait for it to finish or cancel its runs, then retry the update.",
-  "plugin_update_stale": "The plugin version or update preview has changed. Close this dialog and reopen it before trying again."
+  "plugin_update_stale": "The plugin version or update preview has changed. Close this dialog and reopen it before trying again.",
+  "plugin_field_help": "Help for {label}"
 }

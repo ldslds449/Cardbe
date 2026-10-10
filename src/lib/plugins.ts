@@ -16,6 +16,7 @@ export function pluginText(value: PluginText): string {
 export interface PluginSetting {
   key: string;
   label: PluginText;
+  description?: PluginText;
   type:
     | "text"
     | "number"

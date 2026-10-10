@@ -9,6 +9,7 @@
   import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
+  import * as Popover from "$lib/components/ui/popover/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Tabs } from "bits-ui";
@@ -20,6 +21,7 @@
   import PlusIcon from "@lucide/svelte/icons/plus";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
+  import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
   import { Spinner } from "$lib/components/ui/spinner/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import * as Field from "$lib/components/ui/field/index.js";
@@ -42,6 +44,7 @@
     type PluginPackage,
     type PluginInstance,
     type PluginRun,
+    type PluginSetting,
   } from "$lib/plugins";
   import { board, type BoardSummary } from "../../board.svelte";
 
@@ -647,6 +650,34 @@
     }[value];
   }
 </script>
+
+{#snippet fieldHelp(field: PluginSetting)}
+  {#if pluginText(field.description ?? null).trim()}
+    <Popover.Root>
+      <Popover.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            type="button"
+            variant="ghost"
+            size="icon"
+            class="size-6 text-muted-foreground"
+            aria-label={m.plugin_field_help({ label: pluginText(field.label) })}
+          >
+            <CircleHelpIcon class="size-4" aria-hidden="true" />
+          </Button>
+        {/snippet}
+      </Popover.Trigger>
+      <Popover.Content
+        align="start"
+        aria-label={m.plugin_field_help({ label: pluginText(field.label) })}
+        class="max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-sm"
+      >
+        {pluginText(field.description ?? null)}
+      </Popover.Content>
+    </Popover.Root>
+  {/if}
+{/snippet}
 
 {#snippet picker(
   id: string,
@@ -1320,9 +1351,14 @@
               data-disabled={pending}
               data-invalid={saveAttempted && !boardId}
             >
-              <Field.Label for="plugin-board"
-                >{m.plugin_target_board()}</Field.Label
-              >
+              <div class="flex items-center gap-1">
+                <Field.Label for="plugin-board"
+                  >{m.plugin_target_board()}</Field.Label
+                >
+                {#each editing.settings.filter((field) => field.type === "board") as field (field.key)}
+                  {@render fieldHelp(field)}
+                {/each}
+              </div>
               <div class="flex min-w-0 items-center gap-2">
                 <div class="min-w-0 flex-1">
                   {@render picker(
@@ -1364,11 +1400,17 @@
                     : "vertical"}
                   class={field.type === "boolean" ? "flex-wrap" : undefined}
                 >
-                  <Field.Label for={"plugin-field-" + field.key}
-                    >{pluginText(field.label)}{field.required
-                      ? " *"
-                      : ""}</Field.Label
+                  <div
+                    class="flex items-center gap-1"
+                    class:flex-1={field.type === "boolean"}
                   >
+                    <Field.Label for={"plugin-field-" + field.key}
+                      >{pluginText(field.label)}{field.required
+                        ? " *"
+                        : ""}</Field.Label
+                    >
+                    {@render fieldHelp(field)}
+                  </div>
                   {#if field.type === "boolean"}<Switch
                       id={"plugin-field-" + field.key}
                       aria-invalid={invalid.includes(field.key)}
