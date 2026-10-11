@@ -109,6 +109,7 @@
   let refreshRequest: Promise<void> | null = null;
   let historyId = $state<string | null>(null);
   let runs = $state<PluginRun[]>([]);
+  let removalFocus: HTMLElement | null = null;
   let removal = $state<{
     kind: "package" | "instance";
     id: string;
@@ -290,7 +291,7 @@
     customDomains = domains.filter((domain) => !pkg.domains.includes(domain));
     enabled = instance?.enabled ?? false;
     interval = instance?.interval_seconds ?? 0;
-    consent = false;
+    consent = !!instance && !instance.needs_review;
     invalid = [];
     saveAttempted = false;
     historyId = null;
@@ -541,7 +542,9 @@
     error = null;
     instance.running = true;
     try {
-      await invoke("run_plugin_instance", { instanceId: instance.id });
+      await invoke<PluginRun>("run_plugin_instance", {
+        instanceId: instance.id,
+      });
     } catch (cause) {
       if (generation === session) {
         error = parseCommandError(cause) ?? { code: "INTERNAL_ERROR" };
@@ -729,7 +732,7 @@
     class="flex h-[85dvh] max-h-200 flex-col overflow-hidden outline-none sm:max-w-2xl"
     onOpenAutoFocus={(event) => {
       event.preventDefault();
-      dialogContent?.focus();
+      dialogContent?.focus({ preventScroll: true });
     }}
   >
     <Dialog.Header
@@ -1048,26 +1051,29 @@
                     >{/if}
                   <Button
                     size="sm"
-                    disabled={pending ||
-                      !instance.enabled ||
-                      instance.needs_review ||
-                      !!instance.pending_domain ||
-                      instance.running ||
-                      pluginState.safe_mode}
-                    onclick={() => void run(instance)}>{m.plugin_run()}</Button
-                  >
-                  {#if instance.running}<Button
-                      size="sm"
-                      variant="outline"
-                      onclick={() =>
+                    disabled={!instance.running &&
+                      (pending ||
+                        !instance.enabled ||
+                        instance.needs_review ||
+                        !!instance.pending_domain ||
+                        pluginState.safe_mode)}
+                    onclick={() => {
+                      if (instance.running) {
                         void invoke("cancel_plugin_run", {
                           instanceId: instance.id,
                         }).catch((cause) => {
                           error = parseCommandError(cause) ?? {
                             code: "INTERNAL_ERROR",
                           };
-                        })}>{m.plugin_cancel_run()}</Button
-                    >{/if}
+                        });
+                      } else {
+                        void run(instance);
+                      }
+                    }}
+                    >{instance.running
+                      ? m.plugin_cancel_run()
+                      : m.plugin_run()}</Button
+                  >
                   <Button
                     size="sm"
                     variant="outline"
@@ -1107,7 +1113,20 @@
       }
     }}
   >
-    <AlertDialog.Content>
+    <AlertDialog.Content
+      onOpenAutoFocus={() => {
+        removalFocus = document.activeElement as HTMLElement | null;
+      }}
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        const target =
+          removalFocus?.isConnected && !removalFocus.matches(":disabled")
+            ? removalFocus
+            : dialogContent;
+        target?.focus({ preventScroll: true });
+        removalFocus = null;
+      }}
+    >
       <AlertDialog.Header>
         <AlertDialog.Title>{m.common_delete()}</AlertDialog.Title>
         <AlertDialog.Description
@@ -1646,7 +1665,7 @@
                   />
                   <Field.Content
                     ><Field.Label for="plugin-consent" class="font-normal"
-                      >{m.plugin_grant_board()}</Field.Label
+                      >{m.plugin_changeset_grant()}</Field.Label
                     >{#if saveAttempted && !consent}<Field.Error
                         id="plugin-consent-error"
                         >{m.plugin_consent_required()}</Field.Error

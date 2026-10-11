@@ -319,18 +319,19 @@ fn update_locked(
         let transaction = connection
             .unchecked_transaction()
             .map_err(CommandError::internal)?;
-        if update_requires_review(&old, &update.package) {
-            for mut instance in storage::list::<PluginInstance>(&transaction, "instance")?
-                .into_iter()
-                .filter(|i| i.plugin_id == old.id)
-            {
+        let review = update_requires_review(&old, &update.package);
+        for mut instance in storage::list::<PluginInstance>(&transaction, "instance")?
+            .into_iter()
+            .filter(|i| i.plugin_id == old.id)
+        {
+            if review {
                 instance.enabled = false;
                 instance.needs_review = true;
                 instance.pending_domain = None;
                 instance.credentials_need_review |= credentials_changed(&old, &update.package);
                 instance.next_run_at = None;
-                storage::put(&transaction, "instance", &instance.id, &instance)?;
             }
+            storage::put(&transaction, "instance", &instance.id, &instance)?;
         }
         storage::put(&transaction, "package", &old.id, &update.package)?;
         storage::put(&transaction, "revision", &old.id, &revision)?;
@@ -458,6 +459,8 @@ fn install_package(
     component: Vec<u8>,
 ) -> Result<PluginPackage, CommandError> {
     let package = parse_package(&bytes)?;
+    crate::plugins::runtime::validate_component(&component)
+        .map_err(|_| CommandError::InvalidArgument)?;
     let destination = manager::package_root(&app)
         .map_err(CommandError::from)?
         .join(&package.id);
@@ -713,7 +716,7 @@ pub fn resolve_plugin_domain(
         return Err(CommandError::PermissionDenied);
     }
     busy(&app, &instance_id)?;
-    {
+    let trigger = {
         let state = app.state::<SharedAppData>();
         let guard = state.lock().map_err(CommandError::internal)?;
         busy(&app, &instance_id)?;
@@ -735,13 +738,14 @@ pub fn resolve_plugin_domain(
         {
             return Err(CommandError::PermissionDenied);
         }
-        resolve_domain(&mut instance, &package, &run_id, allow)?;
+        let trigger = resolve_domain(&mut instance, &package, &run_id, allow)?;
         storage::put(connection, "instance", &instance.id, &instance)?;
-    }
+        trigger
+    };
     let _ = app.emit("cardbe:plugins-changed", ());
     if allow {
         tauri::async_runtime::spawn(async move {
-            let _ = manager::run(app, instance_id, "permission").await;
+            let _ = manager::run(app, instance_id, &trigger, true).await;
         });
     }
     Ok(())
@@ -752,12 +756,13 @@ fn resolve_domain(
     package: &PluginPackage,
     run_id: &str,
     allow: bool,
-) -> Result<(), CommandError> {
+) -> Result<String, CommandError> {
     let pending = instance
         .pending_domain
         .as_ref()
         .filter(|pending| pending.run_id == run_id)
         .ok_or(CommandError::InvalidArgument)?;
+    let trigger = pending.trigger.clone();
     if instance.needs_review || !instance.enabled {
         return Err(CommandError::PermissionDenied);
     }
@@ -778,7 +783,7 @@ fn resolve_domain(
         instance.last_run_status = Some("cancelled".into());
     }
     instance.pending_domain = None;
-    Ok(())
+    Ok(trigger)
 }
 
 #[tauri::command]
@@ -798,7 +803,9 @@ pub fn set_plugin_enabled(
         .find(|i| i.id == instance_id)
         .ok_or(CommandError::InvalidArgument)?;
     change_enabled(&mut instance, enabled)?;
-    storage::put(c, "instance", &instance.id, &instance)?;
+    let tx = c.unchecked_transaction().map_err(CommandError::internal)?;
+    storage::put(&tx, "instance", &instance.id, &instance)?;
+    tx.commit().map_err(CommandError::internal)?;
     let _ = app.emit("cardbe:plugins-changed", ());
     Ok(())
 }
@@ -819,7 +826,7 @@ pub async fn run_plugin_instance(
     app: tauri::AppHandle,
     instance_id: String,
 ) -> Result<PluginRun, CommandError> {
-    manager::run(app, instance_id, "manual")
+    manager::run(app, instance_id, "manual", false)
         .await
         .map_err(CommandError::from)
 }
@@ -933,7 +940,7 @@ pub fn remove_plugin_instance(
     remove_locked(
         c,
         &[instance],
-        &BTreeMap::from([(instance_id, namespace)]),
+        &BTreeMap::from([(instance_id.clone(), namespace)]),
         None,
     )?;
     let _ = app.emit("cardbe:plugins-changed", ());
@@ -1259,6 +1266,16 @@ mod tests {
             run_id: "run-1".into(),
             trigger: "manual".into(),
         });
+        assert_eq!(
+            resolve_domain(&mut pending.clone(), &package, "run-1", true).unwrap(),
+            "manual"
+        );
+        let mut scheduled = pending.clone();
+        scheduled.pending_domain.as_mut().unwrap().trigger = "schedule".into();
+        assert_eq!(
+            resolve_domain(&mut scheduled, &package, "run-1", true).unwrap(),
+            "schedule"
+        );
         assert!(resolve_domain(&mut pending.clone(), &package, "stale-run", true).is_err());
         let mut needs_review = pending.clone();
         needs_review.needs_review = true;

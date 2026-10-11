@@ -1390,10 +1390,17 @@
   "error_column_not_found": "這個欄位已不存在。",
   "error_board_name_required": "請輸入看板名稱。",
   "error_last_board_required": "至少需要保留一個看板。",
-  "error_stale_board_request": "目前的看板已變更，請再試一次。",
+  "error_stale_board_request": "看板或資料已變更，請再試一次。",
   "error_permission_denied": "你沒有權限進行這項變更。",
   "error_nothing_to_undo": "沒有可復原的變更。",
   "error_plugin_permission_denied": "擴充套件沒有執行這項操作的權限。",
+  "plugin_failure_invalid_component": "擴充套件的元件無效或不相容。",
+  "plugin_failure_network": "擴充套件的網路請求失敗。",
+  "plugin_failure_resource_limit": "擴充套件超過資源使用上限。",
+  "plugin_failure_timeout": "擴充套件執行逾時。",
+  "plugin_failure_wasm_trap": "擴充套件因 WebAssembly 執行錯誤而中止。",
+  "plugin_failure_invalid_guest_error": "擴充套件回傳未宣告或無效的錯誤代碼。",
+  "plugin_error_details": "{message} 錯誤代碼：{code}。",
   "error_plugin_execution_failed": "擴充套件無法完成這項操作，請再試一次。",
   "ui_access_restored_conflict": "已恢復存取權。請先解決衝突再同步。",
   "share_network_fixed_port_error": "使用固定 IP 位址前，請先設定固定監聽埠。",
@@ -1558,5 +1565,6 @@
   "plugin_update_not_newer": "請選擇比目前已安裝版本更新的外掛套件。",
   "plugin_update_busy": "此外掛正在執行，請等待完成或取消執行後再重試更新。",
   "plugin_update_stale": "外掛版本或更新預覽已變更，請關閉此視窗並重新開啟後再試。",
-  "plugin_field_help": "{label}的欄位說明"
+  "plugin_field_help": "{label}的欄位說明",
+  "plugin_changeset_grant": "允許此外掛執行個體讀取與修改所選看板的任務及欄位。"
 }

@@ -1,8 +1,4 @@
-use super::{
-    runtime::{ExternalTask, RuntimeOutput},
-    storage,
-    types::*,
-};
+use super::{runtime::ExternalTask, storage, types::*};
 use crate::{
     errors::DomainError,
     models::{StoredData, Task},
@@ -125,115 +121,76 @@ impl crate::storage::Database {
     pub(crate) fn initialize_plugins(&self) -> Result<(), DomainError> {
         storage::initialize(&self.connection).map_err(|e| DomainError::Internal(e.to_string()))
     }
-    pub(crate) fn commit_plugin_output(
-        &mut self,
-        instance: &PluginInstance,
-        output: &RuntimeOutput,
-        may_commit: impl Fn() -> bool,
-    ) -> Result<(usize, usize, StoredData), DomainError> {
-        if !may_commit() {
-            return Err(DomainError::PermissionDenied);
-        }
-        if output.tasks.len() > 2000
-            || output.cursor.as_ref().is_some_and(|c| c.len() > 4096)
-            || serde_json::to_vec(&output.tasks)
-                .map_err(|e| DomainError::Internal(e.to_string()))?
-                .len()
-                > 8 * 1024 * 1024
-        {
-            return Err(DomainError::InvalidArgument);
-        }
-        self.board_role(instance.board_id)
-            .map_err(DomainError::repository)?;
-        let before = self
-            .read_board_complete(instance.board_id)
-            .map_err(DomainError::repository)?;
-        let mut after = before.clone();
-        let mut positions = self
-            .load_board_positions(instance.board_id)
-            .map_err(DomainError::repository)?;
-        let tx = self
-            .connection
-            .transaction()
-            .map_err(|e| DomainError::Internal(e.to_string()))?;
-        let role: crate::models::BoardRole = tx
-            .query_row(
-                "SELECT shared_role FROM cardbe_boards WHERE id=?1",
-                [instance.board_id],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(|e| DomainError::Internal(e.to_string()))?
-            .ok_or(DomainError::BoardNotFound)?;
-        if role == crate::models::BoardRole::Viewer {
-            return Err(DomainError::PermissionDenied);
-        }
-        let mut created = 0;
-        let mut updated = 0;
-        let mut seen = std::collections::HashSet::new();
-        for task in &output.tasks {
-            if !seen.insert(&task.external_key) {
-                continue;
-            }
-            let collision:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM cardbe_plugin_sources s JOIN cardbe_plugin_data i ON i.kind='instance' AND i.id=s.instance_id WHERE s.board_id=?1 AND s.external_key=?2 AND s.instance_id<>?3 AND json_extract(i.payload,'$.plugin_id')=?4)",params![instance.board_id,task.external_key,instance.id,instance.plugin_id],|r|r.get(0)).map_err(|e|DomainError::Internal(e.to_string()))?;
-            if collision {
-                return Err(DomainError::InvalidArgument);
-            }
-            let raw:Option<String>=tx.query_row("SELECT last_import FROM cardbe_plugin_sources WHERE instance_id=?1 AND board_id=?2 AND external_key=?3",params![instance.id,instance.board_id,task.external_key],|r|r.get(0)).optional().map_err(|e|DomainError::Internal(e.to_string()))?;
-            let link: Option<SourceLink> = raw
-                .map(|s| serde_json::from_str(&s))
-                .transpose()
-                .map_err(|e| DomainError::Internal(e.to_string()))?;
-            let (link, new, changed) = merge(&mut after, task, link.as_ref())?;
-            created += usize::from(new);
-            updated += usize::from(changed);
-            tx.execute("INSERT INTO cardbe_plugin_sources(instance_id,external_key,board_id,task_id,last_import) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(instance_id,board_id,external_key) DO UPDATE SET last_import=excluded.last_import",params![instance.id,task.external_key,instance.board_id,link.task_id,serde_json::to_string(&link).map_err(|e|DomainError::Internal(e.to_string()))?]).map_err(|e|DomainError::Internal(e.to_string()))?;
-        }
-        let source_count: i64 = tx
-            .query_row(
-                "SELECT count(*) FROM cardbe_plugin_sources WHERE instance_id=?1",
-                [&instance.id],
-                |r| r.get(0),
-            )
-            .map_err(|e| DomainError::Internal(e.to_string()))?;
-        let source_bytes:i64=tx.query_row("SELECT coalesce(sum(length(CAST(last_import AS BLOB))),0) FROM cardbe_plugin_sources WHERE instance_id=?1",[&instance.id],|r|r.get(0)).map_err(|e|DomainError::Internal(e.to_string()))?;
-        if source_count > 20000 || source_bytes > 32 * 1024 * 1024 {
-            return Err(DomainError::InvalidArgument);
-        }
-        after.sort_column_tasks();
-        crate::storage::persist_board_diff_transaction(
-            &tx,
-            instance.board_id,
-            &before,
-            &after,
-            &mut positions,
-            true,
-        )
-        .map_err(DomainError::repository)?;
-        if before != after {
-            crate::storage::mark_local_board_change(&tx, instance.board_id, role)
-                .map_err(DomainError::repository)?;
-            crate::storage::persist_loro_local_delta(
-                &tx,
-                instance.board_id,
-                &before,
-                &after,
-                self.loro_peers.entry(instance.board_id).or_default(),
-            )
-            .map_err(DomainError::repository)?;
-        }
-        storage::put(&tx, "cursor", &instance.id, &output.cursor)?;
-        if !may_commit() {
-            return Err(DomainError::PermissionDenied);
-        }
-        tx.commit()
-            .map_err(|e| DomainError::Internal(e.to_string()))?;
-        if self.active_board_id() == instance.board_id {
-            self.positions = positions;
-        }
-        Ok((created, updated, after))
-    }
 }
+
+pub(crate) struct SourceChange {
+    pub link: SourceLink,
+    pub expected: Option<String>,
+}
+fn collision(
+    connection: &rusqlite::Connection,
+    instance: &PluginInstance,
+    key: &str,
+) -> Result<bool, DomainError> {
+    connection.query_row("SELECT EXISTS(SELECT 1 FROM cardbe_plugin_sources s JOIN cardbe_plugin_data i ON i.kind='instance' AND i.id=s.instance_id WHERE s.board_id=?1 AND s.external_key=?2 AND s.instance_id<>?3 AND json_extract(i.payload,'$.plugin_id')=?4)", params![instance.board_id,key,instance.id,instance.plugin_id], |r| r.get(0)).map_err(|e| DomainError::repository(Box::new(e)))
+}
+fn source_raw(
+    connection: &rusqlite::Connection,
+    instance: &PluginInstance,
+    key: &str,
+) -> Result<Option<String>, DomainError> {
+    connection.query_row("SELECT last_import FROM cardbe_plugin_sources WHERE instance_id=?1 AND board_id=?2 AND external_key=?3", params![instance.id,instance.board_id,key], |r|r.get(0)).optional().map_err(|e| DomainError::repository(Box::new(e)))
+}
+pub(crate) fn prepare_source(
+    connection: &rusqlite::Connection,
+    instance: &PluginInstance,
+    data: &mut StoredData,
+    task: &ExternalTask,
+    pending: &std::collections::HashMap<String, SourceChange>,
+) -> Result<(SourceChange, bool, bool), DomainError> {
+    if collision(connection, instance, &task.external_key)? {
+        return Err(DomainError::InvalidArgument);
+    }
+    let expected = match pending.get(&task.external_key) {
+        Some(change) => change.expected.clone(),
+        None => source_raw(connection, instance, &task.external_key)?,
+    };
+    let stored: Option<SourceLink> = expected
+        .as_ref()
+        .map(|raw| serde_json::from_str(raw))
+        .transpose()
+        .map_err(|e| DomainError::Internal(e.to_string()))?;
+    let previous = pending
+        .get(&task.external_key)
+        .map(|c| &c.link)
+        .or(stored.as_ref());
+    let (link, created, updated) = merge(data, task, previous)?;
+    Ok((SourceChange { link, expected }, created, updated))
+}
+pub(crate) fn persist_sources(
+    connection: &rusqlite::Connection,
+    instance: &PluginInstance,
+    changes: &std::collections::HashMap<String, SourceChange>,
+) -> Result<(), DomainError> {
+    if changes.is_empty() {
+        return Ok(());
+    }
+    for (key, change) in changes {
+        if collision(connection, instance, key)? {
+            return Err(DomainError::InvalidArgument);
+        }
+        if source_raw(connection, instance, key)? != change.expected {
+            return Err(DomainError::StaleBoardRequest);
+        }
+        connection.execute("INSERT INTO cardbe_plugin_sources(instance_id,external_key,board_id,task_id,last_import) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(instance_id,board_id,external_key) DO UPDATE SET last_import=excluded.last_import",params![instance.id,key,instance.board_id,change.link.task_id,serde_json::to_string(&change.link).map_err(|e| DomainError::Internal(e.to_string()))?]).map_err(|e| DomainError::repository(Box::new(e)))?;
+    }
+    let (count, bytes): (i64,i64) = connection.query_row("SELECT count(*),coalesce(sum(length(CAST(last_import AS BLOB))),0) FROM cardbe_plugin_sources WHERE instance_id=?1", [&instance.id], |r| Ok((r.get(0)?,r.get(1)?))).map_err(|e| DomainError::repository(Box::new(e)))?;
+    if count > 20000 || bytes > 32 * 1024 * 1024 {
+        return Err(DomainError::InvalidArgument);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,8 +324,37 @@ mod persistence_tests {
         .unwrap();
         (dir, loaded.database, instance)
     }
-    fn output() -> RuntimeOutput {
-        RuntimeOutput {
+    struct TestOutput {
+        tasks: Vec<ExternalTask>,
+        cursor: Option<String>,
+    }
+    fn commit(
+        db: &mut crate::storage::Database,
+        instance: &PluginInstance,
+        output: &TestOutput,
+        may_commit: impl Fn() -> bool,
+    ) -> Result<(usize, usize, StoredData), DomainError> {
+        let run_id = id();
+        let run: PluginRun = serde_json::from_value(serde_json::json!({"id":run_id,"instance_id":instance.id,"trigger":"manual","started_at":0,"status":"running","logs":[],"created":0,"updated":0})).unwrap();
+        storage::put(db.plugin_connection(), "instance", &instance.id, instance)?;
+        storage::put(db.plugin_connection(), "run", &run_id, &run)?;
+        let output = super::super::runtime::RuntimeOutput {
+            changeset: None,
+            snapshot_version: super::super::board::version(db, instance.board_id)?,
+            tasks: output.tasks.clone(),
+            cursor: output.cursor.clone(),
+            logs: vec![],
+        };
+        let changeset = super::super::board::prepare_output(db, instance.clone(), run_id, &output)?;
+        let data = db.commit_changeset_if(&changeset, may_commit)?;
+        Ok((
+            changeset.created,
+            changeset.updated,
+            data.expect("source operations have board projection"),
+        ))
+    }
+    fn output() -> TestOutput {
+        TestOutput {
             tasks: vec![ExternalTask {
                 external_key: "remote:1".into(),
                 title: "Imported".into(),
@@ -380,22 +366,21 @@ mod persistence_tests {
                 column_id: 1,
             }],
             cursor: Some("cursor-a".into()),
-            logs: vec![],
         }
     }
     #[test]
     fn commits_are_idempotent_and_transaction_failure_does_not_advance_cursor() {
         let (dir, mut db, i) = fixture();
         let mut output = output();
-        let (created, updated, _) = db.commit_plugin_output(&i, &output, || true).unwrap();
+        let (created, updated, _) = commit(&mut db, &i, &output, || true).unwrap();
         assert_eq!((created, updated), (1, 0));
-        let (created, updated, _) = db.commit_plugin_output(&i, &output, || true).unwrap();
+        let (created, updated, _) = commit(&mut db, &i, &output, || true).unwrap();
         assert_eq!((created, updated), (0, 0));
         let before = db.read_board_complete(i.board_id).unwrap();
         db.plugin_connection().execute_batch("CREATE TRIGGER fail_plugin_task BEFORE UPDATE OF payload ON cardbe_tasks BEGIN SELECT RAISE(ABORT,'test rollback'); END;").unwrap();
         output.tasks[0].title = "Changed".into();
         output.cursor = Some("cursor-b".into());
-        assert!(db.commit_plugin_output(&i, &output, || true).is_err());
+        assert!(commit(&mut db, &i, &output, || true).is_err());
         assert_eq!(db.read_board_complete(i.board_id).unwrap(), before);
         let cursors: Vec<Option<String>> = storage::list(db.plugin_connection(), "cursor").unwrap();
         assert_eq!(cursors, vec![Some("cursor-a".into())]);
@@ -416,7 +401,7 @@ mod persistence_tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert!(db.commit_plugin_output(&i, &output, || true).is_err());
+        assert!(commit(&mut db, &i, &output, || true).is_err());
         assert_eq!(db.read_board_complete(i.board_id).unwrap(), before);
         let loro_after: Vec<u8> = db
             .plugin_connection()
@@ -440,12 +425,11 @@ mod persistence_tests {
             .execute_batch("DROP TRIGGER fail_plugin_cursor;")
             .unwrap();
         let checks = std::cell::Cell::new(0);
-        assert!(db
-            .commit_plugin_output(&i, &output, || {
-                checks.set(checks.get() + 1);
-                checks.get() < 2
-            })
-            .is_err());
+        assert!(commit(&mut db, &i, &output, || {
+            checks.set(checks.get() + 1);
+            checks.get() < 2
+        })
+        .is_err());
         assert_eq!(db.read_board_complete(i.board_id).unwrap(), before);
         let unchanged: Vec<u8> = db
             .plugin_connection()
@@ -458,7 +442,7 @@ mod persistence_tests {
         assert_eq!(loro_before, unchanged);
         let cursors: Vec<Option<String>> = storage::list(db.plugin_connection(), "cursor").unwrap();
         assert_eq!(cursors, vec![Some("cursor-a".into())]);
-        let (created, updated, _) = db.commit_plugin_output(&i, &output, || true).unwrap();
+        let (created, updated, _) = commit(&mut db, &i, &output, || true).unwrap();
         assert_eq!((created, updated), (0, 1));
         assert_eq!(
             db.read_board_complete(i.board_id).unwrap().columns[0].tasks[0].title,
@@ -476,7 +460,7 @@ mod persistence_tests {
         invalid.title = " ".into();
         out.tasks.push(invalid);
         assert!(matches!(
-            db.commit_plugin_output(&i, &out, || true),
+            commit(&mut db, &i, &out, || true),
             Err(DomainError::InvalidArgument)
         ));
         assert!(db.read_board_complete(i.board_id).unwrap().columns[0]
@@ -501,11 +485,11 @@ mod persistence_tests {
     fn instance_collision_and_viewer_permission_fail_before_cursor_commit() {
         let (dir, mut db, i) = fixture();
         let out = output();
-        db.commit_plugin_output(&i, &out, || true).unwrap();
+        commit(&mut db, &i, &out, || true).unwrap();
         let mut other = i.clone();
         other.id = "instance-b".into();
         storage::put(db.plugin_connection(), "instance", &other.id, &other).unwrap();
-        assert!(db.commit_plugin_output(&other, &out, || true).is_err());
+        assert!(commit(&mut db, &other, &out, || true).is_err());
         db.plugin_connection()
             .execute(
                 "UPDATE cardbe_boards SET shared_role='viewer' WHERE id=?1",
@@ -513,7 +497,7 @@ mod persistence_tests {
             )
             .unwrap();
         assert!(matches!(
-            db.commit_plugin_output(&i, &out, || true),
+            commit(&mut db, &i, &out, || true),
             Err(DomainError::PermissionDenied)
         ));
         let count: i64 = db
@@ -530,15 +514,15 @@ mod persistence_tests {
     fn changed_board_uses_separate_source_mapping_and_preserves_tombstones() {
         let (dir, mut db, mut i) = fixture();
         let out = output();
-        db.commit_plugin_output(&i, &out, || true).unwrap();
+        commit(&mut db, &i, &out, || true).unwrap();
         let mut data = db.read_board_complete(i.board_id).unwrap();
         data.columns[0].tasks.clear();
         db.replace_board_as_local_edit(i.board_id, &data).unwrap();
-        let (created, updated, _) = db.commit_plugin_output(&i, &out, || true).unwrap();
+        let (created, updated, _) = commit(&mut db, &i, &out, || true).unwrap();
         assert_eq!((created, updated), (0, 0));
         let second = db.create_board_with_data("Second", &data).unwrap();
         i.board_id = second.id;
-        let (created, updated, _) = db.commit_plugin_output(&i, &out, || true).unwrap();
+        let (created, updated, _) = commit(&mut db, &i, &out, || true).unwrap();
         assert_eq!((created, updated), (1, 0));
         drop(db);
         std::fs::remove_dir_all(dir).unwrap();

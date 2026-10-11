@@ -5,7 +5,7 @@ use super::{
     types::*,
 };
 use crate::{
-    errors::{CommandError, DomainError, PluginHostError, PluginUserError},
+    errors::{CommandError, DomainError, PluginFailureReason, PluginHostError, PluginUserError},
     state::SharedAppData,
 };
 use rusqlite::OptionalExtension;
@@ -78,6 +78,17 @@ pub fn secret_namespace_for_path(path: &std::path::Path, instance: &str) -> Stri
     format!("{digest:x}:{instance}")
 }
 fn recover(runs: &mut [PluginRun], instances: &mut [PluginInstance], at: i64) {
+    for run in runs
+        .iter_mut()
+        .filter(|run| run.status == "awaiting_confirmation")
+    {
+        run.status = "cancelled".into();
+        if let Some(instance) = instances.iter_mut().find(|i| {
+            i.id == run.instance_id && i.last_run_status.as_deref() == Some("awaiting_confirmation")
+        }) {
+            instance.last_run_status = Some("cancelled".into());
+        }
+    }
     for run in runs.iter_mut().filter(|run| run.status == "running") {
         run.status = "interrupted".into();
         run.finished_at = Some(at);
@@ -165,7 +176,7 @@ impl Drop for Reservation {
         let _ = self.app.emit("cardbe:plugins-changed", ());
     }
 }
-fn install_committed(
+pub(crate) fn install_committed(
     guard: &mut crate::state::AppData,
     board_id: i64,
     mut stored: crate::models::StoredData,
@@ -213,7 +224,7 @@ fn disable_preparation(
     storage::retain_runs(&transaction, &instance.id)?;
     transaction.commit().map_err(internal)
 }
-fn same_authorization(original: &PluginInstance, current: &PluginInstance) -> bool {
+pub(crate) fn same_authorization(original: &PluginInstance, current: &PluginInstance) -> bool {
     current.enabled
         && !current.needs_review
         && current.plugin_id == original.plugin_id
@@ -284,9 +295,21 @@ fn runtime_error(
             None,
         ),
         error => (
-            PluginHostError::ExecutionFailed {
+            PluginHostError::RuntimeFailed {
                 plugin_id: plugin.id.clone(),
-                source: error.code().to_owned(),
+                reason: match error {
+                    runtime::RuntimeError::InvalidComponent => {
+                        PluginFailureReason::InvalidComponent
+                    }
+                    runtime::RuntimeError::Network => PluginFailureReason::NetworkFailed,
+                    runtime::RuntimeError::ResourceLimit => PluginFailureReason::ResourceLimit,
+                    runtime::RuntimeError::Timeout => PluginFailureReason::Timeout,
+                    runtime::RuntimeError::Cancelled => PluginFailureReason::Cancelled,
+                    runtime::RuntimeError::Trap => PluginFailureReason::WasmTrap,
+                    runtime::RuntimeError::Guest { .. } => PluginFailureReason::InvalidGuestError,
+                    runtime::RuntimeError::PermissionDenied
+                    | runtime::RuntimeError::AuthorizationRequired(_) => unreachable!(),
+                },
             }
             .into(),
             None,
@@ -360,6 +383,7 @@ pub async fn run(
     app: tauri::AppHandle,
     instance_id: String,
     trigger: &str,
+    wait_for_capacity: bool,
 ) -> Result<PluginRun, ManagerError> {
     let manager = app.state::<PluginManager>();
     let cancel = Arc::new(AtomicBool::new(false));
@@ -369,12 +393,7 @@ pub async fn run(
         }
         let reserved = {
             let mut active = manager.active.lock().map_err(|_| lock_error())?;
-            reserve(
-                &mut active,
-                &instance_id,
-                cancel.clone(),
-                trigger == "permission",
-            )?
+            reserve(&mut active, &instance_id, cancel.clone(), wait_for_capacity)?
         };
         if reserved {
             break;
@@ -438,10 +457,6 @@ pub async fn run(
             )?;
             return Err(DomainError::PermissionDenied.into());
         }
-        let board = guard
-            .database
-            .read_board(instance.board_id)
-            .map_err(DomainError::repository)?;
         let raw: Option<String> = connection
             .query_row(
                 "SELECT payload FROM cardbe_plugin_data WHERE kind='cursor' AND id=?1",
@@ -463,10 +478,11 @@ pub async fn run(
             updated: 0,
         };
         let input = RuntimeInput {
+            board_scope: Some((guard.database.path().to_owned(), instance.board_id)),
             instance_id: instance.id.clone(),
             run_id: record.id.clone(),
             config_json: serde_json::to_string(&instance.config).map_err(internal)?,
-            board_json: serde_json::to_string(&board.columns).map_err(internal)?,
+            trigger: trigger.into(),
             cursor: raw
                 .map(|value| serde_json::from_str(&value))
                 .transpose()
@@ -496,46 +512,73 @@ pub async fn run(
         } else {
             match result {
                 Ok(output) => {
-                    let current = current
-                        .as_ref()
-                        .expect("Authorization checked instance existence");
-                    match guard.database.commit_plugin_output(current, &output, || {
-                        !cancel.load(Ordering::SeqCst) && !manager.safe_mode.load(Ordering::SeqCst)
-                    }) {
-                        Ok((created, updated, stored)) => {
-                            record.status = "success".into();
-                            record.created = created;
-                            record.updated = updated;
-                            record.logs = output
-                                .logs
-                                .into_iter()
-                                .take(100)
-                                .map(|log| RunLog {
-                                    level: "info".into(),
-                                    code: log.code,
-                                    count: log.count,
-                                })
-                                .collect();
-                            changed = created + updated > 0;
-                            install_committed(&mut guard, instance.board_id, stored, changed);
-                            if changed {
-                                match guard.database.boards() {
-                                    Ok(boards) => guard.boards = boards,
+                    record.logs = output
+                        .logs
+                        .iter()
+                        .take(100)
+                        .map(|log| RunLog {
+                            level: "info".into(),
+                            code: log.code.clone(),
+                            count: log.count,
+                        })
+                        .collect();
+                    match super::board::prepare_output(
+                        &guard.database,
+                        instance.clone(),
+                        record.id.clone(),
+                        &output,
+                    ) {
+                        Ok(prepared) => {
+                            if cancel.load(Ordering::SeqCst)
+                                || manager.safe_mode.load(Ordering::SeqCst)
+                            {
+                                record.status = "cancelled".into();
+                            } else {
+                                match guard.database.commit_changeset_if(&prepared, || {
+                                    !cancel.load(Ordering::SeqCst)
+                                        && !manager.safe_mode.load(Ordering::SeqCst)
+                                }) {
+                                    Ok(stored) => {
+                                        record.status = "success".into();
+                                        record.created = prepared.created;
+                                        record.updated = prepared.updated;
+                                        changed = record.created + record.updated > 0;
+                                        if let Some(stored) = stored {
+                                            install_committed(
+                                                &mut guard,
+                                                instance.board_id,
+                                                stored,
+                                                changed,
+                                            );
+                                        }
+                                        if changed {
+                                            if let Ok(boards) = guard.database.boards() {
+                                                guard.boards = boards;
+                                            }
+                                        }
+                                    }
                                     Err(error) => {
-                                        log::warn!(target: "plugins", "{}", crate::commands::diagnostics::redact_diagnostic_logs(error.to_string()))
+                                        if cancel.load(Ordering::SeqCst)
+                                            || manager.safe_mode.load(Ordering::SeqCst)
+                                        {
+                                            record.status = "cancelled".into();
+                                        } else {
+                                            record.status = "failed".into();
+                                            record.error = Some(error.into());
+                                        }
                                     }
                                 }
                             }
                         }
-                        Err(_)
-                            if cancel.load(Ordering::SeqCst)
-                                || manager.safe_mode.load(Ordering::SeqCst) =>
-                        {
-                            record.status = "cancelled".into();
-                        }
                         Err(error) => {
-                            record.status = "failed".into();
-                            record.error = Some(error.into());
+                            if cancel.load(Ordering::SeqCst)
+                                || manager.safe_mode.load(Ordering::SeqCst)
+                            {
+                                record.status = "cancelled".into();
+                            } else {
+                                record.status = "failed".into();
+                                record.error = Some(error.into());
+                            }
                         }
                     }
                 }
@@ -654,7 +697,7 @@ pub fn start_scheduler(app: tauri::AppHandle) {
                 {
                     let handle = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        let _ = run(handle, instance.id, "schedule").await;
+                        let _ = run(handle, instance.id, "schedule", false).await;
                     });
                 }
             }
@@ -736,7 +779,7 @@ mod tests {
         assert_eq!(retry, None);
         assert_eq!(
             serde_json::to_value(CommandError::from(error)).unwrap(),
-            serde_json::json!({"code":"PLUGIN_EXECUTION_FAILED","plugin_id":"example"})
+            serde_json::json!({"code":"PLUGIN_EXECUTION_FAILED","plugin_id":"example","reason":"INVALID_GUEST_ERROR"})
         );
     }
     #[test]
@@ -822,6 +865,33 @@ mod tests {
             last_error: None,
             running: false,
         }
+    }
+    #[test]
+    fn startup_cancels_legacy_pending_changes_without_disabling_instance() {
+        let mut legacy = serde_json::to_value(instance("general")).unwrap();
+        legacy["allow_automatic_changes"] = serde_json::json!(false);
+        legacy["last_run_status"] = serde_json::json!("awaiting_confirmation");
+        let mut instances = vec![serde_json::from_value::<PluginInstance>(legacy).unwrap()];
+        let mut runs = vec![PluginRun {
+            id: "run".into(),
+            instance_id: "general".into(),
+            trigger: "manual".into(),
+            started_at: 0,
+            finished_at: Some(1),
+            status: "awaiting_confirmation".into(),
+            error: None,
+            logs: vec![],
+            created: 0,
+            updated: 0,
+        }];
+        recover(&mut runs, &mut instances, 2);
+        assert_eq!(runs[0].status, "cancelled");
+        assert!(instances[0].enabled);
+        assert_eq!(instances[0].last_run_status.as_deref(), Some("cancelled"));
+        assert!(serde_json::to_value(&instances[0])
+            .unwrap()
+            .get("allow_automatic_changes")
+            .is_none());
     }
     #[test]
     fn reservations_bound_parallelism_and_prevent_duplicates() {

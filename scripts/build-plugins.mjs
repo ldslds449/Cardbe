@@ -43,3 +43,4 @@ run("wasm-tools", [
   path.join(output, "component.wasm"),
 ]);
 console.log(`Built test-only component: ${output}`);
+run("wasm-tools", ["validate", path.join(output, "component.wasm")]);

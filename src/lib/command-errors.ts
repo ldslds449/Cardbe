@@ -52,13 +52,27 @@ export type NetworkSettingsField =
   | "relay_urls"
   | "discovery_urls";
 
+const pluginFailureMessages = {
+  INVALID_COMPONENT: () => m.plugin_failure_invalid_component(),
+  NETWORK_FAILED: () => m.plugin_failure_network(),
+  RESOURCE_LIMIT: () => m.plugin_failure_resource_limit(),
+  TIMEOUT: () => m.plugin_failure_timeout(),
+  CANCELLED: () => m.plugin_cancelled(),
+  WASM_TRAP: () => m.plugin_failure_wasm_trap(),
+  INVALID_GUEST_ERROR: () => m.plugin_failure_invalid_guest_error(),
+};
+
 type PluginParams = Record<string, string | number | boolean | null>;
 export type CommandError =
   | { code: keyof typeof coreMessages }
   | { code: "NETWORK_SETTINGS_INVALID"; field: NetworkSettingsField }
   | { code: "SHARE_APPROVAL_REQUIRED"; device_id: string }
   | { code: "PLUGIN_PERMISSION_DENIED"; plugin_id: string; permission: string }
-  | { code: "PLUGIN_EXECUTION_FAILED"; plugin_id: string }
+  | {
+      code: "PLUGIN_EXECUTION_FAILED";
+      plugin_id: string;
+      reason?: keyof typeof pluginFailureMessages;
+    }
   | {
       code: "PLUGIN_ERROR";
       plugin_id: string;
@@ -112,7 +126,12 @@ export function parseCommandError(value: unknown): CommandError | null {
     }
     const plugin_id = value.plugin_id;
     if (code === "PLUGIN_EXECUTION_FAILED") {
-      return { code, plugin_id };
+      const reason =
+        typeof value.reason === "string" &&
+        Object.hasOwn(pluginFailureMessages, value.reason)
+          ? (value.reason as keyof typeof pluginFailureMessages)
+          : undefined;
+      return { code, plugin_id, ...(reason ? { reason } : {}) };
     }
     if (code === "PLUGIN_PERMISSION_DENIED" && identifier(value.permission)) {
       return { code, plugin_id, permission: value.permission };
@@ -178,7 +197,9 @@ export function translateCommandError(
     case "PLUGIN_PERMISSION_DENIED":
       return m.error_plugin_permission_denied();
     case "PLUGIN_EXECUTION_FAILED":
-      return m.error_plugin_execution_failed();
+      return error.reason
+        ? pluginFailureMessages[error.reason]()
+        : m.error_plugin_execution_failed();
     case "PLUGIN_ERROR": {
       const resources =
         translations && Object.hasOwn(translations, error.plugin_id)

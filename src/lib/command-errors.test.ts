@@ -240,4 +240,35 @@ describe("command error boundary", () => {
       ).toBeNull();
     }
   });
+  it("preserves safe runtime reasons and rejects arbitrary details", () => {
+    for (const reason of [
+      "INVALID_COMPONENT",
+      "NETWORK_FAILED",
+      "RESOURCE_LIMIT",
+      "TIMEOUT",
+      "CANCELLED",
+      "WASM_TRAP",
+      "INVALID_GUEST_ERROR",
+    ]) {
+      const error = {
+        code: "PLUGIN_EXECUTION_FAILED",
+        plugin_id: "fixture",
+        reason,
+      };
+      expect(parseCommandError(error)).toEqual(error);
+      for (const locale of ["en", "zh-TW"] as const) {
+        applyLanguagePreference(locale);
+        expect(translateCommandError(error)).not.toBe(
+          m.error_plugin_execution_failed(),
+        );
+      }
+    }
+    expect(
+      parseCommandError({
+        code: "PLUGIN_EXECUTION_FAILED",
+        plugin_id: "fixture",
+        reason: "token=secret",
+      }),
+    ).toEqual({ code: "PLUGIN_EXECUTION_FAILED", plugin_id: "fixture" });
+  });
 });

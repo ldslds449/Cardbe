@@ -55,6 +55,58 @@ pub(crate) async fn get(
     cancel: Arc<AtomicBool>,
     deadline: Instant,
 ) -> Result<super::runtime::bindings::cardbe::plugin::types::HttpResponse, RuntimeError> {
+    send(value, None, policy, cancel, deadline).await
+}
+pub(crate) fn validate_post(content_type: &str, body: &[u8]) -> Result<(), RuntimeError> {
+    if body.len() > 10 * 1024 * 1024 {
+        return Err(RuntimeError::ResourceLimit);
+    }
+    if content_type.is_empty()
+        || content_type.len() > 256
+        || reqwest::header::HeaderValue::from_str(content_type).is_err()
+    {
+        return Err(RuntimeError::PermissionDenied);
+    }
+    Ok(())
+}
+pub(crate) async fn post(
+    value: &str,
+    content_type: &str,
+    body: &[u8],
+    policy: &HttpPolicy,
+    cancel: Arc<AtomicBool>,
+    deadline: Instant,
+) -> Result<super::runtime::bindings::cardbe::plugin::types::HttpResponse, RuntimeError> {
+    validate_post(content_type, body)?;
+    send(value, Some((content_type, body)), policy, cancel, deadline).await
+}
+fn build_request(
+    client: &Client,
+    url: Url,
+    post: Option<(&str, &[u8])>,
+    policy: &HttpPolicy,
+) -> reqwest::RequestBuilder {
+    let mut request = match post {
+        Some((content_type, body)) => client
+            .post(url.clone())
+            .header("Content-Type", content_type)
+            .body(body.to_vec()),
+        None => client.get(url.clone()),
+    }
+    .header("Accept", "application/json");
+    // shortcut: bearer auth is limited to the single manifest origin, add named scopes for custom or multiple credentialed origins.
+    if let Some(token) = policy.bearer_token(&url) {
+        request = request.bearer_auth(token);
+    }
+    request
+}
+async fn send(
+    value: &str,
+    post: Option<(&str, &[u8])>,
+    policy: &HttpPolicy,
+    cancel: Arc<AtomicBool>,
+    deadline: Instant,
+) -> Result<super::runtime::bindings::cardbe::plugin::types::HttpResponse, RuntimeError> {
     get_with(
         value,
         policy,
@@ -77,12 +129,10 @@ pub(crate) async fn get(
                 .resolve_to_addrs(host, &addresses)
                 .build()
                 .map_err(|_| RuntimeError::Network)?;
-            let mut request = client.get(url.clone()).header("Accept", "application/json");
-            // shortcut: bearer auth is limited to the single manifest origin, add named scopes for custom or multiple credentialed origins.
-            if let Some(token) = policy.bearer_token(&url) {
-                request = request.bearer_auth(token);
-            }
-            request.send().await.map_err(|_| RuntimeError::Network)
+            build_request(&client, url, post, policy)
+                .send()
+                .await
+                .map_err(|_| RuntimeError::Network)
         },
     )
     .await
@@ -182,6 +232,44 @@ mod tests {
         HttpPolicy {
             allowed_domains: vec!["api.github.com".into()],
             ..Default::default()
+        }
+    }
+    #[test]
+    fn post_preserves_body_content_type_and_credential_scope_and_bounds_input() {
+        let mut policy = policy();
+        policy.token = Some("fixture-token".into());
+        policy.token_domain = Some("api.github.com".into());
+        let client = Client::builder().no_proxy().build().unwrap();
+        let body = b"{\"title\":\"fixture\"}";
+        let request = build_request(
+            &client,
+            Url::parse("https://api.github.com/items").unwrap(),
+            Some(("application/json", body)),
+            &policy,
+        )
+        .build()
+        .unwrap();
+        assert_eq!(request.method(), reqwest::Method::POST);
+        assert_eq!(request.headers()["content-type"], "application/json");
+        assert_eq!(request.headers()["authorization"], "Bearer fixture-token");
+        assert_eq!(request.body().unwrap().as_bytes().unwrap(), body);
+        policy.allowed_domains = vec!["custom.example.com".into()];
+        let custom = build_request(
+            &client,
+            Url::parse("https://custom.example.com/items").unwrap(),
+            Some(("application/json", body)),
+            &policy,
+        )
+        .build()
+        .unwrap();
+        assert!(!custom.headers().contains_key("authorization"));
+        assert!(validate_post("application/json", &vec![0; 10 * 1024 * 1024]).is_ok());
+        assert!(matches!(
+            validate_post("application/json", &vec![0; 10 * 1024 * 1024 + 1]),
+            Err(RuntimeError::ResourceLimit)
+        ));
+        for invalid in ["", "application/json\r\nAuthorization: injected"] {
+            assert!(validate_post(invalid, body).is_err());
         }
     }
     fn deadline() -> Instant {

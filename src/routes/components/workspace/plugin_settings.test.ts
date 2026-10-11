@@ -33,6 +33,78 @@ it("shows localized field help only when a description is available", () => {
   expect(help).toContain("{pluginText(field.description ?? null)}");
 });
 
+function setupRun(invoke: ReturnType<typeof vi.fn>) {
+  const functions = parse(source, { modern: true })
+    .instance!.content.body.filter(
+      (node) => node.type === "FunctionDeclaration" && node.id!.name === "run",
+    )
+    .map((node) => {
+      const { start, end } = node as typeof node & {
+        start: number;
+        end: number;
+      };
+      return source.slice(start, end);
+    })
+    .join("\n");
+  return new Function(
+    "invoke",
+    "parseCommandError",
+    transpile(`
+    let session=0, error=null;
+    const refresh=async()=>{};
+    ${functions}
+    return {run,close:()=>{session++;},state:()=>({error})};
+  `),
+  )(invoke, parseCommandError);
+}
+
+it("validates intervals without categorizing plugins", () => {
+  const expression = source
+    .slice(
+      source.indexOf("const invalidInterval = $derived(") +
+        "const invalidInterval = $derived(".length,
+      source.indexOf("let columns ="),
+    )
+    .replace(/,\s*\);\s*$/, "");
+  const invalid = new Function(
+    "interval",
+    "editing",
+    `return (${expression});`,
+  );
+  expect(invalid(0, {})).toBe(false);
+  expect(invalid(60, {})).toBe(false);
+  expect(invalid(60, {})).toBe(false);
+  expect(invalid(1, {})).toBe(true);
+});
+
+it("runs without fetching a preview and reports structured failures", async () => {
+  const invoke = vi.fn().mockResolvedValue({ status: "success" });
+  const settings = setupRun(invoke);
+  await settings.run({ id: "general" });
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("run_plugin_instance", {
+    instanceId: "general",
+  });
+  invoke.mockRejectedValueOnce({ code: "STALE_BOARD_REQUEST" });
+  await settings.run({ id: "general" });
+  expect(settings.state().error).toEqual({ code: "STALE_BOARD_REQUEST" });
+});
+
+it("ignores a run failure after settings close", async () => {
+  let reject!: (reason: unknown) => void;
+  const invoke = vi.fn(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      }),
+  );
+  const settings = setupRun(invoke);
+  const running = settings.run({ id: "general" });
+  settings.close();
+  reject({ code: "STALE_BOARD_REQUEST" });
+  await running;
+  expect(settings.state().error).toBeNull();
+});
+
 it("keeps the column picker mounted while refreshing existing options", () => {
   const columnField = source.slice(
     source.indexOf('{:else if field.type === "column"}'),
@@ -878,12 +950,12 @@ it("discards cancelled updates without applying them", async () => {
     invoke.mock.calls.some(([command]) => command === "confirm_plugin_update"),
   ).toBe(false);
 });
-it("opens updated settings with preserved values, no new grants, and credentials requiring review", () => {
+function setupEditor() {
   const node = parse(source, { modern: true }).instance!.content.body.find(
     (node) => node.type === "FunctionDeclaration" && node.id!.name === "edit",
   )!;
   const { start, end } = node as typeof node & { start: number; end: number };
-  const edit = new Function(
+  return new Function(
     "pluginText",
     "pluginDefaults",
     transpile(`
@@ -891,12 +963,16 @@ it("opens updated settings with preserved values, no new grants, and credentials
       enabled,interval,consent,invalid,saveAttempted,historyId,error;
     async function chooseBoard(){}
     ${source.slice(start, end)}
-    return (pkg,instance)=>{edit(pkg,instance);return {config,savedSecrets,domains,enabled};};
+    return (pkg,instance)=>{edit(pkg,instance);return {config,savedSecrets,domains,enabled,consent};};
   `),
   )(
     () => "Plugin",
     () => ({}),
   );
+}
+
+it("opens updated settings with preserved values, no new grants, and credentials requiring review", () => {
+  const edit = setupEditor();
   const pkg = {
     id: "sample",
     domains: ["new.example.com"],
@@ -914,12 +990,14 @@ it("opens updated settings with preserved values, no new grants, and credentials
     allowed_domains: ["old.example.com"],
     enabled: false,
     credentials_need_review: true,
+    needs_review: true,
   };
   expect(edit(pkg, instance)).toEqual({
     config: { title: "Keep" },
     savedSecrets: [],
     domains: [],
     enabled: false,
+    consent: false,
   });
   expect(
     edit(
@@ -931,5 +1009,96 @@ it("opens updated settings with preserved values, no new grants, and credentials
     savedSecrets: ["token"],
     domains: ["old.example.com"],
     enabled: false,
+    consent: false,
   });
+});
+
+const authorizedInstance = {
+  id: "one",
+  name: "Instance",
+  board_id: 1,
+  config: {},
+  secret_fields: [],
+  allowed_domains: [],
+  enabled: true,
+  needs_review: false,
+};
+it.each([
+  ["new instance", undefined, false],
+  ["authorized instance", authorizedInstance, true],
+  [
+    "disabled authorized instance",
+    { ...authorizedInstance, enabled: false },
+    true,
+  ],
+  [
+    "package requires review",
+    { ...authorizedInstance, needs_review: true },
+    false,
+  ],
+])(
+  "restores board consent appropriately when opening %s",
+  (_, instance, consent) => {
+    const edit = setupEditor();
+    const pkg = { name: "Plugin", domains: [], settings: [] };
+    const state = edit(pkg, instance);
+    expect(state.consent).toBe(consent);
+    expect(edit(pkg, instance).consent).toBe(consent);
+  },
+);
+
+it("keeps the run button enabled for cancellation while running", () => {
+  const expression = source.match(
+    /disabled=\{(!instance.running[\s\S]*?)\}/,
+  )![1];
+  const disabled = new Function(
+    "instance",
+    "pending",
+    "pluginState",
+    "return " + expression,
+  );
+  const instance = {
+    running: true,
+    enabled: false,
+    needs_review: true,
+    pending_domain: {},
+  };
+  expect(disabled(instance, true, { safe_mode: true })).toBe(false);
+  expect(
+    disabled({ ...instance, running: false }, true, { safe_mode: true }),
+  ).toBe(true);
+  expect(
+    disabled({ running: false, enabled: true }, false, { safe_mode: false }),
+  ).toBe(false);
+});
+
+it("restores removal focus without scrolling, even when the deleted button is gone", () => {
+  const content = source.slice(source.indexOf("<AlertDialog.Content"));
+  const handler = content.match(
+    /onCloseAutoFocus=\{\(event\) => \{([\s\S]*?)\}\}/,
+  )![1];
+  const restore = new Function(
+    "event",
+    "removalFocus",
+    "dialogContent",
+    handler,
+  );
+  const event = { preventDefault: vi.fn() };
+  const button = {
+    isConnected: true,
+    matches: vi.fn().mockReturnValue(false),
+    focus: vi.fn(),
+  };
+  const dialog = { focus: vi.fn() };
+  restore(event, button, dialog);
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+  expect(button.focus).toHaveBeenCalledWith({ preventScroll: true });
+  expect(dialog.focus).not.toHaveBeenCalled();
+  button.matches.mockReturnValue(true);
+  restore(event, button, dialog);
+  expect(dialog.focus).toHaveBeenCalledWith({ preventScroll: true });
+  dialog.focus.mockClear();
+  button.isConnected = false;
+  restore(event, button, dialog);
+  expect(dialog.focus).toHaveBeenCalledWith({ preventScroll: true });
 });

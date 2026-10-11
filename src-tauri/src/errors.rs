@@ -146,6 +146,8 @@ pub enum CommandError {
     },
     PluginExecutionFailed {
         plugin_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<PluginFailureReason>,
     },
     PluginUpdateNotNewer,
     PluginUpdateBusy,
@@ -290,9 +292,25 @@ impl PluginUserError {
 }
 
 /// Independent of invoke, so a future scheduler can use the same host errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PluginFailureReason {
+    InvalidComponent,
+    NetworkFailed,
+    ResourceLimit,
+    Timeout,
+    Cancelled,
+    WasmTrap,
+    InvalidGuestError,
+}
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum PluginHostError {
+    RuntimeFailed {
+        plugin_id: String,
+        reason: PluginFailureReason,
+    },
     PermissionDenied {
         plugin_id: String,
         permission: String,
@@ -310,6 +328,10 @@ pub enum PluginHostError {
 impl From<PluginHostError> for CommandError {
     fn from(error: PluginHostError) -> Self {
         match error {
+            PluginHostError::RuntimeFailed { plugin_id, reason } => Self::PluginExecutionFailed {
+                plugin_id,
+                reason: Some(reason),
+            },
             PluginHostError::PermissionDenied {
                 plugin_id,
                 permission,
@@ -319,7 +341,10 @@ impl From<PluginHostError> for CommandError {
             },
             PluginHostError::ExecutionFailed { plugin_id, source } => {
                 Self::internal(source);
-                Self::PluginExecutionFailed { plugin_id }
+                Self::PluginExecutionFailed {
+                    plugin_id,
+                    reason: None,
+                }
             }
             PluginHostError::User { plugin_id, error } => Self::PluginError {
                 plugin_id,
@@ -336,6 +361,14 @@ mod tests {
 
     #[test]
     fn boundary_serializes_codes_and_hides_internal_details() {
+        assert_eq!(
+            serde_json::to_value(CommandError::from(PluginHostError::RuntimeFailed {
+                plugin_id: "fixture".into(),
+                reason: PluginFailureReason::WasmTrap
+            }))
+            .unwrap(),
+            json!({"code":"PLUGIN_EXECUTION_FAILED", "plugin_id":"fixture", "reason":"WASM_TRAP"})
+        );
         let error = ShareError::from(DomainError::repository(Box::new(
             DomainError::BoardNotFound,
         )));

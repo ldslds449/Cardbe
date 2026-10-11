@@ -1,8 +1,11 @@
-import { translateCommandError, type CommandError } from "$lib/command-errors";
+import {
+  parseCommandError,
+  translateCommandError,
+  type CommandError,
+} from "$lib/command-errors";
 import { getLocale } from "$lib/i18n";
 import { m } from "$lib/paraglide/messages.js";
 import { formatNumber } from "$lib/i18n";
-
 export type PluginText =
   | string
   | Partial<Record<"en" | "zh-TW", string>>
@@ -126,7 +129,11 @@ export interface PluginState {
 }
 
 export function pluginErrorMessage(error: unknown): string {
-  return translateCommandError(error);
+  const parsed = parseCommandError(error);
+  const message = translateCommandError(error);
+  return parsed?.code === "PLUGIN_ERROR"
+    ? m.plugin_error_details({ message, code: parsed.plugin_error.code })
+    : message;
 }
 export function pluginLogMessage(log: PluginRun["logs"][number]): string {
   const count = formatNumber(log.count);

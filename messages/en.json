@@ -1500,10 +1500,17 @@
   "error_column_not_found": "This column no longer exists.",
   "error_board_name_required": "Enter a board name.",
   "error_last_board_required": "Keep at least one board.",
-  "error_stale_board_request": "The active board changed. Please try again.",
+  "error_stale_board_request": "The board or its data changed. Please try again.",
   "error_permission_denied": "You do not have permission to make this change.",
   "error_nothing_to_undo": "There is nothing to undo.",
   "error_plugin_permission_denied": "The plugin does not have permission to perform this action.",
+  "plugin_failure_invalid_component": "The plugin component is invalid or incompatible.",
+  "plugin_failure_network": "The plugin network request failed.",
+  "plugin_failure_resource_limit": "The plugin exceeded its resource limit.",
+  "plugin_failure_timeout": "The plugin execution timed out.",
+  "plugin_failure_wasm_trap": "The plugin stopped because of a WebAssembly runtime error.",
+  "plugin_failure_invalid_guest_error": "The plugin returned an undeclared or invalid error code.",
+  "plugin_error_details": "{message} Error code: {code}.",
   "error_plugin_execution_failed": "The plugin could not complete this action. Please try again.",
   "ui_access_restored_conflict": "Access restored. Resolve the conflict before syncing.",
   "share_network_fixed_port_error": "Set a fixed listening port before advertising direct addresses.",
@@ -1668,5 +1675,6 @@
   "plugin_update_not_newer": "Choose a plugin version newer than the installed version.",
   "plugin_update_busy": "This plugin is running. Wait for it to finish or cancel its runs, then retry the update.",
   "plugin_update_stale": "The plugin version or update preview has changed. Close this dialog and reopen it before trying again.",
-  "plugin_field_help": "Help for {label}"
+  "plugin_field_help": "Help for {label}",
+  "plugin_changeset_grant": "Allow this instance to read and write tasks and columns on the selected board."
 }

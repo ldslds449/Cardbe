@@ -1,3 +1,4 @@
+mod board_mutations;
 mod commands;
 #[cfg(desktop)]
 mod desktop;

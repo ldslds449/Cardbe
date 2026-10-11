@@ -100,6 +100,7 @@ describe("plugin settings", () => {
         expect(m.plugin_field_help({ label: "JQL" })).toBe(
           locale === "en" ? "Help for JQL" : "JQL的欄位說明",
         );
+        expect(m.plugin_changeset_grant()).toBe(catalog.plugin_changeset_grant);
         expect(m.plugin_approved_domains()).toBe(
           catalog.plugin_approved_domains,
         );
@@ -140,7 +141,11 @@ describe("plugin settings", () => {
             plugin_id: "fixture",
             plugin_error: { code: "RATE_LIMITED", params: {} },
           }),
-        ).toBe(catalog.error_plugin_execution_failed);
+        ).toBe(
+          catalog.plugin_error_details
+            .replace("{message}", catalog.error_plugin_execution_failed)
+            .replace("{code}", "RATE_LIMITED"),
+        );
         for (const count of [0, 1, 1234]) {
           expect(
             pluginLogMessage({
@@ -156,7 +161,11 @@ describe("plugin settings", () => {
             plugin_id: "untrusted",
             plugin_error: { code: "RATE_LIMITED", params: {} },
           }),
-        ).toBe(catalog.error_plugin_execution_failed);
+        ).toBe(
+          catalog.plugin_error_details
+            .replace("{message}", catalog.error_plugin_execution_failed)
+            .replace("{code}", "RATE_LIMITED"),
+        );
       }
     } finally {
       applyLanguagePreference(originalPreference);
