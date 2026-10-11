@@ -1,10 +1,13 @@
 <script lang="ts" generics="T">
   import type { Snippet } from "svelte";
+  import { untrack } from "svelte";
+  import { createVirtualizer } from "@tanstack/svelte-virtual";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { cn } from "$lib/utils.js";
 
   let {
     items,
+    getItemKey,
     rowHeight = 104,
     overscan = 6,
     hasMore = false,
@@ -15,6 +18,7 @@
     children,
   }: {
     items: T[];
+    getItemKey: (item: T) => string;
     rowHeight?: number;
     overscan?: number;
     hasMore?: boolean;
@@ -26,72 +30,29 @@
   } = $props();
 
   let viewport = $state<HTMLDivElement | null>(null);
-  let scroll_top = $state(0);
-  let viewport_height = $state(640);
   let previous_reset_key = "";
-  let resize_frame: number | undefined;
-
-  const start_index = $derived(
-    Math.max(0, Math.floor(scroll_top / rowHeight) - overscan),
-  );
-  const end_index = $derived(
-    Math.min(
-      items.length,
-      Math.ceil((scroll_top + viewport_height) / rowHeight) + overscan,
-    ),
-  );
-  const visible_items = $derived(
-    items.slice(start_index, end_index).map((item, offset) => ({
-      item,
-      index: start_index + offset,
-    })),
-  );
-
-  function update_viewport() {
-    if (!viewport) {
-      return;
-    }
-    const next_scroll_top = viewport.scrollTop;
-    const next_viewport_height = viewport.clientHeight || 640;
-    if (scroll_top !== next_scroll_top) {
-      scroll_top = next_scroll_top;
-    }
-    if (viewport_height !== next_viewport_height) {
-      viewport_height = next_viewport_height;
-    }
-  }
-
-  function handle_scroll() {
-    update_viewport();
-  }
-
-  $effect(() => {
-    const node = viewport;
-    if (!node) {
-      return;
-    }
-    node.addEventListener("scroll", handle_scroll, { passive: true });
-    update_viewport();
-    const observer = new ResizeObserver(() => {
-      if (resize_frame !== undefined) {
-        return;
-      }
-      resize_frame = requestAnimationFrame(() => {
-        resize_frame = undefined;
-        update_viewport();
-      });
-    });
-    observer.observe(node);
-    return () => {
-      node.removeEventListener("scroll", handle_scroll);
-      observer.disconnect();
-      if (resize_frame !== undefined) {
-        cancelAnimationFrame(resize_frame);
-        resize_frame = undefined;
-      }
-    };
+  const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: 0,
+    getScrollElement: () => viewport,
+    estimateSize: () => 104,
   });
 
+  $effect.pre(() => {
+    const currentItems = items;
+    const currentGetItemKey = getItemKey;
+    const currentViewport = viewport;
+    const currentRowHeight = rowHeight;
+    const currentOverscan = overscan;
+    untrack(() =>
+      $virtualizer.setOptions({
+        count: currentItems.length,
+        getScrollElement: () => currentViewport,
+        estimateSize: () => currentRowHeight,
+        getItemKey: (index) => currentGetItemKey(currentItems[index]),
+        overscan: currentOverscan,
+      }),
+    );
+  });
   $effect(() => {
     if (resetKey === previous_reset_key) {
       return;
@@ -100,14 +61,15 @@
     if (viewport) {
       viewport.scrollTop = 0;
     }
-    scroll_top = 0;
+    untrack(() => $virtualizer.scrollToOffset(0));
   });
 
   $effect(() => {
     if (
       hasMore &&
       !loading &&
-      end_index >= Math.max(0, items.length - overscan * 2)
+      ($virtualizer.getVirtualItems().at(-1)?.index ?? -1) + 1 >=
+        Math.max(0, items.length - overscan * 2)
     ) {
       onLoadMore?.();
     }
@@ -121,14 +83,14 @@
   type="auto"
   orientation="vertical"
 >
-  <div class="relative" style={`height: ${items.length * rowHeight}px;`}>
+  <div class="relative" style={`height: ${$virtualizer.getTotalSize()}px;`}>
     <div
       class="absolute left-0 right-5 top-0"
-      style={`transform: translateY(${start_index * rowHeight}px);`}
+      style={`transform: translateY(${$virtualizer.getVirtualItems()[0]?.start ?? 0}px);`}
     >
-      {#each visible_items as entry (entry.index)}
+      {#each $virtualizer.getVirtualItems() as entry (entry.key)}
         <div style={`height: ${rowHeight}px;`}>
-          {@render children(entry.item, entry.index)}
+          {@render children(items[entry.index], entry.index)}
         </div>
       {/each}
     </div>

@@ -932,6 +932,12 @@
       {:else}
         <VirtualList
           items={entries}
+          getItemKey={(entry) =>
+            JSON.stringify([
+              entry.board_id,
+              entry.task.id,
+              Boolean(entry.archived_at),
+            ])}
           rowHeight={row_height}
           class="min-h-0 flex-1"
           hasMore={has_more && !all_task_items_error}
