@@ -67,6 +67,10 @@
     onremove?.(removed);
   }
 
+  export function commitPendingTag() {
+    addTag(inputValue);
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
@@ -113,7 +117,10 @@
     {placeholder}
     onkeydown={handleKeydown}
     onfocus={() => (suggestionsOpen = true)}
-    onblur={() => (suggestionsOpen = false)}
+    onblur={() => {
+      suggestionsOpen = false;
+      commitPendingTag();
+    }}
     aria-expanded={suggestionsOpen && filteredSuggestions.length > 0}
     aria-controls="tag-input-suggestions"
     class="flex-1 bg-transparent outline-none placeholder:text-muted-foreground min-w-[120px]"

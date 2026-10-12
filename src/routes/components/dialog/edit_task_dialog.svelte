@@ -98,6 +98,7 @@
   let card_reference_picker_open = $state(false);
   let dialog_content_ref = $state<HTMLDivElement | null>(null);
   let title_ref = $state<HTMLInputElement | null>(null);
+  let label_input_ref = $state<TagInput | null>(null);
   let description_ref = $state<RichTextEditorHandle | null>(null);
   let expanded_description_ref = $state<RichTextEditorHandle | null>(null);
   let reference_trigger_start = $state<number | undefined>(undefined);
@@ -261,6 +262,7 @@
   });
 
   async function try_submit() {
+    label_input_ref?.commitPendingTag();
     if (show_template_name && template_name.trim().length === 0) {
       invalid_template_name = true;
       return;
@@ -301,6 +303,8 @@
     bind:ref={dialog_content_ref}
     class="pb-0 outline-none"
     interactOutsideBehavior="close"
+    onEscapeKeydown={() => label_input_ref?.commitPendingTag()}
+    onInteractOutside={() => label_input_ref?.commitPendingTag()}
     onOpenAutoFocus={(event) => {
       event.preventDefault();
       if (auto_focus_title) {
@@ -690,6 +694,7 @@
                       </div>
                     </div>
                     <TagInput
+                      bind:this={label_input_ref}
                       bind:tags={task.labels}
                       suggestions={label_suggestions}
                       placeholder={m.task_label_add()}
