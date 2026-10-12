@@ -108,7 +108,7 @@ fn read_local_package(path: String) -> Result<(Vec<u8>, Vec<u8>), CommandError> 
         if std::fs::metadata(&selected)
             .map_err(CommandError::internal)?
             .len()
-            > 20 * 1024 * 1024
+            > crate::plugins::package::ARCHIVE_LIMIT as u64
         {
             return Err(CommandError::InvalidArgument);
         }
@@ -143,7 +143,7 @@ fn read_local_package(path: String) -> Result<(Vec<u8>, Vec<u8>), CommandError> 
         || std::fs::metadata(&component)
             .map_err(CommandError::internal)?
             .len()
-            > 16 * 1024 * 1024
+            > crate::plugins::package::COMPONENT_LIMIT
     {
         return Err(CommandError::InvalidArgument);
     }

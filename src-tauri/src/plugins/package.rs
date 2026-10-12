@@ -4,8 +4,9 @@ use crate::{
 };
 use std::io::{Cursor, Read};
 
-const ARCHIVE_LIMIT: usize = 20 * 1024 * 1024;
-pub(super) const COMPONENT_LIMIT: u64 = 16 * 1024 * 1024;
+pub(crate) const ARCHIVE_LIMIT: usize = 80 * 1024 * 1024;
+// Allow bundled language runtimes; execution memory is limited separately.
+pub(crate) const COMPONENT_LIMIT: u64 = 64 * 1024 * 1024;
 
 pub fn unpack(bytes: Vec<u8>) -> Result<(Vec<u8>, Vec<u8>), CommandError> {
     if bytes.len() > ARCHIVE_LIMIT {
@@ -169,6 +170,32 @@ mod tests {
             ("component.wasm", b"wasm")
         ]))
         .is_err());
+    }
+    #[test]
+    fn component_size_boundaries() {
+        let mut component = vec![0; COMPONENT_LIMIT as usize];
+        assert_eq!(
+            unpack(zip(&[
+                ("manifest.json", b"{}"),
+                ("component.wasm", &component)
+            ]))
+            .unwrap()
+            .1
+            .len(),
+            COMPONENT_LIMIT as usize
+        );
+        component.push(0);
+        assert!(matches!(
+            unpack(zip(&[
+                ("manifest.json", b"{}"),
+                ("component.wasm", &component)
+            ])),
+            Err(CommandError::InvalidArgument)
+        ));
+        assert!(matches!(
+            unpack(vec![0; ARCHIVE_LIMIT + 1]),
+            Err(CommandError::InvalidArgument)
+        ));
     }
     #[tokio::test]
     async fn unsafe_downloads_are_rejected() {

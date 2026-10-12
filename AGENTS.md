@@ -40,6 +40,7 @@
 
 ## Plugin Runtime
 
+- Keep plugin size limits shared through `src-tauri/src/plugins/package.rs`: components up to 64 MiB, ZIP packages up to 80 MiB, manifests up to 64 KiB, and at most 256 ZIP entries. Apply the component limit consistently to local installation, ZIP extraction, validation, and execution. The 128 MiB execution linear-memory limit is separate from file size and does not bound total host-process memory. Bundled Python/JavaScript runtimes must still satisfy Cardbe's WIT/import restrictions; measure actual release artifacts before raising execution limits. These are host limits, independent of API/package schema versions; the external API README may describe older host limits.
 - The public plugin WIT API is maintained in the `src-tauri/plugin-api` submodule. Do not edit a copied WIT contract in Cardbe; API changes belong in the API repository, followed by a reviewed submodule pointer update. Keep API, package, and host storage schema versions independent.
 - Cardbe runs WebAssembly components through Wasmtime. Plugins are optional; core local operations must remain usable offline. Do not expose SQLite connections, app data paths, arbitrary Tauri commands, WASI filesystem/network/process/environment/clock access, or raw host exceptions to guests.
 - Route guest network access through the existing host HTTP capability: HTTPS only, approved domains, public-address validation and pinning, no redirects or proxies, bounded requests/responses, and cancellation/time limits. Keep credentials in the host and never expose them to guests.

@@ -345,7 +345,7 @@ fn execute_inner(
     #[allow(unused_variables)] fixtures: Option<Vec<bindings::cardbe::plugin::types::HttpResponse>>,
     timeout: Duration,
 ) -> Result<RuntimeOutput, RuntimeError> {
-    if bytes.len() > 16 * 1024 * 1024 || input.config_json.len() > 64 * 1024 {
+    if bytes.len() as u64 > super::package::COMPONENT_LIMIT || input.config_json.len() > 64 * 1024 {
         return Err(RuntimeError::ResourceLimit);
     }
     if cancel.load(Ordering::Acquire) {
@@ -503,6 +503,27 @@ fn execute_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn component_size_limit_is_shared_by_validation_and_execution() {
+        let oversized = vec![0; super::super::package::COMPONENT_LIMIT as usize + 1];
+        assert!(matches!(
+            validate_component(&oversized),
+            Err(RuntimeError::ResourceLimit)
+        ));
+        assert!(matches!(
+            execute(
+                &oversized,
+                input("{}"),
+                policy(),
+                Arc::new(AtomicBool::new(false))
+            ),
+            Err(RuntimeError::ResourceLimit)
+        ));
+        assert!(matches!(
+            validate_component(&vec![0; 17 * 1024 * 1024]),
+            Err(RuntimeError::InvalidComponent)
+        ));
+    }
     #[test]
     fn update_validation_checks_the_host_contract_without_executing_the_guest() {
         assert!(validate_component(&component("runtime-fixture")).is_ok());
@@ -786,7 +807,7 @@ fn prepare_component(bytes: &[u8]) -> Result<(Engine, Component, Linker<HostStat
 }
 
 pub fn validate_component(bytes: &[u8]) -> Result<(), RuntimeError> {
-    if bytes.len() > 16 * 1024 * 1024 {
+    if bytes.len() as u64 > super::package::COMPONENT_LIMIT {
         return Err(RuntimeError::ResourceLimit);
     }
     let (_, component, linker) = prepare_component(bytes)?;
