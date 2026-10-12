@@ -1566,5 +1566,11 @@
   "plugin_update_busy": "此外掛正在執行，請等待完成或取消執行後再重試更新。",
   "plugin_update_stale": "外掛版本或更新預覽已變更，請關閉此視窗並重新開啟後再試。",
   "plugin_field_help": "{label}的欄位說明",
-  "plugin_changeset_grant": "允許此外掛執行個體讀取與修改所選看板的任務及欄位。"
+  "plugin_changeset_grant": "允許此外掛執行個體讀取與修改所選看板的任務及欄位。",
+  "template_copy_board_title": "複製範本到其他看板",
+  "template_copy_board_description": "將「{name}」複製到其他看板。原始範本會保留，複製後可各自編輯。",
+  "template_copy_named": "將範本「{name}」複製到其他看板",
+  "template_copy_action": "複製",
+  "template_copying": "複製中…",
+  "template_copied_board": "已將範本複製到看板"
 }

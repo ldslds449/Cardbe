@@ -1,5 +1,8 @@
 <script lang="ts">
   import * as m from "$lib/paraglide/messages.js";
+  import CopyIcon from "@lucide/svelte/icons/copy";
+  import CopyTemplateDialog from "./copy_template_dialog.svelte";
+  import { board } from "../../board.svelte";
   import EyeIcon from "@lucide/svelte/icons/eye";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import PencilIcon from "@lucide/svelte/icons/pencil";
@@ -45,6 +48,11 @@
     onDeleteTemplate: (template_id: number) => void | Promise<unknown>;
     onSaveTemplate: () => void | Promise<void>;
   } = $props();
+
+  let copying_template = $state<{
+    template: TaskTemplate;
+    source_id: number;
+  } | null>(null);
 
   const template_items = $derived(
     templates.map((template) => ({
@@ -144,6 +152,22 @@
                   </Button>
                   <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={m.template_copy_named({ name: template.name })}
+                    title={m.template_copy_board_title()}
+                    onclick={() => {
+                      if (board.active_board_id === null) {
+                        return;
+                      }
+                      copying_template = {
+                        template,
+                        source_id: board.active_board_id,
+                      };
+                    }}><CopyIcon /></Button
+                  >
+                  <Button
+                    type="button"
                     variant="destructive"
                     size="icon-sm"
                     aria-label={m.template_delete_named({
@@ -209,3 +233,13 @@
     </form>
   </Dialog.Content>
 </Dialog.Root>
+
+{#if copying_template}
+  <CopyTemplateDialog
+    template={copying_template.template}
+    source_id={copying_template.source_id}
+    onClose={() => {
+      copying_template = null;
+    }}
+  />
+{/if}

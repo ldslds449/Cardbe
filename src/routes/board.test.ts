@@ -1651,3 +1651,28 @@ describe("invalid backup input", () => {
     ).toBe(false);
   });
 });
+
+describe("template copying", () => {
+  it("copies to the explicit board without changing source templates or undo", async () => {
+    invoke_mock.mockReset();
+    invoke_mock.mockResolvedValue(undefined);
+    const store = create_store();
+    store.can_undo = true;
+    const templates = store.templates;
+    vi.spyOn(store, "get_boards").mockResolvedValue(undefined);
+    expect(await store.copy_task_template_to_board(3, 8)).toBe(true);
+    expect(invoke_mock).toHaveBeenCalledWith("copy_task_template_to_board", {
+      expectedBoardId: 7,
+      templateId: 3,
+      targetBoardId: 8,
+    });
+    expect(store.templates).toBe(templates);
+    expect(store.can_undo).toBe(true);
+    invoke_mock.mockRejectedValue({ code: "PERMISSION_DENIED" });
+    expect(await store.copy_task_template_to_board(3, 8)).toBe(false);
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+      translateCommandError({ code: "PERMISSION_DENIED" }),
+    );
+    vi.restoreAllMocks();
+  });
+});

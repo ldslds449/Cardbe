@@ -116,3 +116,24 @@ pub fn delete_task_template(
     })
     .map_err(CommandError::from)
 }
+
+#[tauri::command]
+pub fn copy_task_template_to_board(
+    state: State<'_, SharedAppData>,
+    expected_board_id: i64,
+    template_id: i64,
+    target_board_id: i64,
+) -> Result<(), CommandError> {
+    let mut guard = state
+        .lock()
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    if guard.active_board_id != expected_board_id {
+        return Err(CommandError::StaleBoardRequest);
+    }
+    guard
+        .database
+        .copy_task_template_to_board(expected_board_id, template_id, target_board_id)
+        .map_err(CommandError::repository)?;
+    guard.boards = guard.database.boards().map_err(CommandError::repository)?;
+    Ok(())
+}

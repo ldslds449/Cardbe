@@ -1638,6 +1638,29 @@ export class BoardStore {
       });
   }
 
+  async copy_task_template_to_board(
+    template_id: number,
+    target_board_id: number,
+  ): Promise<boolean> {
+    const expectedBoardId = this.active_board_id;
+    try {
+      await addMission(() =>
+        invoke<void>("copy_task_template_to_board", {
+          expectedBoardId,
+          templateId: template_id,
+          targetBoardId: target_board_id,
+        }),
+      );
+      await this.get_boards();
+      toast.success(m.template_copied_board());
+      return true;
+    } catch (e) {
+      logger.error("template.copy_to_board.failed", e);
+      toast.error(translateCommandError(e));
+      return false;
+    }
+  }
+
   delete_task_template(template_id: number): Promise<boolean> {
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;

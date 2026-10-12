@@ -1222,6 +1222,31 @@ impl Database {
         })
     }
 
+    pub fn copy_task_template_to_board(
+        &mut self,
+        source_id: i64,
+        template_id: i64,
+        target_id: i64,
+    ) -> StorageResult<()> {
+        if !self.board_exists(source_id)? || !self.board_exists(target_id)? {
+            return Err(DomainError::BoardNotFound.into());
+        }
+        if source_id == target_id {
+            return Err(DomainError::InvalidArgument.into());
+        }
+        let source = self.read_board_complete(source_id)?;
+        let mut template = source
+            .templates
+            .into_iter()
+            .find(|template| template.id == template_id)
+            .ok_or(DomainError::TemplateNotFound)?;
+        let mut target = self.read_board_complete(target_id)?;
+        template.id = target.allocate_template_id()?;
+        target.templates.push(template);
+        self.replace_board_as_local_edit(target_id, &target)?;
+        Ok(())
+    }
+
     pub fn move_task_to_board(
         &mut self,
         source_id: i64,
@@ -5426,6 +5451,126 @@ mod tests {
         assert_eq!(reopened.database.active_board_id(), first_id);
         assert_eq!(reopened.stored.columns[0].name, "First");
         drop(reopened);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn cross_board_template_copy_preserves_source_and_syncs_independent_copy() {
+        let dir = test_dir("cross-board-template-copy");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let mut data = StoredData::default();
+        data.templates.push(TaskTemplate {
+            id: 0,
+            name: "Template".into(),
+            task: Task {
+                title: "Keep content 中文".into(),
+                description: "Details".into(),
+                labels: vec!["label".into()],
+                ..Task::default()
+            },
+        });
+        data.next_template_id = 1;
+        let source = loaded
+            .database
+            .create_board_with_data("Source", &data)
+            .unwrap()
+            .id;
+        let target = loaded
+            .database
+            .create_board_with_data("Target", &data)
+            .unwrap()
+            .id;
+        for (from, template, to, code) in [
+            (source, 0, source, "INVALID_ARGUMENT"),
+            (source, 99, target, "TEMPLATE_NOT_FOUND"),
+            (source, 0, -1, "BOARD_NOT_FOUND"),
+            (-1, 0, target, "BOARD_NOT_FOUND"),
+        ] {
+            let error = loaded
+                .database
+                .copy_task_template_to_board(from, template, to)
+                .unwrap_err();
+            assert_eq!(
+                serde_json::to_value(crate::errors::CommandError::repository(error)).unwrap()
+                    ["code"],
+                code
+            );
+        }
+        loaded
+            .database
+            .connection
+            .execute(
+                "UPDATE cardbe_boards SET shared_role='viewer' WHERE id=?1",
+                [target],
+            )
+            .unwrap();
+        let error = loaded
+            .database
+            .copy_task_template_to_board(source, 0, target)
+            .unwrap_err();
+        assert_eq!(
+            serde_json::to_value(crate::errors::CommandError::repository(error)).unwrap()["code"],
+            "PERMISSION_DENIED"
+        );
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(target)
+                .unwrap()
+                .templates,
+            data.templates
+        );
+        loaded
+            .database
+            .connection
+            .execute(
+                "UPDATE cardbe_boards SET shared_role='editor' WHERE id=?1",
+                [target],
+            )
+            .unwrap();
+        // Reading a viewer board is allowed; only the destination is modified.
+        loaded
+            .database
+            .connection
+            .execute(
+                "UPDATE cardbe_boards SET shared_role='viewer' WHERE id=?1",
+                [source],
+            )
+            .unwrap();
+        loaded
+            .database
+            .copy_task_template_to_board(source, 0, target)
+            .unwrap();
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(source)
+                .unwrap()
+                .templates,
+            data.templates
+        );
+        let copied = loaded.database.read_board_complete(target).unwrap();
+        let mut expected = data.templates[0].clone();
+        expected.id = copied.templates[1].id;
+        assert_ne!(expected.id, data.templates[0].id);
+        assert_eq!(copied.templates, vec![data.templates[0].clone(), expected]);
+        let update = loaded.database.iroh_loro_update(target).unwrap().unwrap();
+        assert_eq!(
+            crate::loro_board::project(&update).unwrap().templates,
+            copied.templates
+        );
+        drop(loaded);
+        let loaded = load(&dir).unwrap();
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(target)
+                .unwrap()
+                .templates,
+            copied.templates
+        );
+        drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }
 

@@ -492,6 +492,7 @@ pub fn run() {
             get_startup_error,
             share::publish_lan_share,
             share::revoke_lan_share,
+            templates::copy_task_template_to_board,
             templates::get_task_templates,
             templates::save_task_template,
             templates::update_task_template,
