@@ -11,6 +11,21 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub(crate) fn canonical_domain(domain: &str) -> &str {
+    domain.strip_suffix(":443").unwrap_or(domain)
+}
+pub(crate) fn contains_domain(domains: &[String], domain: &str) -> bool {
+    domains
+        .iter()
+        .any(|value| canonical_domain(value) == canonical_domain(domain))
+}
+fn url_domain(url: &Url) -> String {
+    let host = url.host_str().unwrap_or_default();
+    match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_owned(),
+    }
+}
 #[derive(Clone, Default)]
 pub struct HttpPolicy {
     pub allowed_domains: Vec<String>,
@@ -23,7 +38,13 @@ pub struct HttpPolicy {
 }
 impl HttpPolicy {
     fn bearer_token(&self, url: &Url) -> Option<&str> {
-        if self.allowed_domains.len() == 1 && self.token_domain.as_deref() == url.host_str() {
+        if self.allowed_domains.len() == 1
+            && contains_domain(&self.allowed_domains, &url_domain(url))
+            && self
+                .token_domain
+                .as_deref()
+                .is_some_and(|domain| canonical_domain(domain) == url_domain(url))
+        {
             self.token.as_deref()
         } else {
             None
@@ -33,18 +54,14 @@ impl HttpPolicy {
 #[cfg(test)]
 pub(crate) fn authorized_url(value: &str, policy: &HttpPolicy) -> Result<Url, RuntimeError> {
     let url = request_url(value)?;
-    if !policy
-        .allowed_domains
-        .iter()
-        .any(|domain| Some(domain.as_str()) == url.host_str())
-    {
+    if !contains_domain(&policy.allowed_domains, &url_domain(&url)) {
         return Err(RuntimeError::PermissionDenied);
     }
     Ok(url)
 }
 fn request_url(value: &str) -> Result<Url, RuntimeError> {
     let url = safe_url(value).ok_or(RuntimeError::PermissionDenied)?;
-    if url.scheme() != "https" || url.port_or_known_default() != Some(443) {
+    if url.scheme() != "https" || url.port_or_known_default().is_none_or(|port| port == 0) {
         return Err(RuntimeError::PermissionDenied);
     }
     Ok(url)
@@ -112,8 +129,8 @@ async fn send(
         policy,
         cancel,
         deadline,
-        |host| async move {
-            Ok(tokio::net::lookup_host((host.as_str(), 443))
+        |(host, port)| async move {
+            Ok(tokio::net::lookup_host((host.as_str(), port))
                 .await
                 .map_err(|_| RuntimeError::Network)?
                 .collect())
@@ -145,7 +162,7 @@ async fn get_with<
     policy: &HttpPolicy,
     cancel: Arc<AtomicBool>,
     deadline: Instant,
-    resolve: impl FnOnce(String) -> R,
+    resolve: impl FnOnce((String, u16)) -> R,
     request: impl FnOnce(Url, Vec<SocketAddr>) -> F,
 ) -> Result<super::runtime::bindings::cardbe::plugin::types::HttpResponse, RuntimeError> {
     let url = request_url(value)?;
@@ -154,18 +171,25 @@ async fn get_with<
             .host_str()
             .ok_or(RuntimeError::PermissionDenied)?
             .to_owned();
-        let authorized = policy.allowed_domains.contains(&host);
+        let domain = url_domain(&url);
+        let authorized = contains_domain(&policy.allowed_domains, &domain);
         if !authorized
             && (policy.allowed_domains.len() >= 16
-                || !(policy.allow_custom_domains || policy.requested_domains.contains(&host))
-                || !crate::commands::plugins::valid_domains(std::slice::from_ref(&host)))
+                || !(policy.allow_custom_domains
+                    || contains_domain(&policy.requested_domains, &domain))
+                || !crate::commands::plugins::valid_domains(std::slice::from_ref(&domain)))
         {
             return Err(RuntimeError::PermissionDenied);
         }
         if !authorized {
-            return Err(RuntimeError::AuthorizationRequired(host));
+            return Err(RuntimeError::AuthorizationRequired(domain));
         }
-        let addresses = resolve(host).await?;
+        let addresses = resolve((
+            host,
+            url.port_or_known_default()
+                .ok_or(RuntimeError::PermissionDenied)?,
+        ))
+        .await?;
         if !public_addresses(&addresses) {
             return Err(RuntimeError::PermissionDenied);
         }
@@ -293,6 +317,79 @@ mod tests {
         }
     }
     #[test]
+    fn custom_ports_scope_get_post_and_credentials_to_the_manifest_destination() {
+        let mut policy = policy();
+        policy.allowed_domains = vec!["api.github.com:8443".into()];
+        policy.token_domain = Some("api.github.com:8443".into());
+        policy.token = Some("fixture-token".into());
+        let url = authorized_url("https://api.github.com:8443/path", &policy).unwrap();
+        let client = Client::new();
+        for body in [None, Some(("application/json", b"{}".as_slice()))] {
+            let request = build_request(&client, url.clone(), body, &policy)
+                .build()
+                .unwrap();
+            assert_eq!(request.url().port(), Some(8443));
+            assert_eq!(request.headers()["authorization"], "Bearer fixture-token");
+        }
+        let default = Url::parse("https://api.github.com").unwrap();
+        assert!(authorized_url(default.as_str(), &policy).is_err());
+        assert_eq!(policy.bearer_token(&default), None);
+        policy.token_domain = Some("api.github.com".into());
+        assert_eq!(policy.bearer_token(&url), None);
+        policy.allowed_domains = vec!["api.github.com:443".into()];
+        assert!(authorized_url(default.as_str(), &policy).is_ok());
+        assert_eq!(policy.bearer_token(&default), Some("fixture-token"));
+    }
+    #[tokio::test]
+    async fn custom_port_approval_precedes_dns_and_preserves_port_without_url_secrets() {
+        let mut policy = HttpPolicy {
+            requested_domains: vec!["api.example.com:8443".into()],
+            ..Default::default()
+        };
+        let result = get_with(
+            "https://api.example.com:8443/path?secret=hidden",
+            &policy,
+            cancel(),
+            deadline(),
+            |_| async { panic!("no DNS before approval") },
+            |_, _| async { panic!("no HTTP before approval") },
+        )
+        .await;
+        assert!(
+            matches!(result, Err(RuntimeError::AuthorizationRequired(domain)) if domain == "api.example.com:8443")
+        );
+        policy.allowed_domains = policy.requested_domains.clone();
+        get_with(
+            "https://api.example.com:8443",
+            &policy,
+            cancel(),
+            deadline(),
+            |destination| async move {
+                assert_eq!(destination, ("api.example.com".into(), 8443));
+                Ok(vec!["93.184.216.34:8443".parse().unwrap()])
+            },
+            |url, addresses| async move {
+                assert_eq!(url.port(), Some(8443));
+                assert_eq!(addresses[0].port(), 8443);
+                Ok(mock_response(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}".to_vec()).await)
+            },
+        )
+        .await
+        .unwrap();
+        policy.allowed_domains.clear();
+        policy.requested_domains = vec!["api.example.com".into()];
+        let result = get_with(
+            "https://api.example.com:8443",
+            &policy,
+            cancel(),
+            deadline(),
+            |_| async { panic!("wrong port cannot resolve") },
+            |_, _| async { panic!("wrong port cannot request") },
+        )
+        .await;
+        assert!(matches!(result, Err(RuntimeError::PermissionDenied)));
+    }
+    #[test]
     fn multiple_hosts_are_exact_and_custom_hosts_never_receive_manifest_credentials() {
         let mut policy = policy();
         policy.token = Some("fixture-token".into());
@@ -352,7 +449,7 @@ mod tests {
             cancel(),
             deadline(),
             |host| async move {
-                assert_eq!(host, "api.github.com");
+                assert_eq!(host, ("api.github.com".to_owned(), 443));
                 Ok(vec!["93.184.216.34:443".parse().unwrap()])
             },
             |url, addresses| async move {
@@ -426,7 +523,7 @@ mod tests {
                 "93.184.216.34:443",
             ),
             (
-                "https://new.example.com:444",
+                "https://new.example.com:0",
                 HttpPolicy {
                     allow_custom_domains: true,
                     ..Default::default()

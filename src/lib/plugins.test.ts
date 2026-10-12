@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { m } from "$lib/paraglide/messages.js";
 import {
+  canonicalPluginDomain,
   invalidPluginSettings,
   pluginDefaults,
   pluginText,
@@ -229,4 +230,12 @@ describe("plugin settings", () => {
       ),
     ).toEqual([]);
   });
+});
+
+it("normalizes only the default HTTPS port", () => {
+  expect(canonicalPluginDomain("api.example.com:443")).toBe("api.example.com");
+  expect(canonicalPluginDomain("api.example.com")).toBe("api.example.com");
+  expect(canonicalPluginDomain("api.example.com:8443")).toBe(
+    "api.example.com:8443",
+  );
 });

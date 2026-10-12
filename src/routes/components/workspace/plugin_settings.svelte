@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { canonicalPluginDomain } from "$lib/plugins";
   import { tick, untrack } from "svelte";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import {
@@ -89,7 +90,10 @@
   let domains = $state<string[]>([]);
   let customDomains = $state<string[]>([]);
   const availableDomains = $derived([
-    ...new Set([...(editing?.domains ?? []), ...customDomains]),
+    ...new Set([
+      ...(editing?.domains ?? []).map(canonicalPluginDomain),
+      ...customDomains,
+    ]),
   ]);
   let enabled = $state(false);
   let interval = $state<number | undefined>(0);
@@ -119,7 +123,11 @@
   let updateSuccess = $state(false);
   const addedUpdateDomains = $derived(
     updatePreview?.package.domains.filter(
-      (domain) => !updateTarget?.domains.includes(domain),
+      (domain) =>
+        !updateTarget?.domains.some(
+          (value) =>
+            canonicalPluginDomain(value) === canonicalPluginDomain(domain),
+        ),
     ) ?? [],
   );
   const changedUpdateSettings = $derived(
@@ -285,10 +293,18 @@
             (field) => field.key === key && field.type === "secret",
           ),
         );
-    domains = (instance?.allowed_domains ?? []).filter(
-      (domain) => pkg.domains.includes(domain) || pkg.allow_custom_domains,
+    domains = (instance?.allowed_domains ?? [])
+      .map(canonicalPluginDomain)
+      .filter(
+        (domain) =>
+          pkg.domains.some(
+            (value) => canonicalPluginDomain(value) === domain,
+          ) || pkg.allow_custom_domains,
+      );
+    customDomains = domains.filter(
+      (domain) =>
+        !pkg.domains.some((value) => canonicalPluginDomain(value) === domain),
     );
-    customDomains = domains.filter((domain) => !pkg.domains.includes(domain));
     enabled = instance?.enabled ?? false;
     interval = instance?.interval_seconds ?? 0;
     consent = !!instance && !instance.needs_review;

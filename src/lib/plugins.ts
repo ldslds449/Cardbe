@@ -191,3 +191,7 @@ export function invalidPluginSettings(
     })
     .map((field) => field.key);
 }
+
+export function canonicalPluginDomain(domain: string): string {
+  return domain.endsWith(":443") ? domain.slice(0, -4) : domain;
+}

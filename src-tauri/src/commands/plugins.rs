@@ -49,10 +49,23 @@ fn unique_values<'a>(values: impl IntoIterator<Item = &'a str>) -> bool {
 }
 pub(crate) fn valid_domains(domains: &[String]) -> bool {
     domains.len() <= 16
-        && unique_values(domains.iter().map(String::as_str))
+        && unique_values(
+            domains
+                .iter()
+                .map(|domain| crate::plugins::http::canonical_domain(domain)),
+        )
         && domains.iter().all(|domain| {
-            domain.len() <= 253
-                && domain.split('.').all(|label| {
+            let (host, valid_port) = match domain.split_once(':') {
+                Some((host, port)) => (
+                    host,
+                    port.parse::<u16>()
+                        .is_ok_and(|value| value > 0 && value.to_string() == port),
+                ),
+                None => (domain.as_str(), true),
+            };
+            valid_port
+                && host.len() <= 253
+                && host.split('.').all(|label| {
                     !label.is_empty()
                         && label.len() <= 63
                         && label
@@ -66,7 +79,8 @@ pub(crate) fn valid_domains(domains: &[String]) -> bool {
 pub(crate) fn valid_instance_domains(package: &PluginPackage, domains: &[String]) -> bool {
     valid_domains(domains)
         && domains.iter().all(|domain| {
-            (package.domains.contains(domain) || package.allow_custom_domains)
+            (crate::plugins::http::contains_domain(&package.domains, domain)
+                || package.allow_custom_domains)
                 && crate::link_preview::safety::safe_url(&format!("https://{domain}")).is_some()
         })
 }
@@ -768,7 +782,7 @@ fn resolve_domain(
     }
     if allow {
         let mut domains = instance.allowed_domains.clone();
-        if !domains.contains(&pending.domain) {
+        if !crate::plugins::http::contains_domain(&domains, &pending.domain) {
             domains.push(pending.domain.clone());
         }
         if !valid_instance_domains(package, &domains) {
@@ -1319,8 +1333,54 @@ mod tests {
             .is_none());
     }
     #[test]
+    fn custom_port_pending_requests_and_grants_survive_restart_and_revocation() {
+        let package: PluginPackage = serde_json::from_value(serde_json::json!({
+            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.0.0",
+            "storage_schema_version":1, "domains":["api.example.com:8443"]
+        }))
+        .unwrap();
+        let mut pending = instance();
+        pending.enabled = true;
+        pending.pending_domain = Some(PendingDomain {
+            domain: "api.example.com:8443".into(),
+            run_id: "run-port".into(),
+            trigger: "schedule".into(),
+        });
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        storage::initialize(&connection).unwrap();
+        storage::put(&connection, "instance", "port", &pending).unwrap();
+        let mut restored: PluginInstance =
+            storage::list(&connection, "instance").unwrap().remove(0);
+        assert_eq!(
+            restored.pending_domain.as_ref().unwrap().domain,
+            "api.example.com:8443"
+        );
+        assert!(resolve_domain(&mut restored, &package, "stale", true).is_err());
+        assert_eq!(
+            resolve_domain(&mut restored, &package, "run-port", true).unwrap(),
+            "schedule"
+        );
+        storage::put(&connection, "instance", "port", &restored).unwrap();
+        let mut restored: PluginInstance =
+            storage::list(&connection, "instance").unwrap().remove(0);
+        assert_eq!(restored.allowed_domains, ["api.example.com:8443"]);
+        restored.allowed_domains.clear();
+        restored.pending_domain = pending.pending_domain.clone();
+        resolve_domain(&mut restored, &package, "run-port", false).unwrap();
+        assert!(
+            !restored.enabled
+                && restored.allowed_domains.is_empty()
+                && restored.pending_domain.is_none()
+        );
+    }
+    #[test]
     fn manifest_domains_and_select_values_are_unique_and_valid() {
         assert!(valid_domains(&["api.github.com".into()]));
+        assert!(valid_domains(&[
+            "api.github.com:8443".into(),
+            "api.github.com:443".into()
+        ]));
+        assert!(valid_domains(&["api.github.com:65535".into()]));
         for invalid in [
             vec!["".into()],
             vec!["api.github.com".into(), "api.github.com".into()],
@@ -1352,6 +1412,23 @@ mod tests {
             &package,
             &["custom.example.com".into()]
         ));
+        assert!(valid_instance_domains(
+            &package,
+            &["api.example.com:443".into()]
+        ));
+        assert!(!valid_instance_domains(
+            &package,
+            &["api.example.com:8443".into()]
+        ));
+        package.domains = vec!["api.example.com:8443".into()];
+        assert!(valid_instance_domains(
+            &package,
+            &["api.example.com:8443".into()]
+        ));
+        assert!(!valid_instance_domains(
+            &package,
+            &["api.example.com".into()]
+        ));
         package.allow_custom_domains = true;
         assert!(valid_instance_domains(
             &package,
@@ -1363,7 +1440,10 @@ mod tests {
             vec!["a.localhost".into()],
             vec!["127.0.0.1".into()],
             vec!["10.0.0.1".into()],
-            vec!["example.com:443".into()],
+            vec!["example.com:0".into()],
+            vec!["example.com:65536".into()],
+            vec!["example.com:0443".into()],
+            vec!["example.com".into(), "example.com:443".into()],
             vec!["*.example.com".into()],
             vec!["custom.example.com".into(), "custom.example.com".into()],
             (0..17).map(|i| format!("host{i}.example.com")).collect(),

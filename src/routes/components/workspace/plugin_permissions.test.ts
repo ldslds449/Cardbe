@@ -165,3 +165,18 @@ it("removes duplicate host entry and keeps permission review and revocation in s
   expect(disabled(false, hosts.slice(1), "new.example.com")).toBe(false);
   expect(disabled(true, hosts, hosts[0])).toBe(true);
 });
+
+it("retains the requested port for manual and scheduled approval prompts", async () => {
+  for (const trigger of ["manual", "schedule"]) {
+    const request = instance(trigger);
+    request.pending_domain.domain = "api.example.com:8443";
+    const ui = setup(
+      vi.fn(async () => ({ safe_mode: false, instances: [request] })),
+    );
+    await ui.refresh();
+    ui.show(ui.state().instances[0]);
+    expect(ui.state().selected.pending_domain.domain).toBe(
+      "api.example.com:8443",
+    );
+  }
+});

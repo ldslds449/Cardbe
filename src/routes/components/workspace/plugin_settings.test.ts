@@ -4,7 +4,7 @@ import { transpile } from "typescript";
 import { expect, it, vi } from "vite-plus/test";
 import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { parseCommandError } from "$lib/command-errors";
-import { isNewerPluginVersion } from "$lib/plugins";
+import { canonicalPluginDomain, isNewerPluginVersion } from "$lib/plugins";
 
 const source = readFileSync(
   new URL("./plugin_settings.svelte", import.meta.url),
@@ -958,6 +958,7 @@ function setupEditor() {
   return new Function(
     "pluginText",
     "pluginDefaults",
+    "canonicalPluginDomain",
     transpile(`
     let editing=null,instanceId,name,config,secrets,savedSecrets,domains,customDomains,
       enabled,interval,consent,invalid,saveAttempted,historyId,error;
@@ -968,6 +969,7 @@ function setupEditor() {
   )(
     () => "Plugin",
     () => ({}),
+    canonicalPluginDomain,
   );
 }
 
@@ -1101,4 +1103,29 @@ it("restores removal focus without scrolling, even when the deleted button is go
   button.isConnected = false;
   restore(event, button, dialog);
   expect(dialog.focus).toHaveBeenCalledWith({ preventScroll: true });
+});
+
+it("preserves explicit default-port grants and keeps custom ports separate in settings", () => {
+  const edit = setupEditor();
+  const pkg = {
+    id: "sample",
+    domains: ["api.example.com:443", "api.example.com:8443"],
+    settings: [],
+  };
+  const instance = {
+    id: "one",
+    name: "Instance",
+    config: {},
+    secret_fields: [],
+    allowed_domains: ["api.example.com"],
+    enabled: false,
+  };
+  expect(edit(pkg, instance).domains).toEqual(["api.example.com"]);
+  expect(
+    edit({ ...pkg, domains: ["api.example.com:8443"] }, instance).domains,
+  ).toEqual([]);
+  expect(
+    edit(pkg, { ...instance, allowed_domains: ["api.example.com:8443"] })
+      .domains,
+  ).toEqual(["api.example.com:8443"]);
 });
