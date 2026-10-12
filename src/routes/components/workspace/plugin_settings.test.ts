@@ -11,6 +11,29 @@ const source = readFileSync(
   "utf8",
 );
 
+it("changes host grants independently of board consent", () => {
+  const handler = source.match(
+    /onCheckedChange=\{\(checked\) => \{([\s\S]*?)\}\}/,
+  )![1];
+  const toggle = new Function(
+    "domains",
+    "domain",
+    "checked",
+    "consent",
+    `${handler}; return { domains, consent };`,
+  );
+  expect(toggle([], "api.example.com", true, true)).toEqual({
+    domains: ["api.example.com"],
+    consent: true,
+  });
+  expect(toggle(["api.example.com"], "api.example.com", false, true)).toEqual({
+    domains: [],
+    consent: true,
+  });
+  expect(toggle([], "api.example.com", true, false).consent).toBe(false);
+  expect(source).not.toContain("m.plugin_remove_host");
+});
+
 it("shows localized field help only when a description is available", () => {
   const help = source.slice(
     source.indexOf("{#snippet fieldHelp"),
@@ -249,6 +272,7 @@ it.each([
     const settings = new Function(
       "action",
       "invalidPluginSettings",
+      "invalidPluginCredentialSettings",
       "name",
       "consent",
       "focusEditorError",
@@ -257,7 +281,14 @@ it.each([
     ${source.slice(start, end)}
     return {save,state:()=>({saveAttempted,error})};
   `),
-    )(action, () => [], name, consent, focusEditorError);
+    )(
+      action,
+      () => [],
+      () => [],
+      name,
+      consent,
+      focusEditorError,
+    );
     await settings.save();
     expect(settings.state()).toEqual({
       saveAttempted: true,

@@ -34,6 +34,8 @@
   import { parseCommandError, type CommandError } from "$lib/command-errors";
   import {
     invalidPluginSettings,
+    invalidPluginCredentialSettings,
+    pluginCredentialScopes,
     pluginErrorMessage,
     pluginLogMessage,
     pluginDefaults,
@@ -89,10 +91,14 @@
   let savedSecrets = $state<string[]>([]);
   let domains = $state<string[]>([]);
   let customDomains = $state<string[]>([]);
+  const credentialScopes = $derived(
+    editing ? pluginCredentialScopes(editing, config) : [],
+  );
   const availableDomains = $derived([
     ...new Set([
       ...(editing?.domains ?? []).map(canonicalPluginDomain),
       ...customDomains,
+      ...credentialScopes.map((scope) => scope.domain),
     ]),
   ]);
   let enabled = $state(false);
@@ -333,6 +339,12 @@
       secrets,
       savedSecrets,
     );
+    invalid = [
+      ...new Set([
+        ...invalid,
+        ...invalidPluginCredentialSettings(editing, config),
+      ]),
+    ];
     if (
       !name.trim() ||
       !boardId ||
@@ -1210,6 +1222,9 @@
             {#if updatePreview.package.allow_custom_domains && !updateTarget?.allow_custom_domains}
               <p class="text-sm">{m.plugin_update_custom_domains()}</p>
             {/if}
+            {#if JSON.stringify(updatePreview.package.http_credentials ?? null) !== JSON.stringify(updateTarget?.http_credentials ?? null)}
+              <p class="text-sm">{m.plugin_update_credentials()}</p>
+            {/if}
             {#if changedUpdateSettings.length}
               <div class="space-y-2">
                 <h3 class="text-sm font-medium">
@@ -1555,8 +1570,9 @@
                         : undefined}
                       autocomplete="off"
                       value={String(config[field.key] ?? "")}
-                      oninput={(event) =>
-                        (config[field.key] = event.currentTarget.value)}
+                      oninput={(event) => {
+                        config[field.key] = event.currentTarget.value;
+                      }}
                       required={field.required}
                       disabled={pending}
                     />{/if}
@@ -1609,6 +1625,29 @@
               <Field.Description id="plugin-permissions-help"
                 >{m.plugin_permissions_help()}</Field.Description
               >
+              {#if editing.http_credentials != null}
+                <Field.Description
+                  >{m.plugin_credentials_help()}</Field.Description
+                >
+                {#each credentialScopes as scope}
+                  <p class="text-sm break-all">
+                    {scope.secret
+                      ? m.plugin_credential_scope({
+                          domain: scope.domain,
+                          path: scope.path,
+                          credential: pluginText(
+                            editing.settings.find(
+                              (field) => field.key === scope.secret,
+                            )?.label ?? scope.secret,
+                          ),
+                        })
+                      : m.plugin_credential_scope_public({
+                          domain: scope.domain,
+                          path: scope.path,
+                        })}
+                  </p>
+                {/each}
+              {/if}
               {#if availableDomains.length && !domains.length}
                 <Field.Description
                   id="plugin-api-permissions-hint"
@@ -1637,7 +1676,6 @@
                         domains = checked
                           ? [...domains, domain]
                           : domains.filter((value) => value !== domain);
-                        consent = false;
                       }}
                     />
                     <Field.Content
@@ -1647,22 +1685,6 @@
                         >{m.plugin_allow_api_domain({ domain })}</Field.Label
                       ></Field.Content
                     >
-                    {#if customDomains.includes(domain)}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={pending}
-                        aria-label={m.plugin_remove_host({ domain })}
-                        onclick={() => {
-                          customDomains = customDomains.filter(
-                            (value) => value !== domain,
-                          );
-                          domains = domains.filter((value) => value !== domain);
-                          consent = false;
-                        }}>{m.common_delete()}</Button
-                      >
-                    {/if}
                   </Field.Field>
                 {/each}
                 <Field.Field

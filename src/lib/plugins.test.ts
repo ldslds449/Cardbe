@@ -3,6 +3,8 @@ import { m } from "$lib/paraglide/messages.js";
 import {
   canonicalPluginDomain,
   invalidPluginSettings,
+  invalidPluginCredentialSettings,
+  pluginCredentialScopes,
   pluginDefaults,
   pluginText,
   pluginErrorMessage,
@@ -11,6 +13,146 @@ import {
   type PluginPackage,
   type PluginSetting,
 } from "./plugins";
+
+const credentialPackage: PluginPackage = {
+  id: "scoped",
+  name: "Scoped",
+  version: "1.0.0",
+  api_version: "1.0.0",
+  storage_schema_version: 1,
+  description: null,
+  domains: ["fixed.example.com"],
+  allow_custom_domains: true,
+  settings: [
+    { key: "base_url", label: "API URL", type: "text", required: true },
+    { key: "token", label: "Token", type: "secret", required: true },
+  ],
+  error_codes: [],
+  log_codes: [],
+  http_credentials: [
+    {
+      destination: { type: "base_url", setting: "base_url" },
+      path_prefix: "/tasks",
+      bearer_secret: "token",
+    },
+    {
+      destination: { type: "base_url", setting: "base_url" },
+      path_prefix: "/public",
+    },
+    {
+      destination: { type: "domain", domain: "fixed.example.com" },
+      path_prefix: "/",
+      bearer_secret: "token",
+    },
+  ],
+};
+
+it("resolves credential scopes for consent without exposing secrets or granting hosts", () => {
+  expect(
+    pluginCredentialScopes(credentialPackage, {
+      base_url: "https://custom.example.com/api/",
+    }),
+  ).toEqual([
+    {
+      domain: "custom.example.com",
+      path: "/api/tasks",
+      secret: "token",
+      setting: "base_url",
+    },
+    {
+      domain: "custom.example.com",
+      path: "/api/public",
+      secret: null,
+      setting: "base_url",
+    },
+    { domain: "fixed.example.com", path: "/", secret: "token", setting: null },
+  ]);
+  expect(pluginCredentialScopes(credentialPackage, {})).toHaveLength(1);
+  expect(pluginDefaults(credentialPackage)).toEqual({});
+  expect(credentialPackage.domains).toEqual(["fixed.example.com"]);
+});
+
+it("preserves ports in credential destinations and validates their grants", () => {
+  const config = { base_url: "https://custom.example.com:8443/api" };
+  expect(pluginCredentialScopes(credentialPackage, config)[0].domain).toBe(
+    "custom.example.com:8443",
+  );
+  const restricted = { ...credentialPackage, allow_custom_domains: false };
+  expect(invalidPluginCredentialSettings(restricted, config)).toEqual([
+    "base_url",
+  ]);
+  expect(
+    invalidPluginCredentialSettings(
+      {
+        ...restricted,
+        domains: [...restricted.domains, "custom.example.com:8443"],
+      },
+      config,
+    ),
+  ).toEqual([]);
+});
+
+it("validates base URL destinations and resolved rule collisions before saving", () => {
+  for (const url of [
+    "http://custom.example.com",
+    "https://custom.example.com:0",
+    "https://user:secret@custom.example.com",
+    "https://localhost",
+    "https://127.0.0.1",
+    "https://10.0.0.1",
+    "https://custom.example.com/api?token=x",
+    "https://custom.example.com/api?",
+    "https://custom.example.com/api#fragment",
+    "https://custom.example.com/api%2fother",
+    "https://custom.example.com/api\\other",
+  ]) {
+    expect(
+      invalidPluginCredentialSettings(credentialPackage, { base_url: url }),
+      url,
+    ).toEqual(["base_url"]);
+    expect(
+      pluginCredentialScopes(credentialPackage, { base_url: url }),
+    ).toHaveLength(1);
+  }
+  for (const url of [
+    "https://custom.example.com/api/",
+    "https://custom.example.com:443/api",
+    "https://custom.example.com:8443/api",
+    "https://fixed.example.com",
+  ]) {
+    expect(
+      invalidPluginCredentialSettings(credentialPackage, { base_url: url }),
+    ).toEqual([]);
+  }
+  expect(
+    invalidPluginCredentialSettings(
+      { ...credentialPackage, allow_custom_domains: false },
+      { base_url: "https://custom.example.com" },
+    ),
+  ).toEqual(["base_url"]);
+  const collision = {
+    ...credentialPackage,
+    http_credentials: credentialPackage.http_credentials!.map((rule, index) =>
+      index === 0 ? { ...rule, path_prefix: "/" } : rule,
+    ),
+  };
+  expect(
+    invalidPluginCredentialSettings(collision, {
+      base_url: "https://fixed.example.com",
+    }),
+  ).toEqual(["base_url"]);
+});
+
+it("translates credential scope consent messages in both languages", () => {
+  for (const catalog of [en, zh]) {
+    expect(catalog.plugin_credentials_help).toBeTruthy();
+    expect(catalog.plugin_update_credentials).toBeTruthy();
+    for (const parameter of ["{domain}", "{path}", "{credential}"]) {
+      expect(catalog.plugin_credential_scope).toContain(parameter);
+    }
+    expect(catalog.plugin_credential_scope_public).toContain("{domain}");
+  }
+});
 
 it("compares stable plugin releases numerically and rejects malformed versions and downgrades", () => {
   for (const [current, next] of [

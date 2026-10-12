@@ -43,9 +43,156 @@ export interface PluginPackage {
   description: PluginText;
   domains: string[];
   allow_custom_domains?: boolean;
+  http_credentials?: HttpCredentialRule[] | null;
   settings: PluginSetting[];
   error_codes: string[];
   log_codes: string[];
+}
+export interface HttpCredentialRule {
+  destination:
+    | { type: "domain"; domain: string }
+    | { type: "base_url"; setting: string };
+  path_prefix: string;
+  bearer_secret?: string | null;
+}
+
+function validCredentialPath(path: string): boolean {
+  return (
+    path.length <= 2048 &&
+    /^\/[a-zA-Z0-9/._~-]*$/.test(path) &&
+    (path === "/" || !path.endsWith("/")) &&
+    !path.includes("//") &&
+    !path.split("/").some((part) => part === "." || part === "..")
+  );
+}
+
+function credentialBaseUrl(value: unknown): URL | null {
+  if (
+    typeof value !== "string" ||
+    value.length > 8192 ||
+    /[?#\\]/.test(value)
+  ) {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    const host = url.hostname;
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    if (
+      url.protocol !== "https:" ||
+      url.port === "0" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      !validCredentialPath(path) ||
+      host.length > 253 ||
+      !host.includes(".") ||
+      host === "localhost" ||
+      host.endsWith(".localhost") ||
+      !host
+        .split(".")
+        .every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+    ) {
+      return null;
+    }
+    // Backend additionally validates public addresses and pins DNS before HTTP.
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+      const [a, b, c, d] = host.split(".").map(Number);
+      if (
+        a === 0 ||
+        a === 10 ||
+        a === 127 ||
+        a >= 224 ||
+        (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && b === 168) ||
+        (a === 100 && b >= 64 && b <= 127) ||
+        (a === 192 && b === 0 && c === 0) ||
+        (a === 198 && (b === 18 || b === 19)) ||
+        (a === 192 && b === 0 && c === 2) ||
+        (a === 198 && b === 51 && c === 100) ||
+        (a === 203 && b === 0 && c === 113) ||
+        (a === 255 && b === 255 && c === 255 && d === 255)
+      ) {
+        return null;
+      }
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+export function pluginCredentialScopes(
+  pkg: PluginPackage,
+  config: Record<string, unknown>,
+) {
+  return (pkg.http_credentials ?? []).flatMap((rule) => {
+    const url =
+      rule.destination.type === "base_url"
+        ? credentialBaseUrl(config[rule.destination.setting])
+        : null;
+    if (rule.destination.type === "base_url" && !url) {
+      return [];
+    }
+    const domain =
+      rule.destination.type === "domain"
+        ? canonicalPluginDomain(rule.destination.domain)
+        : url!.host;
+    const base = url?.pathname.replace(/\/+$/, "") ?? "";
+    return [
+      {
+        domain,
+        path: rule.path_prefix === "/" ? base || "/" : base + rule.path_prefix,
+        secret: rule.bearer_secret ?? null,
+        setting:
+          rule.destination.type === "base_url"
+            ? rule.destination.setting
+            : null,
+      },
+    ];
+  });
+}
+
+export function invalidPluginCredentialSettings(
+  pkg: PluginPackage,
+  config: Record<string, unknown>,
+): string[] {
+  const invalid = new Set<string>();
+  for (const rule of pkg.http_credentials ?? []) {
+    if (rule.destination.type !== "base_url") {
+      continue;
+    }
+    const key = rule.destination.setting;
+    const value = config[key];
+    if (value == null || value === "") {
+      continue;
+    }
+    const url = credentialBaseUrl(value);
+    if (
+      !url ||
+      (!pkg.allow_custom_domains &&
+        !pkg.domains.some(
+          (domain) => canonicalPluginDomain(domain) === url.host,
+        ))
+    ) {
+      invalid.add(key);
+    }
+  }
+  const scopes = pluginCredentialScopes(pkg, config);
+  for (const [index, scope] of scopes.entries()) {
+    for (const other of scopes.slice(0, index)) {
+      if (scope.domain === other.domain && scope.path === other.path) {
+        if (scope.setting) {
+          invalid.add(scope.setting);
+        }
+        if (other.setting) {
+          invalid.add(other.setting);
+        }
+      }
+    }
+  }
+  return [...invalid];
 }
 export interface PluginInstance {
   id: string;

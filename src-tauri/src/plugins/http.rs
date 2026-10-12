@@ -19,7 +19,7 @@ pub(crate) fn contains_domain(domains: &[String], domain: &str) -> bool {
         .iter()
         .any(|value| canonical_domain(value) == canonical_domain(domain))
 }
-fn url_domain(url: &Url) -> String {
+pub(super) fn url_domain(url: &Url) -> String {
     let host = url.host_str().unwrap_or_default();
     match url.port() {
         Some(port) => format!("{host}:{port}"),
@@ -33,10 +33,37 @@ pub struct HttpPolicy {
     pub allow_custom_domains: bool,
     pub token: Option<String>,
     pub token_domain: Option<String>,
+    pub credential_scopes: Option<Vec<super::credentials::CredentialScope>>,
+    pub credentials: std::collections::BTreeMap<String, String>,
     pub error_codes: Vec<String>,
     pub log_codes: Vec<String>,
 }
 impl HttpPolicy {
+    fn request_token(&self, url: &Url) -> Result<Option<&str>, RuntimeError> {
+        if url.scheme() != "https" || !contains_domain(&self.allowed_domains, &url_domain(url)) {
+            return Ok(None);
+        }
+        let Some(scopes) = &self.credential_scopes else {
+            return Ok(self.bearer_token(url));
+        };
+        if !scopes.iter().any(|scope| {
+            canonical_domain(&scope.domain) == url_domain(url) && scope.bearer_secret.is_some()
+        }) {
+            return Ok(None);
+        }
+        let path = super::credentials::credential_path(url.path())?;
+        let scope = scopes
+            .iter()
+            .filter(|scope| {
+                canonical_domain(&scope.domain) == url_domain(url)
+                    && super::credentials::path_matches(&path, &scope.path_prefix)
+            })
+            .max_by_key(|scope| scope.path_prefix.len());
+        Ok(scope
+            .and_then(|scope| scope.bearer_secret.as_ref())
+            .and_then(|key| self.credentials.get(key))
+            .map(String::as_str))
+    }
     fn bearer_token(&self, url: &Url) -> Option<&str> {
         if self.allowed_domains.len() == 1
             && contains_domain(&self.allowed_domains, &url_domain(url))
@@ -59,7 +86,7 @@ pub(crate) fn authorized_url(value: &str, policy: &HttpPolicy) -> Result<Url, Ru
     }
     Ok(url)
 }
-fn request_url(value: &str) -> Result<Url, RuntimeError> {
+pub(super) fn request_url(value: &str) -> Result<Url, RuntimeError> {
     let url = safe_url(value).ok_or(RuntimeError::PermissionDenied)?;
     if url.scheme() != "https" || url.port_or_known_default().is_none_or(|port| port == 0) {
         return Err(RuntimeError::PermissionDenied);
@@ -102,7 +129,7 @@ fn build_request(
     url: Url,
     post: Option<(&str, &[u8])>,
     policy: &HttpPolicy,
-) -> reqwest::RequestBuilder {
+) -> Result<reqwest::RequestBuilder, RuntimeError> {
     let mut request = match post {
         Some((content_type, body)) => client
             .post(url.clone())
@@ -111,11 +138,10 @@ fn build_request(
         None => client.get(url.clone()),
     }
     .header("Accept", "application/json");
-    // shortcut: bearer auth is limited to the single manifest origin, add named scopes for custom or multiple credentialed origins.
-    if let Some(token) = policy.bearer_token(&url) {
+    if let Some(token) = policy.request_token(&url)? {
         request = request.bearer_auth(token);
     }
-    request
+    Ok(request)
 }
 async fn send(
     value: &str,
@@ -146,7 +172,7 @@ async fn send(
                 .resolve_to_addrs(host, &addresses)
                 .build()
                 .map_err(|_| RuntimeError::Network)?;
-            build_request(&client, url, post, policy)
+            build_request(&client, url, post, policy)?
                 .send()
                 .await
                 .map_err(|_| RuntimeError::Network)
@@ -184,6 +210,7 @@ async fn get_with<
         if !authorized {
             return Err(RuntimeError::AuthorizationRequired(domain));
         }
+        policy.request_token(&url)?;
         let addresses = resolve((
             host,
             url.port_or_known_default()
@@ -252,6 +279,7 @@ async fn get_with<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugins::credentials::CredentialScope;
     fn policy() -> HttpPolicy {
         HttpPolicy {
             allowed_domains: vec!["api.github.com".into()],
@@ -271,6 +299,7 @@ mod tests {
             Some(("application/json", body)),
             &policy,
         )
+        .unwrap()
         .build()
         .unwrap();
         assert_eq!(request.method(), reqwest::Method::POST);
@@ -284,6 +313,7 @@ mod tests {
             Some(("application/json", body)),
             &policy,
         )
+        .unwrap()
         .build()
         .unwrap();
         assert!(!custom.headers().contains_key("authorization"));
@@ -326,6 +356,7 @@ mod tests {
         let client = Client::new();
         for body in [None, Some(("application/json", b"{}".as_slice()))] {
             let request = build_request(&client, url.clone(), body, &policy)
+                .unwrap()
                 .build()
                 .unwrap();
             assert_eq!(request.url().port(), Some(8443));
@@ -405,6 +436,196 @@ mod tests {
         assert_eq!(policy.bearer_token(&original), None);
         policy.allowed_domains = vec!["custom.example.com".into()];
         assert_eq!(policy.bearer_token(&custom), None);
+    }
+    fn scoped_policy() -> HttpPolicy {
+        HttpPolicy {
+            allowed_domains: vec!["custom.example.com".into(), "fixed.example.com".into()],
+            allow_custom_domains: true,
+            token: Some("legacy-must-not-leak".into()),
+            token_domain: Some("custom.example.com".into()),
+            credential_scopes: Some(vec![
+                CredentialScope {
+                    domain: "custom.example.com".into(),
+                    path_prefix: "/api/tasks".into(),
+                    bearer_secret: Some("token".into()),
+                },
+                CredentialScope {
+                    domain: "custom.example.com".into(),
+                    path_prefix: "/api/tasks/public".into(),
+                    bearer_secret: None,
+                },
+                CredentialScope {
+                    domain: "custom.example.com".into(),
+                    path_prefix: "/api/admin".into(),
+                    bearer_secret: Some("admin_token".into()),
+                },
+                CredentialScope {
+                    domain: "fixed.example.com".into(),
+                    path_prefix: "/tasks".into(),
+                    bearer_secret: Some("fixed_token".into()),
+                },
+            ]),
+            credentials: std::collections::BTreeMap::from([
+                ("token".into(), "fixture-token".into()),
+                ("admin_token".into(), "fixture-admin".into()),
+                ("fixed_token".into(), "fixture-fixed".into()),
+            ]),
+            ..Default::default()
+        }
+    }
+    #[test]
+    fn scoped_credentials_include_exact_ports() {
+        let mut policy = scoped_policy();
+        policy
+            .allowed_domains
+            .push("custom.example.com:8443".into());
+        policy.credential_scopes.as_mut().unwrap()[0].domain = "custom.example.com:8443".into();
+        assert_eq!(
+            policy
+                .request_token(&Url::parse("https://custom.example.com:8443/api/tasks").unwrap())
+                .unwrap(),
+            Some("fixture-token")
+        );
+        assert_eq!(
+            policy
+                .request_token(&Url::parse("https://custom.example.com/api/tasks").unwrap())
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            policy
+                .request_token(&Url::parse("https://custom.example.com:9443/api/tasks").unwrap())
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn scoped_credentials_are_per_host_and_path_for_get_and_post() {
+        let client = Client::builder().no_proxy().build().unwrap();
+        let policy = scoped_policy();
+        for (url, expected) in [
+            (
+                "https://custom.example.com/api/tasks",
+                Some("Bearer fixture-token"),
+            ),
+            (
+                "https://custom.example.com/api/tasks/123?other=ignored",
+                Some("Bearer fixture-token"),
+            ),
+            (
+                "https://custom.example.com/api/%74asks/123",
+                Some("Bearer fixture-token"),
+            ),
+            ("https://custom.example.com/api/tasks/public", None),
+            ("https://custom.example.com/api/tasks/public/123", None),
+            (
+                "https://custom.example.com/api/tasks/public-other",
+                Some("Bearer fixture-token"),
+            ),
+            ("https://custom.example.com/api/tasks-other", None),
+            (
+                "https://custom.example.com/api/admin",
+                Some("Bearer fixture-admin"),
+            ),
+            (
+                "https://fixed.example.com/tasks",
+                Some("Bearer fixture-fixed"),
+            ),
+            ("https://fixed.example.com/api/tasks", None),
+            ("https://custom.example.com.evil.test/api/tasks", None),
+            ("http://custom.example.com/api/tasks", None),
+            ("https://custom.example.com:444/api/tasks", None),
+        ] {
+            for body in [None, Some(("application/json", &b"{}"[..]))] {
+                let request = build_request(&client, Url::parse(url).unwrap(), body, &policy)
+                    .unwrap()
+                    .build()
+                    .unwrap();
+                assert_eq!(
+                    request
+                        .headers()
+                        .get("authorization")
+                        .map(|v| v.to_str().unwrap()),
+                    expected,
+                    "{url}"
+                );
+            }
+        }
+        let mut policy = policy;
+        policy.credentials.remove("token");
+        assert_eq!(
+            policy
+                .request_token(&Url::parse("https://custom.example.com/api/tasks").unwrap())
+                .unwrap(),
+            None
+        );
+        policy
+            .credential_scopes
+            .as_mut()
+            .unwrap()
+            .push(CredentialScope {
+                domain: "custom.example.com".into(),
+                path_prefix: "/".into(),
+                bearer_secret: Some("fixed_token".into()),
+            });
+        assert_eq!(
+            policy
+                .request_token(&Url::parse("https://custom.example.com/api/tasks").unwrap())
+                .unwrap(),
+            None
+        );
+        policy.credential_scopes = Some(vec![]);
+        policy.allowed_domains = vec!["custom.example.com".into()];
+        assert_eq!(
+            policy
+                .request_token(&Url::parse("https://custom.example.com/api/tasks").unwrap())
+                .unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn scoped_credentials_do_not_bypass_approval_or_resolve_ambiguous_paths() {
+        let mut policy = scoped_policy();
+        policy.allowed_domains.clear();
+        let result = get_with(
+            "https://custom.example.com/api/tasks?secret=not-persisted",
+            &policy,
+            cancel(),
+            deadline(),
+            |_| async { panic!("DNS before approval") },
+            |_, _| async { panic!("HTTP before approval") },
+        )
+        .await;
+        assert!(
+            matches!(result, Err(RuntimeError::AuthorizationRequired(host)) if host == "custom.example.com")
+        );
+        policy.allowed_domains.push("custom.example.com".into());
+        let result = get_with(
+            "https://custom.example.com/api/tasks%2fpublic",
+            &policy,
+            cancel(),
+            deadline(),
+            |_| async { panic!("DNS for ambiguous credential path") },
+            |_, _| async { panic!("HTTP for ambiguous credential path") },
+        )
+        .await;
+        assert!(matches!(result, Err(RuntimeError::PermissionDenied)));
+        policy.allowed_domains.clear();
+        let url = Url::parse("https://custom.example.com/api/tasks").unwrap();
+        assert_eq!(policy.request_token(&url).unwrap(), None);
+        policy.allow_custom_domains = false;
+        let result = get_with(
+            url.as_str(),
+            &policy,
+            cancel(),
+            deadline(),
+            |_| async { panic!("DNS outside network capability") },
+            |_, _| async { panic!("HTTP outside network capability") },
+        )
+        .await;
+        assert!(matches!(result, Err(RuntimeError::PermissionDenied)));
     }
     async fn mock_response(bytes: Vec<u8>) -> Response {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};

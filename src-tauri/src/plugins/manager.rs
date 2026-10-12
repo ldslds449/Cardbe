@@ -334,19 +334,7 @@ async fn execute(
             }
         };
         let namespace = secret_namespace(app, &instance.id)?;
-        let token = credential_key(instance, package)
-            .map(|key| secret(&namespace, key))
-            .transpose()?
-            .flatten();
-        let policy = HttpPolicy {
-            allowed_domains: instance.allowed_domains.clone(),
-            requested_domains: package.domains.clone(),
-            allow_custom_domains: package.allow_custom_domains,
-            token,
-            token_domain: package.domains.first().cloned(),
-            error_codes: package.error_codes.clone(),
-            log_codes: package.log_codes.clone(),
-        };
+        let policy = prepare_http_policy(instance, package, |key| secret(&namespace, key))?;
         Ok((path, policy))
     })();
     let (path, policy) = preparation.map_err(|error| (error, None))?;
@@ -365,6 +353,45 @@ async fn execute(
         )
     })?
     .map_err(|error| runtime_error(package, error))
+}
+fn prepare_http_policy(
+    instance: &PluginInstance,
+    package: &PluginPackage,
+    mut read_secret: impl FnMut(&str) -> Result<Option<String>, ManagerError>,
+) -> Result<HttpPolicy, ManagerError> {
+    let credential_scopes = super::credentials::resolve(package, &instance.config)
+        .map_err(|error| runtime_error(package, error).0)?;
+    let token = credential_key(instance, package)
+        .filter(|_| credential_scopes.is_none())
+        .map(&mut read_secret)
+        .transpose()?
+        .flatten();
+    let mut credentials = std::collections::BTreeMap::new();
+    if !instance.credentials_need_review {
+        for key in credential_scopes
+            .iter()
+            .flatten()
+            .filter_map(|scope| scope.bearer_secret.as_ref())
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            if instance.secret_fields.contains(key) {
+                if let Some(value) = read_secret(key)? {
+                    credentials.insert(key.clone(), value);
+                }
+            }
+        }
+    }
+    Ok(HttpPolicy {
+        allowed_domains: instance.allowed_domains.clone(),
+        requested_domains: package.domains.clone(),
+        allow_custom_domains: package.allow_custom_domains,
+        token,
+        token_domain: package.domains.first().cloned(),
+        credential_scopes,
+        credentials,
+        error_codes: package.error_codes.clone(),
+        log_codes: package.log_codes.clone(),
+    })
 }
 fn credential_key<'a>(instance: &'a PluginInstance, package: &PluginPackage) -> Option<&'a str> {
     instance
@@ -723,6 +750,51 @@ mod tests {
         instance.credentials_need_review = false;
         instance.secret_fields = vec!["retired_token".into()];
         assert_eq!(credential_key(&instance, &package), None);
+    }
+    #[test]
+    fn scoped_policy_reads_only_assigned_current_instance_secrets() {
+        let package: PluginPackage = serde_json::from_value(serde_json::json!({
+            "id":"fixture", "name":"Fixture", "version":"1.0.0", "api_version":"1.0.0", "storage_schema_version":1,
+            "domains":["fixed.example.com"], "allow_custom_domains":true,
+            "settings":[{"key":"url","type":"text","label":"URL"},{"key":"token","type":"secret","label":"Token"},{"key":"fixed","type":"secret","label":"Fixed"},{"key":"unused","type":"secret","label":"Unused"}],
+            "http_credentials":[
+                {"destination":{"type":"base_url","setting":"url"},"path_prefix":"/tasks","bearer_secret":"token"},
+                {"destination":{"type":"base_url","setting":"url"},"path_prefix":"/admin","bearer_secret":"token"},
+                {"destination":{"type":"domain","domain":"fixed.example.com"},"path_prefix":"/","bearer_secret":"fixed"}
+            ]
+        })).unwrap();
+        let mut instance = instance("scoped");
+        instance.config.insert(
+            "url".into(),
+            serde_json::json!("https://custom.example.com/api"),
+        );
+        instance.secret_fields = vec!["token".into(), "unused".into(), "retired".into()];
+        let mut read = Vec::new();
+        let policy = prepare_http_policy(&instance, &package, |key| {
+            read.push(key.to_owned());
+            Ok(Some(format!("fixture-{key}")))
+        })
+        .unwrap();
+        assert_eq!(read, vec!["token"]);
+        assert_eq!(policy.credentials.len(), 1);
+        assert_eq!(policy.credentials["token"], "fixture-token");
+        assert!(policy.token.is_none());
+        assert!(policy.allowed_domains.is_empty());
+        let mut reads = 0;
+        let policy = prepare_http_policy(&instance, &package, |_| {
+            reads += 1;
+            Ok(None)
+        })
+        .unwrap();
+        assert_eq!(reads, 1);
+        assert!(policy.credentials.is_empty());
+        instance.credentials_need_review = true;
+        let policy = prepare_http_policy(&instance, &package, |_| {
+            panic!("unreviewed secrets must not be loaded")
+        })
+        .unwrap();
+        assert!(policy.credentials.is_empty());
+        assert!(policy.token.is_none());
     }
     #[test]
     fn expected_preparation_failure_disables_only_affected_instance() {

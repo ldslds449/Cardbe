@@ -202,17 +202,21 @@ fn validate_update(old: &PluginPackage, new: &PluginPackage) -> Result<(), Comma
 fn update_requires_review(old: &PluginPackage, new: &PluginPackage) -> bool {
     old.domains != new.domains
         || old.allow_custom_domains != new.allow_custom_domains
+        || old.http_credentials != new.http_credentials
         || serde_json::to_value(&old.settings).ok() != serde_json::to_value(&new.settings).ok()
 }
 fn credentials_changed(old: &PluginPackage, new: &PluginPackage) -> bool {
-    let old_secret = old.settings.iter().find(|field| field.kind == "secret");
-    old_secret.is_some_and(|field| {
-        old.domains != new.domains
-            || !new
-                .settings
-                .iter()
-                .any(|next| next.kind == "secret" && next.key == field.key)
-    })
+    old.settings
+        .iter()
+        .filter(|field| field.kind == "secret")
+        .any(|field| {
+            old.domains != new.domains
+                || old.http_credentials != new.http_credentials
+                || !new
+                    .settings
+                    .iter()
+                    .any(|next| next.kind == "secret" && next.key == field.key)
+        })
 }
 fn update_candidate(
     connection: &rusqlite::Connection,
@@ -434,13 +438,15 @@ fn parse_package(bytes: &[u8]) -> Result<PluginPackage, CommandError> {
             .iter()
             .chain(&package.log_codes)
             .any(|c| !valid_code(c))
-        || package
-            .settings
-            .iter()
-            .filter(|f| f.kind == "secret")
-            .count()
-            > 1
-        || (package.settings.iter().any(|f| f.kind == "secret") && package.domains.len() != 1)
+        || (package.http_credentials.is_none()
+            && (package
+                .settings
+                .iter()
+                .filter(|f| f.kind == "secret")
+                .count()
+                > 1
+                || (package.settings.iter().any(|f| f.kind == "secret")
+                    && package.domains.len() != 1)))
     {
         return Err(CommandError::InvalidArgument);
     }
@@ -464,6 +470,9 @@ fn parse_package(bytes: &[u8]) -> Result<PluginPackage, CommandError> {
         {
             return Err(CommandError::InvalidArgument);
         }
+    }
+    if !crate::plugins::credentials::valid_rules(&package) {
+        return Err(CommandError::InvalidArgument);
     }
     Ok(package)
 }
@@ -623,29 +632,13 @@ pub fn save_plugin_instance(
             return Err(CommandError::InvalidArgument);
         }
     }
-    let credentials_need_review = previous.is_some_and(|p| p.credentials_need_review)
-        && secrets.values().all(|value| value.is_empty());
-    let mut secret_fields = previous
-        .map(|p| p.secret_fields.clone())
-        .unwrap_or_default();
-    for (key, value) in &secrets {
-        if !package
-            .settings
-            .iter()
-            .any(|f| f.key == *key && f.kind == "secret")
-            || value.len() > 8192
-        {
-            return Err(CommandError::InvalidArgument);
-        }
-        secret_fields.retain(|k| k != key);
-        if !value.is_empty() {
-            secret_fields.push(key.clone());
-        }
-    }
+    crate::plugins::credentials::resolve(&package, &instance.config)
+        .map_err(|_| CommandError::InvalidArgument)?;
+    let secret_fields = updated_secret_fields(&package, previous, &secrets)?;
     for f in &package.settings {
         if f.required
             && if f.kind == "secret" {
-                credentials_need_review || !secret_fields.contains(&f.key)
+                !secret_fields.contains(&f.key)
             } else {
                 !instance.config.contains_key(&f.key)
             }
@@ -655,6 +648,15 @@ pub fn save_plugin_instance(
     }
     let reset_cursor =
         previous.is_some_and(|p| p.board_id != instance.board_id || p.config != instance.config);
+    let changed_hosts = previous
+        .map(|p| {
+            crate::plugins::credentials::changed_base_url_hosts(
+                &package,
+                &p.config,
+                &instance.config,
+            )
+        })
+        .unwrap_or_default();
     let saved = PluginInstance {
         id: id.clone(),
         plugin_id: instance.plugin_id,
@@ -662,11 +664,15 @@ pub fn save_plugin_instance(
         board_id: instance.board_id,
         config: instance.config,
         secret_fields,
-        allowed_domains: instance.allowed_domains,
+        allowed_domains: instance
+            .allowed_domains
+            .into_iter()
+            .filter(|host| !crate::plugins::http::contains_domain(&changed_hosts, host))
+            .collect(),
         pending_domain: None,
         enabled: instance.enabled,
         needs_review: false,
-        credentials_need_review,
+        credentials_need_review: false,
         interval_seconds: instance.interval_seconds,
         last_run_at: previous.and_then(|p| p.last_run_at),
         last_run_status: previous.and_then(|p| {
@@ -713,6 +719,34 @@ pub fn save_plugin_instance(
     }
     let _ = app.emit("cardbe:plugins-changed", ());
     Ok(saved)
+}
+fn updated_secret_fields(
+    package: &PluginPackage,
+    previous: Option<&PluginInstance>,
+    secrets: &BTreeMap<String, String>,
+) -> Result<Vec<String>, CommandError> {
+    let credentials_need_review = previous.is_some_and(|p| p.credentials_need_review);
+    let mut secret_fields = previous
+        .map(|p| p.secret_fields.clone())
+        .unwrap_or_default();
+    if credentials_need_review {
+        secret_fields.clear();
+    }
+    for (key, value) in secrets {
+        if !package
+            .settings
+            .iter()
+            .any(|f| f.key == *key && f.kind == "secret")
+            || value.len() > 8192
+        {
+            return Err(CommandError::InvalidArgument);
+        }
+        secret_fields.retain(|k| k != key);
+        if !value.is_empty() {
+            secret_fields.push(key.clone());
+        }
+    }
+    Ok(secret_fields)
 }
 #[tauri::command]
 pub fn resolve_plugin_domain(
@@ -1449,6 +1483,80 @@ mod tests {
             (0..17).map(|i| format!("host{i}.example.com")).collect(),
         ] {
             assert!(!valid_instance_domains(&package, &domains));
+        }
+    }
+    #[test]
+    fn explicit_credential_rules_allow_multiple_secrets_and_require_update_review() {
+        let mut manifest = serde_json::json!({
+            "id":"scoped", "name":"Scoped", "version":"1.0.0", "api_version":"1.0.0", "storage_schema_version":1,
+            "domains":["fixed.example.com"], "allow_custom_domains":true,
+            "settings":[{"key":"base_url","type":"text","label":"URL"},{"key":"token","type":"secret","label":"Token"},{"key":"admin_token","type":"secret","label":"Admin token"}],
+            "http_credentials":[
+                {"destination":{"type":"base_url","setting":"base_url"},"path_prefix":"/tasks","bearer_secret":"token"},
+                {"destination":{"type":"base_url","setting":"base_url"},"path_prefix":"/admin","bearer_secret":"admin_token"},
+                {"destination":{"type":"domain","domain":"fixed.example.com"},"path_prefix":"/public"}
+            ]
+        });
+        let old = parse_package(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+        let c = rusqlite::Connection::open_in_memory().unwrap();
+        storage::initialize(&c).unwrap();
+        storage::put(&c, "package", &old.id, &old).unwrap();
+        let loaded = storage::list::<PluginPackage>(&c, "package")
+            .unwrap()
+            .remove(0);
+        assert_eq!(loaded.http_credentials, old.http_credentials);
+        let mut next = old.clone();
+        next.http_credentials.as_mut().unwrap()[0].path_prefix = "/other".into();
+        assert!(update_requires_review(&old, &next) && credentials_changed(&old, &next));
+        next = old.clone();
+        next.settings[2].key = "retired".into();
+        assert!(credentials_changed(&old, &next));
+        for key in ["bearer_secret", "path_prefix"] {
+            let mut invalid = manifest.clone();
+            invalid["http_credentials"][0][key] = serde_json::json!("missing");
+            assert!(parse_package(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        }
+        let mut invalid = manifest.clone();
+        invalid["http_credentials"][0]["token"] = serde_json::json!("token");
+        assert!(parse_package(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        invalid = manifest.clone();
+        invalid["error_codes"] = serde_json::json!(["bad code"]);
+        assert!(parse_package(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        manifest.as_object_mut().unwrap().remove("http_credentials");
+        assert!(parse_package(&serde_json::to_vec(&manifest).unwrap()).is_err());
+        manifest["http_credentials"] = serde_json::json!([]);
+        let explicit_empty = parse_package(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+        assert_eq!(explicit_empty.http_credentials, Some(vec![]));
+    }
+    #[test]
+    fn credential_review_never_reactivates_secrets_that_were_not_reentered() {
+        let package: PluginPackage = serde_json::from_value(serde_json::json!({
+            "id":"fixture", "name":"Fixture", "version":"1.0.0", "api_version":"1.0.0", "storage_schema_version":1,
+            "http_credentials":[], "settings":[{"key":"token","type":"secret","label":"Token"},{"key":"other_token","type":"secret","label":"Other"}]
+        })).unwrap();
+        let mut previous = instance();
+        previous.secret_fields = vec!["token".into(), "other_token".into()];
+        previous.credentials_need_review = true;
+        let secrets = BTreeMap::from([("token".into(), "fixture-new-token".into())]);
+        assert_eq!(
+            updated_secret_fields(&package, Some(&previous), &secrets).unwrap(),
+            vec!["token"]
+        );
+        assert!(
+            updated_secret_fields(&package, Some(&previous), &BTreeMap::new())
+                .unwrap()
+                .is_empty()
+        );
+        previous.credentials_need_review = false;
+        assert_eq!(
+            updated_secret_fields(&package, Some(&previous), &secrets).unwrap(),
+            vec!["other_token", "token"]
+        );
+        for invalid in [
+            BTreeMap::from([("missing".into(), "fixture".into())]),
+            BTreeMap::from([("token".into(), "x".repeat(8193))]),
+        ] {
+            assert!(updated_secret_fields(&package, Some(&previous), &invalid).is_err());
         }
     }
     #[test]

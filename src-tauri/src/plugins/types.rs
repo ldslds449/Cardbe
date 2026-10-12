@@ -30,6 +30,19 @@ pub struct SettingField {
     pub max: Option<f64>,
     pub default: Option<serde_json::Value>,
 }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CredentialDestination {
+    Domain { domain: String },
+    BaseUrl { setting: String },
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HttpCredentialRule {
+    pub destination: CredentialDestination,
+    pub path_prefix: String,
+    pub bearer_secret: Option<String>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginPackage {
     pub id: String,
@@ -47,6 +60,9 @@ pub struct PluginPackage {
     pub domains: Vec<String>,
     #[serde(default)]
     pub allow_custom_domains: bool,
+    // None preserves legacy auth; an explicit empty list disables automatic auth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_credentials: Option<Vec<HttpCredentialRule>>,
     #[serde(default)]
     pub settings: Vec<SettingField>,
 }

@@ -548,6 +548,8 @@ mod tests {
             allow_custom_domains: false,
             token: None,
             token_domain: None,
+            credential_scopes: None,
+            credentials: Default::default(),
             error_codes: vec!["HTTP_FAILED".into()],
             log_codes: vec!["ALLOWED_LOG".into()],
         }
