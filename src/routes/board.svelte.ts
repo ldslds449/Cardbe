@@ -1409,7 +1409,9 @@ export class BoardStore {
           return true;
         } catch (e: unknown) {
           logger.error("settings.notification_save.failed", e);
-          toast.error(translateCommandError(e));
+          toast.error(m.settings_notify_save_error(), {
+            description: translateCommandError(e),
+          });
           console.log("Couldn't save notification settings:", e);
           return false;
         }
@@ -1554,7 +1556,9 @@ export class BoardStore {
         logger.error("template.load.failed", e);
         console.log(e);
         if (generation === this.board_generation) {
-          toast.error(translateCommandError(e));
+          this.show_data_fetch_error(m.task_template_load_error(), e, () =>
+            this.get_task_templates(),
+          );
         }
       });
   }

@@ -527,7 +527,9 @@
               m.ui_couldn_t_update_the_shared_board(),
             );
           }
-          toast.error(translateCommandError(error));
+          toast.error(m.share_restore_error(), {
+            description: translateCommandError(error),
+          });
         }
       }),
     );

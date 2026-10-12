@@ -1580,6 +1580,8 @@
   "unsaved_changes_keep_editing": "Keep editing",
   "unsaved_changes_discard": "Discard and leave",
   "theme_title": "Appearance",
+  "theme_load_error": "Couldn't load appearance settings",
+  "share_restore_error": "Couldn't restore board sharing",
   "theme_description": "Choose a theme. System automatically switches between Classic Light and Dark based on your operating system appearance.",
   "theme_system": "System",
   "theme_morandi_sage": "Sage",

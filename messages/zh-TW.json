@@ -1470,6 +1470,8 @@
   "unsaved_changes_keep_editing": "繼續編輯",
   "unsaved_changes_discard": "捨棄並離開",
   "theme_title": "外觀",
+  "theme_load_error": "無法載入外觀設定",
+  "share_restore_error": "無法恢復看板分享",
   "theme_description": "選擇主題。「跟隨系統」只會依作業系統的外觀設定，自動切換經典淺色與深色。",
   "theme_system": "跟隨系統",
   "theme_morandi_sage": "鼠尾草",

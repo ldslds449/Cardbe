@@ -5,6 +5,7 @@ import { mode, setMode, setTheme } from "mode-watcher";
 import { toast } from "svelte-sonner";
 import { parseCommandError, translateCommandError } from "$lib/command-errors";
 import { logger } from "$lib/logger";
+import { m } from "$lib/paraglide/messages";
 import {
   isThemePreference,
   restoreTheme,
@@ -113,7 +114,9 @@ export function initializeTheme() {
     } catch (error) {
       logger.warn("settings.theme_load.failed", error);
       if (!disposed) {
-        toast.error(translateCommandError(parseCommandError(error)));
+        toast.error(m.theme_load_error(), {
+          description: translateCommandError(parseCommandError(error)),
+        });
       }
     } finally {
       if (!disposed) {

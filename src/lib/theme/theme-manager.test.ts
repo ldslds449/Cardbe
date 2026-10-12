@@ -103,6 +103,29 @@ describe("theme persistence", () => {
     stop();
   });
 
+  it.each([
+    [
+      "en",
+      "Couldn't load appearance settings",
+      "Something went wrong. Please try again.",
+    ],
+    ["zh-TW", "無法載入外觀設定", "發生錯誤，請再試一次。"],
+  ] as const)(
+    "identifies a startup settings failure in %s without exposing backend details",
+    async (locale, title, description) => {
+      const { applyLanguagePreference } = await import("$lib/i18n");
+      applyLanguagePreference(locale);
+      mocks.invoke.mockRejectedValueOnce("private database path");
+      const { initializeTheme, themeState } =
+        await import("./theme-manager.svelte");
+      const stop = initializeTheme();
+      await vi.waitFor(() => expect(themeState.ready).toBe(true));
+      expect(mocks.error).toHaveBeenCalledWith(title, { description });
+      expect(localStorage.getItem("cardbe-theme")).toBeNull();
+      stop();
+    },
+  );
+
   it("migrates the legacy local appearance without changing other settings", async () => {
     localStorage.setItem("mode-watcher-mode", "dark");
     mocks.invoke.mockResolvedValueOnce({ language: "zh-TW" });
