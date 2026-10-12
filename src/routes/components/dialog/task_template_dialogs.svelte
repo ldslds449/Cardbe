@@ -8,6 +8,7 @@
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import TrashIcon from "@lucide/svelte/icons/trash-2";
 
+  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
@@ -166,18 +167,45 @@
                       };
                     }}><CopyIcon /></Button
                   >
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="icon-sm"
-                    aria-label={m.template_delete_named({
-                      name: template.name,
-                    })}
-                    title={m.ui_delete_template()}
-                    onclick={() => void onDeleteTemplate(template.id)}
-                  >
-                    <TrashIcon />
-                  </Button>
+                  <AlertDialog.Root>
+                    <AlertDialog.Trigger>
+                      {#snippet child({ props })}
+                        <Button
+                          {...props}
+                          type="button"
+                          variant="destructive"
+                          size="icon-sm"
+                          aria-label={m.template_delete_named({
+                            name: template.name,
+                          })}
+                          title={m.ui_delete_template()}
+                        >
+                          <TrashIcon />
+                        </Button>
+                      {/snippet}
+                    </AlertDialog.Trigger>
+                    <AlertDialog.Content>
+                      <AlertDialog.Header>
+                        <AlertDialog.Title
+                          >{m.ui_delete_template()}</AlertDialog.Title
+                        >
+                        <AlertDialog.Description>
+                          {m.template_delete_confirm({ name: template.name })}
+                        </AlertDialog.Description>
+                      </AlertDialog.Header>
+                      <AlertDialog.Footer>
+                        <AlertDialog.Cancel
+                          >{m.common_cancel()}</AlertDialog.Cancel
+                        >
+                        <AlertDialog.Action
+                          variant="destructive"
+                          onclick={() => void onDeleteTemplate(template.id)}
+                        >
+                          {m.common_delete()}
+                        </AlertDialog.Action>
+                      </AlertDialog.Footer>
+                    </AlertDialog.Content>
+                  </AlertDialog.Root>
                 </div>
               </div>
             {/each}

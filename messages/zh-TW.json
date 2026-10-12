@@ -1165,6 +1165,7 @@
   "share_stopped_named": "無法更新「{name}」的內容，已停止分享。",
   "template_preview_named": "預覽範本「{name}」",
   "template_edit_named": "編輯範本「{name}」",
+  "template_delete_confirm": "確定要刪除範本「{name}」嗎？",
   "template_delete_named": "刪除範本「{name}」",
   "export_dpi_error": "目前 DPI 設定下的行事曆過大，請降低 DPI 或減少匯出月份。",
   "share_revoke_retry": "無法撤銷分享連結，請重試。",

@@ -1269,6 +1269,7 @@
   "share_stopped_named": "Sharing stopped for “{name}” because its content could not be updated.",
   "template_preview_named": "Preview template {name}",
   "template_edit_named": "Edit template {name}",
+  "template_delete_confirm": "Are you sure you want to delete the template “{name}”?",
   "template_delete_named": "Delete template {name}",
   "export_dpi_error": "This calendar is too large at the selected DPI. Lower the DPI or export fewer months.",
   "share_revoke_retry": "Couldn't revoke this share link. Try again.",
