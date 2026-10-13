@@ -459,6 +459,7 @@ pub fn run() {
             import_export::validate_all_boards_backup,
             iroh_share::create_iroh_invite,
             iroh_share::join_iroh_invite,
+            iroh_share::update_iroh_connection,
             iroh_share::sync_iroh_board,
             iroh_share::request_iroh_board_access,
             iroh_share::resolve_iroh_conflict,

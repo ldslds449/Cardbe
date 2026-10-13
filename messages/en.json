@@ -1692,5 +1692,8 @@
   "template_copied_board": "Template copied to the board",
   "share_iroh_enable": "Enable Iroh sharing",
   "share_iroh_enable_help": "Off by default. Apply changes to start or stop Iroh connections. Saved invitations and boards are kept.",
-  "share_iroh_disabled": "Iroh sharing is disabled. Enable it in connection settings."
+  "share_iroh_disabled": "Iroh sharing is disabled. Enable it in connection settings.",
+  "share_update_connection": "Update connection",
+  "share_update_connection_help": "Paste a fresh link for the same invitation from the owner. Your local changes are kept. Save, then click Sync.",
+  "share_connection_updated": "Connection information updated. Click Sync to reconnect."
 }

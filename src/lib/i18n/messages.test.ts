@@ -28,6 +28,15 @@ describe("core messages", () => {
         expect(m.share_network_discard_title()).toBe(
           catalog.share_network_discard_title,
         );
+        expect(m.share_update_connection()).toBe(
+          catalog.share_update_connection,
+        );
+        expect(m.share_update_connection_help()).toBe(
+          catalog.share_update_connection_help,
+        );
+        expect(m.share_connection_updated()).toBe(
+          catalog.share_connection_updated,
+        );
         expect(m.unsaved_changes_title()).toBe(catalog.unsaved_changes_title);
         expect(m.unsaved_changes_description()).toBe(
           catalog.unsaved_changes_description,

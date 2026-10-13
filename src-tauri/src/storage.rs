@@ -750,6 +750,16 @@ impl Database {
             )
             .optional()?)
     }
+    pub fn update_iroh_remote(&self, board_id: i64, invitation: &str) -> StorageResult<()> {
+        if self.connection.execute(
+            "UPDATE cardbe_iroh_remotes SET invitation=?2 WHERE board_id=?1",
+            params![board_id, invitation],
+        )? == 0
+        {
+            return Err(DomainError::InviteNotFound.into());
+        }
+        Ok(())
+    }
     pub fn iroh_loro_update(&self, board_id: i64) -> StorageResult<Option<Vec<u8>>> {
         Ok(self
             .connection

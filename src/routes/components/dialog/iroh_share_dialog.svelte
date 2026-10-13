@@ -109,6 +109,10 @@
     boards: {},
   });
   let connection_details_error = $state<unknown>(null);
+  let connection_tickets = $state<Record<number, string>>({});
+  let connection_update_errors = $state<Record<number, CommandError>>({});
+  let saving_connection_id = $state<number | null>(null);
+  let connection_dialog_id = $state<number | null>(null);
   const visible_invites = $derived(
     invites
       .filter(
@@ -394,7 +398,36 @@
     received_waiting_id = null;
     manage_view = "mine";
     visible_qr_id = null;
+    connection_dialog_id = null;
+    connection_tickets = {};
+    connection_update_errors = {};
   });
+  async function update_connection(board_id: number) {
+    if (saving_connection_id !== null) {
+      return;
+    }
+    saving_connection_id = board_id;
+    delete connection_update_errors[board_id];
+    try {
+      await invoke("update_iroh_connection", {
+        boardId: board_id,
+        ticket: connection_tickets[board_id]?.trim() ?? "",
+      });
+      delete connection_tickets[board_id];
+      if (connection_dialog_id === board_id) {
+        connection_dialog_id = null;
+      }
+      toast.success(m.share_connection_updated());
+      await load_connection_details();
+    } catch (error) {
+      logger.warn("iroh.connection_update.failed", error);
+      connection_update_errors[board_id] = parseCommandError(error) ?? {
+        code: "INTERNAL_ERROR",
+      };
+    } finally {
+      saving_connection_id = null;
+    }
+  }
   function invalidate() {
     generated = null;
     create_error = null;
@@ -1701,7 +1734,7 @@
                   ></Card.Root
                 >
               {:else}
-                {#each received_boards as shared}
+                {#each received_boards as shared (shared.id)}
                   <Card.Root class="gap-3 p-4 shadow-none">
                     <div
                       class="flex flex-wrap items-center justify-between gap-2"
@@ -1786,6 +1819,111 @@
                           {/if}</Button
                         >
                       {/if}
+
+                      <Dialog.Root
+                        open={connection_dialog_id === shared.id}
+                        onOpenChange={(value) =>
+                          (connection_dialog_id = value ? shared.id : null)}
+                      >
+                        <Dialog.Trigger>
+                          {#snippet child({ props })}
+                            <Button
+                              {...props}
+                              variant="outline"
+                              disabled={saving_connection_id !== null}
+                            >
+                              {m.share_update_connection()}
+                            </Button>
+                          {/snippet}
+                        </Dialog.Trigger>
+                        <Dialog.Content class="sm:max-w-md">
+                          <form
+                            class="grid gap-4"
+                            onsubmit={(event) => {
+                              event.preventDefault();
+                              void update_connection(shared.id);
+                            }}
+                          >
+                            <Dialog.Header>
+                              <Dialog.Title
+                                >{m.share_update_connection()}</Dialog.Title
+                              >
+                              <Dialog.Description
+                                id={`connection-help-${shared.id}`}
+                              >
+                                <span
+                                  class="mb-2 block break-words font-medium text-foreground"
+                                  >{shared.name}</span
+                                >
+                                {m.share_update_connection_help()}
+                              </Dialog.Description>
+                            </Dialog.Header>
+                            <div class="grid gap-2">
+                              <Label
+                                for={`connection-ticket-${shared.id}`}
+                                class="text-xs"
+                              >
+                                {m.ui_invitation_link()}
+                              </Label>
+                              <Input
+                                class="min-w-0"
+                                placeholder="cardbe://share/..."
+                                id={`connection-ticket-${shared.id}`}
+                                value={connection_tickets[shared.id] ?? ""}
+                                oninput={(event) => {
+                                  connection_tickets[shared.id] =
+                                    event.currentTarget.value;
+                                  delete connection_update_errors[shared.id];
+                                }}
+                                disabled={saving_connection_id !== null}
+                                aria-describedby={`connection-help-${shared.id}${connection_update_errors[shared.id] ? ` connection-error-${shared.id}` : ""}`}
+                                aria-invalid={!!connection_update_errors[
+                                  shared.id
+                                ]}
+                                autocomplete="off"
+                                spellcheck={false}
+                              />
+
+                              {#if connection_update_errors[shared.id]}
+                                <p
+                                  id={`connection-error-${shared.id}`}
+                                  role="alert"
+                                  class="text-sm text-destructive"
+                                >
+                                  {translateCommandError(
+                                    connection_update_errors[shared.id],
+                                  )}
+                                </p>
+                              {/if}
+                            </div>
+                            <Dialog.Footer>
+                              <Dialog.Close>
+                                {#snippet child({ props })}
+                                  <Button
+                                    {...props}
+                                    variant="outline"
+                                    disabled={saving_connection_id !== null}
+                                    >{m.common_cancel()}</Button
+                                  >
+                                {/snippet}
+                              </Dialog.Close>
+                              <Button
+                                type="submit"
+                                class="shrink-0"
+                                disabled={saving_connection_id !== null ||
+                                  !connection_tickets[shared.id]?.trim()}
+                              >
+                                {#if saving_connection_id === shared.id}<LoaderCircleIcon
+                                    class="animate-spin"
+                                  />{/if}
+                                {saving_connection_id === shared.id
+                                  ? m.ui_saving()
+                                  : m.ui_save_changes()}
+                              </Button>
+                            </Dialog.Footer>
+                          </form>
+                        </Dialog.Content>
+                      </Dialog.Root>
                     </div>
                     {#if received_pending[shared.id]}
                       <Button

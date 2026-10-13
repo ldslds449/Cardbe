@@ -1582,5 +1582,8 @@
   "template_copied_board": "已將範本複製到看板",
   "share_iroh_enable": "啟用 Iroh 分享",
   "share_iroh_enable_help": "預設關閉。套用變更後會啟動或停止 Iroh 連線，並保留已儲存的邀請和看板。",
-  "share_iroh_disabled": "Iroh 分享已關閉，請至連線設定啟用。"
+  "share_iroh_disabled": "Iroh 分享已關閉，請至連線設定啟用。",
+  "share_update_connection": "更新連線",
+  "share_update_connection_help": "貼上擁有者重新複製的同一份邀請。本機修改會保留，儲存後按「同步」。",
+  "share_connection_updated": "連線資訊已更新，請按「同步」重新連線。"
 }

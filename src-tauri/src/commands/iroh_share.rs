@@ -766,6 +766,47 @@ fn ensure_invite_not_joined(db: &Database, ticket: &Ticket) -> Result<(), Domain
     Ok(())
 }
 
+fn update_iroh_connection_inner(
+    db: &Database,
+    board_id: i64,
+    ticket: &str,
+) -> Result<(), DomainError> {
+    let ticket = parse_ticket(ticket)?;
+    let saved = db
+        .iroh_remote(board_id)
+        .map_err(DomainError::repository)?
+        .ok_or(DomainError::InviteNotFound)?;
+    let mut remote: RemoteInvitation = serde_json::from_str(&saved).map_err(|error| {
+        DomainError::Internal(format!(
+            "Could not parse stored shared-board invitation: {error}"
+        ))
+    })?;
+    if remote.node_id != ticket.node_id
+        || remote.invite_id != ticket.invite_id
+        || remote.secret != ticket.secret
+    {
+        return Err(DomainError::InviteInvalid);
+    }
+    remote.endpoint = ticket.endpoint;
+    remote.relay_urls = ticket.relay_urls;
+    let saved =
+        serde_json::to_string(&remote).map_err(|error| DomainError::Internal(error.to_string()))?;
+    db.update_iroh_remote(board_id, &saved)
+        .map_err(DomainError::repository)
+}
+
+#[tauri::command]
+pub fn update_iroh_connection(
+    app: State<'_, SharedAppData>,
+    board_id: i64,
+    ticket: String,
+) -> Result<(), CommandError> {
+    let guard = app
+        .lock()
+        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    update_iroh_connection_inner(&guard.database, board_id, &ticket).map_err(CommandError::from)
+}
+
 fn ticket_payload(ticket: &str) -> Option<&str> {
     let ticket = ticket.trim();
     ticket
@@ -778,6 +819,241 @@ fn ticket_payload(ticket: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    #[test]
+    fn updating_connection_preserves_board_edits_conflicts_and_identity() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("cardbe-update-connection-{}", random_token()));
+        let mut loaded = crate::storage::load(&dir).unwrap();
+        let owner = SecretKey::generate().public();
+        let remote = RemoteInvitation {
+            node_id: URL_SAFE_NO_PAD.encode(owner.as_bytes()),
+            endpoint: Some(EndpointAddr::from_parts(
+                owner,
+                [iroh::TransportAddr::Ip(
+                    "192.168.1.20:12345".parse().unwrap(),
+                )],
+            )),
+            relay_urls: vec![],
+            invite_id: "invite".into(),
+            secret: "secret".into(),
+        };
+        let encode = |ticket: &Ticket| {
+            format!(
+                "cardbe://share/{}",
+                URL_SAFE_NO_PAD.encode(serde_json::to_vec(ticket).unwrap())
+            )
+        };
+        let mut ticket = Ticket {
+            version: 2,
+            node_id: remote.node_id.clone(),
+            endpoint: Some(EndpointAddr::from_parts(
+                owner,
+                [iroh::TransportAddr::Ip(
+                    "192.168.1.21:23456".parse().unwrap(),
+                )],
+            )),
+            relay_urls: vec![],
+            invite_id: remote.invite_id.clone(),
+            secret: remote.secret.clone(),
+            permission: IrohPermission::Viewer,
+        };
+        let initial = loaded
+            .database
+            .ensure_iroh_loro_doc(loaded.database.active_board_id())
+            .unwrap();
+        let board = loaded
+            .database
+            .create_received_board(
+                "Shared",
+                &StoredData::default(),
+                IrohPermission::Editor,
+                1,
+                &serde_json::to_string(&remote).unwrap(),
+                Some(&initial),
+            )
+            .unwrap();
+        let mut local = StoredData::default();
+        local.templates.push(crate::models::TaskTemplate {
+            id: 1,
+            name: "Unsent local edit".into(),
+            task: Default::default(),
+        });
+        loaded
+            .database
+            .replace_board_as_local_edit(board.id, &local)
+            .unwrap();
+        let pending_state = loaded.database.board_sync_state(board.id).unwrap();
+        let pending_loro = loaded.database.iroh_loro_update(board.id).unwrap();
+        update_iroh_connection_inner(&loaded.database, board.id, &encode(&ticket)).unwrap();
+        assert_eq!(
+            loaded.database.board_sync_state(board.id).unwrap(),
+            pending_state
+        );
+        assert_eq!(
+            loaded.database.iroh_loro_update(board.id).unwrap(),
+            pending_loro
+        );
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(board.id)
+                .unwrap()
+                .templates,
+            local.templates
+        );
+        assert_eq!(
+            loaded.database.board_role(board.id).unwrap(),
+            BoardRole::Editor
+        );
+        let saved: RemoteInvitation =
+            serde_json::from_str(&loaded.database.iroh_remote(board.id).unwrap().unwrap()).unwrap();
+        assert_eq!(saved.endpoint, ticket.endpoint);
+        assert_eq!(saved.node_id, remote.node_id);
+        assert_eq!(saved.invite_id, remote.invite_id);
+        assert_eq!(saved.secret, remote.secret);
+        assert!(matches!(
+            ensure_invite_not_joined(&loaded.database, &ticket),
+            Err(DomainError::InviteAlreadyJoined)
+        ));
+        loaded
+            .database
+            .save_iroh_conflict(
+                board.id,
+                2,
+                "Owner version",
+                IrohPermission::Editor,
+                &StoredData::default(),
+                Some(&initial),
+            )
+            .unwrap();
+        let conflict_state = loaded.database.board_sync_state(board.id).unwrap();
+        ticket.version = 1;
+        ticket.endpoint = None;
+        ticket.relay_urls = vec!["https://relay.example.com".into()];
+        update_iroh_connection_inner(&loaded.database, board.id, &encode(&ticket)).unwrap();
+        assert_eq!(
+            loaded.database.board_sync_state(board.id).unwrap(),
+            conflict_state
+        );
+        assert_eq!(
+            loaded
+                .database
+                .iroh_conflict(board.id)
+                .unwrap()
+                .unwrap()
+                .name,
+            "Owner version"
+        );
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(board.id)
+                .unwrap()
+                .templates,
+            local.templates
+        );
+        let stored = loaded.database.iroh_remote(board.id).unwrap().unwrap();
+        drop(loaded);
+        let reopened = crate::storage::load(&dir).unwrap();
+        assert_eq!(
+            reopened.database.iroh_remote(board.id).unwrap().unwrap(),
+            stored
+        );
+        let restored: RemoteInvitation = serde_json::from_str(&stored).unwrap();
+        assert_eq!(restored.relay_urls, ticket.relay_urls);
+        assert!(restored.endpoint.is_none());
+        drop(reopened);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn updating_connection_rejects_unrelated_or_invalid_links_without_writes() {
+        use super::*;
+        let dir = std::env::temp_dir().join(format!("cardbe-update-connection-{}", random_token()));
+        let mut loaded = crate::storage::load(&dir).unwrap();
+        let remote = RemoteInvitation {
+            node_id: URL_SAFE_NO_PAD.encode(SecretKey::generate().public().as_bytes()),
+            endpoint: None,
+            relay_urls: vec![],
+            invite_id: "invite".into(),
+            secret: "secret".into(),
+        };
+        let stored = serde_json::to_string(&remote).unwrap();
+        let board = loaded
+            .database
+            .create_received_board(
+                "Shared",
+                &StoredData::default(),
+                IrohPermission::Viewer,
+                1,
+                &stored,
+                None,
+            )
+            .unwrap();
+        let valid = Ticket {
+            version: 2,
+            node_id: remote.node_id.clone(),
+            endpoint: None,
+            relay_urls: vec!["https://relay.example.com".into()],
+            invite_id: remote.invite_id.clone(),
+            secret: remote.secret.clone(),
+            permission: IrohPermission::Editor,
+        };
+        for field in ["node_id", "invite_id", "secret", "relay_urls", "endpoint"] {
+            let mut ticket = valid.clone();
+            match field {
+                "node_id" => {
+                    ticket.node_id =
+                        URL_SAFE_NO_PAD.encode(SecretKey::generate().public().as_bytes())
+                }
+                "invite_id" => ticket.invite_id = "another-invite".into(),
+                "secret" => ticket.secret = "wrong".into(),
+                "relay_urls" => ticket.relay_urls = vec!["invalid-url".into()],
+                "endpoint" => {
+                    ticket.endpoint = Some(EndpointAddr::new(SecretKey::generate().public()))
+                }
+                _ => unreachable!(),
+            }
+            let link = format!(
+                "cardbe://share/{}",
+                URL_SAFE_NO_PAD.encode(serde_json::to_vec(&ticket).unwrap())
+            );
+            assert!(matches!(
+                update_iroh_connection_inner(&loaded.database, board.id, &link),
+                Err(DomainError::InviteInvalid)
+            ));
+            assert_eq!(
+                loaded.database.iroh_remote(board.id).unwrap().unwrap(),
+                stored
+            );
+        }
+        assert!(matches!(
+            update_iroh_connection_inner(&loaded.database, board.id, "bad link"),
+            Err(DomainError::InviteInvalid)
+        ));
+        let link = format!(
+            "cardbe://share/{}",
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&valid).unwrap())
+        );
+        for id in [loaded.database.active_board_id(), i64::MAX] {
+            assert!(matches!(
+                update_iroh_connection_inner(&loaded.database, id, &link),
+                Err(DomainError::InviteNotFound)
+            ));
+        }
+        update_iroh_connection_inner(&loaded.database, board.id, &link).unwrap();
+        assert_eq!(
+            loaded.database.board_role(board.id).unwrap(),
+            BoardRole::Viewer
+        );
+        assert_eq!(
+            loaded.database.board_sync_state(board.id).unwrap(),
+            (1, SyncStatus::Synced)
+        );
+        drop(loaded);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn owner_pull_merges_unsent_edits_and_checks_identity_permission_and_revocation() {
