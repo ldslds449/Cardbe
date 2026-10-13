@@ -136,7 +136,12 @@
     return id.match(/.{1,4}/g)?.join(" ") ?? id;
   }
   function invitation_date(value: string) {
-    const date = new Date(value);
+    // SQLite datetime('now') is UTC but omits the timezone.
+    const date = new Date(
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+        ? `${value.replace(" ", "T")}Z`
+        : value,
+    );
     return Number.isNaN(date.getTime())
       ? m.share_creation_date_unavailable()
       : m.share_created_date({ date: sync_time.format(date) });

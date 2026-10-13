@@ -64,3 +64,36 @@ it("keeps creation failures inline, clears them on edits and recovers on retry",
   expect(ui.state().create_error).toBeNull();
   expect(ui.state().generated.ticket).toBe("fixture-ticket");
 });
+
+it("interprets SQLite invitation timestamps as UTC before local formatting", () => {
+  const node = parse(source, { modern: true }).instance!.content.body.find(
+    (node) =>
+      node.type === "FunctionDeclaration" &&
+      node.id!.name === "invitation_date",
+  )!;
+  const { start, end } = node as typeof node & { start: number; end: number };
+  const format = new Function(
+    "m",
+    "sync_time",
+    transpile(`${source.slice(start, end)}; return invitation_date;`),
+  )(
+    {
+      share_creation_date_unavailable: () => "unavailable",
+      share_created_date: ({ date }: { date: string }) => date,
+    },
+    new Intl.DateTimeFormat("zh-TW", {
+      timeZone: "Asia/Taipei",
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+  );
+  const expected = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date("2026-10-12T18:30:00Z"));
+  expect(format("2026-10-12 18:30:00")).toBe(expected);
+  expect(format("2026-10-12T18:30:00Z")).toBe(expected);
+  expect(format("2026-10-13T02:30:00+08:00")).toBe(expected);
+  expect(format("invalid")).toBe("unavailable");
+});
