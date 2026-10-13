@@ -1488,6 +1488,27 @@ mod tests {
     }
 
     #[test]
+    fn iroh_is_disabled_by_default_and_legacy_settings() {
+        assert!(!IrohNetworkSettings::default().enabled);
+        let legacy: IrohNetworkSettings = serde_json::from_str("{}").unwrap();
+        assert!(!legacy.enabled);
+        let enabled = IrohNetworkSettings {
+            enabled: true,
+            ..Default::default()
+        };
+        let restored: IrohNetworkSettings =
+            serde_json::from_value(serde_json::to_value(&enabled).unwrap()).unwrap();
+        assert_eq!(restored, enabled);
+        assert_eq!(
+            serde_json::to_value(crate::errors::CommandError::from(
+                crate::errors::ShareError::IrohDisabled
+            ))
+            .unwrap(),
+            serde_json::json!({"code": "IROH_DISABLED"})
+        );
+    }
+
+    #[test]
     fn network_validation_preserves_safe_field_errors() {
         use crate::errors::{CommandError, NetworkSettingsField};
         for (field, settings) in [
@@ -1955,8 +1976,17 @@ async fn ensure_host(
     state: &IrohShareState,
     path: std::path::PathBuf,
     app_handle: AppHandle,
-) -> Result<Endpoint, String> {
+) -> Result<Endpoint, ShareError> {
     let _init = state.init.lock().await;
+    {
+        let app = app_handle.state::<SharedAppData>();
+        let guard = app
+            .lock()
+            .map_err(|_| "Application state lock is poisoned")?;
+        if !guard.stored.settings.iroh_network.enabled {
+            return Err(ShareError::IrohDisabled);
+        }
+    }
     if let Some(hosted) = state
         .hosted
         .lock()
@@ -2302,6 +2332,14 @@ pub async fn restore_iroh_host(
     path: std::path::PathBuf,
     app_handle: AppHandle,
 ) {
+    if !app_handle
+        .state::<SharedAppData>()
+        .lock()
+        .map(|guard| guard.stored.settings.iroh_network.enabled)
+        .unwrap_or(false)
+    {
+        return;
+    }
     let has_invites = match Database::open(path.clone()).and_then(|db| db.iroh_host_required()) {
         Ok(required) => required,
         Err(error) => {
@@ -2312,7 +2350,7 @@ pub async fn restore_iroh_host(
     if has_invites {
         if let Err(error) = ensure_host(network, path, app_handle).await {
             log::error!(target: "iroh", "Could not restore the board-sharing service: {error}");
-            set_last_error(network, Some(error));
+            set_last_error(network, Some(error.to_string()));
         }
     }
 }
@@ -2340,15 +2378,16 @@ pub async fn ensure_iroh_host(
             .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
         (
             guard.database.path().to_path_buf(),
-            guard
-                .database
-                .iroh_host_required()
-                .map_err(CommandError::repository)?,
+            guard.stored.settings.iroh_network.enabled
+                && guard
+                    .database
+                    .iroh_host_required()
+                    .map_err(CommandError::repository)?,
         )
     };
     if active {
         if let Err(error) = ensure_host(&network, path, app_handle).await {
-            set_last_error(&network, Some(error.clone()));
+            set_last_error(&network, Some(error.to_string()));
             return Err(error.into());
         }
     }
@@ -2397,11 +2436,27 @@ pub(crate) async fn restart_host_if_running(
         .lock()
         .map_err(|_| "Connection details are unavailable")?
         .clear();
+    let enabled = app_handle
+        .state::<SharedAppData>()
+        .lock()
+        .map_err(|_| "Application state lock is poisoned")?
+        .stored
+        .settings
+        .iroh_network
+        .enabled;
     let path = if let Some(hosted) = hosted {
         let path = hosted.path;
         hosted.endpoint.close().await;
+        if !enabled {
+            set_last_error(network, None);
+            return Ok(());
+        }
         path
     } else {
+        if !enabled {
+            set_last_error(network, None);
+            return Ok(());
+        }
         let app = app_handle.state::<SharedAppData>();
         let guard = app
             .lock()
@@ -2422,8 +2477,8 @@ pub(crate) async fn restart_host_if_running(
     };
     drop(_init);
     if let Err(error) = ensure_host(network, path, app_handle).await {
-        set_last_error(network, Some(error.clone()));
-        return Err(error);
+        set_last_error(network, Some(error.to_string()));
+        return Err(error.to_string());
     }
     Ok(())
 }
@@ -2654,7 +2709,7 @@ pub async fn update_iroh_invite(
     if enabled == Some(true) {
         if let Err(error) = ensure_host(&network, path, app_handle).await {
             log::error!(target: "iroh", "Could not start the board-sharing service after invitation update: {error}");
-            set_last_error(&network, Some(error));
+            set_last_error(&network, Some(error.to_string()));
         }
     }
     if enabled == Some(false) {

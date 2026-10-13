@@ -223,6 +223,8 @@ pub struct Archive {
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct IrohNetworkSettings {
+    #[serde(default)]
+    pub enabled: bool,
     #[serde(default = "default_true")]
     pub direct_ip_enabled: bool,
     #[serde(default = "default_true")]
@@ -242,6 +244,7 @@ pub struct IrohNetworkSettings {
 impl Default for IrohNetworkSettings {
     fn default() -> Self {
         Self {
+            enabled: false,
             direct_ip_enabled: true,
             discovery_enabled: true,
             discovery_urls: Vec::new(),

@@ -149,6 +149,7 @@ export class BoardStore {
   column_fetch_finish = $state(false);
   column_fetch_error = $state(false);
   notify_enabled = $state(false);
+  iroh_enabled = $state(false);
   notification_setting_updating = $state(false);
   private has_undo_history = $state(false);
   get can_edit() {
@@ -258,7 +259,7 @@ export class BoardStore {
     silent = false,
     access_only = false,
   ): Promise<boolean> {
-    if (board_id === null) {
+    if (board_id === null || !this.iroh_enabled) {
       return false;
     }
     if (this.iroh_syncing.has(board_id)) {
@@ -546,7 +547,7 @@ export class BoardStore {
   }
 
   trigger_iroh_background_sync(force = false) {
-    if (this.disposed) {
+    if (this.disposed || !this.iroh_enabled) {
       return;
     }
     if (
@@ -1381,9 +1382,11 @@ export class BoardStore {
     try {
       const settings = await invoke<{
         notify_enabled: boolean;
+        iroh_network?: { enabled: boolean };
         language?: LanguagePreference;
       }>("get_settings");
       this.notify_enabled = settings.notify_enabled;
+      this.iroh_enabled = settings.iroh_network?.enabled ?? false;
       applyLanguagePreference(settings.language);
     } catch (e) {
       logger.warn("settings.load.failed", e);

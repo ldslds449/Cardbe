@@ -39,6 +39,7 @@ const coreMessages = {
   SHARE_ACCESS_TERMINATED: () => m.share_access_terminated(),
   SHARE_INVITATION_DELETED: () => m.share_invitation_deleted_error(),
   SHARE_SYNC_CONFLICT: () => m.share_conflict_error(),
+  IROH_DISABLED: () => m.share_iroh_disabled(),
   SHARE_FAILED: () => m.share_sync_error(),
   INTERNAL_ERROR: () => m.error_internal(),
   PLUGIN_UPDATE_NOT_NEWER: () => m.plugin_update_not_newer(),

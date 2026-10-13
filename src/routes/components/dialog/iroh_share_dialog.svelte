@@ -58,6 +58,7 @@
   };
   type InviteAccess = { ticket: string; qr_svg: string };
   type IrohNetworkSettings = {
+    enabled: boolean;
     direct_ip_enabled: boolean;
     discovery_enabled: boolean;
     discovery_urls: string[];
@@ -89,6 +90,7 @@
     creating = $state(false),
     pending_delete = $state<Invite | null>(null),
     delete_confirm_open = $state(false);
+  let create_error = $state<CommandError | null>(null);
   let visible_qr_id = $state<string | null>(null),
     invite_access = $state<Record<string, InviteAccess>>({}),
     loading_access_id = $state<string | null>(null);
@@ -157,6 +159,7 @@
     }
   }
   let network_settings = $state<IrohNetworkSettings>({
+    enabled: false,
     direct_ip_enabled: true,
     discovery_enabled: true,
     discovery_urls: [],
@@ -177,6 +180,7 @@
   let close_after_discard = false;
   const network_draft = $derived(
     JSON.stringify({
+      enabled: network_settings.enabled,
       direct_ip_enabled: network_settings.direct_ip_enabled,
       discovery_enabled: network_settings.discovery_enabled,
       relay_enabled: network_settings.relay_enabled,
@@ -246,6 +250,7 @@
   }
   function reset_network_settings() {
     network_settings = {
+      enabled: false,
       direct_ip_enabled: true,
       discovery_enabled: true,
       relay_enabled: true,
@@ -379,6 +384,7 @@
     board.iroh_last_error = null;
     permission = "viewer";
     generated = null;
+    create_error = null;
     waiting_device_id = null;
     received_waiting_id = null;
     manage_view = "mine";
@@ -386,6 +392,7 @@
   });
   function invalidate() {
     generated = null;
+    create_error = null;
   }
   function open_join() {
     ticket = "";
@@ -489,6 +496,7 @@
       const restart_error = await invoke<unknown>("set_iroh_network_settings", {
         settings,
       });
+      board.iroh_enabled = settings.enabled;
       saved_network_settings = JSON.stringify(settings);
       invite_access = {};
       visible_qr_id = null;
@@ -512,6 +520,7 @@
       return;
     }
     creating = true;
+    create_error = null;
     try {
       const created = await board.create_iroh_invite(
         selected_board_id,
@@ -537,6 +546,7 @@
       );
     } catch (e) {
       logger.error("iroh.invite_create.failed", e);
+      create_error = parseCommandError(e) ?? { code: "INTERNAL_ERROR" };
       toast.error(translateCommandError(e));
     } finally {
       creating = false;
@@ -1093,6 +1103,9 @@
           }}>{m.ui_cancel_waiting()}</Button
         >
       {:else if flow === "home"}
+        {#if !board.iroh_enabled}
+          <p class="text-muted-foreground text-sm">{m.share_iroh_disabled()}</p>
+        {/if}
         <div class="grid gap-3 sm:grid-cols-2">
           <button
             class="rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -1150,6 +1163,19 @@
             disabled={saving_network_settings}
             class="grid min-w-0 gap-4 pr-4"
           >
+            <div class="flex items-center justify-between gap-4">
+              <div class="grid gap-2">
+                <Label for="iroh-enabled">{m.share_iroh_enable()}</Label>
+                <p id="iroh-enabled-help" class="text-muted-foreground text-sm">
+                  {m.share_iroh_enable_help()}
+                </p>
+              </div>
+              <Switch
+                id="iroh-enabled"
+                bind:checked={network_settings.enabled}
+                aria-describedby="iroh-enabled-help"
+              />
+            </div>
             <Card.Root class="gap-0 p-0 shadow-none">
               <Card.Header class="px-4 py-3">
                 <Card.Title class="text-base"
@@ -1534,6 +1560,14 @@
                   >{m.share_device_invite_description()}</Card.Description
                 ></Card.Root
               >
+            {/if}
+            {#if create_error}
+              <p
+                class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+                role="alert"
+              >
+                {translateCommandError(create_error)}
+              </p>
             {/if}
             <Button
               onclick={() => void create()}

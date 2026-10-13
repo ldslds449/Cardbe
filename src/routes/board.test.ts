@@ -316,6 +316,7 @@ function deferred<T>() {
 
 function create_store(column_count = 1) {
   const store = new BoardStore();
+  store.iroh_enabled = true;
   store.boards = [
     {
       id: 7,
@@ -338,6 +339,17 @@ function create_store(column_count = 1) {
 }
 
 describe("Iroh sync", () => {
+  it("does not start Iroh or sync shared boards while disabled", () => {
+    invoke_mock.mockReset();
+    const store = create_store();
+    store.iroh_enabled = false;
+    store.boards[0].shared_role = "viewer";
+    const sync = vi.spyOn(store, "sync_iroh_board");
+    store.trigger_iroh_background_sync(true);
+    expect(invoke_mock).not.toHaveBeenCalled();
+    expect(sync).not.toHaveBeenCalled();
+    store.dispose();
+  });
   beforeEach(() => invoke_mock.mockReset());
   afterEach(() => {
     vi.restoreAllMocks();

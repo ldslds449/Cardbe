@@ -1579,5 +1579,8 @@
   "template_copy_named": "將範本「{name}」複製到其他看板",
   "template_copy_action": "複製",
   "template_copying": "複製中…",
-  "template_copied_board": "已將範本複製到看板"
+  "template_copied_board": "已將範本複製到看板",
+  "share_iroh_enable": "啟用 Iroh 分享",
+  "share_iroh_enable_help": "預設關閉。套用變更後會啟動或停止 Iroh 連線，並保留已儲存的邀請和看板。",
+  "share_iroh_disabled": "Iroh 分享已關閉，請至連線設定啟用。"
 }

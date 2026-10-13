@@ -1689,5 +1689,8 @@
   "template_copy_named": "Copy template {name} to another board",
   "template_copy_action": "Copy",
   "template_copying": "Copying…",
-  "template_copied_board": "Template copied to the board"
+  "template_copied_board": "Template copied to the board",
+  "share_iroh_enable": "Enable Iroh sharing",
+  "share_iroh_enable_help": "Off by default. Apply changes to start or stop Iroh connections. Saved invitations and boards are kept.",
+  "share_iroh_disabled": "Iroh sharing is disabled. Enable it in connection settings."
 }

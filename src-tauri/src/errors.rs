@@ -140,6 +140,7 @@ pub enum CommandError {
     },
     ShareSyncConflict,
     ShareFailed,
+    IrohDisabled,
     PluginPermissionDenied {
         plugin_id: String,
         permission: String,
@@ -161,6 +162,7 @@ pub enum CommandError {
 
 #[derive(Debug)]
 pub enum ShareError {
+    IrohDisabled,
     ApprovalRequired { device_id: String },
     AccessRevoked,
     AccessTerminated,
@@ -169,6 +171,14 @@ pub enum ShareError {
     SyncConflict,
     Domain(DomainError),
     Internal(String),
+}
+impl fmt::Display for ShareError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Internal(source) => f.write_str(source),
+            _ => write!(f, "{self:?}"),
+        }
+    }
 }
 impl From<DomainError> for ShareError {
     fn from(error: DomainError) -> Self {
@@ -189,6 +199,7 @@ impl From<ShareError> for CommandError {
     fn from(error: ShareError) -> Self {
         match error {
             ShareError::ApprovalRequired { device_id } => Self::ShareApprovalRequired { device_id },
+            ShareError::IrohDisabled => Self::IrohDisabled,
             ShareError::AccessRevoked => Self::ShareAccessRevoked,
             ShareError::AccessTerminated => Self::ShareAccessTerminated,
             ShareError::InvitationDeleted => Self::ShareInvitationDeleted,

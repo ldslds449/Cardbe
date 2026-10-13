@@ -1857,6 +1857,22 @@ impl Database {
             tx.execute("INSERT INTO cardbe_global_metadata(key,value) VALUES ('settings',?1) ON CONFLICT(key) DO NOTHING", [serde_json::to_string(&legacy.settings)?])?;
             tx.execute("INSERT INTO cardbe_global_metadata(key,value) VALUES ('multiboard_schema_version','1')", [])?;
         }
+        if let Some(value) = namespaced_metadata_json::<serde_json::Value>(&tx, "settings")? {
+            if value.pointer("/iroh_network/enabled").is_none() {
+                let mut settings: crate::models::Settings = serde_json::from_value(value)?;
+                settings.iroh_network.enabled = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM cardbe_iroh_invites)
+                     OR EXISTS(SELECT 1 FROM cardbe_iroh_remotes)
+                     OR EXISTS(SELECT 1 FROM cardbe_global_metadata WHERE key='iroh_has_revocations')",
+                    [],
+                    |row| row.get(0),
+                )?;
+                tx.execute(
+                    "UPDATE cardbe_global_metadata SET value=?1 WHERE key='settings'",
+                    [serde_json::to_string(&settings)?],
+                )?;
+            }
+        }
         tx.commit()?;
         self.initialize_task_search_index()?;
         Ok(())
@@ -3197,6 +3213,76 @@ fn quarantine_file(path: &Path, name: &str, error: &dyn std::fmt::Display) -> St
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_iroh_enablement_preserves_usage_and_explicit_preferences() {
+        for usage in ["none", "invite", "disabled_invite", "remote", "revocation"] {
+            for preference in [None, Some(false), Some(true)] {
+                let dir = test_dir("iroh-enablement-migration");
+                let mut loaded = load(&dir).unwrap();
+                assert!(!loaded.stored.settings.iroh_network.enabled);
+                let db = &mut loaded.database;
+                let board_id = db.active_board_id();
+                match usage {
+                    "invite" | "disabled_invite" | "revocation" => {
+                        db.save_iroh_invite("invite", board_id, "secret", IrohPermission::Viewer)
+                            .unwrap();
+                        if usage == "disabled_invite" {
+                            db.update_iroh_invite("invite", None, Some(false)).unwrap();
+                        } else if usage == "revocation" {
+                            db.delete_iroh_invite("invite").unwrap();
+                        }
+                    }
+                    "remote" => {
+                        db.create_received_board(
+                            "Received",
+                            &StoredData::default(),
+                            IrohPermission::Viewer,
+                            1,
+                            "fixture-ticket",
+                            None,
+                        )
+                        .unwrap();
+                    }
+                    _ => {}
+                }
+                let mut expected = loaded.stored.settings.clone();
+                expected.notify_enabled = true;
+                expected.iroh_network.listen_port = 12345;
+                expected.iroh_network.relay_urls = vec!["https://relay.example.com".into()];
+                let mut value = serde_json::to_value(&expected).unwrap();
+                if let Some(enabled) = preference {
+                    value["iroh_network"]["enabled"] = enabled.into();
+                } else {
+                    value["iroh_network"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("enabled");
+                }
+                db.connection
+                    .execute(
+                        "UPDATE cardbe_global_metadata SET value=?1 WHERE key='settings'",
+                        [value.to_string()],
+                    )
+                    .unwrap();
+                let boards = db.boards().unwrap();
+                drop(loaded);
+
+                expected.iroh_network.enabled = preference.unwrap_or(usage != "none");
+                for _ in 0..2 {
+                    let reopened = load(&dir).unwrap();
+                    assert_eq!(reopened.stored.settings, expected, "{usage} {preference:?}");
+                    assert_eq!(reopened.database.boards().unwrap(), boards);
+                    let persisted: crate::models::Settings =
+                        namespaced_metadata_json(&reopened.database.connection, "settings")
+                            .unwrap()
+                            .unwrap();
+                    assert_eq!(persisted, expected);
+                }
+                fs::remove_dir_all(dir).unwrap();
+            }
+        }
+    }
+
     #[test]
     fn access_probes_preserve_revocation_until_a_fresh_join_request() {
         let dir = test_dir("iroh-revocation-probe");
@@ -5684,6 +5770,10 @@ mod tests {
         second.columns[0].tasks[0].title = "Second task".into();
         let settings = crate::models::Settings {
             theme: Some("morandi-dark-sage".into()),
+            iroh_network: crate::models::IrohNetworkSettings {
+                enabled: true,
+                ..Default::default()
+            },
             language: crate::models::LanguagePreference::TraditionalChinese,
             notify_enabled: true,
             global_shortcuts_enabled: false,
