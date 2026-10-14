@@ -1774,6 +1774,7 @@ export class BoardStore {
     column_id: string,
     task: Task,
     after_task_id: string | null = null,
+    onCreated?: (id: string) => void,
   ): Promise<boolean> {
     const board = this;
     const expectedBoardId = this.active_board_id;
@@ -1840,6 +1841,7 @@ export class BoardStore {
         this.columns = [...this.columns];
         this.update_labels();
         this.show_success_with_undo(m.task_added());
+        onCreated?.(`task_${new_id}`);
         const persisted_task_id = `task_${new_id}`;
         this.resolved_task_ids.set(pending_task_id, persisted_task_id);
         this.rekey_task_move_timer(pending_task_id, persisted_task_id);

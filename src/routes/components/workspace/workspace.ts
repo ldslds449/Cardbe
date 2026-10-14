@@ -1,1 +1,6 @@
-export type WorkspaceView = "focus" | "board" | "calendar" | "statistics";
+export type WorkspaceView =
+  | "focus"
+  | "board"
+  | "calendar"
+  | "flow"
+  | "statistics";

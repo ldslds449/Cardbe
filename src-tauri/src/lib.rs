@@ -3,6 +3,7 @@ mod commands;
 #[cfg(desktop)]
 mod desktop;
 mod errors;
+mod flow;
 mod link_preview;
 mod loro_board;
 mod models;
@@ -404,6 +405,10 @@ pub fn run() {
             desktop::handle_window_event(window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            commands::flow::get_flow,
+            commands::flow::save_flow_layout,
+            commands::flow::create_task_relationship,
+            commands::flow::remove_task_relationship,
             commands::plugins::get_plugin_state,
             commands::plugins::install_plugin_package,
             commands::plugins::confirm_plugin_update,

@@ -685,6 +685,8 @@ pub struct AllBoardsExport {
 
 #[derive(Serialize, Deserialize)]
 pub struct AllBoardsExportBoard {
+    #[serde(default)]
+    pub flow: crate::flow::FlowData,
     pub name: String,
     pub data: ExportData,
 }

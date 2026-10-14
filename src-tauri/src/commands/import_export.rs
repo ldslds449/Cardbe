@@ -41,6 +41,10 @@ pub fn export_all_boards(state: State<'_, SharedAppData>) -> Result<String, Comm
                 .read_board(board.id)
                 .map_err(CommandError::repository)?;
             Ok(AllBoardsExportBoard {
+                flow: guard
+                    .database
+                    .read_flow(board.id)
+                    .map_err(CommandError::repository)?,
                 name: board.name,
                 data: ExportData {
                     columns: data.columns,
@@ -84,6 +88,8 @@ fn parse_all_boards_backup(json_data: &str) -> Result<AllBoardsExport, CommandEr
         return Err(CommandError::InvalidImport);
     }
     for board in &backup.boards {
+        crate::flow::validate_data(&board.flow, &board.data)
+            .map_err(|_| CommandError::InvalidImport)?;
         super::boards::board_name(board.name.clone())
             .map_err(|_| CommandError::BoardNameInvalid)?;
     }
@@ -118,7 +124,18 @@ pub fn import_all_boards(
         data.repair_column_ids();
         data.repair_task_ids();
         data.repair_template_ids();
-        prepared.push((name.to_string(), data));
+        crate::flow::validate_data(
+            &board.flow,
+            &crate::models::ExportData {
+                columns: data.columns.clone(),
+                archives: data.archives.clone(),
+                templates: vec![],
+                labels: vec![],
+                label_recency: vec![],
+            },
+        )
+        .map_err(|_| CommandError::InvalidImport)?;
+        prepared.push((name.to_string(), data, board.flow));
     }
     let mut guard = state
         .lock()
@@ -224,6 +241,7 @@ mod tests {
         serde_json::to_string(&AllBoardsExport {
             schema_version: 1,
             boards: vec![AllBoardsExportBoard {
+                flow: Default::default(),
                 name: name.to_string(),
                 data: ExportData {
                     columns: vec![],

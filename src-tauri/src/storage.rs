@@ -411,6 +411,59 @@ impl Database {
         &self.path
     }
 
+    pub fn read_flow(&self, board_id: i64) -> StorageResult<crate::flow::FlowData> {
+        crate::flow::read(&self.connection, board_id)
+    }
+
+    pub fn save_flow_layout(
+        &mut self,
+        board_id: i64,
+        layout: &crate::flow::FlowLayout,
+    ) -> StorageResult<()> {
+        let tx = self.connection.transaction()?;
+        crate::flow::validate_layout(layout, &crate::flow::task_ids(&tx, board_id)?)?;
+        crate::flow::save_layout(&tx, board_id, layout)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn change_relationship(
+        &mut self,
+        board_id: i64,
+        relationship: &crate::flow::Relationship,
+        remove: bool,
+    ) -> StorageResult<()> {
+        let relationship = &crate::flow::normalize(relationship.clone());
+        let tx = self.connection.transaction()?;
+        if remove {
+            crate::flow::delete_relationship(&tx, board_id, relationship)?;
+            let mut layout = crate::flow::read(&tx, board_id)?.layout;
+            let key = format!(
+                "{}:{}:{}",
+                if relationship.kind == crate::flow::RelationshipKind::RelatedTo {
+                    "related_to"
+                } else {
+                    "depends_on"
+                },
+                relationship.source,
+                relationship.target
+            );
+            if layout.connections.remove(&key).is_some() {
+                crate::flow::save_layout(&tx, board_id, &layout)?;
+            }
+        } else {
+            let data = crate::flow::read(&tx, board_id)?;
+            crate::flow::validate_relationship(
+                &data.relationships,
+                relationship,
+                &crate::flow::task_ids(&tx, board_id)?,
+            )?;
+            crate::flow::insert_relationship(&tx, board_id, relationship)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn active_board_id(&self) -> i64 {
         self.active_board_id
     }
@@ -593,7 +646,7 @@ impl Database {
 
     pub fn replace_all_boards(
         &mut self,
-        boards: &[(String, StoredData)],
+        boards: &[(String, StoredData, crate::flow::FlowData)],
         active_index: usize,
         notes: &[Note],
         settings: &crate::models::Settings,
@@ -605,10 +658,11 @@ impl Database {
         tx.execute("DELETE FROM cardbe_boards", [])?;
         tx.execute("DELETE FROM notes", [])?;
         let mut created = Vec::with_capacity(boards.len());
-        for (name, data) in boards {
+        for (name, data, flow) in boards {
             tx.execute("INSERT INTO cardbe_boards(name) VALUES(?1)", [name])?;
             let id = tx.last_insert_rowid();
             write_board_transaction(&tx, id, data)?;
+            crate::flow::restore(&tx, id, flow)?;
             created.push(Board {
                 id,
                 name: name.clone(),
@@ -1820,6 +1874,7 @@ impl Database {
         ] {
             let _ = tx.execute(sql, []);
         }
+        crate::flow::initialize(&tx)?;
         validate_cardbe_schema(&tx)?;
         let migrated: Option<String> = tx
             .query_row(
@@ -2526,6 +2581,7 @@ pub(crate) fn persist_board_diff_transaction(
             stats.metadata_changed += 1;
         }
     }
+    crate::flow::prune(tx, board_id)?;
     positions.columns = column_positions;
     positions.tasks = task_positions;
     Ok(stats)
@@ -5801,7 +5857,10 @@ mod tests {
         let (boards, active) = loaded
             .database
             .replace_all_boards(
-                &[("First".into(), first), ("Second".into(), second)],
+                &[
+                    ("First".into(), first, Default::default()),
+                    ("Second".into(), second, Default::default()),
+                ],
                 1,
                 &notes,
                 &settings,
@@ -5849,7 +5908,11 @@ mod tests {
         let invalid_notes = vec![original_note.clone(), original_note.clone()];
 
         let result = loaded.database.replace_all_boards(
-            &[("Replacement".into(), StoredData::default())],
+            &[(
+                "Replacement".into(),
+                StoredData::default(),
+                Default::default(),
+            )],
             0,
             &invalid_notes,
             &crate::models::Settings {

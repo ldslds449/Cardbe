@@ -48,10 +48,16 @@
   }
 
   let {
+    requested_note = null,
+    onNotesChanged,
     open = $bindable(false),
     card_reference_options = [],
-  }: { open: boolean; card_reference_options?: CardReferenceOption[] } =
-    $props();
+  }: {
+    open: boolean;
+    card_reference_options?: CardReferenceOption[];
+    requested_note?: { id: number } | null;
+    onNotesChanged?: () => void;
+  } = $props();
 
   let notes = $state<Note[]>([]);
   let selected_id = $state<number | null>(null);
@@ -76,6 +82,18 @@
   let edit_generation = 0;
 
   const selected_note = $derived(notes.find((note) => note.id === selected_id));
+  $effect(() => {
+    const request = requested_note;
+    if (request) {
+      selected_id = request.id;
+      search_text = "";
+      untrack(() => {
+        if (!notes.some((note) => note.id === request.id)) {
+          loaded = false;
+        }
+      });
+    }
+  });
   function handle_note_change(content: string) {
     if (!selected_note) {
       return;
@@ -248,6 +266,7 @@
         pinned: note.pinned,
       };
       const saved = await enqueue(() => invoke<Note>("update_note", snapshot));
+      onNotesChanged?.();
       const index = notes.findIndex((candidate) => candidate.id === saved.id);
       if (index !== -1 && save_versions.get(saved.id) === version) {
         notes[index].created_at = saved.created_at;
@@ -295,6 +314,7 @@
       // Persist pending edits first so a failed delete cannot discard them.
       await save_note(note, save_versions.get(note.id) ?? 0);
       await enqueue(() => invoke("delete_note", { id: note.id }));
+      onNotesChanged?.();
       save_versions.delete(note.id);
       unsaved_notes.delete(note.id);
       const index = notes.findIndex((candidate) => candidate.id === note.id);

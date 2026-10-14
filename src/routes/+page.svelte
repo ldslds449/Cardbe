@@ -41,6 +41,7 @@
   import ViewTaskDialog from "./components/dialog/view_task_dialog.svelte";
   import BoardShareDialog from "./components/dialog/board_share_dialog.svelte";
   import IrohShareDialog from "./components/dialog/iroh_share_dialog.svelte";
+  import FlowView from "./components/flow/flow_view.svelte";
   import CalendarView from "./components/calendar/calendar_view.svelte";
   import StatisticsView from "./components/statistics/statistics_view.svelte";
   import type { CalendarViewMode } from "./components/calendar/calendar";
@@ -132,6 +133,8 @@
 
   // quick notes panel
   let note_open = $state(false);
+  let requested_note = $state<{ id: number } | null>(null);
+  let note_revision = $state(0);
 
   // column dialog
   let column_dialog_open = $state(false);
@@ -210,6 +213,7 @@
   let task_column_id = $state("");
   let task_column_error = $state(false);
   let pending_task_due_time = $state<Date | undefined>(undefined);
+  let pending_task_created: ((id: string) => void) | undefined;
   let pending_import_task = $state<Task | null>(null);
   const task_column_items = $derived(
     board.columns.map((column) => ({ value: column.id, label: column.name })),
@@ -618,6 +622,7 @@
     pending_import_task = null;
     pending_task_due_time = undefined;
     import_candidate = null;
+    pending_task_created = undefined;
     editing_template_id = null;
     task_import_target_column_id = null;
   }
@@ -1049,7 +1054,11 @@
     task_dialog_open = true;
   }
 
-  function add_task_routine(col_idx: number, due_time?: Date) {
+  function add_task_routine(
+    col_idx: number,
+    due_time?: Date,
+    onCreated?: (id: string) => void,
+  ) {
     if (active_board_read_only) {
       return;
     }
@@ -1059,18 +1068,24 @@
     const column_id = board.columns[col_idx].id;
     dialog_title = m.task_add_card;
     dialog_button_text = m.common_add;
-    dialog_callback = () => board.add_new_task(column_id, dialog_task);
+    dialog_callback = () =>
+      board.add_new_task(column_id, dialog_task, null, onCreated);
     reset_task(dialog_task);
     dialog_task.due_time = due_time ? new Date(due_time) : undefined;
     task_dialog_open = true;
   }
 
   function open_add_task_shortcut() {
+    open_add_task();
+  }
+
+  function open_add_task(onCreated?: (id: string) => void) {
     if (active_board_read_only) {
       return;
     }
     pending_import_task = null;
     pending_task_due_time = undefined;
+    pending_task_created = onCreated;
     if (board.columns.length === 0) {
       open_add_column_dialog();
       return;
@@ -1081,6 +1096,7 @@
   }
 
   function open_add_task_for_date(date: Date) {
+    pending_task_created = undefined;
     if (active_board_read_only) {
       return;
     }
@@ -1113,9 +1129,10 @@
       open_imported_task(column_idx, pending_import_task);
       pending_import_task = null;
     } else {
-      add_task_routine(column_idx, pending_task_due_time);
+      add_task_routine(column_idx, pending_task_due_time, pending_task_created);
     }
     pending_task_due_time = undefined;
+    pending_task_created = undefined;
   }
 
   function open_imported_task(column_idx: number, task: Task) {
@@ -1339,6 +1356,7 @@
     }
     pending_import_task = task;
     pending_task_due_time = undefined;
+    pending_task_created = undefined;
     task_column_id = "";
     task_column_error = false;
     task_column_dialog_open = true;
@@ -1629,6 +1647,8 @@
       />
 
       <NotePanel
+        {requested_note}
+        onNotesChanged={() => note_revision++}
         bind:open={note_open}
         card_reference_options={board.columns.flatMap((column) =>
           column.tasks.map((task) => ({ task, column_name: column.name })),
@@ -1757,99 +1777,124 @@
         onConfirm={confirm_import}
       />
 
-      <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="both">
-        <div
-          class={active_view === "board"
-            ? "min-h-full px-5 pb-5 pt-7"
-            : "min-h-full p-5"}
-        >
-          {#if active_view === "statistics"}
-            <StatisticsView
-              archives={board.archives}
-              loaded={board.archives_loaded}
-              loading={board.archives_loading}
-              onRetry={() => void board.get_archives()}
-            />
-          {:else if search_text.trim() && board.search_pending}
-            <div
-              class="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground"
-              role="status"
-            >
-              {m.board_searching_cards()}
-            </div>
-          {:else if search_text.trim() && board.search_error}
-            <div
-              class="flex min-h-[50vh] flex-col items-center justify-center gap-2 text-sm text-destructive"
-              role="alert"
-            >
-              <span>{m.board_search_unavailable()}</span>
-              <Button
-                variant="link"
-                size="sm"
-                onclick={() => board.search_tasks(search_text)}
-              >
-                {m.board_search_retry()}
-              </Button>
-            </div>
-          {:else if active_view === "focus"}
-            <FocusView
-              columns={board.columns}
-              {search_text}
-              search_task_ids={board.search_task_ids}
-              onViewTask={view_task_by_id}
-              onEditTask={edit_task_by_id}
-              onDuplicateTask={(task) => board.duplicate_task(task.id)}
-              onSaveAsTemplate={open_save_template_dialog}
-              onExportTask={share_task}
-              onAddTask={open_add_task_for_date}
-              onArchiveTask={(task) => board.archive_task(task.id)}
-              onDeleteTask={(task) => board.delete_task(task.id)}
-              read_only={active_board_read_only}
-            />
-          {:else if active_view === "calendar"}
-            <CalendarView
+      {#if active_view === "flow" && board.active_board_id !== null}
+        <div class="min-h-0 min-w-0 flex-1">
+          {#key board.active_board_id}
+            <FlowView
+              {note_revision}
+              onOpenNote={(id) => {
+                requested_note = { id };
+                note_open = true;
+              }}
+              board_id={board.active_board_id}
               columns={board.columns}
               archives={board.archives}
-              {search_text}
-              search_task_ids={board.search_task_ids}
-              bind:visible_date={calendar_visible_date}
-              bind:view_mode={calendar_view_mode}
-              bind:show_archived={calendar_show_archived}
-              bind:show_recurring_previews={calendar_show_recurring_previews}
-              onViewTask={view_task_by_id}
               onViewArchivedTask={view_archived_task}
-              onEditTask={edit_task_by_id}
-              onDuplicateTask={(task) => board.duplicate_task(task.id)}
-              onSaveAsTemplate={open_save_template_dialog}
-              onExportTask={share_task}
-              onAddTask={open_add_task_for_date}
               onArchiveTask={(task) => board.archive_task(task.id)}
-              onUnarchiveTask={(column_id, task_id) =>
-                board.unarchive_task(column_id, task_id)}
-              onDeleteTask={(task) => board.delete_task(task.id)}
-              onRescheduleTask={reschedule_task}
-              read_only={active_board_read_only}
-            />
-          {:else}
-            <BoardView
-              {search_text}
+              onDeleteTask={(task) => void board.delete_task(task.id)}
               search_task_ids={board.search_task_ids}
-              {task_expand_mode}
-              onAddColumn={open_add_column_dialog}
-              onAddTask={add_task_routine}
-              onImportTask={(column_id) => void prepare_task_import(column_id)}
-              onViewTask={(task, column_idx, task_idx) =>
-                view_task_routine(task, () =>
-                  edit_task_routine(column_idx, task_idx),
-                )}
-              onEditTask={edit_task_routine}
-              onSaveAsTemplate={open_save_template_dialog}
-              onExportTask={share_task}
+              onViewTask={view_task_by_id}
+              onEditTask={edit_task_by_id}
               read_only={active_board_read_only}
             />
-          {/if}
+          {/key}
         </div>
-      </ScrollArea>
+      {:else}
+        <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="both">
+          <div
+            class={active_view === "board"
+              ? "min-h-full px-5 pb-5 pt-7"
+              : "min-h-full p-5"}
+          >
+            {#if active_view === "statistics"}
+              <StatisticsView
+                archives={board.archives}
+                loaded={board.archives_loaded}
+                loading={board.archives_loading}
+                onRetry={() => void board.get_archives()}
+              />
+            {:else if search_text.trim() && board.search_pending}
+              <div
+                class="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground"
+                role="status"
+              >
+                {m.board_searching_cards()}
+              </div>
+            {:else if search_text.trim() && board.search_error}
+              <div
+                class="flex min-h-[50vh] flex-col items-center justify-center gap-2 text-sm text-destructive"
+                role="alert"
+              >
+                <span>{m.board_search_unavailable()}</span>
+                <Button
+                  variant="link"
+                  size="sm"
+                  onclick={() => board.search_tasks(search_text)}
+                >
+                  {m.board_search_retry()}
+                </Button>
+              </div>
+            {:else if active_view === "focus"}
+              <FocusView
+                columns={board.columns}
+                {search_text}
+                search_task_ids={board.search_task_ids}
+                onViewTask={view_task_by_id}
+                onEditTask={edit_task_by_id}
+                onDuplicateTask={(task) => board.duplicate_task(task.id)}
+                onSaveAsTemplate={open_save_template_dialog}
+                onExportTask={share_task}
+                onAddTask={open_add_task_for_date}
+                onArchiveTask={(task) => board.archive_task(task.id)}
+                onDeleteTask={(task) => board.delete_task(task.id)}
+                read_only={active_board_read_only}
+              />
+            {:else if active_view === "calendar"}
+              <CalendarView
+                columns={board.columns}
+                archives={board.archives}
+                {search_text}
+                search_task_ids={board.search_task_ids}
+                bind:visible_date={calendar_visible_date}
+                bind:view_mode={calendar_view_mode}
+                bind:show_archived={calendar_show_archived}
+                bind:show_recurring_previews={calendar_show_recurring_previews}
+                onViewTask={view_task_by_id}
+                onViewArchivedTask={view_archived_task}
+                onEditTask={edit_task_by_id}
+                onDuplicateTask={(task) => board.duplicate_task(task.id)}
+                onSaveAsTemplate={open_save_template_dialog}
+                onExportTask={share_task}
+                onAddTask={open_add_task_for_date}
+                onArchiveTask={(task) => board.archive_task(task.id)}
+                onUnarchiveTask={(column_id, task_id) =>
+                  board.unarchive_task(column_id, task_id)}
+                onDeleteTask={(task) => board.delete_task(task.id)}
+                onRescheduleTask={reschedule_task}
+                read_only={active_board_read_only}
+              />
+            {:else}
+              <BoardView
+                {search_text}
+                search_task_ids={board.search_task_ids}
+                {task_expand_mode}
+                onAddColumn={open_add_column_dialog}
+                onAddTask={add_task_routine}
+                onImportTask={(column_id) =>
+                  void prepare_task_import(column_id)}
+                onViewTask={(task, column_idx, task_idx) =>
+                  view_task_routine(task, () =>
+                    edit_task_routine(column_idx, task_idx),
+                  )}
+                onEditTask={edit_task_routine}
+                onSaveAsTemplate={open_save_template_dialog}
+                onExportTask={share_task}
+                read_only={active_board_read_only}
+              />
+            {/if}
+          </div>
+        </ScrollArea>
+      {/if}
 
       {#if card_reference_preview}
         <CardReferencePreview

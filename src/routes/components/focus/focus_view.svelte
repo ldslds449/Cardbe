@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ChecklistSummary from "../task/checklist_summary.svelte";
+  import TaskActionItems from "../task/task_action_items.svelte";
   import { formatNumber } from "$lib/i18n";
   import { getLocale } from "$lib/i18n";
   import * as m from "$lib/paraglide/messages.js";
@@ -13,12 +15,9 @@
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import ClockIcon from "@lucide/svelte/icons/clock";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-  import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import SparklesIcon from "@lucide/svelte/icons/sparkles";
-  import TrashIcon from "@lucide/svelte/icons/trash-2";
   import Share2Icon from "@lucide/svelte/icons/share-2";
 
   import type { Column } from "../../type/column.svelte";
@@ -107,14 +106,6 @@
       : date;
   }
 
-  function checklist_label(task: Task): string | undefined {
-    if (task.items.length === 0) {
-      return undefined;
-    }
-    const complete = task.items.filter((item) => item.completed).length;
-    return `${complete}/${task.items.length}`;
-  }
-
   function ask_to_delete(task: Task) {
     delete_target = task;
     delete_confirm_open = true;
@@ -170,14 +161,10 @@
             {/if}
             {due_label(entry.task)}
           </span>
-          {#if checklist_label(entry.task)}
+          {#if entry.task.items.length > 0}
             <span class="inline-flex items-center gap-1">
               <CircleCheckIcon class="size-3.5" />
-              {m.task_checklist_progress({
-                completed: entry.task.items.filter((item) => item.completed)
-                  .length,
-                total: entry.task.items.length,
-              })}
+              <ChecklistSummary items={entry.task.items} />
             </span>
           {/if}
           {#if entry.task.labels.length > 0}
@@ -219,43 +206,30 @@
             archive_focus_restore_target = null;
           }}
         >
-          <DropdownMenu.Item onclick={() => onViewTask(entry.task)}>
-            <FullscreenIcon />
-            {m.task_view_details()}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item onclick={() => onEditTask(entry.task)}>
-            <PencilIcon />
-            {m.task_edit_action()}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item onclick={() => onDuplicateTask(entry.task)}>
-            <CopyIcon />
-            {m.task_duplicate_action()}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item onclick={() => onSaveAsTemplate(entry.task)}>
-            <LayoutTemplateIcon />
-            {m.task_template_save()}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item onclick={() => onExportTask(entry.task)}>
-            <Share2Icon />
-            {m.task_share()}
-          </DropdownMenu.Item>
-          <DropdownMenu.Item
-            onSelect={() => {
+          <TaskActionItems
+            onView={() => onViewTask(entry.task)}
+            onEdit={() => onEditTask(entry.task)}
+            onArchive={() => {
               archive_focus_restore_target = entry.task.id;
               onArchiveTask(entry.task);
             }}
+            onDelete={() => ask_to_delete(entry.task)}
           >
-            <ArchiveIcon />
-            {m.task_archive_action()}
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator />
-          <DropdownMenu.Item
-            variant="destructive"
-            onclick={() => ask_to_delete(entry.task)}
-          >
-            <TrashIcon />
-            {m.task_delete()}
-          </DropdownMenu.Item>
+            {#snippet extra()}
+              <DropdownMenu.Item onclick={() => onDuplicateTask(entry.task)}>
+                <CopyIcon />
+                {m.task_duplicate_action()}
+              </DropdownMenu.Item>
+              <DropdownMenu.Item onclick={() => onSaveAsTemplate(entry.task)}>
+                <LayoutTemplateIcon />
+                {m.task_template_save()}
+              </DropdownMenu.Item>
+              <DropdownMenu.Item onclick={() => onExportTask(entry.task)}>
+                <Share2Icon />
+                {m.task_share()}
+              </DropdownMenu.Item>
+            {/snippet}
+          </TaskActionItems>
         </DropdownMenu.Content>
       </DropdownMenu.Root>
     </div>

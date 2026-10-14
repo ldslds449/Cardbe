@@ -1,6 +1,7 @@
 <script lang="ts">
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
+  import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
   import ChartNoAxesCombinedIcon from "@lucide/svelte/icons/chart-no-axes-combined";
   import Columns3Icon from "@lucide/svelte/icons/columns-3";
@@ -40,6 +41,7 @@
     { id: "focus", label: m.workspace_today(), icon: SparklesIcon },
     { id: "board", label: m.board_title(), icon: Columns3Icon },
     { id: "calendar", label: m.workspace_calendar(), icon: CalendarDaysIcon },
+    { id: "flow", label: m.workspace_flow(), icon: WorkflowIcon },
     {
       id: "statistics",
       label: m.workspace_statistics(),

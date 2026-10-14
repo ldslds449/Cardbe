@@ -3,6 +3,7 @@ pub mod board;
 pub mod boards;
 pub mod calendar_export;
 pub mod diagnostics;
+pub mod flow;
 pub mod import_export;
 pub mod iroh_share;
 pub mod link_preview;

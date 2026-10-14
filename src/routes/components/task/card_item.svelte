@@ -1,4 +1,5 @@
 <script lang="ts">
+  import TaskActionItems from "../task/task_action_items.svelte";
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
   import { formatDate, formatDateTime } from "$lib/i18n";
@@ -11,13 +12,9 @@
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ChevronUpIcon from "@lucide/svelte/icons/chevron-up";
   import ClockIcon from "@lucide/svelte/icons/clock";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
-  import ArchiveIcon from "@lucide/svelte/icons/archive";
-  import TrashIcon from "@lucide/svelte/icons/trash-2";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-  import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
   import Share2Icon from "@lucide/svelte/icons/share-2";
@@ -262,57 +259,41 @@
                 prevent_menu_focus_restore = false;
               }}
             >
-              <DropdownMenu.Item onclick={onViewTask}>
-                <FullscreenIcon />
-                {m.task_view_details()}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onclick={onEditTask}>
-                <PencilIcon />
-                {m.task_edit_action()}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onclick={onDuplicateTask}>
-                <CopyIcon />
-                {m.task_duplicate_action()}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                onclick={() => {
-                  move_dialog_open = true;
-                }}
-              >
-                <MoveRightIcon />
-                {m.task_move_board()}
-              </DropdownMenu.Item>
-              {#if onSaveAsTemplate}
-                <DropdownMenu.Item onclick={onSaveAsTemplate}>
-                  <LayoutTemplateIcon />
-                  {m.task_template_save()}
-                </DropdownMenu.Item>
-              {/if}
-              <DropdownMenu.Item onclick={onExportTask}>
-                <Share2Icon />
-                {m.task_share()}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                onSelect={() => {
-                  // This trigger disappears with the archived card. Restoring
-                  // focus to it can make the scroll viewport jump to the top.
+              <TaskActionItems
+                onView={onViewTask}
+                onEdit={onEditTask}
+                onArchive={() => {
+                  // The archived trigger disappears; avoid restoring focus to it.
                   prevent_menu_focus_restore = true;
                   onArchiveTask();
                 }}
+                onDelete={() => (delete_confirm_open = true)}
               >
-                <ArchiveIcon />
-                {m.task_archive_action()}
-              </DropdownMenu.Item>
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item
-                variant="destructive"
-                onclick={() => {
-                  delete_confirm_open = true;
-                }}
-              >
-                <TrashIcon />
-                {m.task_delete()}
-              </DropdownMenu.Item>
+                {#snippet extra()}
+                  <DropdownMenu.Item onclick={onDuplicateTask}>
+                    <CopyIcon />
+                    {m.task_duplicate_action()}
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onclick={() => {
+                      move_dialog_open = true;
+                    }}
+                  >
+                    <MoveRightIcon />
+                    {m.task_move_board()}
+                  </DropdownMenu.Item>
+                  {#if onSaveAsTemplate}
+                    <DropdownMenu.Item onclick={onSaveAsTemplate}>
+                      <LayoutTemplateIcon />
+                      {m.task_template_save()}
+                    </DropdownMenu.Item>
+                  {/if}
+                  <DropdownMenu.Item onclick={onExportTask}>
+                    <Share2Icon />
+                    {m.task_share()}
+                  </DropdownMenu.Item>
+                {/snippet}
+              </TaskActionItems>
             </DropdownMenu.Content>
           </DropdownMenu.Root>
           {#if onTogglePin}

@@ -6,6 +6,7 @@
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
 
   import type { TaskItem } from "../../type/task.svelte";
+  import ChecklistSummary from "./checklist_summary.svelte";
   import Markdown from "../markdown.svelte";
 
   let {
@@ -28,12 +29,7 @@
       <div
         class="flex items-center justify-between gap-3 text-xs text-muted-foreground"
       >
-        <span
-          >{m.task_checklist_progress({
-            completed: completed_count,
-            total: items.length,
-          })}</span
-        >
+        <span><ChecklistSummary {items} /></span>
         <span
           >{formatNumber(progress_percentage / 100, { style: "percent" })}</span
         >

@@ -15,7 +15,6 @@
   import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import SearchIcon from "@lucide/svelte/icons/search";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import PowerIcon from "@lucide/svelte/icons/power";
   import CopyIcon from "@lucide/svelte/icons/copy";
@@ -29,6 +28,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import Calendar from "$lib/components/ui/calendar/calendar.svelte";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import TaskSelectionPicker from "../task/task_selection_picker.svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -325,34 +325,6 @@
     }
   });
 
-  function set_column_selected(column_id: string, checked: boolean) {
-    const task_ids =
-      share_columns
-        .find((column) => column.id === column_id)
-        ?.tasks.map((task) => task.id) ?? [];
-    selected_column_ids = checked
-      ? Array.from(new Set([...selected_column_ids, column_id]))
-      : selected_column_ids.filter((id) => id !== column_id);
-    selected_task_ids = checked
-      ? Array.from(new Set([...selected_task_ids, ...task_ids]))
-      : selected_task_ids.filter((id) => !task_ids.includes(id));
-  }
-
-  function set_task_selected(
-    column_id: string,
-    task_id: string,
-    checked: boolean,
-  ) {
-    if (checked) {
-      selected_column_ids = Array.from(
-        new Set([...selected_column_ids, column_id]),
-      );
-      selected_task_ids = Array.from(new Set([...selected_task_ids, task_id]));
-    } else {
-      selected_task_ids = selected_task_ids.filter((id) => id !== task_id);
-    }
-  }
-
   function expiration_value(): Date | null {
     if (!expiration_enabled) {
       return null;
@@ -368,28 +340,6 @@
     );
   }
 
-  const visible_columns = $derived.by(() => {
-    const needle = task_search.trim().toLocaleLowerCase();
-    if (!needle) {
-      return share_columns;
-    }
-    return share_columns
-      .map((column) => {
-        if (column.name.toLocaleLowerCase().includes(needle)) {
-          return column;
-        }
-        return {
-          ...column,
-          tasks: column.tasks.filter((task) =>
-            [task.title, task.description, ...task.labels]
-              .join(" ")
-              .toLocaleLowerCase()
-              .includes(needle),
-          ),
-        };
-      })
-      .filter((column) => column.tasks.length > 0);
-  });
   const available_labels = $derived(
     Array.from(
       new Set(
@@ -407,47 +357,6 @@
       selected_labels,
     ),
   );
-  const visible_task_ids = $derived(
-    visible_columns.flatMap((column) => column.tasks.map((task) => task.id)),
-  );
-  const all_visible_tasks_selected = $derived(
-    visible_task_ids.length > 0 &&
-      visible_task_ids.every((id) => selected_task_ids.includes(id)),
-  );
-  const no_visible_tasks_selected = $derived(
-    visible_task_ids.every((id) => !selected_task_ids.includes(id)),
-  );
-
-  function set_visible_tasks_selected(include: boolean) {
-    const task_ids = new Set(visible_task_ids);
-    const column_ids = new Set(
-      visible_columns
-        .filter((column) => column.tasks.length > 0)
-        .map((column) => column.id),
-    );
-    if (include) {
-      selected_task_ids = Array.from(
-        new Set([...selected_task_ids, ...task_ids]),
-      );
-      selected_column_ids = Array.from(
-        new Set([...selected_column_ids, ...column_ids]),
-      );
-      return;
-    }
-
-    selected_task_ids = selected_task_ids.filter((id) => !task_ids.has(id));
-    selected_column_ids = selected_column_ids.filter((column_id) => {
-      if (!column_ids.has(column_id)) {
-        return true;
-      }
-      return (
-        share_columns
-          .find((column) => column.id === column_id)
-          ?.tasks.some((task) => selected_task_ids.includes(task.id)) ?? false
-      );
-    });
-  }
-
   async function publish() {
     if (publishing) {
       return;
@@ -1262,115 +1171,12 @@
                 </div>
               </div>
             </div>
-            <div class="relative">
-              <SearchIcon
-                class="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground"
-              />
-              <Input
-                class="pl-9"
-                bind:value={task_search}
-                placeholder={m.ui_search_columns_tasks_descriptions_or_labels()}
-                aria-label={m.ui_search_shareable_tasks()}
-              />
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <span class="text-xs tabular-nums text-muted-foreground">
-                {task_search.trim()
-                  ? m.share_matching_tasks({ count: visible_task_ids.length })
-                  : m.share_available_tasks({ count: visible_task_ids.length })}
-              </span>
-              <div class="flex gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={visible_task_ids.length === 0 ||
-                    all_visible_tasks_selected}
-                  onclick={() => set_visible_tasks_selected(true)}
-                >
-                  {m.ui_select_all()}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={visible_task_ids.length === 0 ||
-                    no_visible_tasks_selected}
-                  onclick={() => set_visible_tasks_selected(false)}
-                >
-                  {m.ui_clear_all()}
-                </Button>
-              </div>
-            </div>
-            <div
-              class="max-h-72 space-y-2 overflow-y-auto rounded-md border p-2"
-            >
-              {#each visible_columns as column (column.id)}
-                {@const all_column_task_ids =
-                  share_columns
-                    .find((candidate) => candidate.id === column.id)
-                    ?.tasks.map((task) => task.id) ?? []}
-                {@const selected_in_column = all_column_task_ids.filter((id) =>
-                  selected_task_ids.includes(id),
-                ).length}
-                <div class="rounded-md border bg-muted/20">
-                  <label
-                    class="flex cursor-pointer items-center gap-3 rounded-t-md px-3 py-2 hover:bg-muted/60"
-                  >
-                    <Checkbox
-                      checked={selected_column_ids.includes(column.id) &&
-                        selected_in_column === all_column_task_ids.length}
-                      indeterminate={selected_column_ids.includes(column.id) &&
-                        all_column_task_ids.length > 0 &&
-                        selected_in_column < all_column_task_ids.length}
-                      onCheckedChange={(checked) =>
-                        set_column_selected(column.id, checked === true)}
-                    />
-                    <span class="min-w-0 flex-1 truncate text-sm font-medium"
-                      >{column.name}</span
-                    >
-                    <span class="text-xs tabular-nums text-muted-foreground">
-                      {selected_in_column}/{formatNumber(
-                        all_column_task_ids.length,
-                      )}
-                    </span>
-                  </label>
-                  {#if column.tasks.length > 0}
-                    <div class="border-t px-2 py-1">
-                      {#each column.tasks as task (task.id)}
-                        <label
-                          class="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/60"
-                        >
-                          <Checkbox
-                            class="mt-0.5"
-                            checked={selected_task_ids.includes(task.id)}
-                            onCheckedChange={(checked) =>
-                              set_task_selected(
-                                column.id,
-                                task.id,
-                                checked === true,
-                              )}
-                          />
-                          <span class="min-w-0 flex-1">
-                            <span class="block truncate text-sm"
-                              >{task.title || m.task_untitled()}</span
-                            >
-                            {#if task.labels.length > 0}
-                              <span
-                                class="block truncate text-xs text-muted-foreground"
-                                >{task.labels.join(" · ")}</span
-                              >
-                            {/if}
-                          </span>
-                        </label>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-              {:else}
-                <p class="p-5 text-center text-sm text-muted-foreground">
-                  {m.ui_no_matching_columns_or_tasks()}
-                </p>
-              {/each}
-            </div>
+            <TaskSelectionPicker
+              columns={share_columns}
+              bind:query={task_search}
+              bind:selected_column_ids
+              bind:selected_task_ids
+            />
           </div>
         {/if}
       </div>
