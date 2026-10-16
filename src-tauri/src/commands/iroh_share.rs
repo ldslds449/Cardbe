@@ -1918,6 +1918,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn saved_automatic_port_is_reused_after_restart() {
+        let config = super::IrohNetworkConfig::from_settings(&IrohNetworkSettings {
+            discovery_enabled: false,
+            relay_enabled: false,
+            ..Default::default()
+        })
+        .unwrap();
+        let key = iroh::SecretKey::generate();
+        let first = IrohShareState::default();
+        let endpoint = super::bind_endpoint(&config, key.clone(), &first)
+            .await
+            .unwrap();
+        let saved = *first.automatic_direct_port.lock().unwrap();
+        assert!(saved.is_some());
+        endpoint.close().await;
+        drop(endpoint);
+        // A new process starts with empty in-memory state.
+        let restarted = IrohShareState::default();
+        super::restore_automatic_port(&restarted, saved).unwrap();
+        let endpoint = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let endpoint = super::bind_endpoint(&config, key.clone(), &restarted)
+                    .await
+                    .unwrap();
+                if *restarted.automatic_direct_port.lock().unwrap() == saved {
+                    break endpoint;
+                }
+                // Windows may release the previous socket shortly after close.
+                endpoint.close().await;
+                *restarted.automatic_direct_port.lock().unwrap() = saved;
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the saved automatic port should be reused");
+        assert!(endpoint
+            .bound_sockets()
+            .iter()
+            .any(|address| address.is_ipv4() && Some(address.port()) == saved));
+        endpoint.close().await;
+    }
+
+    #[tokio::test]
     async fn occupied_automatic_port_uses_an_available_port() {
         let occupied = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
         let port = occupied.local_addr().unwrap().port();
@@ -2271,10 +2314,15 @@ async fn ensure_host(
     {
         return Ok(hosted.endpoint.clone());
     }
-    let key = {
+    let (key, saved_port) = {
         let mut db = Database::open(path.clone()).map_err(|e| e.to_string())?;
-        device_key(&mut db)?
+        let saved_port = db.iroh_automatic_port().unwrap_or_else(|error| {
+            log::warn!(target: "iroh", "Could not read the saved sharing port: {error}");
+            None
+        });
+        (device_key(&mut db)?, saved_port)
     };
+    restore_automatic_port(state, saved_port)?;
     let config = {
         let app = app_handle.state::<SharedAppData>();
         let guard = app
@@ -2285,6 +2333,7 @@ async fn ensure_host(
     };
     log::debug!(target: "iroh", "Starting Iroh endpoint: direct IP {}, discovery {}, discovery services {:?}, relay {:?}", config.direct_ip_enabled, config.discovery_enabled, config.discovery_urls, config.relay_mode);
     let endpoint = bind_endpoint(&config, key, state).await?;
+    persist_automatic_port(state, &path, saved_port);
     let online_endpoint = endpoint.clone();
     tauri::async_runtime::spawn(async move {
         if tokio::time::timeout(CONNECT_TIMEOUT, online_endpoint.online())
@@ -2757,6 +2806,33 @@ pub(crate) async fn restart_host_if_running(
         return Err(error.to_string());
     }
     Ok(())
+}
+
+/// Prefer the port saved by a previous launch when this process has not bound
+/// an automatic port yet. `bind_endpoint` falls back if it is now occupied.
+fn restore_automatic_port(state: &IrohShareState, saved: Option<u16>) -> Result<(), String> {
+    let mut port = state
+        .automatic_direct_port
+        .lock()
+        .map_err(|_| "Sharing service state is unavailable")?;
+    if port.is_none() {
+        *port = saved;
+    }
+    Ok(())
+}
+
+fn persist_automatic_port(state: &IrohShareState, path: &std::path::Path, saved: Option<u16>) {
+    let Ok(current) = state.automatic_direct_port.lock().map(|port| *port) else {
+        return;
+    };
+    let Some(port) = current.filter(|port| Some(*port) != saved) else {
+        return;
+    };
+    if let Err(error) =
+        Database::open(path.to_path_buf()).and_then(|mut db| db.set_iroh_automatic_port(port))
+    {
+        log::warn!(target: "iroh", "Could not save the sharing port: {error}");
+    }
 }
 
 async fn bind_endpoint(

@@ -1193,6 +1193,25 @@ impl Database {
         )?;
         Ok(seed)
     }
+
+    /// The last automatically selected UDP port for this device's sharing
+    /// endpoint, so peers' saved invitation addresses stay valid after restart.
+    pub fn iroh_automatic_port(&self) -> StorageResult<Option<u16>> {
+        Ok(
+            namespaced_metadata_value(&self.connection, "iroh_automatic_port")?
+                .and_then(|value| value.parse().ok())
+                .filter(|port| *port != 0),
+        )
+    }
+
+    pub fn set_iroh_automatic_port(&mut self, port: u16) -> StorageResult<()> {
+        self.connection.execute(
+            "INSERT INTO cardbe_global_metadata(key,value) VALUES('iroh_automatic_port',?1)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [port.to_string()],
+        )?;
+        Ok(())
+    }
     pub fn apply_iroh_snapshot(
         &mut self,
         board_id: i64,
@@ -5023,6 +5042,24 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ))
+    }
+
+    #[test]
+    fn automatic_sharing_port_persists_across_reopen() {
+        let dir = test_dir("iroh-automatic-port");
+        fs::create_dir_all(&dir).unwrap();
+        let loaded = load(&dir).unwrap();
+        let path = loaded.database.path().to_path_buf();
+        assert_eq!(loaded.database.iroh_automatic_port().unwrap(), None);
+        drop(loaded);
+        let mut database = Database::open(path.clone()).unwrap();
+        database.set_iroh_automatic_port(51_234).unwrap();
+        database.set_iroh_automatic_port(51_235).unwrap();
+        drop(database);
+        let database = Database::open(path).unwrap();
+        assert_eq!(database.iroh_automatic_port().unwrap(), Some(51_235));
+        drop(database);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
