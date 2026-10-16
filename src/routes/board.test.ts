@@ -1002,6 +1002,26 @@ describe("Undo scope and shared Task Explorer updates", () => {
     },
   );
 
+  it("persists task expansion and restores it when saving fails", async () => {
+    const store = create_store();
+    store.can_undo = false;
+    vi.mocked(toast.error).mockClear();
+    invoke_mock.mockResolvedValue(undefined);
+    store.task_expansion.toggle(1, "1");
+    await store.set_task_expand_mode(false);
+    expect(store.task_expansion.is_expanded(1, "1")).toBe(false);
+    expect(invoke_mock).toHaveBeenCalledWith("set_task_expand_mode", {
+      expanded: false,
+    });
+    expect(store.task_expand_mode).toBe(false);
+    expect(store.can_undo).toBe(false);
+
+    invoke_mock.mockRejectedValueOnce({ code: "INTERNAL_ERROR" });
+    await store.set_task_expand_mode(true);
+    expect(store.task_expand_mode).toBe(false);
+    expect(toast.error).toHaveBeenCalled();
+  });
+
   it.each(["sync", "push"])(
     "refreshes Explorer after an inactive shared board %s",
     async (event) => {

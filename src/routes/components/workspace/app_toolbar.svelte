@@ -37,7 +37,6 @@
     search_pending = false,
     search_error = false,
     note_open = $bindable(),
-    task_expand_mode = $bindable(),
     selected_view,
     update_check_in_progress,
     read_only = false,
@@ -65,7 +64,6 @@
     search_pending?: boolean;
     search_error?: boolean;
     note_open: boolean;
-    task_expand_mode: boolean;
     selected_view: WorkspaceView;
     update_check_in_progress: boolean;
     read_only?: boolean;
@@ -399,33 +397,37 @@
       >
         <Button
           onclick={() => {
-            task_expand_mode = !task_expand_mode;
+            void board.set_task_expand_mode(!board.task_expand_mode);
           }}
           variant="outline"
           size="icon-sm"
           disabled={selected_view !== "board"}
-          aria-pressed={task_expand_mode}
+          aria-pressed={board.task_expand_mode}
           aria-label={selected_view !== "board"
             ? m.task_details_board()
-            : task_expand_mode
+            : board.task_expand_mode
               ? m.task_details_hide()
               : m.task_details_show()}
           title={selected_view !== "board"
             ? undefined
-            : task_expand_mode
+            : board.task_expand_mode
               ? m.task_details_hide()
               : m.task_details_show()}
         >
           <EyeIcon
             class={cn(
               "h-[1.2rem] w-[1.2rem] !transition-all ",
-              task_expand_mode ? "rotate-0 scale-100" : "rotate-90 scale-0",
+              board.task_expand_mode
+                ? "rotate-0 scale-100"
+                : "rotate-90 scale-0",
             )}
           />
           <EyeClosedIcon
             class={cn(
               "absolute h-[1.2rem] w-[1.2rem] !transition-all ",
-              task_expand_mode ? "rotate-90 scale-0" : "rotate-0 scale-100",
+              board.task_expand_mode
+                ? "rotate-90 scale-0"
+                : "rotate-0 scale-100",
             )}
           />
         </Button>

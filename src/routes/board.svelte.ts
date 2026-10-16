@@ -42,6 +42,7 @@ import {
 import type { Archive, ArchiveSummary } from "./type/archive.svelte";
 import { parse_import_summary, type ImportSummary } from "./utils/import-data";
 import { addMission } from "./utils/mission.svelte";
+import { TaskExpansionState } from "./task-expansion.svelte";
 
 // Keep drag-and-drop responsive by waiting until the user has finished a
 // short sequence of moves before persisting it to disk.
@@ -149,6 +150,8 @@ export class BoardStore {
   column_fetch_finish = $state(false);
   column_fetch_error = $state(false);
   notify_enabled = $state(false);
+  task_expand_mode = $state(true);
+  task_expansion = new TaskExpansionState();
   iroh_enabled = $state(false);
   notification_setting_updating = $state(false);
   private has_undo_history = $state(false);
@@ -777,6 +780,12 @@ export class BoardStore {
           board.sort_column_tasks(column);
         }
         board.sync_active_board_task_count();
+        board.task_expansion.prune(
+          expectedBoardId,
+          board.columns.flatMap((column) =>
+            column.tasks.map((task) => task.id),
+          ),
+        );
         board.column_fetch_finish = true;
       })
       .catch((e) => {
@@ -1382,10 +1391,12 @@ export class BoardStore {
     try {
       const settings = await invoke<{
         notify_enabled: boolean;
+        task_expand_mode?: boolean;
         iroh_network?: { enabled: boolean };
         language?: LanguagePreference;
       }>("get_settings");
       this.notify_enabled = settings.notify_enabled;
+      this.task_expand_mode = settings.task_expand_mode ?? true;
       this.iroh_enabled = settings.iroh_network?.enabled ?? false;
       applyLanguagePreference(settings.language);
     } catch (e) {
@@ -1431,6 +1442,26 @@ export class BoardStore {
       }
     } finally {
       this.notification_setting_updating = false;
+    }
+  }
+
+  async set_task_expand_mode(expanded: boolean) {
+    const previous = this.task_expand_mode;
+    this.task_expand_mode = expanded;
+    // Switching the board-wide mode resets individually expanded tasks.
+    this.task_expansion.clear();
+    const saved = await addMission(async () => {
+      try {
+        await invoke<void>("set_task_expand_mode", { expanded });
+        return true;
+      } catch (error) {
+        logger.error("settings.task_expand_save.failed", error);
+        toast.error(translateCommandError(error));
+        return false;
+      }
+    });
+    if (!saved && this.task_expand_mode === expanded) {
+      this.task_expand_mode = previous;
     }
   }
 

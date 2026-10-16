@@ -300,6 +300,12 @@
                 group={column.id}
                 data={{ group: column.id }}
                 expand_content={task_expand_mode}
+                content_open={board.task_expansion.is_expanded(
+                  board.active_board_id,
+                  task.id,
+                )}
+                onToggleContent={() =>
+                  board.task_expansion.toggle(board.active_board_id, task.id)}
                 onViewTask={() => onViewTask(task, column_idx, task_idx)}
                 onEditTask={() => onEditTask(column_idx, task_idx)}
                 onDuplicateTask={() => board.duplicate_task(task.id)}

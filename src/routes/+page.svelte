@@ -82,7 +82,6 @@
   import { board, type ImportCandidate } from "./board.svelte";
 
   // menubar state
-  let task_expand_mode = $state(true);
   let active_view = $state<WorkspaceView>("focus");
   let selected_view = $state<WorkspaceView>("focus");
   $effect(() => {
@@ -1543,7 +1542,6 @@
         search_pending={board.search_pending}
         search_error={board.search_error}
         bind:note_open
-        bind:task_expand_mode
         {selected_view}
         {update_check_in_progress}
         read_only={active_board_read_only}
@@ -1877,7 +1875,7 @@
               <BoardView
                 {search_text}
                 search_task_ids={board.search_task_ids}
-                {task_expand_mode}
+                task_expand_mode={board.task_expand_mode}
                 onAddColumn={open_add_column_dialog}
                 onAddTask={add_task_routine}
                 onImportTask={(column_id) =>

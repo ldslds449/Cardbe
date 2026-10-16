@@ -43,6 +43,18 @@ pub fn set_notify_enabled(
 }
 
 #[tauri::command]
+pub fn set_task_expand_mode(
+    state: State<'_, SharedAppData>,
+    expanded: bool,
+) -> Result<(), CommandError> {
+    update_stored(&state, |data| {
+        data.settings.task_expand_mode = expanded;
+        Ok(())
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
 pub fn get_iroh_network_settings(
     state: State<'_, SharedAppData>,
 ) -> Result<IrohNetworkSettings, CommandError> {

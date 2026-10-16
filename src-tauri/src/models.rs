@@ -266,6 +266,8 @@ pub struct Settings {
     pub notify_enabled: bool,
     #[serde(default = "default_true")]
     pub global_shortcuts_enabled: bool,
+    #[serde(default = "default_true")]
+    pub task_expand_mode: bool,
     #[serde(default)]
     pub iroh_network: IrohNetworkSettings,
 }
@@ -281,6 +283,7 @@ impl Default for Settings {
             language: LanguagePreference::default(),
             notify_enabled: false,
             global_shortcuts_enabled: true,
+            task_expand_mode: true,
             iroh_network: IrohNetworkSettings::default(),
         }
     }
@@ -567,6 +570,16 @@ mod tests {
 
         assert!(settings.notify_enabled);
         assert!(settings.global_shortcuts_enabled);
+        assert!(settings.task_expand_mode);
+    }
+
+    #[test]
+    fn task_expand_mode_roundtrips() {
+        let settings: Settings = serde_json::from_str(r#"{"task_expand_mode":false}"#).unwrap();
+        assert!(!settings.task_expand_mode);
+        let restored: Settings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(restored, settings);
     }
 
     #[test]

@@ -36,6 +36,8 @@
     group?: string | number;
     data?: { group: string | number };
     expand_content: boolean;
+    content_open?: boolean;
+    onToggleContent?: () => void;
     read_only?: boolean;
     onViewTask: () => void;
     onEditTask: () => void;
@@ -53,6 +55,8 @@
     group,
     data,
     expand_content,
+    content_open = false,
+    onToggleContent,
     read_only = false,
     onViewTask = () => {},
     onEditTask = () => {},
@@ -74,7 +78,6 @@
     disabled: () => read_only,
   });
 
-  let show_content = $state(false);
   let prevent_menu_focus_restore = false;
   let has_expandable_content = $derived(
     task.items.length > 0 || task.description.trim().length > 0,
@@ -117,17 +120,6 @@
       };
     })(),
   );
-
-  let previous_expand_content = $state<boolean | undefined>(undefined);
-  $effect(() => {
-    if (
-      previous_expand_content !== undefined &&
-      expand_content !== previous_expand_content
-    ) {
-      show_content = false;
-    }
-    previous_expand_content = expand_content;
-  });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -214,19 +206,19 @@
         onpointerdown={(event) => event.stopPropagation()}
         ondblclick={(event) => event.stopPropagation()}
       >
-        {#if has_expandable_content && !expand_content}
+        {#if onToggleContent && has_expandable_content && !expand_content}
           <Button
             variant="ghost"
             size="icon-sm"
             class="size-6 text-muted-foreground hover:bg-muted/50 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-            aria-label={show_content ? m.task_collapse() : m.task_expand()}
-            title={show_content ? m.task_collapse() : m.task_expand()}
+            aria-label={content_open ? m.task_collapse() : m.task_expand()}
+            title={content_open ? m.task_collapse() : m.task_expand()}
             onpointerup={(event) => event.currentTarget.blur()}
             onclick={() => {
-              show_content = !show_content;
+              onToggleContent?.();
             }}
           >
-            {#if show_content}
+            {#if content_open}
               <ChevronUpIcon class="size-4" />
             {:else}
               <ChevronDownIcon class="size-4" />
@@ -317,18 +309,18 @@
         </div>
       </div>
     {/if}
-    {#if task.items.length > 0 || (task.description.trim().length > 0 && (expand_content || show_content))}
+    {#if task.items.length > 0 || (task.description.trim().length > 0 && (expand_content || content_open))}
       <Card.Content
         class="w-full break-all px-4 text-zinc-600 dark:text-zinc-400"
       >
         {#if task.items.length > 0}
           <ChecklistDisplay
             items={task.items}
-            show_items={expand_content || show_content}
+            show_items={expand_content || content_open}
           />
         {/if}
         {#if task.description.trim().length > 0}
-          <Collapsible.Root open={expand_content || show_content}>
+          <Collapsible.Root open={expand_content || content_open}>
             <Collapsible.Content>
               <div
                 class={task.items.length > 0
