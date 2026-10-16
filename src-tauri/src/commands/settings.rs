@@ -4,7 +4,7 @@ use crate::{
     models::{IrohNetworkSettings, LanguagePreference, Settings},
     state::{update_stored, SharedAppData},
 };
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 #[derive(serde::Serialize)]
 #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
@@ -13,7 +13,17 @@ pub enum RecoveryNotice {
 }
 
 #[tauri::command]
-pub fn get_settings(state: State<'_, SharedAppData>) -> Result<Settings, CommandError> {
+pub async fn get_settings(
+    app: AppHandle,
+    startup: State<'_, crate::StartupError>,
+) -> Result<Settings, CommandError> {
+    // Webviews load before setup manages application data; wait instead of failing.
+    if let Some(error) = startup.wait().await? {
+        return Err(error);
+    }
+    let state = app
+        .try_state::<SharedAppData>()
+        .ok_or_else(|| CommandError::internal("Application data unavailable"))?;
     let guard = state
         .lock()
         .map_err(|_| "Application state lock is poisoned".to_string())?;
