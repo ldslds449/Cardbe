@@ -638,7 +638,7 @@ mod tests {
             .replace_all_boards(
                 &[("Restored".into(), original.clone(), saved.clone())],
                 0,
-                &[note.clone()],
+                std::slice::from_ref(&note),
                 &Default::default(),
             )
             .unwrap();

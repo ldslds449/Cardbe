@@ -50,7 +50,7 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` starts the complete desktop app with sccache enabled. `pnpm frontend:dev` starts only the Vite frontend, so native features such as tray controls, notifications, file dialogs, and LAN sharing are unavailable there.
+`pnpm dev` starts the complete desktop app with non-incremental Rust builds so a compiler-cache wrapper such as kache can reuse artifacts, and accepts the same preferred port as `vp run tauri dev`. Configure the wrapper itself in your Cargo configuration. `pnpm frontend:dev` starts only the Vite frontend, so native features such as tray controls, notifications, file dialogs, and LAN sharing are unavailable there.
 
 If Rust compilation puts pressure on memory, limit parallel compilation in that terminal. In PowerShell:
 
@@ -78,7 +78,7 @@ git config core.hooksPath .githooks
 
 | Command                                           | Description                                                              |
 | ------------------------------------------------- | ------------------------------------------------------------------------ |
-| `pnpm dev`                                        | Run the desktop app with sccache                                         |
+| `pnpm dev [port]`                                 | Run the desktop app with compiler-cache-friendly settings                |
 | `pnpm frontend:dev`                               | Run only the Vite frontend                                               |
 | `pnpm format`                                     | Format frontend files with Prettier and Rust files with rustfmt          |
 | `pnpm lint`                                       | Check frontend and Rust lint rules                                       |

@@ -551,15 +551,17 @@ mod tests {
 
     #[test]
     fn template_delete_add_and_legacy_writes_keep_compatible_order() {
-        let mut board = StoredData::default();
-        board.templates = [20, 1, 10]
-            .into_iter()
-            .map(|id| TaskTemplate {
-                id,
-                name: id.to_string(),
-                task: Task::default(),
-            })
-            .collect();
+        let mut board = StoredData {
+            templates: [20, 1, 10]
+                .into_iter()
+                .map(|id| TaskTemplate {
+                    id,
+                    name: id.to_string(),
+                    task: Task::default(),
+                })
+                .collect(),
+            ..Default::default()
+        };
         let mut update = apply_local_delta(None, &StoredData::default(), &board).unwrap();
         let mut deleted = board.clone();
         let removed = deleted.templates.remove(1);
@@ -693,19 +695,21 @@ mod tests {
     }
     #[test]
     fn template_reorder_and_content_edit_merge() {
-        let mut base = StoredData::default();
-        base.templates = vec![
-            TaskTemplate {
-                id: 1,
-                name: "A".into(),
-                task: Task::default(),
-            },
-            TaskTemplate {
-                id: 2,
-                name: "B".into(),
-                task: Task::default(),
-            },
-        ];
+        let base = StoredData {
+            templates: vec![
+                TaskTemplate {
+                    id: 1,
+                    name: "A".into(),
+                    task: Task::default(),
+                },
+                TaskTemplate {
+                    id: 2,
+                    name: "B".into(),
+                    task: Task::default(),
+                },
+            ],
+            ..Default::default()
+        };
         let initial = apply_local_delta(None, &StoredData::default(), &base).unwrap();
         // Exercise both the new layout and documents predating separate positions.
         for legacy in [false, true] {
@@ -905,35 +909,37 @@ mod tests {
 
     #[test]
     fn tree_reorders_columns_and_moves_cards() {
-        let mut before = StoredData::default();
-        before.columns = vec![
-            Column {
-                id: 1,
-                name: "A".into(),
-                color: String::new(),
-                sort_order: ColumnSort::Custom,
-                tasks: vec![
-                    Task {
-                        id: 11,
+        let before = StoredData {
+            columns: vec![
+                Column {
+                    id: 1,
+                    name: "A".into(),
+                    color: String::new(),
+                    sort_order: ColumnSort::Custom,
+                    tasks: vec![
+                        Task {
+                            id: 11,
+                            ..Task::default()
+                        },
+                        Task {
+                            id: 12,
+                            ..Task::default()
+                        },
+                    ],
+                },
+                Column {
+                    id: 2,
+                    name: "B".into(),
+                    color: String::new(),
+                    sort_order: ColumnSort::Custom,
+                    tasks: vec![Task {
+                        id: 21,
                         ..Task::default()
-                    },
-                    Task {
-                        id: 12,
-                        ..Task::default()
-                    },
-                ],
-            },
-            Column {
-                id: 2,
-                name: "B".into(),
-                color: String::new(),
-                sort_order: ColumnSort::Custom,
-                tasks: vec![Task {
-                    id: 21,
-                    ..Task::default()
-                }],
-            },
-        ];
+                    }],
+                },
+            ],
+            ..Default::default()
+        };
         let initial = apply_local_delta(None, &StoredData::default(), &before).unwrap();
         let mut after = before.clone();
         after.columns.swap(0, 1);
@@ -1021,35 +1027,37 @@ mod tests {
 
     #[test]
     fn archives_and_templates_keep_their_order() {
-        let mut board = StoredData::default();
-        board.archives = vec![
-            Archive {
-                time: 1,
-                task: Task {
+        let board = StoredData {
+            archives: vec![
+                Archive {
+                    time: 1,
+                    task: Task {
+                        id: 20,
+                        ..Task::default()
+                    },
+                },
+                Archive {
+                    time: 2,
+                    task: Task {
+                        id: 10,
+                        ..Task::default()
+                    },
+                },
+            ],
+            templates: vec![
+                TaskTemplate {
                     id: 20,
-                    ..Task::default()
+                    name: "First".into(),
+                    task: Task::default(),
                 },
-            },
-            Archive {
-                time: 2,
-                task: Task {
+                TaskTemplate {
                     id: 10,
-                    ..Task::default()
+                    name: "Second".into(),
+                    task: Task::default(),
                 },
-            },
-        ];
-        board.templates = vec![
-            TaskTemplate {
-                id: 20,
-                name: "First".into(),
-                task: Task::default(),
-            },
-            TaskTemplate {
-                id: 10,
-                name: "Second".into(),
-                task: Task::default(),
-            },
-        ];
+            ],
+            ..Default::default()
+        };
         let update = apply_local_delta(None, &StoredData::default(), &board).unwrap();
         let projected = project(&update).unwrap();
         assert_eq!(

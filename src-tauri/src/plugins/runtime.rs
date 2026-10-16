@@ -500,6 +500,35 @@ fn execute_inner(
     result
 }
 
+fn prepare_component(bytes: &[u8]) -> Result<(Engine, Component, Linker<HostState>), RuntimeError> {
+    let mut config = Config::new();
+    config
+        .wasm_component_model(true)
+        .consume_fuel(true)
+        .epoch_interruption(true);
+    config.max_wasm_stack(512 * 1024);
+    let engine = Engine::new(&config).map_err(|_| RuntimeError::InvalidComponent)?;
+    let component = Component::new(&engine, bytes).map_err(|_| RuntimeError::InvalidComponent)?;
+    let mut linker = Linker::new(&engine);
+    bindings::Plugin::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |state| {
+        state
+    })
+    .map_err(|_| RuntimeError::InvalidComponent)?;
+    Ok((engine, component, linker))
+}
+
+pub fn validate_component(bytes: &[u8]) -> Result<(), RuntimeError> {
+    if bytes.len() as u64 > super::package::COMPONENT_LIMIT {
+        return Err(RuntimeError::ResourceLimit);
+    }
+    let (_, component, linker) = prepare_component(bytes)?;
+    let pre = linker
+        .instantiate_pre(&component)
+        .map_err(|_| RuntimeError::InvalidComponent)?;
+    bindings::PluginPre::new(pre).map_err(|_| RuntimeError::InvalidComponent)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -789,33 +818,4 @@ mod tests {
         .await
         .unwrap();
     }
-}
-
-fn prepare_component(bytes: &[u8]) -> Result<(Engine, Component, Linker<HostState>), RuntimeError> {
-    let mut config = Config::new();
-    config
-        .wasm_component_model(true)
-        .consume_fuel(true)
-        .epoch_interruption(true);
-    config.max_wasm_stack(512 * 1024);
-    let engine = Engine::new(&config).map_err(|_| RuntimeError::InvalidComponent)?;
-    let component = Component::new(&engine, bytes).map_err(|_| RuntimeError::InvalidComponent)?;
-    let mut linker = Linker::new(&engine);
-    bindings::Plugin::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |state| {
-        state
-    })
-    .map_err(|_| RuntimeError::InvalidComponent)?;
-    Ok((engine, component, linker))
-}
-
-pub fn validate_component(bytes: &[u8]) -> Result<(), RuntimeError> {
-    if bytes.len() as u64 > super::package::COMPONENT_LIMIT {
-        return Err(RuntimeError::ResourceLimit);
-    }
-    let (_, component, linker) = prepare_component(bytes)?;
-    let pre = linker
-        .instantiate_pre(&component)
-        .map_err(|_| RuntimeError::InvalidComponent)?;
-    bindings::PluginPre::new(pre).map_err(|_| RuntimeError::InvalidComponent)?;
-    Ok(())
 }

@@ -4368,13 +4368,12 @@ mod tests {
             .unwrap();
         assert!(changed);
         assert_eq!(data.columns[0].tasks[0].title, "After");
-        assert_eq!(
-            loaded
+        assert!(
+            !loaded
                 .database
                 .apply_iroh_loro_update(board_id, "editor", "secret", "device", &update)
                 .unwrap()
-                .0,
-            false
+                .0
         );
         assert!(
             !loaded
@@ -5157,16 +5156,18 @@ mod tests {
         let dir = test_dir("sqlite-schema-migration");
         fs::create_dir_all(&dir).unwrap();
         let database_path = dir.join("data.sqlite3");
-        let mut legacy = StoredData::default();
-        legacy.schema_version = CURRENT_SCHEMA_VERSION - 1;
-        legacy.columns.push(Column {
-            id: 0,
-            name: "Legacy".into(),
-            color: String::new(),
-            sort_order: Default::default(),
-            tasks: Vec::new(),
-        });
-        legacy.next_column_id = 1;
+        let legacy = StoredData {
+            schema_version: CURRENT_SCHEMA_VERSION - 1,
+            columns: vec![Column {
+                id: 0,
+                name: "Legacy".into(),
+                color: String::new(),
+                sort_order: Default::default(),
+                tasks: Vec::new(),
+            }],
+            next_column_id: 1,
+            ..Default::default()
+        };
 
         let mut database = Database::open(database_path).unwrap();
         database.replace_all(&legacy).unwrap();
