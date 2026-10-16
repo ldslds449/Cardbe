@@ -494,6 +494,7 @@ pub fn run() {
             settings::set_iroh_network_settings,
             settings::set_language,
             settings::set_theme,
+            settings::set_window_caption_color,
             settings::set_desktop_menu_labels,
             settings::take_recovery_messages,
             get_startup_error,

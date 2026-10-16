@@ -112,8 +112,70 @@ pub fn set_theme(state: State<'_, SharedAppData>, theme: String) -> Result<(), C
     .map_err(CommandError::from)
 }
 
+/// Tints the native title bar with the active theme; unsupported systems keep the
+/// light/dark caption chosen from the window theme.
+#[tauri::command]
+pub fn set_window_caption_color(
+    window: tauri::WebviewWindow,
+    caption: [u8; 3],
+    text: [u8; 3],
+) -> Result<(), CommandError> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Graphics::Dwm::{DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR};
+        let hwnd = window.hwnd().map_err(CommandError::internal)?.0;
+        for (attribute, color) in [(DWMWA_CAPTION_COLOR, caption), (DWMWA_TEXT_COLOR, text)] {
+            if let Err(code) = set_dwm_color(hwnd, attribute as u32, color) {
+                // Caption colors require Windows 11; older systems reject the attribute.
+                log::debug!(target: "theme", "caption color unavailable: {code:#x}");
+                break;
+            }
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (window, caption, text);
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+fn set_dwm_color(
+    hwnd: *mut std::ffi::c_void,
+    attribute: u32,
+    [red, green, blue]: [u8; 3],
+) -> Result<(), i32> {
+    let color = colorref([red, green, blue]);
+    // SAFETY: `hwnd` belongs to the live window that invoked this command, and the
+    // pointer and size describe a COLORREF that outlives the call.
+    let result = unsafe {
+        windows_sys::Win32::Graphics::Dwm::DwmSetWindowAttribute(
+            hwnd,
+            attribute,
+            std::ptr::from_ref(&color).cast(),
+            std::mem::size_of::<u32>() as u32,
+        )
+    };
+    if result < 0 {
+        Err(result)
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(any(windows, test))]
+fn colorref([red, green, blue]: [u8; 3]) -> u32 {
+    u32::from(red) | u32::from(green) << 8 | u32::from(blue) << 16
+}
+
 #[cfg(test)]
 mod theme_tests {
+    #[test]
+    fn caption_colors_use_colorref_byte_order() {
+        assert_eq!(super::colorref([0x12, 0x34, 0x56]), 0x0056_3412);
+    }
+
     #[test]
     fn theme_allowlist_and_legacy_settings() {
         for id in [

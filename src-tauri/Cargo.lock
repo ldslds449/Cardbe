@@ -41,6 +41,7 @@ dependencies = [
  "tokio-tungstenite",
  "tower",
  "wasmtime",
+ "windows-sys 0.61.2",
  "zip",
 ]
 
