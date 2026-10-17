@@ -15,8 +15,8 @@ mod state;
 mod storage;
 
 use commands::{
-    archive, board, boards, calendar_export, diagnostics, floating_task, import_export, iroh_share,
-    notes, notifications, settings, share, task_explorer, templates, update,
+    archive, board, boards, calendar_export, diagnostics, external, floating_task, import_export,
+    iroh_share, notes, notifications, settings, share, task_explorer, templates, update,
 };
 use state::AppData;
 #[cfg(all(debug_assertions, desktop))]
@@ -448,7 +448,6 @@ pub fn run() {
             board::delete_task,
             board::update_task,
             archive::get_archives,
-            archive::list_archives,
             archive::get_archive_task,
             archive::archive_task,
             archive::archive_all_tasks,
@@ -482,8 +481,6 @@ pub fn run() {
             iroh_share::update_iroh_invite,
             iroh_share::delete_iroh_invite,
             notifications::check_expired_tasks,
-            notifications::get_expired_tasks,
-            notifications::list_expired_tasks,
             notifications::get_task_detail,
             task_explorer::list_all_tasks,
             notes::get_notes,
@@ -513,8 +510,7 @@ pub fn run() {
             templates::update_task_template,
             templates::delete_task_template,
             update::check_for_update,
-            update::open_external_url,
-            update::open_latest_release,
+            external::open_external_url,
         ])
         .run(context)
         .expect("error while running tauri application");

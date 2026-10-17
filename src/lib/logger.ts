@@ -78,6 +78,12 @@ async function write(
       console[level](message);
       return;
     }
+    // The backend log keeps only the sanitized message; while developing,
+    // also show the raw values in DevTools so they can be inspected.
+    if (import.meta.env.DEV) {
+      const details = [error, context].filter((value) => value !== undefined);
+      console[level](event, ...details);
+    }
     await invoke("log_frontend", {
       level,
       target: `frontend.${scope || "app"}`,

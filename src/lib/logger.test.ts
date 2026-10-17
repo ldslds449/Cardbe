@@ -31,6 +31,27 @@ describe("frontend logger", () => {
     },
   );
 
+  it("shows raw values in DevTools only while developing", async () => {
+    const output = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = new Error("save failed");
+    logger.error("note.save.failed", error, { noteId: 3 });
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce());
+    expect(output).toHaveBeenCalledWith("note.save.failed", error, {
+      noteId: 3,
+    });
+
+    invoke.mockClear();
+    output.mockClear();
+    vi.stubEnv("DEV", false);
+    try {
+      logger.error("note.save.failed", error);
+      await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce());
+      expect(output).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("records a fixed event without including a caught error", async () => {
     logger.error("note.save.failed");
 

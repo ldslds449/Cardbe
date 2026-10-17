@@ -1,4 +1,5 @@
 use crate::errors::{CommandError, DomainError};
+use crate::state::lock_app;
 use axum::{
     body::Body,
     extract::{Request, State as AxumState},
@@ -7,7 +8,10 @@ use axum::{
     routing::any,
     Router,
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{
+    engine::general_purpose::{STANDARD as BASE64, URL_SAFE_NO_PAD},
+    Engine as _,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -81,19 +85,29 @@ pub struct LanShareResponse {
     expires_at: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct PublicShareResponse {
-    id: String,
-    updated_at: String,
+/// Borrows the published share so a viewer request serializes it in place.
+#[derive(Serialize)]
+struct PublicShareResponse<'a> {
+    id: &'a str,
+    updated_at: &'a str,
     expires_at: Option<String>,
-    snapshot: Value,
+    snapshot: &'a Value,
 }
 
+/// Minimum distinct characters in a share ID. A random ID has about 18, and
+/// fewer than 8 occurs with probability below 1e-12.
+const MIN_SHARE_ID_DISTINCT_CHARS: usize = 8;
+
+/// A share ID is the capability that grants viewer access: 16 random bytes in
+/// canonical unpadded base64url, exactly as the frontend generates it. Users
+/// may restore a previous ID by hand, so also reject obviously weak values.
+/// This cannot prove randomness; keep the frontend check in `share.ts` aligned.
 fn valid_share_id(id: &str) -> bool {
-    (22..=64).contains(&id.len())
-        && id
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    id.len() == 22
+        && URL_SAFE_NO_PAD
+            .decode(id)
+            .is_ok_and(|bytes| bytes.len() == 16 && URL_SAFE_NO_PAD.encode(&bytes) == id)
+        && id.bytes().collect::<HashSet<_>>().len() >= MIN_SHARE_ID_DISTINCT_CHARS
 }
 
 fn production_asset_allowed(path: &str) -> bool {
@@ -355,9 +369,7 @@ pub fn publish_lan_share(
     log::info!(target: "share", "share.publish.started share_ref={share_ref} board_id={board_id:?} allow_reactivate={allow_reactivate}");
     let result = (|| {
         let board_id = board_id.ok_or(DomainError::BoardNotFound)?;
-        let guard = board_state
-            .lock()
-            .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+        let guard = lock_app(&board_state)?;
         if guard
             .database
             .board_role(board_id)
@@ -454,7 +466,7 @@ async fn lan_request_inner(state: LanHttpState, request: Request) -> Response {
             .uri()
             .path()
             .strip_prefix("/share/")
-            .filter(|id| valid_share_id(id) && active_share(&state.shares, id).is_some());
+            .filter(|id| valid_share_id(id) && is_active_share(&state.shares, id));
         let viewer = development::authorized_viewer(request.headers(), &state.shares);
         if share_page.is_none()
             && !request.uri().path().starts_with("/api/shares/")
@@ -499,7 +511,7 @@ async fn lan_request_inner(state: LanHttpState, request: Request) -> Response {
                         _ = async {
                             loop {
                                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                                if active_share(&state.shares, &viewer).is_none() { break; }
+                                if !is_active_share(&state.shares, &viewer) { break; }
                             }
                         } => {},
                     }
@@ -519,7 +531,7 @@ async fn lan_request_inner(state: LanHttpState, request: Request) -> Response {
 
     let path = request.uri().path();
     if let Some(id) = path.strip_prefix("/share/") {
-        if valid_share_id(id) && active_share(&state.shares, id).is_some() {
+        if valid_share_id(id) && is_active_share(&state.shares, id) {
             let target = request
                 .uri()
                 .path_and_query()
@@ -552,13 +564,16 @@ async fn lan_request_inner(state: LanHttpState, request: Request) -> Response {
     }
 
     if let Some(id) = path.strip_prefix("/api/shares/") {
-        if let Some(share) = active_share(&state.shares, id) {
-            let body = match serde_json::to_vec(&PublicShareResponse {
-                id: id.to_string(),
-                updated_at: share.updated_at,
+        let body = with_active_share(&state.shares, id, |share| {
+            serde_json::to_vec(&PublicShareResponse {
+                id,
+                updated_at: &share.updated_at,
                 expires_at: share.expires_at.map(|value| value.to_rfc3339()),
-                snapshot: share.snapshot,
-            }) {
+                snapshot: &share.snapshot,
+            })
+        });
+        if let Some(body) = body {
+            let body = match body {
                 Ok(body) => body,
                 Err(error) => {
                     let error = CommandError::internal(error);
@@ -738,7 +753,33 @@ fn inline_script_hashes(body: &[u8]) -> Vec<String> {
     hashes
 }
 
-fn active_share(shares: &Arc<RwLock<HashMap<String, LanShare>>>, id: &str) -> Option<LanShare> {
+fn share_expired(share: &LanShare) -> bool {
+    share
+        .expires_at
+        .is_some_and(|expires_at| expires_at <= Utc::now())
+}
+
+/// Run `read` on an unexpired share while holding only the read lock, so
+/// concurrent viewer requests neither serialize nor copy the snapshot. An
+/// expired share is removed under a short write lock.
+fn with_active_share<R>(
+    shares: &Arc<RwLock<HashMap<String, LanShare>>>,
+    id: &str,
+    read: impl FnOnce(&LanShare) -> R,
+) -> Option<R> {
+    {
+        let guard = match shares.read() {
+            Ok(guard) => guard,
+            Err(error) => {
+                log::error!(target: "share", "LAN share state lock is poisoned: {error}");
+                return None;
+            }
+        };
+        let share = guard.get(id)?;
+        if !share_expired(share) {
+            return Some(read(share));
+        }
+    }
     let mut guard = match shares.write() {
         Ok(guard) => guard,
         Err(error) => {
@@ -746,16 +787,16 @@ fn active_share(shares: &Arc<RwLock<HashMap<String, LanShare>>>, id: &str) -> Op
             return None;
         }
     };
-    let share = guard.get(id)?;
-    if share
-        .expires_at
-        .is_some_and(|expires_at| expires_at <= Utc::now())
-    {
+    // Recheck: the share may have been republished after the read lock ended.
+    if guard.get(id).is_some_and(share_expired) {
         guard.remove(id);
         log::info!(target: "share", "share.expired share_ref={}", share_log_ref(id));
-        return None;
     }
-    Some(share.clone())
+    None
+}
+
+fn is_active_share(shares: &Arc<RwLock<HashMap<String, LanShare>>>, id: &str) -> bool {
+    with_active_share(shares, id, |_| ()).is_some()
 }
 
 #[cfg(test)]
@@ -865,8 +906,27 @@ mod tests {
     #[test]
     fn accepts_only_unguessable_url_safe_ids() {
         assert!(valid_share_id("j3V_BXrcsGwtsXv6XAD1jA"));
-        assert!(!valid_share_id("short"));
-        assert!(!valid_share_id("../../not-a-share-id!!"));
+        assert!(valid_share_id("k4W_ACyrtHxtuYw7YBE2kA"));
+        for id in [
+            "short",
+            "../../not-a-share-id!!",
+            // Valid characters, but not the canonical encoding of 16 bytes.
+            "k4W_ACyrtHxtuYw7YBE2kB",
+            "j3V_BXrcsGwtsXv6XAD1jA=",
+            "j3V_BXrcsGwtsXv6XAD1jAA",
+            "j3V_BXrcsGwtsXv6XAD1jAj3V_BXrcsGwtsXv6XAD1jA",
+            "j3V+BXrcsGwtsXv6XAD1jA",
+            // Canonical, but obviously chosen by hand.
+            "AAAAAAAAAAAAAAAAAAAAAA",
+            "ababababababababababaA",
+            "abcdabcdabcdabcdabcdaA",
+        ] {
+            assert!(!valid_share_id(id), "{id}");
+        }
+        assert!(valid_share_id(&URL_SAFE_NO_PAD.encode([
+            0x5a, 0x3c, 0x91, 0x07, 0xee, 0x42, 0x18, 0xb6, 0x7d, 0x2f, 0xc0, 0x63, 0x95, 0x0a,
+            0xd4, 0x81
+        ])));
     }
 
     #[test]
@@ -1016,7 +1076,7 @@ mod tests {
     fn disabled_links_cannot_be_resurrected_by_delayed_updates() {
         let state = LanShareState::default();
         let id = "j3V_BXrcsGwtsXv6XAD1jA".to_string();
-        let new_id = "k4W_ACyrtHxtuYw7YBE2kB".to_string();
+        let new_id = "k4W_ACyrtHxtuYw7YBE2kA".to_string();
         let share = LanShare {
             snapshot: serde_json::json!({"title": "Private content"}),
             updated_at: Utc::now().to_rfc3339(),
@@ -1029,14 +1089,14 @@ mod tests {
         assert!(state
             .replace_share(id.clone(), share.clone(), false)
             .is_err());
-        assert!(active_share(&state.shares, &id).is_none());
+        assert!(!is_active_share(&state.shares, &id));
         state
             .replace_share(new_id.clone(), share.clone(), false)
             .unwrap();
         // An older request must not disable or replace the newer share.
         state.revoke(id.clone()).unwrap();
         assert!(state.replace_share(id, share, false).is_err());
-        assert!(active_share(&state.shares, &new_id).is_some());
+        assert!(is_active_share(&state.shares, &new_id));
     }
 
     #[test]
@@ -1055,7 +1115,7 @@ mod tests {
 
         state.replace_share(id.clone(), share, true).unwrap();
 
-        assert!(active_share(&state.shares, &id).is_some());
+        assert!(is_active_share(&state.shares, &id));
         assert!(!state.retired_ids.lock().unwrap().contains(&id));
     }
 
@@ -1094,7 +1154,7 @@ mod tests {
 
         state.replace_share(id.clone(), share, true).unwrap();
 
-        assert!(active_share(&state.shares, &id).is_some());
+        assert!(is_active_share(&state.shares, &id));
         assert!(!state.retired_ids.lock().unwrap().contains(&id));
     }
 
@@ -1149,7 +1209,7 @@ mod tests {
     fn publishing_another_share_keeps_existing_ids_active() {
         let state = LanShareState::default();
         let old_id = "j3V_BXrcsGwtsXv6XAD1jA".to_string();
-        let new_id = "k4W_ACyrtHxtuYw7YBE2kB".to_string();
+        let new_id = "k4W_ACyrtHxtuYw7YBE2kA".to_string();
         let share = |title: &str| LanShare {
             snapshot: serde_json::json!({
                 "schema_version": 1,

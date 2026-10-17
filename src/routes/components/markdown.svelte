@@ -27,7 +27,6 @@
       })
       .catch((error) => {
         logger.warn("markdown.renderer_load.failed", error);
-        console.error("Couldn't load the Markdown renderer", error);
       });
     return () => {
       active = false;

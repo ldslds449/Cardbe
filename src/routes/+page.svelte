@@ -6,7 +6,6 @@
   import { logger } from "$lib/logger";
   import { restore_floating_tasks } from "$lib/floating-tasks";
   import { onMount, untrack } from "svelte";
-  import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { toast } from "svelte-sonner";
@@ -14,8 +13,6 @@
   import { Spinner } from "$lib/components/ui/spinner/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 
   import BugIcon from "@lucide/svelte/icons/bug";
 
@@ -49,36 +46,24 @@
   import FocusView from "./components/focus/focus_view.svelte";
   import NotePanel from "./components/note/note_panel.svelte";
   import CardReferencePreview from "./components/card_reference_preview.svelte";
+  import IrohRemovalNotice from "./components/share/iroh_removal_notice.svelte";
+  import StartupErrorScreen from "./components/workspace/startup_error_screen.svelte";
   import AppToolbar from "./components/workspace/app_toolbar.svelte";
   import BoardSidebar from "./components/workspace/board_sidebar.svelte";
   import WorkspaceTabs from "./components/workspace/workspace_tabs.svelte";
   import type { WorkspaceView } from "./components/workspace/workspace";
-  import {
-    markUpdateCheckSuccessful,
-    shouldCheckForUpdate,
-    UPDATE_STARTUP_DELAY_MS,
-    updateCheckErrorMessage,
-  } from "./utils/update";
+  import { UPDATE_STARTUP_DELAY_MS } from "./utils/update";
   import {
     parse_portable_task,
     serialize_portable_task,
   } from "./utils/task-transfer";
-  import {
-    build_share_snapshot,
-    group_enabled_shares_by_board,
-    is_managed_share_enabled,
-    publish_share,
-    revoke_managed_shares,
-    revoke_share,
-    resolve_share_selection,
-    save_managed_share,
-    share_content_signature,
-  } from "./share";
+  import { revoke_managed_shares } from "./share";
   import {
     managed_share_state,
     restore_managed_share_state,
   } from "./share-state.svelte";
-  import { LatestShareSyncQueue } from "./share-sync-queue";
+  import { ManagedShareSync } from "./share-sync.svelte";
+  import { UpdateChecker } from "./utils/update-checker.svelte";
 
   import { board, type ImportCandidate } from "./board.svelte";
 
@@ -102,9 +87,7 @@
   let calendar_show_recurring_previews = $state(true);
   let startup_error = $state.raw<unknown>(null);
   let startup_check_finished = $state(false);
-  let app_name = $state("");
-  let app_name_promise: Promise<string> | undefined;
-  let update_check_in_progress = $state(false);
+  const updates = new UpdateChecker();
   let startup_screen_dismissed = false;
   let board_panel_open = $state(false);
   const active_board_summary = $derived(
@@ -272,335 +255,8 @@
       second: "2-digit",
     }),
   );
-  const share_sync_summary = $derived.by(() => {
-    const active_shares = managed_share_state.shares.filter(
-      is_managed_share_enabled,
-    );
-    const states = active_shares.map((share) =>
-      managed_share_state.sync_state(share.id),
-    );
-    const failed = states.find((state) => state.status === "error");
-    return {
-      active_count: active_shares.length,
-      failed,
-      updating: states.some(
-        (state) => state.status === "pending" || state.status === "syncing",
-      ),
-      latest_update: active_shares.reduce(
-        (latest, share) => Math.max(latest, Date.parse(share.updated_at) || 0),
-        0,
-      ),
-    };
-  });
-
-  // Publishing is asynchronous and the reactive content effect can run again
-  // while a previous publish is still in flight. Keep that work per-link so a
-  // second timer cannot leave the visible state at "Updating" forever.
-  type ShareSyncRequest = {
-    share: (typeof managed_share_state.shares)[number];
-    signature: string;
-    columns: typeof board.columns;
-  };
-  const SHARE_SYNC_TIMEOUT_MS = 15_000;
-
-  function with_share_sync_timeout<T>(operation: Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const timeout = window.setTimeout(
-        () => reject(new Error(m.ui_sharing_took_too_long_please_try_again())),
-        SHARE_SYNC_TIMEOUT_MS,
-      );
-      void operation.then(
-        (result) => {
-          window.clearTimeout(timeout);
-          resolve(result);
-        },
-        (error) => {
-          window.clearTimeout(timeout);
-          reject(error);
-        },
-      );
-    });
-  }
-
-  $effect(() => {
-    const shares = managed_share_state.shares.filter(
-      (share) =>
-        is_managed_share_enabled(share) &&
-        share.board_id === board.active_board_id,
-    );
-    if (
-      shares.length === 0 ||
-      !board.column_fetch_finish ||
-      board.column_fetch_error
-    ) {
-      return;
-    }
-
-    const pending: Array<{
-      share: (typeof shares)[number];
-      signature: string;
-    }> = [];
-    for (const share of shares) {
-      try {
-        const selection = resolve_share_selection(
-          board.columns,
-          share.selected_column_ids,
-          share.selected_task_ids,
-          share.selected_labels,
-        );
-        const signature = share_content_signature(
-          board.columns,
-          selection.selected_column_ids,
-          selection.selected_task_ids,
-          share.title,
-          Boolean(share.selected_labels?.length),
-        );
-        if (signature !== managed_share_state.published_signatures[share.id]) {
-          pending.push({ share, signature });
-        }
-      } catch (error) {
-        logger.error("share.selection_refresh.failed", error);
-        untrack(() =>
-          managed_share_state.set_sync_state(
-            share.id,
-            "error",
-            m.ui_shared_content_is_no_longer_available(),
-          ),
-        );
-        void disable_stale_share(share);
-      }
-    }
-    if (pending.length === 0) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      // Do not mark the link pending before this callback starts. Svelte may
-      // cancel this debounce when the user switches boards; marking it earlier
-      // was the source of links stranded at "Updating".
-      for (const item of pending) {
-        void sync_managed_share(item.share, item.signature).catch(
-          () => undefined,
-        );
-      }
-    }, 700);
-    return () => window.clearTimeout(timeout);
-  });
-
-  const share_sync_queue = new LatestShareSyncQueue<ShareSyncRequest>(
-    async (share_id, next, is_current) => {
-      if (
-        !managed_share_state.shares.some(
-          (candidate) => candidate.id === share_id,
-        )
-      ) {
-        return;
-      }
-      if (
-        managed_share_state.published_signatures[share_id] === next.signature
-      ) {
-        managed_share_state.set_sync_state(share_id, "synced");
-        return;
-      }
-      const selection = resolve_share_selection(
-        next.columns,
-        next.share.selected_column_ids,
-        next.share.selected_task_ids,
-        next.share.selected_labels,
-      );
-      const snapshot = build_share_snapshot(
-        next.columns,
-        selection.selected_column_ids,
-        selection.selected_task_ids,
-        next.share.title,
-        new Date(),
-        Boolean(next.share.selected_labels?.length),
-      );
-      const refreshed = await with_share_sync_timeout(
-        publish_share(
-          snapshot,
-          next.share.selected_column_ids,
-          next.share.selected_task_ids,
-          next.share.expires_at ? new Date(next.share.expires_at) : null,
-          next.share,
-          next.share.selected_labels,
-        ),
-      );
-      refreshed.board_id = next.share.board_id;
-      if (
-        is_current() &&
-        managed_share_state.shares.some(
-          (candidate) => candidate.id === share_id,
-        )
-      ) {
-        save_managed_share(refreshed, next.signature);
-      }
-    },
-    (share_id) => {
-      if (
-        managed_share_state.shares.some(
-          (candidate) => candidate.id === share_id,
-        )
-      ) {
-        managed_share_state.set_sync_state(share_id, "syncing");
-      }
-    },
-    (share_id, error) => {
-      if (
-        !managed_share_state.shares.some(
-          (candidate) => candidate.id === share_id,
-        )
-      ) {
-        return;
-      }
-      console.error(m.ui_couldn_t_update_a_board_share(), error);
-      logger.error("share.sync.failed", error);
-      managed_share_state.set_sync_state(
-        share_id,
-        "error",
-        m.ui_couldn_t_update_the_shared_board(),
-      );
-    },
-  );
-
-  function sync_managed_share(
-    share: (typeof managed_share_state.shares)[number],
-    signature: string,
-    columns = board.columns,
-  ): Promise<void> {
-    if (
-      !managed_share_state.shares.some((candidate) => candidate.id === share.id)
-    ) {
-      return Promise.resolve();
-    }
-    // The returned promise resolves only after this snapshot (or a later
-    // snapshot that superseded it) reaches a terminal state. Board switching
-    // therefore cannot outrun a publish already in flight.
-    return share_sync_queue.request(share.id, { share, signature, columns });
-  }
-
-  async function sync_shares_for_board(
-    board_id: number,
-    columns: typeof board.columns,
-  ) {
-    const shares = managed_share_state.shares.filter(
-      (share) => is_managed_share_enabled(share) && share.board_id === board_id,
-    );
-    await Promise.all(
-      shares.map(async (share) => {
-        const selection = resolve_share_selection(
-          columns,
-          share.selected_column_ids,
-          share.selected_task_ids,
-          share.selected_labels,
-        );
-        const signature = share_content_signature(
-          columns,
-          selection.selected_column_ids,
-          selection.selected_task_ids,
-          share.title,
-          Boolean(share.selected_labels?.length),
-        );
-        if (signature !== managed_share_state.published_signatures[share.id]) {
-          await sync_managed_share(share, signature, columns);
-        }
-      }),
-    );
-  }
-
-  async function restore_all_managed_shares() {
-    const grouped = group_enabled_shares_by_board(managed_share_state.shares);
-    await Promise.all(
-      [...grouped.entries()].map(async ([board_id, shares]) => {
-        try {
-          const serialized = await invoke<ColumnSerialized[]>(
-            "get_board_columns",
-            { boardId: board_id },
-          );
-          await sync_shares_for_board(
-            board_id,
-            serialized.map(deserialize_column),
-          );
-        } catch (error) {
-          logger.error("share.restore.failed", error);
-          console.error(`Couldn't restore shares for board ${board_id}`, error);
-          for (const share of shares) {
-            managed_share_state.set_sync_state(
-              share.id,
-              "error",
-              m.ui_couldn_t_update_the_shared_board(),
-            );
-          }
-          toast.error(m.share_restore_error(), {
-            description: translateCommandError(error),
-          });
-        }
-      }),
-    );
-  }
-
-  async function disable_stale_share(
-    share: (typeof managed_share_state.shares)[number],
-  ) {
-    try {
-      share_sync_queue.retire(share.id);
-      await revoke_share(share, "stale_selection");
-      const current = managed_share_state.shares.find(
-        (candidate) => candidate.id === share.id,
-      );
-      if (current) {
-        save_managed_share({ ...current, enabled: false }, "");
-        toast.error(m.share_stopped_named({ name: share.title }));
-      }
-    } catch (error) {
-      logger.error("share.stale_revoke.failed", error);
-      if (
-        managed_share_state.shares.some(
-          (candidate) => candidate.id === share.id,
-        )
-      ) {
-        managed_share_state.set_sync_state(
-          share.id,
-          "error",
-          m.ui_could_not_disable_outdated_share_content_close_cardbe_to_stop_sharing(),
-        );
-      }
-    }
-  }
-
-  async function flush_active_board_shares() {
-    const shares = managed_share_state.shares.filter(
-      (share) =>
-        is_managed_share_enabled(share) &&
-        share.board_id === board.active_board_id,
-    );
-    await Promise.all(
-      shares.map(async (share) => {
-        const selection = resolve_share_selection(
-          board.columns,
-          share.selected_column_ids,
-          share.selected_task_ids,
-          share.selected_labels,
-        );
-        const signature = share_content_signature(
-          board.columns,
-          selection.selected_column_ids,
-          selection.selected_task_ids,
-          share.title,
-          Boolean(share.selected_labels?.length),
-        );
-        if (signature !== managed_share_state.published_signatures[share.id]) {
-          await sync_managed_share(share, signature);
-        }
-      }),
-    );
-    const failed = shares
-      .map((share) => managed_share_state.sync_state(share.id))
-      .find((state) => state.status === "error");
-    if (failed) {
-      throw new Error(m.share_switch_error({ error: failed.error }));
-    }
-  }
+  const share_sync = new ManagedShareSync();
+  share_sync.track_active_board();
 
   function reset_board_scoped_ui() {
     search_text = "";
@@ -645,7 +301,7 @@
       return;
     }
     try {
-      await flush_active_board_shares();
+      await share_sync.flush_active_board();
       if (await board.switch_board(id)) {
         reset_board_scoped_ui();
       }
@@ -659,7 +315,7 @@
     try {
       for (const share of managed_share_state.shares) {
         if (share.board_id === id) {
-          share_sync_queue.retire(share.id);
+          share_sync.retire(share.id);
         }
       }
       const forget_shares = await revoke_managed_shares(
@@ -703,7 +359,7 @@
       if (
         await board.import_all_boards_from_file(true, async () => {
           for (const share of managed_share_state.shares) {
-            share_sync_queue.retire(share.id);
+            share_sync.retire(share.id);
           }
           forget_shares = await revoke_managed_shares(
             () => true,
@@ -765,7 +421,7 @@
             );
             return;
           }
-          await restore_all_managed_shares();
+          await share_sync.restore_all();
         });
       })
       .catch((error) => {
@@ -778,10 +434,10 @@
           window.dispatchEvent(new Event("cardbe:workspace-ready")),
         );
       });
-    void load_app_name();
+    void updates.load_app_name();
 
     const update_check_timeout = window.setTimeout(() => {
-      void check_for_updates();
+      void updates.check();
     }, UPDATE_STARTUP_DELAY_MS);
 
     const handle_shortcut = (event: KeyboardEvent) => {
@@ -900,13 +556,12 @@
           boardId: changed_board_id,
         })
           .then((columns) =>
-            sync_shares_for_board(
+            share_sync.sync_board(
               changed_board_id,
               columns.map(deserialize_column),
             ),
           )
           .catch((error) => {
-            console.error(m.ui_couldn_t_sync_quick_add_board_shares(), error);
             logger.error("share.quick_add_sync.failed", error);
           });
       },
@@ -959,87 +614,6 @@
       );
     };
   });
-
-  function load_app_name(): Promise<string> {
-    app_name_promise ??= getName().then((name) => {
-      app_name = name;
-      return name;
-    });
-    return app_name_promise;
-  }
-
-  async function check_for_updates(manual = false) {
-    if (update_check_in_progress) {
-      return;
-    }
-
-    try {
-      if (!manual && !shouldCheckForUpdate(window.localStorage)) {
-        return;
-      }
-      update_check_in_progress = true;
-
-      const [resolved_app_name, current_version] = await Promise.all([
-        load_app_name(),
-        getVersion(),
-      ]);
-      const update = await invoke<{ version: string; url: string } | null>(
-        "check_for_update",
-        {
-          currentVersion: current_version,
-        },
-      );
-      markUpdateCheckSuccessful(window.localStorage);
-      if (!update) {
-        if (manual) {
-          toast.success(m.update_current({ name: resolved_app_name }));
-        }
-        return;
-      }
-
-      toast.info(
-        m.update_available({
-          name: resolved_app_name,
-          version: update.version,
-        }),
-        {
-          id: `app-update-${update.version}`,
-          description: m.ui_download_the_new_version_from_github_releases(),
-          duration: Infinity,
-          closeButton: true,
-          action: {
-            label: m.ui_view_release(),
-            onClick: () => {
-              void invoke("open_external_url", { url: update.url }).catch(
-                (error) => {
-                  logger.warn("update.open_release.failed", error);
-                  console.error("Couldn't open the GitHub release:", error);
-                  toast.error(translateCommandError(error));
-                },
-              );
-            },
-          },
-          cancel: {
-            label: m.ui_later(),
-            onClick: () => {},
-          },
-        },
-      );
-    } catch (error) {
-      logger.warn("update.manual_check.failed", error);
-      // Automatic update checks should never interrupt normal app usage.
-      console.info("Couldn't check for app updates:", error);
-      if (manual) {
-        toast.error(m.ui_couldn_t_check_for_updates(), {
-          description: updateCheckErrorMessage(error),
-          duration: 10_000,
-          closeButton: true,
-        });
-      }
-    } finally {
-      update_check_in_progress = false;
-    }
-  }
 
   // ============ Dialog Handlers ============
 
@@ -1388,7 +962,6 @@
       task_share_dialog_open = true;
     } catch (error) {
       logger.warn("task.share_text_prepare.failed", error);
-      console.log(error);
       toast.error(m.ui_couldn_t_prepare_task_sharing_text());
     }
   }
@@ -1413,7 +986,6 @@
       toast.success(m.ui_task_sharing_text_copied());
     } catch (error) {
       logger.warn("task.share_text_copy.failed", error);
-      console.log(error);
       toast.error(m.ui_couldn_t_copy_text_select_it_and_copy_manually());
     }
   }
@@ -1471,53 +1043,7 @@
 
 <div class="flex h-screen min-h-0 flex-col bg-background">
   {#if startup_error}
-    <main
-      class="grid min-h-0 flex-1 place-items-center overflow-y-auto bg-muted/30 p-6"
-      aria-labelledby="startup-error-title"
-    >
-      <Card.Root
-        class="w-full max-w-2xl gap-0 overflow-hidden border-border bg-card p-0 shadow-sm"
-      >
-        <header class="flex items-start gap-4 border-b px-6 py-6">
-          <div
-            class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/20"
-            aria-hidden="true"
-          >
-            <BugIcon class="size-5" />
-          </div>
-          <div class="min-w-0 space-y-1.5">
-            <p
-              class="text-xs font-medium uppercase tracking-wider text-muted-foreground"
-            >
-              {m.ui_local_database()}
-            </p>
-            <h1
-              id="startup-error-title"
-              class="text-lg font-semibold tracking-tight"
-            >
-              {m.ui_couldn_t_open_your_data()}
-            </h1>
-            <p class="text-sm leading-relaxed text-muted-foreground">
-              {m.startup_database_description()}
-            </p>
-          </div>
-        </header>
-
-        <Card.Content class="grid gap-3 py-5">
-          <div class="flex items-center gap-2 text-sm font-medium">
-            <span class="size-2 rounded-full bg-destructive" aria-hidden="true"
-            ></span>
-            {m.ui_error_details()}
-          </div>
-          <pre
-            class="max-h-[40vh] overflow-auto whitespace-pre-wrap break-all rounded-lg border border-destructive/20 bg-muted/50 px-4 py-3 font-mono text-xs leading-relaxed text-foreground selection:bg-primary/20"
-            role="alert">{translateCommandError(startup_error)}</pre>
-          <p class="text-xs text-muted-foreground">
-            {m.ui_this_error_is_also_recorded_in_the_cardbe_app_log()}
-          </p>
-        </Card.Content>
-      </Card.Root>
-    </main>
+    <StartupErrorScreen error={startup_error} />
   {:else if !startup_check_finished}
     <div class="flex min-h-0 flex-1" aria-hidden="true"></div>
   {:else if board.column_fetch_error}
@@ -1564,9 +1090,9 @@
         search_error={board.search_error}
         bind:note_open
         {selected_view}
-        {update_check_in_progress}
+        update_check_in_progress={updates.in_progress}
         read_only={active_board_read_only}
-        web_publish_count={share_sync_summary.active_count}
+        web_publish_count={share_sync.summary.active_count}
         {pending_device_count}
         {removed_access_count}
         onOpenDeviceRequests={() => {
@@ -1579,19 +1105,19 @@
           iroh_show_received = true;
           iroh_share_dialog_open = true;
         }}
-        web_publish_status={share_sync_summary.failed
+        web_publish_status={share_sync.summary.failed
           ? "error"
-          : share_sync_summary.updating
+          : share_sync.summary.updating
             ? "updating"
             : "idle"}
-        web_publish_detail={share_sync_summary.failed
-          ? m.share_sync_failed({ error: share_sync_summary.failed.error })
-          : share_sync_summary.updating
+        web_publish_detail={share_sync.summary.failed
+          ? m.share_sync_failed({ error: share_sync.summary.failed.error })
+          : share_sync.summary.updating
             ? m.ui_updating_published_views()
             : m.share_sync_summary({
-                count: share_sync_summary.active_count,
+                count: share_sync.summary.active_count,
                 time: share_time_formatter.format(
-                  new Date(share_sync_summary.latest_update),
+                  new Date(share_sync.summary.latest_update),
                 ),
               })}
         onPrepareImport={prepare_import}
@@ -1614,7 +1140,7 @@
         onOpenAllTasks={() => (all_task_open = true)}
         onAddTask={open_add_task_shortcut}
         onAddColumn={open_add_column_dialog}
-        onCheckForUpdates={check_for_updates}
+        onCheckForUpdates={(manual) => updates.check(manual)}
       />
 
       <WorkspaceTabs
@@ -1677,16 +1203,16 @@
       <BoardShareDialog
         bind:open={board_share_dialog_open}
         columns={board.columns}
-        default_title={app_name}
+        default_title={updates.app_name}
         active_board_id={board.active_board_id}
         boards={board.boards}
-        onRetireShare={(share_id) => share_sync_queue.retire(share_id)}
+        onRetireShare={(share_id) => share_sync.retire(share_id)}
         onRetryShareStorage={async () => {
           restore_managed_share_state(
             board.boards.length === 1 ? board.boards[0].id : undefined,
           );
           if (!managed_share_state.storage_error) {
-            await restore_all_managed_shares();
+            await share_sync.restore_all();
           }
         }}
         onShareRevokeError={(share_id, error) => {
@@ -1929,36 +1455,10 @@
 </div>
 
 {#each board.iroh_removal_notices.slice(0, 1) as notice (notice)}
-  <AlertDialog.Root open={true}>
-    <AlertDialog.Content
-      class="max-h-[calc(100dvh-2rem)] overflow-y-auto"
-      onEscapeKeydown={(event) => event.preventDefault()}
-      onInteractOutside={(event) => event.preventDefault()}
-    >
-      <AlertDialog.Header>
-        <AlertDialog.Title>{m.share_removed_notice_title()}</AlertDialog.Title>
-        <AlertDialog.Description class="break-words">
-          {notice.reason === "SHARE_INVITATION_DELETED"
-            ? m.share_removed_notice_invitation({ name: notice.board_name })
-            : m.share_removed_notice_revoked({ name: notice.board_name })}
-          {#if notice.switched_to !== null}
-            <span class="mt-2 block"
-              >{m.share_removed_notice_switched({
-                name: notice.switched_to,
-              })}</span
-            >
-          {/if}
-        </AlertDialog.Description>
-      </AlertDialog.Header>
-      <AlertDialog.Footer>
-        <AlertDialog.Action
-          onclick={() => {
-            board.iroh_removal_notices = board.iroh_removal_notices.slice(1);
-          }}
-        >
-          {m.share_removed_notice_acknowledge()}
-        </AlertDialog.Action>
-      </AlertDialog.Footer>
-    </AlertDialog.Content>
-  </AlertDialog.Root>
+  <IrohRemovalNotice
+    {notice}
+    onacknowledge={() => {
+      board.iroh_removal_notices = board.iroh_removal_notices.slice(1);
+    }}
+  />
 {/each}

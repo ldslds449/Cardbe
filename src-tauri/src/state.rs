@@ -1,12 +1,13 @@
-use crate::errors::DomainError;
+use crate::errors::{CommandError, DomainError, ShareError};
 use crate::{
     models::{Board, BoardRole, StoredData},
     storage::{self, Database},
 };
 use std::{
     collections::{BTreeSet, HashSet},
+    fmt,
     path::PathBuf,
-    sync::Mutex,
+    sync::{Mutex, MutexGuard},
 };
 use tauri::State;
 
@@ -23,6 +24,46 @@ pub struct AppData {
 }
 
 pub type SharedAppData = Mutex<AppData>;
+
+/// A panic while holding the application state left it possibly inconsistent.
+#[derive(Debug)]
+pub struct AppLockPoisoned;
+
+impl fmt::Display for AppLockPoisoned {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Application state lock is poisoned")
+    }
+}
+
+impl std::error::Error for AppLockPoisoned {}
+
+impl From<AppLockPoisoned> for String {
+    fn from(error: AppLockPoisoned) -> Self {
+        error.to_string()
+    }
+}
+
+impl From<AppLockPoisoned> for DomainError {
+    fn from(error: AppLockPoisoned) -> Self {
+        Self::Internal(error.to_string())
+    }
+}
+
+impl From<AppLockPoisoned> for ShareError {
+    fn from(error: AppLockPoisoned) -> Self {
+        Self::Internal(error.to_string())
+    }
+}
+
+impl From<AppLockPoisoned> for CommandError {
+    fn from(error: AppLockPoisoned) -> Self {
+        Self::internal(error)
+    }
+}
+
+pub fn lock_app(state: &SharedAppData) -> Result<MutexGuard<'_, AppData>, AppLockPoisoned> {
+    state.lock().map_err(|_| AppLockPoisoned)
+}
 
 impl AppData {
     pub fn new(
@@ -46,6 +87,23 @@ impl AppData {
         };
         data.refresh_labels();
         Ok(data)
+    }
+
+    /// Install board contents that changed outside the local undo history.
+    /// Undo snapshots describe the previous contents, so they are discarded.
+    pub fn replace_board_contents(&mut self, stored: StoredData) {
+        self.stored = stored;
+        self.undo_history.clear();
+        self.refresh_labels();
+    }
+
+    /// Make `board_id` the active board, reloaded from SQLite with archives.
+    pub fn load_active_board(&mut self, board_id: i64) -> storage::StorageResult<()> {
+        let stored = self.database.load_board(board_id)?;
+        self.active_board_id = board_id;
+        self.archives_loaded = true;
+        self.replace_board_contents(stored);
+        Ok(())
     }
 
     pub fn refresh_labels(&mut self) {
@@ -81,9 +139,7 @@ pub fn update_stored<R>(
     state: &State<'_, SharedAppData>,
     change: impl FnOnce(&mut StoredData) -> Result<R, String>,
 ) -> Result<R, String> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(state)?;
     update_locked(&mut guard, change)
 }
 
@@ -95,9 +151,7 @@ pub fn update_stored_for_board<R>(
     expected_board_id: i64,
     change: impl FnOnce(&mut StoredData) -> Result<R, DomainError>,
 ) -> Result<R, DomainError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| DomainError::Internal("Application state lock is poisoned".into()))?;
+    let mut guard = lock_app(state)?;
     if guard.active_board_id != expected_board_id {
         return Err(DomainError::StaleBoardRequest);
     }
@@ -110,9 +164,7 @@ pub fn update_stored_with_archives_for_board<R>(
     expected_board_id: i64,
     change: impl FnOnce(&mut StoredData) -> Result<R, DomainError>,
 ) -> Result<R, DomainError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(state)?;
     if guard.active_board_id != expected_board_id {
         return Err(DomainError::StaleBoardRequest);
     }
@@ -125,9 +177,7 @@ pub fn load_archives_for_board(
     state: &State<'_, SharedAppData>,
     expected_board_id: i64,
 ) -> Result<Vec<crate::models::Archive>, DomainError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(state)?;
     if guard.active_board_id != expected_board_id {
         return Err(DomainError::StaleBoardRequest);
     }
@@ -140,9 +190,7 @@ pub fn read_with_archives_for_board<R>(
     expected_board_id: i64,
     read: impl FnOnce(&AppData) -> R,
 ) -> Result<R, DomainError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(state)?;
     if guard.active_board_id != expected_board_id {
         return Err(DomainError::StaleBoardRequest);
     }
@@ -155,9 +203,7 @@ pub fn update_stored_with_pre_import_snapshot_for_board<R>(
     expected_board_id: i64,
     change: impl FnOnce(&mut StoredData) -> Result<R, DomainError>,
 ) -> Result<(R, PathBuf), DomainError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(state)?;
     if guard.active_board_id != expected_board_id {
         return Err(DomainError::StaleBoardRequest);
     }
@@ -280,9 +326,7 @@ pub fn undo_last_change_for_board(
     state: &State<'_, SharedAppData>,
     expected_board_id: i64,
 ) -> Result<bool, DomainError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(state)?;
     undo_locked(&mut guard, expected_board_id)
 }
 
@@ -538,6 +582,98 @@ mod tests {
         assert_eq!(app.stored.archives, vec![archive.clone()]);
         assert_eq!(app.undo_history[0].archives, vec![archive]);
         drop(app);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn reloading_the_active_board_discards_undo_and_refreshes_derived_state() {
+        let dir = std::env::temp_dir().join(format!(
+            "cardbe-reload-board-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let mut persisted = StoredData::default();
+        persisted.columns.push(Column {
+            id: 1,
+            name: "Persisted".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks: vec![Task {
+                id: 1,
+                title: "Labelled".into(),
+                labels: vec!["saved".into()],
+                ..Task::default()
+            }],
+        });
+        persisted.archives.push(Archive {
+            time: 123,
+            task: Task {
+                id: 2,
+                title: "Archived".into(),
+                ..Task::default()
+            },
+        });
+        persisted.next_task_id = 3;
+        let mut database = Database::open(dir.join("data.sqlite3")).unwrap();
+        database.initialize_boards(&persisted).unwrap();
+        let board_id = database.active_board_id();
+        let mut app = AppData::new(StoredData::default(), database, Vec::new(), false).unwrap();
+        app.undo_history.push(StoredData::default());
+
+        app.load_active_board(board_id).unwrap();
+
+        assert_eq!(app.active_board_id, board_id);
+        assert!(app.archives_loaded);
+        assert_eq!(app.stored.columns, persisted.columns);
+        assert_eq!(app.stored.archives, persisted.archives);
+        assert!(app.undo_history.is_empty());
+        assert_eq!(app.ordered_labels(), vec!["saved".to_string()]);
+        drop(app);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn poisoned_app_lock_keeps_the_internal_error_for_every_boundary() {
+        let dir = std::env::temp_dir().join(format!(
+            "cardbe-poisoned-lock-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let state: SharedAppData = Mutex::new(app_data(&dir, StoredData::default()));
+        assert!(lock_app(&state).is_ok());
+        std::thread::scope(|scope| {
+            let _ = scope
+                .spawn(|| {
+                    let _guard = state.lock().unwrap();
+                    panic!("poison the application state");
+                })
+                .join();
+        });
+
+        let message = "Application state lock is poisoned";
+        let poisoned = || lock_app(&state).err().unwrap();
+        assert_eq!(String::from(poisoned()), message);
+        assert!(matches!(
+            DomainError::from(poisoned()),
+            DomainError::Internal(detail) if detail == message
+        ));
+        assert!(matches!(
+            ShareError::from(poisoned()),
+            ShareError::Internal(detail) if detail == message
+        ));
+        assert!(matches!(
+            CommandError::from(poisoned()),
+            CommandError::InternalError
+        ));
+        drop(state);
         fs::remove_dir_all(dir).unwrap();
     }
 }

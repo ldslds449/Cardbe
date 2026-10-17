@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
+const logger = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock("$lib/logger", () => ({ logger }));
+
 import { addMission } from "./mission.svelte";
 
 describe("mission queue", () => {
   it("returns the original error and continues with the next mission", async () => {
-    const console_error = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
     const calls: string[] = [];
     const failure = new Error("save failed");
 
@@ -22,8 +22,6 @@ describe("mission queue", () => {
     await expect(failed).rejects.toBe(failure);
     await expect(succeeded).resolves.toBe("done");
     expect(calls).toEqual(["failed", "succeeded"]);
-    expect(console_error).toHaveBeenCalledWith("Mission error:", failure);
-
-    console_error.mockRestore();
+    expect(logger.error).toHaveBeenCalledWith("mission.failed", failure);
   });
 });

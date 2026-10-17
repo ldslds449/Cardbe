@@ -1,9 +1,4 @@
-import {
-  create_task,
-  type Task,
-  type TaskSerialized,
-  type TaskSummary,
-} from "./task.svelte";
+import { create_task, type Task, type TaskSerialized } from "./task.svelte";
 
 export interface Archive {
   time: Date;
@@ -13,11 +8,6 @@ export interface Archive {
 export interface ArchiveSerialized {
   time: number;
   task: TaskSerialized;
-}
-
-export interface ArchiveSummary {
-  time: Date;
-  task: TaskSummary;
 }
 
 export function create_archive(

@@ -2,7 +2,7 @@ use crate::errors::CommandError;
 use crate::{
     commands::iroh_share,
     models::{IrohNetworkSettings, LanguagePreference, Settings},
-    state::{update_stored, SharedAppData},
+    state::{lock_app, update_stored, SharedAppData},
 };
 use tauri::{AppHandle, Manager, State};
 
@@ -24,9 +24,7 @@ pub async fn get_settings(
     let state = app
         .try_state::<SharedAppData>()
         .ok_or_else(|| CommandError::internal("Application data unavailable"))?;
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let guard = lock_app(&state)?;
     Ok(guard.stored.settings.clone())
 }
 
@@ -58,9 +56,7 @@ pub fn set_task_expand_mode(
 pub fn get_iroh_network_settings(
     state: State<'_, SharedAppData>,
 ) -> Result<IrohNetworkSettings, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let guard = lock_app(&state)?;
     Ok(guard.stored.settings.iroh_network.clone())
 }
 
@@ -308,9 +304,7 @@ pub async fn set_desktop_menu_labels(
 pub fn take_recovery_messages(
     state: State<'_, SharedAppData>,
 ) -> Result<Vec<RecoveryNotice>, CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(&state)?;
     let messages = std::mem::take(&mut guard.recovery_messages);
     // Details were logged during startup; notifications never expose paths
     // or backend wording to the UI.

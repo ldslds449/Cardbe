@@ -4,7 +4,7 @@ use crate::{
         AllBoardsExport, AllBoardsExportBoard, ExportData, StoredData, CURRENT_SCHEMA_VERSION,
     },
     state::{
-        read_with_archives_for_board, update_stored_with_pre_import_snapshot_for_board,
+        lock_app, read_with_archives_for_board, update_stored_with_pre_import_snapshot_for_board,
         SharedAppData,
     },
 };
@@ -27,9 +27,7 @@ pub fn export_data(
 
 #[tauri::command]
 pub fn export_all_boards(state: State<'_, SharedAppData>) -> Result<String, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let guard = lock_app(&state)?;
     let active_board_id = guard.active_board_id;
     let boards = guard
         .boards
@@ -137,9 +135,7 @@ pub fn import_all_boards(
         .map_err(|_| CommandError::InvalidImport)?;
         prepared.push((name.to_string(), data, board.flow));
     }
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(&state)?;
     let (boards, stored) = guard
         .database
         .replace_all_boards(
@@ -151,10 +147,8 @@ pub fn import_all_boards(
         .map_err(CommandError::repository)?;
     guard.boards = boards;
     guard.active_board_id = guard.boards[backup.active_board_index].id;
-    guard.stored = stored;
-    guard.undo_history.clear();
-    guard.refresh_labels();
     guard.archives_loaded = true;
+    guard.replace_board_contents(stored);
     drop(guard);
     tauri::async_runtime::spawn(async move {
         use tauri::Manager;
@@ -214,22 +208,15 @@ pub fn import_board_as_new(
     data.repair_task_ids();
     data.repair_template_ids();
 
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(&state)?;
     let board = guard
         .database
         .create_board_with_data(&name, &data)
         .map_err(CommandError::repository)?;
     guard.boards.push(board.clone());
-    guard.stored = guard
-        .database
-        .load_board(board.id)
+    guard
+        .load_active_board(board.id)
         .map_err(CommandError::repository)?;
-    guard.active_board_id = board.id;
-    guard.undo_history.clear();
-    guard.archives_loaded = true;
-    guard.refresh_labels();
     Ok(board)
 }
 

@@ -1,7 +1,7 @@
 use crate::errors::{CommandError, DomainError};
 use crate::{
     models::{Board, BoardRole},
-    state::SharedAppData,
+    state::{lock_app, SharedAppData},
 };
 use serde::Serialize;
 use tauri::State;
@@ -38,9 +38,7 @@ fn next_board_after_delete(boards: &[Board], removed_id: i64) -> Result<i64, Dom
 
 #[tauri::command]
 pub fn get_boards(state: State<'_, SharedAppData>) -> Result<BoardsState, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let guard = lock_app(&state)?;
     Ok(BoardsState {
         boards: guard.database.boards().map_err(CommandError::repository)?,
         active_board_id: guard.active_board_id,
@@ -49,9 +47,7 @@ pub fn get_boards(state: State<'_, SharedAppData>) -> Result<BoardsState, Comman
 
 #[tauri::command]
 pub fn create_board(state: State<'_, SharedAppData>, name: String) -> Result<Board, CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     let board = guard
         .database
         .create_board(&board_name(name)?)
@@ -66,9 +62,7 @@ pub fn rename_board(
     board_id: i64,
     name: String,
 ) -> Result<(), CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     let name = board_name(name)?;
     if guard
         .database
@@ -99,28 +93,19 @@ pub fn rename_board(
 
 #[tauri::command]
 pub fn switch_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<(), CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     if !guard.boards.iter().any(|board| board.id == board_id) {
         return Err(CommandError::BoardNotFound);
     }
-    guard.stored = guard
-        .database
-        .load_board(board_id)
+    guard
+        .load_active_board(board_id)
         .map_err(CommandError::repository)?;
-    guard.active_board_id = board_id;
-    guard.undo_history.clear();
-    guard.archives_loaded = true;
-    guard.refresh_labels();
     Ok(())
 }
 
 #[tauri::command]
 pub fn delete_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<i64, CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     let next = next_board_after_delete(&guard.boards, board_id)?;
     let index = guard
         .boards
@@ -133,13 +118,9 @@ pub fn delete_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<i6
         .map_err(CommandError::repository)?;
     guard.boards.remove(index);
     if board_id == guard.active_board_id {
-        guard.stored = guard
-            .database
-            .load_board(next)
+        guard
+            .load_active_board(next)
             .map_err(CommandError::repository)?;
-        guard.active_board_id = next;
-        guard.undo_history.clear();
-        guard.refresh_labels();
     }
     Ok(next)
 }

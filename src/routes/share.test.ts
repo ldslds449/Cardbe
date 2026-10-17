@@ -281,6 +281,34 @@ describe("board sharing", () => {
     ).toThrow();
   });
 
+  it("accepts only generated-format share IDs that are not obviously weak", () => {
+    for (let index = 0; index < 100; index += 1) {
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      const id = btoa(String.fromCharCode(...bytes))
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replace(/=+$/, "");
+      expect(parse_requested_share_link(id).id).toBe(id);
+    }
+    for (const id of [
+      // Valid characters, but not the canonical encoding of 16 bytes.
+      "k4W_ACyrtHxtuYw7YBE2kB",
+      "j3V_BXrcsGwtsXv6XAD1jAA",
+      "j3V_BXrcsGwtsXv6XAD1jAj3V_BXrcsGwtsXv6XAD1jA",
+      // Canonical, but obviously chosen by hand.
+      "AAAAAAAAAAAAAAAAAAAAAA",
+      "ababababababababababaA",
+      "abcdabcdabcdabcdabcdaA",
+    ]) {
+      expect(() => parse_requested_share_link(id)).toThrow(
+        "valid Cardbe share link",
+      );
+      expect(() =>
+        parse_requested_share_link(`http://192.168.1.20:12345/share/${id}`),
+      ).toThrow("valid Cardbe share link");
+    }
+  });
+
   it("publishes a manually restored share with its previous ID and port", async () => {
     const snapshot = build_share_snapshot(
       [create_column("column_1", "Todo")],

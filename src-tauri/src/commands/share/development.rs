@@ -20,7 +20,7 @@ pub(super) fn authorized_viewer(
         .filter_map(|value| value.to_str().ok())
         .flat_map(|value| value.split(';'))
         .filter_map(|cookie| cookie.trim().strip_prefix("cardbe_dev_share="))
-        .find(|id| valid_share_id(id) && super::active_share(shares, id).is_some())
+        .find(|id| valid_share_id(id) && super::is_active_share(shares, id))
         .map(str::to_string)
 }
 

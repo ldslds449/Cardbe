@@ -1,37 +1,13 @@
 use crate::errors::{CommandError, DomainError};
 use crate::{
-    models::{Archive, RecurrenceFrequency, StoredData, Task, TaskSummary},
-    state::{load_archives_for_board, update_stored_with_archives_for_board, SharedAppData},
+    models::{Archive, RecurrenceFrequency, StoredData, Task},
+    state::{
+        load_archives_for_board, lock_app, update_stored_with_archives_for_board, SharedAppData,
+    },
 };
 use chrono::{DateTime, Duration, Months, Utc};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
-
-const ARCHIVE_PAGE_SIZE: usize = 50;
-
-#[derive(serde::Serialize)]
-pub struct ArchiveListItem {
-    pub time: u128,
-    pub task: TaskSummary,
-}
-
-#[derive(serde::Serialize)]
-pub struct ArchivePage {
-    pub items: Vec<ArchiveListItem>,
-    pub next_cursor: Option<String>,
-}
-
-fn parse_cursor(cursor: Option<String>) -> Result<Option<(u128, i64)>, DomainError> {
-    cursor
-        .map(|value| {
-            let (time, task_id) = value.split_once(':').ok_or(DomainError::InvalidArgument)?;
-            Ok((
-                time.parse().map_err(|_| DomainError::InvalidArgument)?,
-                task_id.parse().map_err(|_| DomainError::InvalidArgument)?,
-            ))
-        })
-        .transpose()
-}
 
 fn current_time_millis() -> Result<u128, DomainError> {
     SystemTime::now()
@@ -120,55 +96,12 @@ pub fn get_archives(
 }
 
 #[tauri::command]
-pub fn list_archives(
-    state: State<'_, SharedAppData>,
-    expected_board_id: i64,
-    cursor: Option<String>,
-    query: Option<String>,
-    limit: Option<usize>,
-) -> Result<ArchivePage, CommandError> {
-    let cursor = parse_cursor(cursor)?;
-    let limit = limit.unwrap_or(ARCHIVE_PAGE_SIZE).clamp(1, 100);
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
-    if guard.active_board_id != expected_board_id {
-        return Err(CommandError::StaleBoardRequest);
-    }
-    let archives = guard
-        .database
-        .load_archive_page(
-            expected_board_id,
-            cursor,
-            query.as_deref().unwrap_or_default(),
-            limit + 1,
-        )
-        .map_err(CommandError::repository)?;
-    let has_more = archives.len() > limit;
-    let items = archives
-        .into_iter()
-        .take(limit)
-        .map(|archive| ArchiveListItem {
-            time: archive.time,
-            task: TaskSummary::from(&archive.task),
-        })
-        .collect::<Vec<_>>();
-    let next_cursor = has_more.then(|| {
-        let last = items.last().expect("a non-empty page has a last item");
-        format!("{}:{}", last.time, last.task.id)
-    });
-    Ok(ArchivePage { items, next_cursor })
-}
-
-#[tauri::command]
 pub fn get_archive_task(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
     task_id: i64,
 ) -> Result<Task, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let guard = lock_app(&state)?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }
@@ -231,7 +164,7 @@ pub fn archive_all_tasks(
 
 #[cfg(test)]
 mod tests {
-    use super::{next_recurring_task, parse_cursor};
+    use super::next_recurring_task;
     use crate::models::{Recurrence, RecurrenceFrequency, Task, TaskItem};
 
     fn recurring_task(due_time: u128, frequency: RecurrenceFrequency) -> Task {
@@ -274,15 +207,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(next.due_time, Some(1_709_164_800_000)); // 2024-02-29 UTC
-    }
-
-    #[test]
-    fn archive_cursor_keeps_duplicate_timestamps_ordered_by_id() {
-        assert_eq!(
-            parse_cursor(Some("123:45".into())).unwrap(),
-            Some((123, 45))
-        );
-        assert!(parse_cursor(Some("not-a-cursor".into())).is_err());
     }
 }
 

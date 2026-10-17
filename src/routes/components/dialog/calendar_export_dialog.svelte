@@ -372,7 +372,6 @@
         })
         .catch((error) => {
           logger.warn("calendar.export_estimate.failed", error);
-          console.error(m.ui_couldn_t_estimate_calendar_export(), error);
         })
         .finally(() => {
           if (generation === estimate_generation) {
@@ -530,7 +529,6 @@
       }
     } catch (error) {
       logger.error("calendar.export.failed", error);
-      console.error(m.ui_couldn_t_export_calendar(), error);
       toast.error(
         parseCommandError(error)
           ? translateCommandError(error)

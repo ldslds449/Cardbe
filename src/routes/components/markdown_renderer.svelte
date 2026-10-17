@@ -63,7 +63,6 @@
           }
           for (const result of results) {
             if (result.status === "rejected") {
-              console.error("Couldn't load code highlighting", result.reason);
               logger.warn("markdown.highlight_load.failed", result.reason);
             }
           }
@@ -177,7 +176,6 @@
       await invoke("open_external_url", { url: safe_href });
     } catch (error) {
       logger.warn("markdown.open_link.failed", error);
-      console.error("Couldn't open external link", error);
       toast.error(m.link_open_error());
     }
   }

@@ -139,7 +139,6 @@
       await quick_window.setSize(new LogicalSize(window_width, content_height));
     } catch (caught) {
       logger.warn("quick_add.window_resize.failed", caught);
-      console.error("Couldn't resize the quick-add window", caught);
     } finally {
       // Do this in finally: a failed setSize must never leave an always-on-top
       // quick window user-resizable.
@@ -148,7 +147,6 @@
           await quick_window.setResizable(false);
         } catch (caught) {
           logger.warn("quick_add.window_resize_lock.failed", caught);
-          console.error("Couldn't lock the quick-add window size", caught);
         }
       }
       resizing = false;
@@ -274,7 +272,6 @@
       if (generation !== column_load_generation) {
         return;
       }
-      console.error(caught);
       error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
     } finally {
       if (generation === column_load_generation) {
@@ -300,7 +297,6 @@
       details = "";
     } catch (caught) {
       logger.warn("quick_add.window_hide.failed", caught);
-      console.error("Couldn't hide the quick-add window", caught);
     }
   }
 
@@ -353,7 +349,6 @@
           : "quick_add.note_save.failed",
         caught,
       );
-      console.error(caught);
       error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
       await tick();
       schedule_window_resize();

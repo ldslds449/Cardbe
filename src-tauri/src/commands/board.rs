@@ -2,7 +2,7 @@ use crate::board_mutations::{column_index, task_position};
 use crate::errors::CommandError;
 use crate::{
     models::{Column, ColumnSort, Task},
-    state::{undo_last_change_for_board, update_stored_for_board, SharedAppData},
+    state::{lock_app, undo_last_change_for_board, update_stored_for_board, SharedAppData},
 };
 use tauri::{Manager, State};
 
@@ -11,9 +11,7 @@ pub fn get_columns(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
 ) -> Result<Vec<Column>, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let guard = lock_app(&state)?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }
@@ -25,9 +23,7 @@ pub fn get_board_columns(
     state: State<'_, SharedAppData>,
     board_id: i64,
 ) -> Result<Vec<Column>, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let guard = lock_app(&state)?;
     if !guard
         .database
         .board_exists(board_id)
@@ -54,9 +50,7 @@ pub async fn search_tasks(
     }
     let path = {
         let state = app.state::<SharedAppData>();
-        let guard = state
-            .lock()
-            .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+        let guard = lock_app(&state)?;
         if guard.active_board_id != expected_board_id {
             return Err(CommandError::StaleBoardRequest);
         }
@@ -74,9 +68,7 @@ pub async fn search_tasks(
     .await
     .map_err(CommandError::internal)??;
     let state = app.state::<SharedAppData>();
-    let guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let guard = lock_app(&state)?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }
@@ -88,9 +80,7 @@ pub fn get_labels(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
 ) -> Result<Vec<String>, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let guard = lock_app(&state)?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }
@@ -193,9 +183,7 @@ pub fn move_task_to_board(
     target_board_id: i64,
     target_column_id: i64,
 ) -> Result<(), CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }
@@ -211,10 +199,8 @@ pub fn move_task_to_board(
     if !guard.archives_loaded {
         source.archives.clear();
     }
-    guard.stored = source;
     // A single-board undo would duplicate the task left in the destination.
-    guard.undo_history.clear();
-    guard.refresh_labels();
+    guard.replace_board_contents(source);
     guard.boards = guard.database.boards().map_err(CommandError::repository)?;
     Ok(())
 }
@@ -228,9 +214,7 @@ pub fn add_task_to_board(
     column_id: i64,
     task: Task,
 ) -> Result<i64, CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     add_task_to_board_locked(&mut guard, board_id, column_id, task)
 }
 
@@ -313,9 +297,7 @@ pub fn add_column_to_board(
     board_id: i64,
     name: String,
 ) -> Result<i64, CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     add_column_to_board_locked(&mut guard, board_id, name)
 }
 pub(crate) fn add_column_to_board_locked(

@@ -204,7 +204,6 @@
       loaded = true;
     } catch (error) {
       logger.error("note.load.failed", error);
-      console.error(error);
       toast.error(translateCommandError(error));
     } finally {
       loading = false;
@@ -231,7 +230,6 @@
       search_text = "";
     } catch (error) {
       logger.error("note.create.failed", error);
-      console.error(error);
       toast.error(translateCommandError(error));
     } finally {
       creating = false;
@@ -278,7 +276,6 @@
       }
     } catch (error) {
       logger.error("note.save.failed", error);
-      console.error(error);
       toast.error(translateCommandError(error));
     }
   }
@@ -327,7 +324,6 @@
       toast.success(m.ui_note_deleted());
     } catch (error) {
       logger.error("note.delete.failed", error);
-      console.error(error);
       toast.error(translateCommandError(error));
     } finally {
       deleting_id = null;

@@ -7,7 +7,7 @@ use base64::Engine;
 use rusqlite::{
     params,
     types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef},
-    Connection, OptionalExtension, Transaction,
+    Connection, OptionalExtension, Transaction, TransactionBehavior,
 };
 use std::{
     collections::HashMap,
@@ -17,7 +17,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-type StorageResult<T> = Result<T, Box<dyn std::error::Error>>;
+pub(crate) type StorageResult<T> = Result<T, Box<dyn std::error::Error>>;
 type IrohInviteRecord = (String, i64, String, IrohPermission, bool);
 type IrohInviteSummaryRecord = (String, i64, IrohPermission, bool, String, String);
 
@@ -624,20 +624,78 @@ impl Database {
         self.load_board_data(id, true)
     }
 
-    pub fn read_board_share_snapshot(&self, id: i64) -> StorageResult<(Board, StoredData)> {
-        self.connection
-            .execute_batch("BEGIN DEFERRED TRANSACTION")?;
-        let result = (|| {
-            let board = self
+    /// Run `read` inside one read transaction so its queries observe a single
+    /// committed state. Under WAL this does not block writers.
+    pub fn read_consistent<R>(&self, read: impl FnOnce(&Self) -> R) -> StorageResult<R> {
+        let _transaction = self.connection.unchecked_transaction()?;
+        Ok(read(self))
+    }
+
+    /// Read what an Iroh host response needs for one board. Authorization,
+    /// revision, Loro document, and board data come from one read transaction,
+    /// so a concurrent revocation, local edit, or editor push cannot mix
+    /// states, and content committed after a revocation is never returned.
+    /// `plan` chooses what to read once permission and revision are known.
+    pub fn read_iroh_share(
+        &self,
+        board_id: i64,
+        invite_id: &str,
+        secret: &str,
+        node_id: &str,
+        plan: impl FnOnce(IrohPermission, &Board) -> IrohShareRead,
+    ) -> StorageResult<Result<IrohShareContents, IrohShareDenied>> {
+        self.read_consistent(|db| -> StorageResult<Result<_, IrohShareDenied>> {
+            let approved = db
+                .connection
+                .query_row(
+                    "SELECT d.status FROM cardbe_iroh_devices d JOIN cardbe_iroh_invites i ON i.invite_id=d.invite_id WHERE d.invite_id=?1 AND d.node_id=?2 AND i.enabled=1 AND i.secret=?3",
+                    params![invite_id, node_id, secret],
+                    |row| row.get::<_, IrohDeviceStatus>(0),
+                )
+                .optional()?
+                == Some(IrohDeviceStatus::Approved);
+            if !approved {
+                return Ok(Err(IrohShareDenied::DeviceNotApproved));
+            }
+            let Some(permission) = db
+                .connection
+                .query_row(
+                    "SELECT permission FROM cardbe_iroh_invites WHERE invite_id=?1 AND board_id=?2 AND secret=?3 AND enabled=1",
+                    params![invite_id, board_id, secret],
+                    |row| row.get::<_, IrohPermission>(0),
+                )
+                .optional()?
+            else {
+                return Ok(Err(IrohShareDenied::InvitationUnavailable));
+            };
+            let Some(board) = db
                 .boards()?
                 .into_iter()
-                .find(|board| board.id == id)
-                .ok_or("Board was deleted")?;
-            let data = self.load_board_data(id, true)?;
-            Ok((board, data))
-        })();
-        self.connection.execute_batch("ROLLBACK")?;
-        result
+                .find(|board| board.id == board_id && board.shared_role == BoardRole::Owner)
+            else {
+                return Ok(Err(IrohShareDenied::BoardDeleted));
+            };
+            let read = plan(permission, &board);
+            let loro_document = if read.loro_document {
+                Some(
+                    db.iroh_loro_update(board_id)?
+                        .ok_or("Editable board is missing its Loro document")?,
+                )
+            } else {
+                None
+            };
+            let data = if read.data {
+                Some(db.load_board_data(board_id, true)?)
+            } else {
+                None
+            };
+            Ok(Ok(IrohShareContents {
+                board,
+                permission,
+                loro_document,
+                data,
+            }))
+        })?
     }
 
     pub fn load_board_archives_for_export(&self, id: i64) -> StorageResult<Vec<Archive>> {
@@ -844,8 +902,7 @@ impl Database {
             .ok_or_else(|| "Could not load seeded shared-board CRDT".into())
     }
     /// Applies an editor's Loro update atomically with the SQL projection.
-    /// The capability is checked inside this transaction so revocation wins
-    /// even when it races an already accepted Iroh connection.
+    #[cfg(test)]
     pub fn apply_iroh_loro_update(
         &mut self,
         board_id: i64,
@@ -854,40 +911,83 @@ impl Database {
         node_id: &str,
         update: &[u8],
     ) -> StorageResult<(bool, i64, StoredData)> {
-        let previous = self.read_board_complete(board_id)?;
-        let tx = self.connection.transaction()?;
-        let authorized: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM cardbe_iroh_invites i JOIN cardbe_iroh_devices d ON d.invite_id=i.invite_id WHERE i.invite_id=?1 AND i.board_id=?2 AND i.secret=?3 AND d.node_id=?4 AND d.status=?5 AND i.permission=?6 AND i.enabled=1)",
-            params![invite_id, board_id, secret, node_id, IrohDeviceStatus::Approved, IrohPermission::Editor], |row| row.get(0),
-        )?;
-        if !authorized {
-            return Err("Invitation no longer grants editing access".into());
+        loop {
+            let prepared =
+                self.prepare_iroh_loro_update(board_id, invite_id, secret, node_id, update)?;
+            if let Some(result) =
+                self.commit_iroh_loro_update(prepared, invite_id, secret, node_id)?
+            {
+                return Ok(result);
+            }
         }
-        let existing: Option<Vec<u8>> = tx
-            .query_row(
-                "SELECT payload FROM cardbe_loro_docs WHERE board_id=?1",
-                [board_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        let existing = existing.ok_or("Editable board is missing its Loro document")?;
-        let merged = crate::loro_board::merge(Some(&existing), update)
+    }
+
+    /// Performs the CPU-bound half of an editor push: merge, projection, and
+    /// size validation. It writes nothing, so callers can run it without
+    /// holding application state and commit it afterwards.
+    pub fn prepare_iroh_loro_update(
+        &self,
+        board_id: i64,
+        invite_id: &str,
+        secret: &str,
+        node_id: &str,
+        update: &[u8],
+    ) -> StorageResult<PreparedLoroUpdate> {
+        ensure_iroh_editor(&self.connection, board_id, invite_id, secret, node_id)?;
+        let base = editable_loro_doc(&self.connection, board_id)?;
+        let merged = crate::loro_board::merge(Some(&base), update)
             .map_err(|e| format!("Invalid Loro update: {e}"))?;
+        // Snapshot bytes can differ after re-export even when the Loro
+        // operation history is unchanged. Use its version vector for retries.
+        if crate::loro_board::same_state_vector(&base, &merged)
+            .map_err(|e| format!("Invalid Loro version vector: {e}"))?
+        {
+            return Ok(PreparedLoroUpdate {
+                board_id,
+                base,
+                merged: None,
+            });
+        }
+        let projected = crate::loro_board::project(&merged)
+            .map_err(|e| format!("Invalid Loro projection: {e}"))?;
+        validate_remote_board_size(Some(&self.read_board_complete(board_id)?), &projected)?;
+        Ok(PreparedLoroUpdate {
+            board_id,
+            base,
+            merged: Some((merged, projected)),
+        })
+    }
+
+    /// Commits a prepared editor push. Returns `None` without writing when
+    /// the board's Loro document changed after preparation, so the caller can
+    /// prepare again from the current document. The capability is checked
+    /// inside this transaction so revocation wins even when it races an
+    /// already accepted Iroh connection.
+    pub fn commit_iroh_loro_update(
+        &mut self,
+        prepared: PreparedLoroUpdate,
+        invite_id: &str,
+        secret: &str,
+        node_id: &str,
+    ) -> StorageResult<Option<(bool, i64, StoredData)>> {
+        let board_id = prepared.board_id;
+        let previous = self.read_board_complete(board_id)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_iroh_editor(&tx, board_id, invite_id, secret, node_id)?;
+        if editable_loro_doc(&tx, board_id)? != prepared.base {
+            return Ok(None);
+        }
         let revision: i64 = tx.query_row(
             "SELECT sync_revision FROM cardbe_boards WHERE id=?1 AND shared_role=?2",
             params![board_id, BoardRole::Owner],
             |row| row.get(0),
         )?;
-        // Snapshot bytes can differ after re-export even when the Loro
-        // operation history is unchanged. Use its version vector for retries.
-        let unchanged = crate::loro_board::same_state_vector(&existing, &merged)
-            .map_err(|e| format!("Invalid Loro version vector: {e}"))?;
-        if unchanged {
+        let Some((merged, projected)) = prepared.merged else {
             tx.commit()?;
-            return Ok((false, revision, previous));
-        }
-        let projected = crate::loro_board::project(&merged)
-            .map_err(|e| format!("Invalid Loro projection: {e}"))?;
+            return Ok(Some((false, revision, previous)));
+        };
         let mut data = previous;
         data.columns = projected.columns;
         data.archives = projected.archives;
@@ -899,7 +999,7 @@ impl Database {
             params![board_id, SyncStatus::Synced],
         )?;
         tx.commit()?;
-        Ok((true, revision + 1, data))
+        Ok(Some((true, revision + 1, data)))
     }
     /// Client-side counterpart: merge an owner-approved diff into the local
     /// document and atomically refresh only the CRDT-owned projection.
@@ -921,6 +1021,7 @@ impl Database {
             .map_err(|e| format!("Invalid Loro update: {e}"))?;
         let projected = crate::loro_board::project(&merged)
             .map_err(|e| format!("Invalid Loro projection: {e}"))?;
+        validate_remote_board_size(Some(&previous), &projected)?;
         let content_changed = previous.columns != projected.columns
             || previous.archives != projected.archives
             || previous.templates != projected.templates
@@ -1133,6 +1234,24 @@ impl Database {
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?)
+    }
+    pub fn iroh_invite(&self, invite_id: &str) -> StorageResult<Option<IrohInviteRecord>> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT invite_id,board_id,secret,permission,enabled FROM cardbe_iroh_invites WHERE invite_id=?1",
+                [invite_id],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get::<_, i64>(4)? != 0,
+                    ))
+                },
+            )
+            .optional()?)
     }
     pub fn iroh_invite_summaries(&self) -> StorageResult<Vec<IrohInviteSummaryRecord>> {
         Ok(self.connection.prepare("SELECT invite_id,board_id,permission,enabled,created_at,secret FROM cardbe_iroh_invites ORDER BY created_at DESC")?
@@ -2072,59 +2191,6 @@ impl Database {
         result
     }
 
-    pub fn load_archive_page(
-        &self,
-        board_id: i64,
-        cursor: Option<(u128, i64)>,
-        query: &str,
-        limit: usize,
-    ) -> StorageResult<Vec<Archive>> {
-        // ponytail: archive search scans JSON payloads; add indexed summary/FTS columns if it becomes a hotspot.
-        let cursor_time = cursor.map(|(time, _)| i64::try_from(time)).transpose()?;
-        let cursor_id = cursor.map(|(_, id)| id);
-        let mut statement = self.connection.prepare(
-            "SELECT task_id, archived_at, payload
-             FROM cardbe_archives
-             WHERE board_id = ?1
-               AND (?2 = '' OR instr(lower(payload), lower(?2)) > 0)
-               AND (?3 IS NULL OR CAST(archived_at AS INTEGER) < ?3
-                    OR (CAST(archived_at AS INTEGER) = ?3 AND task_id < ?4))
-             ORDER BY CAST(archived_at AS INTEGER) DESC, task_id DESC
-             LIMIT ?5",
-        )?;
-        let rows = statement
-            .query_map(
-                params![
-                    board_id,
-                    query.trim(),
-                    cursor_time,
-                    cursor_id,
-                    i64::try_from(limit)?,
-                ],
-                |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                },
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
-        rows.into_iter()
-            .map(|(task_id, time, payload)| {
-                Ok(Archive {
-                    time: time.parse()?,
-                    task: serde_json::from_str(&payload).map_err(|error| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!("Could not decode archived task {task_id}: {error}"),
-                        )
-                    })?,
-                })
-            })
-            .collect()
-    }
-
     pub fn load_archive_task(&self, board_id: i64, task_id: i64) -> StorageResult<Option<Task>> {
         self.connection
             .query_row(
@@ -2228,18 +2294,6 @@ impl Database {
             )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
-    }
-
-    pub fn load_board_tasks(&self, board_id: i64) -> StorageResult<Vec<Task>> {
-        let mut statement = self
-            .connection
-            .prepare("SELECT payload FROM cardbe_tasks WHERE board_id=?1")?;
-        let rows = statement
-            .query_map([board_id], |row| row.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
-        rows.into_iter()
-            .map(|row| serde_json::from_str(&row).map_err(Into::into))
-            .collect()
     }
 
     pub fn load_task(&self, board_id: i64, task_id: i64) -> StorageResult<Option<Task>> {
@@ -2606,11 +2660,144 @@ pub(crate) fn persist_board_diff_transaction(
     Ok(stats)
 }
 
+/// What `Database::read_iroh_share` reads beyond authorization and the board.
+pub struct IrohShareRead {
+    pub loro_document: bool,
+    pub data: bool,
+}
+
+pub struct IrohShareContents {
+    pub board: Board,
+    pub permission: IrohPermission,
+    pub loro_document: Option<Vec<u8>>,
+    pub data: Option<StoredData>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum IrohShareDenied {
+    DeviceNotApproved,
+    InvitationUnavailable,
+    BoardDeleted,
+}
+
+/// An editor push merged against a specific Loro document (`base`).
+/// `merged` is `None` when the push adds no operations.
+pub struct PreparedLoroUpdate {
+    board_id: i64,
+    base: Vec<u8>,
+    merged: Option<(Vec<u8>, StoredData)>,
+}
+
+fn ensure_iroh_editor(
+    connection: &Connection,
+    board_id: i64,
+    invite_id: &str,
+    secret: &str,
+    node_id: &str,
+) -> StorageResult<()> {
+    let authorized: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM cardbe_iroh_invites i JOIN cardbe_iroh_devices d ON d.invite_id=i.invite_id WHERE i.invite_id=?1 AND i.board_id=?2 AND i.secret=?3 AND d.node_id=?4 AND d.status=?5 AND i.permission=?6 AND i.enabled=1)",
+        params![invite_id, board_id, secret, node_id, IrohDeviceStatus::Approved, IrohPermission::Editor], |row| row.get(0),
+    )?;
+    if authorized {
+        Ok(())
+    } else {
+        Err(DomainError::PermissionDenied.into())
+    }
+}
+
+fn editable_loro_doc(connection: &Connection, board_id: i64) -> StorageResult<Vec<u8>> {
+    connection
+        .query_row(
+            "SELECT payload FROM cardbe_loro_docs WHERE board_id=?1",
+            [board_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| "Editable board is missing its Loro document".into())
+}
+
+// Bounds for board state received from a peer. Local edits are unbounded, so
+// a board that already exceeds a bound keeps syncing as long as a received
+// change does not enlarge that measure further.
+const REMOTE_MAX_COLUMNS: usize = 1_000;
+const REMOTE_MAX_TASKS: usize = 100_000;
+const REMOTE_MAX_TEMPLATES: usize = 1_000;
+// Serialized size of the CRDT-owned content, excluding Loro edit history,
+// which grows with normal use.
+const REMOTE_MAX_CONTENT_BYTES: usize = 64 * 1024 * 1024;
+
+fn task_count(data: &StoredData) -> usize {
+    data.columns
+        .iter()
+        .map(|column| column.tasks.len())
+        .sum::<usize>()
+        + data.archives.len()
+}
+
+fn content_bytes(data: &StoredData) -> StorageResult<usize> {
+    struct Counter(usize);
+    impl Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = Counter(0);
+    serde_json::to_writer(
+        &mut counter,
+        &(&data.columns, &data.archives, &data.templates),
+    )?;
+    Ok(counter.0)
+}
+
+fn within_remote_bound(received: usize, previous: usize, bound: usize) -> bool {
+    received <= bound || received <= previous
+}
+
+/// Reject received board state that grows beyond the remote bounds. Without a
+/// previous local state, the bounds apply absolutely.
+fn validate_remote_board_size(
+    previous: Option<&StoredData>,
+    received: &StoredData,
+) -> StorageResult<()> {
+    let (previous_columns, previous_tasks, previous_templates, previous_bytes) = match previous {
+        Some(data) => (
+            data.columns.len(),
+            task_count(data),
+            data.templates.len(),
+            content_bytes(data)?,
+        ),
+        None => (0, 0, 0, 0),
+    };
+    if within_remote_bound(received.columns.len(), previous_columns, REMOTE_MAX_COLUMNS)
+        && within_remote_bound(task_count(received), previous_tasks, REMOTE_MAX_TASKS)
+        && within_remote_bound(
+            received.templates.len(),
+            previous_templates,
+            REMOTE_MAX_TEMPLATES,
+        )
+        && within_remote_bound(
+            content_bytes(received)?,
+            previous_bytes,
+            REMOTE_MAX_CONTENT_BYTES,
+        )
+    {
+        Ok(())
+    } else {
+        Err(DomainError::ShareLimitExceeded.into())
+    }
+}
+
 fn validate_iroh_snapshot(
     data: &StoredData,
     role: IrohPermission,
     loro_update: Option<&[u8]>,
 ) -> StorageResult<()> {
+    validate_remote_board_size(None, data)?;
     if role == IrohPermission::Editor {
         let update = loro_update
             .filter(|bytes| !bytes.is_empty())
@@ -3482,6 +3669,17 @@ mod tests {
             let board = db.create_board("Shared").unwrap();
             db.save_iroh_invite("invite", board.id, "secret", IrohPermission::Viewer)
                 .unwrap();
+            assert_eq!(
+                db.iroh_invite("invite").unwrap(),
+                Some((
+                    "invite".into(),
+                    board.id,
+                    "secret".into(),
+                    IrohPermission::Viewer,
+                    true
+                ))
+            );
+            assert_eq!(db.iroh_invite("other").unwrap(), None);
             assert!(db.iroh_host_required().unwrap());
             db.update_iroh_invite("invite", None, Some(false)).unwrap();
             assert!(!db.iroh_host_required().unwrap());
@@ -4420,6 +4618,331 @@ mod tests {
                 .tasks[0]
                 .title,
             "After"
+        );
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn columns(count: usize) -> StoredData {
+        StoredData {
+            columns: (1..=count as i64)
+                .map(|id| Column {
+                    id,
+                    name: format!("Column {id}"),
+                    color: String::new(),
+                    sort_order: Default::default(),
+                    tasks: Vec::new(),
+                })
+                .collect(),
+            ..StoredData::default()
+        }
+    }
+
+    fn is_share_limit(error: Box<dyn std::error::Error>) -> bool {
+        matches!(
+            DomainError::repository(error),
+            DomainError::ShareLimitExceeded
+        )
+    }
+
+    #[test]
+    fn remote_size_bounds_reject_growth_but_keep_oversized_boards_syncing() {
+        let at_limit = columns(REMOTE_MAX_COLUMNS);
+        let over_limit = columns(REMOTE_MAX_COLUMNS + 1);
+        assert!(validate_remote_board_size(None, &at_limit).is_ok());
+        assert!(is_share_limit(
+            validate_remote_board_size(None, &over_limit).unwrap_err()
+        ));
+        assert!(is_share_limit(
+            validate_remote_board_size(Some(&at_limit), &over_limit).unwrap_err()
+        ));
+        // A board that grew locally past a bound may still receive changes
+        // that do not enlarge it further.
+        assert!(validate_remote_board_size(Some(&over_limit), &over_limit).is_ok());
+        assert!(validate_remote_board_size(Some(&over_limit), &at_limit).is_ok());
+        assert!(is_share_limit(
+            validate_remote_board_size(Some(&over_limit), &columns(REMOTE_MAX_COLUMNS + 2))
+                .unwrap_err()
+        ));
+
+        let archived = StoredData {
+            archives: (0..=REMOTE_MAX_TASKS as i64)
+                .map(|id| Archive {
+                    time: 0,
+                    task: Task {
+                        id,
+                        ..Task::default()
+                    },
+                })
+                .collect(),
+            ..StoredData::default()
+        };
+        assert!(is_share_limit(
+            validate_remote_board_size(None, &archived).unwrap_err()
+        ));
+
+        let large = StoredData {
+            columns: vec![Column {
+                id: 1,
+                name: "x".repeat(REMOTE_MAX_CONTENT_BYTES),
+                color: String::new(),
+                sort_order: Default::default(),
+                tasks: Vec::new(),
+            }],
+            ..StoredData::default()
+        };
+        assert!(is_share_limit(
+            validate_remote_board_size(None, &large).unwrap_err()
+        ));
+    }
+
+    #[test]
+    fn prepared_editor_push_is_not_committed_over_a_newer_document() {
+        let dir = test_dir("loro-stale-prepare");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let base = columns(2);
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &base)
+            .unwrap();
+        loaded
+            .database
+            .save_iroh_invite("editor", board_id, "secret", IrohPermission::Editor)
+            .unwrap();
+        loaded
+            .database
+            .iroh_device_access("editor", "secret", "device", true)
+            .unwrap();
+        loaded
+            .database
+            .set_iroh_device_approved("editor", "device", true)
+            .unwrap();
+        let original = loaded.database.iroh_loro_update(board_id).unwrap().unwrap();
+        let revision = loaded.database.board_sync_state(board_id).unwrap().0;
+        let mut first = base.clone();
+        first.columns[0].name = "First".into();
+        let first = crate::loro_board::apply_local_delta(Some(&original), &base, &first).unwrap();
+        let mut second = base.clone();
+        second.columns[1].name = "Second".into();
+        let second = crate::loro_board::apply_local_delta(Some(&original), &base, &second).unwrap();
+
+        let stale = loaded
+            .database
+            .prepare_iroh_loro_update(board_id, "editor", "secret", "device", &first)
+            .unwrap();
+        loaded
+            .database
+            .apply_iroh_loro_update(board_id, "editor", "secret", "device", &second)
+            .unwrap();
+        let after_second = loaded.database.iroh_loro_update(board_id).unwrap().unwrap();
+        assert!(loaded
+            .database
+            .commit_iroh_loro_update(stale, "editor", "secret", "device")
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            loaded.database.iroh_loro_update(board_id).unwrap().unwrap(),
+            after_second
+        );
+        assert_eq!(
+            loaded.database.board_sync_state(board_id).unwrap().0,
+            revision + 1
+        );
+
+        let (changed, pushed, _) = loaded
+            .database
+            .apply_iroh_loro_update(board_id, "editor", "secret", "device", &first)
+            .unwrap();
+        assert!(changed);
+        assert_eq!(pushed, revision + 2);
+        let names = loaded
+            .database
+            .read_board_complete(board_id)
+            .unwrap()
+            .columns
+            .into_iter()
+            .map(|column| column.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["First", "Second"]);
+
+        // Revocation between preparation and commit wins.
+        let unchanged = loaded
+            .database
+            .prepare_iroh_loro_update(board_id, "editor", "secret", "device", &first)
+            .unwrap();
+        loaded
+            .database
+            .update_iroh_invite("editor", None, Some(false))
+            .unwrap();
+        assert!(matches!(
+            DomainError::repository(
+                loaded
+                    .database
+                    .commit_iroh_loro_update(unchanged, "editor", "secret", "device")
+                    .unwrap_err()
+            ),
+            DomainError::PermissionDenied
+        ));
+        assert!(matches!(
+            DomainError::repository(
+                loaded
+                    .database
+                    .prepare_iroh_loro_update(board_id, "editor", "secret", "device", &first)
+                    .err()
+                    .unwrap()
+            ),
+            DomainError::PermissionDenied
+        ));
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn iroh_share_reads_check_access_and_see_one_committed_state() {
+        let dir = test_dir("iroh-share-read");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let base = columns(1);
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &base)
+            .unwrap();
+        loaded
+            .database
+            .save_iroh_invite("editor", board_id, "secret", IrohPermission::Editor)
+            .unwrap();
+        loaded
+            .database
+            .iroh_device_access("editor", "secret", "device", true)
+            .unwrap();
+        let read = |db: &Database, node_id: &str, board_id: i64| {
+            db.read_iroh_share(board_id, "editor", "secret", node_id, |_, _| {
+                IrohShareRead {
+                    loro_document: true,
+                    data: true,
+                }
+            })
+            .unwrap()
+        };
+        assert_eq!(
+            read(&loaded.database, "device", board_id).err(),
+            Some(IrohShareDenied::DeviceNotApproved)
+        );
+        loaded
+            .database
+            .set_iroh_device_approved("editor", "device", true)
+            .unwrap();
+        assert_eq!(
+            read(&loaded.database, "device", board_id + 1).err(),
+            Some(IrohShareDenied::InvitationUnavailable)
+        );
+        let contents = read(&loaded.database, "device", board_id).unwrap();
+        assert_eq!(contents.permission, IrohPermission::Editor);
+        assert_eq!(contents.data.unwrap().columns, base.columns);
+        assert!(contents.loro_document.is_some());
+        let summary = loaded
+            .database
+            .read_iroh_share(board_id, "editor", "secret", "device", |_, _| {
+                IrohShareRead {
+                    loro_document: false,
+                    data: false,
+                }
+            })
+            .unwrap()
+            .unwrap();
+        assert!(summary.loro_document.is_none() && summary.data.is_none());
+
+        // A write committed through another connection during the read is
+        // not observed by the rest of that read.
+        let mut writer = Database::open(dir.join("data.sqlite3")).unwrap();
+        let (before, after) = loaded
+            .database
+            .read_consistent(|db| {
+                let before = db.read_board_complete(board_id).unwrap().columns;
+                writer
+                    .replace_board_as_local_edit(board_id, &columns(2))
+                    .unwrap();
+                (before, db.read_board_complete(board_id).unwrap().columns)
+            })
+            .unwrap();
+        assert_eq!(before, after);
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(board_id)
+                .unwrap()
+                .columns,
+            columns(2).columns
+        );
+
+        loaded
+            .database
+            .update_iroh_invite("editor", None, Some(false))
+            .unwrap();
+        assert_eq!(
+            read(&loaded.database, "device", board_id).err(),
+            Some(IrohShareDenied::DeviceNotApproved)
+        );
+        drop(writer);
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn oversized_editor_push_is_rejected_without_writing() {
+        let dir = test_dir("loro-size-limit");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let base = columns(1);
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &base)
+            .unwrap();
+        loaded
+            .database
+            .save_iroh_invite("editor", board_id, "secret", IrohPermission::Editor)
+            .unwrap();
+        loaded
+            .database
+            .iroh_device_access("editor", "secret", "device", true)
+            .unwrap();
+        loaded
+            .database
+            .set_iroh_device_approved("editor", "device", true)
+            .unwrap();
+        let original = loaded.database.iroh_loro_update(board_id).unwrap().unwrap();
+        let revision = loaded.database.board_sync_state(board_id).unwrap().0;
+        let update = crate::loro_board::apply_local_delta(
+            Some(&original),
+            &base,
+            &columns(REMOTE_MAX_COLUMNS + 1),
+        )
+        .unwrap();
+        assert!(is_share_limit(
+            loaded
+                .database
+                .apply_iroh_loro_update(board_id, "editor", "secret", "device", &update)
+                .unwrap_err()
+        ));
+        assert_eq!(
+            loaded.database.board_sync_state(board_id).unwrap().0,
+            revision
+        );
+        assert_eq!(
+            loaded.database.iroh_loro_update(board_id).unwrap().unwrap(),
+            original
+        );
+        assert_eq!(
+            loaded
+                .database
+                .read_board_complete(board_id)
+                .unwrap()
+                .columns,
+            base.columns
         );
         drop(loaded);
         fs::remove_dir_all(dir).unwrap();
@@ -5449,46 +5972,6 @@ mod tests {
         assert_eq!(projected.archives, after.archives);
         assert_eq!(projected.columns, edited_again.columns);
         drop(second);
-        fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[test]
-    fn archive_pages_use_task_id_as_a_stable_tie_breaker() {
-        let dir = test_dir("archive-pages");
-        fs::create_dir_all(&dir).unwrap();
-        let mut loaded = load(&dir).unwrap();
-        let before = loaded.stored.clone();
-        let mut after = before.clone();
-        after.archives = [3, 2, 1]
-            .into_iter()
-            .map(|id| Archive {
-                time: 100,
-                task: Task {
-                    id,
-                    title: format!("Archived {id}"),
-                    ..Task::default()
-                },
-            })
-            .collect();
-        loaded.database.persist_diff(&before, &after).unwrap();
-
-        let first = loaded
-            .database
-            .load_archive_page(loaded.database.active_board_id(), None, "", 2)
-            .unwrap();
-        assert_eq!(
-            first.iter().map(|item| item.task.id).collect::<Vec<_>>(),
-            [3, 2]
-        );
-        let second = loaded
-            .database
-            .load_archive_page(loaded.database.active_board_id(), Some((100, 2)), "", 2)
-            .unwrap();
-        assert_eq!(
-            second.iter().map(|item| item.task.id).collect::<Vec<_>>(),
-            [1]
-        );
-        drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }
 

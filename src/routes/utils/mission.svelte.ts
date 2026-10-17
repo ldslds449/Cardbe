@@ -13,7 +13,6 @@ export function addMission<T>(mission: () => Promise<T>): Promise<T> {
     () => undefined,
     (e) => {
       logger.error("mission.failed", e);
-      console.error("Mission error:", e);
     },
   );
   return result;

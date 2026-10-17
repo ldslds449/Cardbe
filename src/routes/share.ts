@@ -50,7 +50,18 @@ export interface RequestedShareLink {
   preferred_port: number | null;
 }
 
-const SHARE_ID_PATTERN = /^[A-Za-z0-9_-]{22,64}$/;
+// A share ID is 16 random bytes in canonical unpadded base64url: the last of
+// its 22 characters carries only two data bits. Users may restore a previous
+// ID by hand, so also reject obviously weak values. Keep this aligned with
+// `valid_share_id` in `src-tauri/src/commands/share.rs`.
+const SHARE_ID_PATTERN = /^[A-Za-z0-9_-]{21}[AQgw]$/;
+const MIN_SHARE_ID_DISTINCT_CHARS = 8;
+
+function is_valid_share_id(id: string): boolean {
+  return (
+    SHARE_ID_PATTERN.test(id) && new Set(id).size >= MIN_SHARE_ID_DISTINCT_CHARS
+  );
+}
 
 /** Resolve manual selections and dynamic label rules against the current board. */
 export function resolve_share_selection(
@@ -171,7 +182,7 @@ function create_share_id(): string {
 /** Parse either a capability ID or a previously published Cardbe LAN URL. */
 export function parse_requested_share_link(value: string): RequestedShareLink {
   const normalized = value.trim();
-  if (SHARE_ID_PATTERN.test(normalized)) {
+  if (is_valid_share_id(normalized)) {
     return { id: normalized, preferred_port: null };
   }
 
@@ -182,7 +193,7 @@ export function parse_requested_share_link(value: string): RequestedShareLink {
     throw new Error(m.share_link_invalid());
   }
 
-  const match = url.pathname.match(/^\/share\/([A-Za-z0-9_-]{22,64})$/);
+  const match = url.pathname.match(/^\/share\/([^/]+)$/);
   const port = Number.parseInt(url.port, 10);
   if (
     url.protocol !== "http:" ||
@@ -191,6 +202,7 @@ export function parse_requested_share_link(value: string): RequestedShareLink {
     url.search ||
     url.hash ||
     !match ||
+    !is_valid_share_id(match[1]) ||
     !Number.isInteger(port) ||
     port < 1 ||
     port > 65_535

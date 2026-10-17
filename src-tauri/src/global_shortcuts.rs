@@ -11,7 +11,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 use crate::commands::settings::{GlobalShortcutOverview, GlobalShortcutStatus};
 use crate::errors::CommandError;
 use crate::models::{GlobalShortcutSettings, ShortcutAction};
-use crate::state::{update_stored, SharedAppData};
+use crate::state::{lock_app, update_stored, SharedAppData};
 
 type Binding = Option<(Shortcut, String)>;
 
@@ -252,9 +252,7 @@ pub fn overview<R: Runtime>(app: &AppHandle<R>) -> Result<GlobalShortcutOverview
 
 fn global_shortcuts_enabled<R: Runtime>(app: &AppHandle<R>) -> Result<bool, CommandError> {
     let state = app.state::<SharedAppData>();
-    let guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let guard = lock_app(&state)?;
     Ok(guard.stored.settings.global_shortcuts_enabled)
 }
 

@@ -1,45 +1,11 @@
 use crate::errors::{CommandError, DomainError};
 use crate::{
-    models::{Task, TaskSummary},
-    state::SharedAppData,
+    models::Task,
+    state::{lock_app, SharedAppData},
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 use tauri_plugin_notification::NotificationExt;
-
-const EXPIRED_PAGE_SIZE: usize = 50;
-
-#[derive(serde::Serialize)]
-pub struct ExpiredTaskPage {
-    pub items: Vec<TaskSummary>,
-    pub next_cursor: Option<String>,
-}
-
-fn parse_cursor(cursor: Option<String>) -> Result<Option<(u128, i64)>, DomainError> {
-    cursor
-        .map(|value| {
-            let (time, task_id) = value.split_once(':').ok_or(DomainError::InvalidArgument)?;
-            Ok((
-                time.parse().map_err(|_| DomainError::InvalidArgument)?,
-                task_id.parse().map_err(|_| DomainError::InvalidArgument)?,
-            ))
-        })
-        .transpose()
-}
-
-fn matches_query(task: &Task, query: &str) -> bool {
-    query.is_empty()
-        || task.title.to_lowercase().contains(query)
-        || task.description.to_lowercase().contains(query)
-        || task
-            .labels
-            .iter()
-            .any(|label| label.to_lowercase().contains(query))
-        || task
-            .items
-            .iter()
-            .any(|item| item.text.to_lowercase().contains(query))
-}
 
 fn current_time_millis() -> Result<u128, DomainError> {
     SystemTime::now()
@@ -67,94 +33,12 @@ fn expired_notification(
 }
 
 #[tauri::command]
-pub fn get_expired_tasks(
-    state: State<'_, SharedAppData>,
-    expected_board_id: i64,
-) -> Result<Vec<Task>, CommandError> {
-    let now = current_time_millis()?;
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
-    if guard.active_board_id != expected_board_id {
-        return Err(CommandError::StaleBoardRequest);
-    }
-    Ok(guard
-        .stored
-        .columns
-        .iter()
-        .flat_map(|column| column.tasks.iter())
-        .filter(|task| notification_key(expected_board_id, task, now).is_some())
-        .cloned()
-        .collect())
-}
-
-#[tauri::command]
-pub fn list_expired_tasks(
-    state: State<'_, SharedAppData>,
-    expected_board_id: i64,
-    cursor: Option<String>,
-    query: Option<String>,
-    limit: Option<usize>,
-) -> Result<ExpiredTaskPage, CommandError> {
-    let cursor = parse_cursor(cursor)?;
-    let limit = limit.unwrap_or(EXPIRED_PAGE_SIZE).clamp(1, 100);
-    let now = current_time_millis()?;
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
-    if guard.active_board_id != expected_board_id {
-        return Err(CommandError::StaleBoardRequest);
-    }
-    // ponytail: expired-task filtering scans persisted JSON; normalize due/title fields if this becomes a hotspot.
-    let query = query.unwrap_or_default().trim().to_lowercase();
-    let mut tasks = guard
-        .database
-        .load_board_tasks(expected_board_id)
-        .map_err(CommandError::repository)?
-        .into_iter()
-        .filter(|task| {
-            task.due_time.is_some_and(|due_time| due_time < now) && matches_query(task, &query)
-        })
-        .collect::<Vec<_>>();
-    tasks.sort_by(|left, right| {
-        right
-            .due_time
-            .cmp(&left.due_time)
-            .then_with(|| right.id.cmp(&left.id))
-    });
-    if let Some((due_time, task_id)) = cursor {
-        tasks.retain(|task| {
-            task.due_time.is_some_and(|task_due| {
-                task_due < due_time || (task_due == due_time && task.id < task_id)
-            })
-        });
-    }
-    let has_more = tasks.len() > limit;
-    let items = tasks
-        .into_iter()
-        .take(limit)
-        .map(|task| TaskSummary::from(&task))
-        .collect::<Vec<_>>();
-    let next_cursor = has_more.then(|| {
-        let last = items.last().expect("a non-empty page has a last item");
-        format!(
-            "{}:{}",
-            last.due_time.expect("expired tasks have due times"),
-            last.id
-        )
-    });
-    Ok(ExpiredTaskPage { items, next_cursor })
-}
-
-#[tauri::command]
 pub fn get_task_detail(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
     task_id: i64,
 ) -> Result<Task, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let guard = lock_app(&state)?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }
@@ -173,9 +57,7 @@ pub fn check_expired_tasks(
     body_template: String,
 ) -> Result<(), CommandError> {
     let now = current_time_millis()?;
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(&state)?;
 
     let expired = guard
         .boards

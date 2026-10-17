@@ -189,9 +189,7 @@ pub(crate) fn install_committed(
     if !guard.archives_loaded {
         stored.archives.clear();
     }
-    guard.stored = stored;
-    guard.undo_history.clear();
-    guard.refresh_labels();
+    guard.replace_board_contents(stored);
 }
 fn disable_preparation(
     connection: &rusqlite::Connection,

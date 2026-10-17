@@ -1,5 +1,8 @@
 use crate::errors::{CommandError, DomainError};
-use crate::{models::Note, state::SharedAppData};
+use crate::{
+    models::Note,
+    state::{lock_app, SharedAppData},
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
@@ -13,17 +16,13 @@ fn now_millis() -> Result<i64, DomainError> {
 
 #[tauri::command]
 pub fn get_notes(state: State<'_, SharedAppData>) -> Result<Vec<Note>, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let guard = lock_app(&state)?;
     guard.database.get_notes().map_err(CommandError::repository)
 }
 
 #[tauri::command]
 pub fn create_note(state: State<'_, SharedAppData>) -> Result<Note, CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(&state)?;
     guard
         .database
         .create_note(now_millis()?)
@@ -42,9 +41,7 @@ pub fn create_quick_note(
         return Err(CommandError::NoteContentRequired);
     }
 
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(&state)?;
     guard
         .database
         .create_note_with_content(now_millis()?, title, content)
@@ -67,9 +64,7 @@ pub fn update_note(
         created_at: 0,
         updated_at: now_millis()?,
     };
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(&state)?;
     let existing = guard
         .database
         .get_notes()
@@ -87,9 +82,7 @@ pub fn update_note(
 
 #[tauri::command]
 pub fn delete_note(state: State<'_, SharedAppData>, id: i64) -> Result<(), CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let mut guard = lock_app(&state)?;
     guard
         .database
         .delete_note(id)

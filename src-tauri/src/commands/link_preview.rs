@@ -1,7 +1,7 @@
 use crate::{
-    errors::{CommandError, DomainError},
+    errors::CommandError,
     link_preview::{self, LinkPreview},
-    state::SharedAppData,
+    state::{lock_app, SharedAppData},
 };
 use tauri::State;
 
@@ -14,9 +14,7 @@ pub async fn get_link_preview(
         return Ok(LinkPreview::unavailable(&url));
     };
     {
-        let guard = state
-            .lock()
-            .map_err(|_| DomainError::Internal("Application state lock is poisoned".into()))?;
+        let guard = lock_app(&state)?;
         if let Some(mut preview) = guard
             .database
             .get_link_preview(normalized.as_str(), chrono::Utc::now().timestamp())?
@@ -26,11 +24,7 @@ pub async fn get_link_preview(
         }
     }
     let mut preview = link_preview::preview(normalized).await;
-    state
-        .lock()
-        .map_err(|_| DomainError::Internal("Application state lock is poisoned".into()))?
-        .database
-        .cache_link_preview(&preview)?;
+    lock_app(&state)?.database.cache_link_preview(&preview)?;
     preview.url = url;
     Ok(preview)
 }

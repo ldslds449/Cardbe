@@ -46,16 +46,15 @@ function mountPage(
     },
     invoke: vi.fn(() => startup),
     board: { init: vi.fn(() => initialization), boards: [] },
-    load_app_name: vi.fn(),
+    updates: { load_app_name: vi.fn(), check: vi.fn() },
     refresh_device_requests: vi.fn(),
-    check_for_updates: vi.fn(),
     listen: vi.fn(async () => vi.fn()),
     UPDATE_STARTUP_DELAY_MS: 10_000,
     startup_check_finished: false,
     startup_error: null,
     managed_share_state: { storage_error: null },
     restore_managed_share_state: vi.fn(),
-    restore_all_managed_shares: vi.fn(),
+    share_sync: { restore_all: vi.fn() },
   };
   // Exercise the actual component lifecycle without a desktop or user data.
   new Function(...Object.keys(scope), lifecycle)(...Object.values(scope));
@@ -87,6 +86,6 @@ it("does not restore shares when initialization finishes after unmount", async (
   initialization.resolve();
   await Promise.resolve();
   expect(page.restore_managed_share_state).not.toHaveBeenCalled();
-  expect(page.restore_all_managed_shares).not.toHaveBeenCalled();
+  expect(page.share_sync.restore_all).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
 });

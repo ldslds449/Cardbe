@@ -378,7 +378,6 @@ describe("Iroh sync", () => {
         .mockImplementation(() => {});
       vi.spyOn(store, "update_labels").mockImplementation(() => {});
       vi.spyOn(store, "get_task_templates").mockImplementation(() => {});
-      vi.spyOn(store, "get_expired_tasks").mockImplementation(() => {});
       store.can_undo = true;
       expect(await store.sync_iroh_board(7)).toBe(success);
       expect(Boolean(store.iroh_last_synced_at[7])).toBe(synced > 0);
@@ -924,7 +923,6 @@ describe("Iroh sync", () => {
         .mockImplementation(() => {});
       vi.spyOn(store, "update_labels").mockImplementation(() => {});
       vi.spyOn(store, "get_task_templates").mockImplementation(() => {});
-      vi.spyOn(store, "get_expired_tasks").mockImplementation(() => {});
       invoke_mock.mockResolvedValue({
         board: { ...store.boards[0] },
         content_changed,
@@ -1403,11 +1401,7 @@ describe("pending task operations", () => {
       if (command === "get_columns") {
         return Promise.resolve([]);
       }
-      if (
-        command === "get_labels" ||
-        command === "get_task_templates" ||
-        command === "get_expired_tasks"
-      ) {
+      if (command === "get_labels" || command === "get_task_templates") {
         return Promise.resolve([]);
       }
       return Promise.resolve();
@@ -1462,11 +1456,7 @@ describe("pending task operations", () => {
         if (command === "get_columns") {
           return Promise.resolve([]);
         }
-        if (
-          command === "get_labels" ||
-          command === "get_task_templates" ||
-          command === "get_expired_tasks"
-        ) {
+        if (command === "get_labels" || command === "get_task_templates") {
           return Promise.resolve([]);
         }
         return Promise.resolve();
@@ -1633,7 +1623,6 @@ describe("invalid backup input", () => {
       "get_columns",
       "update_labels",
       "get_task_templates",
-      "get_expired_tasks",
     ] as const) {
       vi.spyOn(store, method).mockImplementation(() => {});
     }

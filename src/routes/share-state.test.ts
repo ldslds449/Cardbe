@@ -265,8 +265,8 @@ describe("managed share restoration", () => {
     };
     const second = {
       ...first,
-      id: "k4W_ACyrtHxtuYw7YBE2kB",
-      url: "http://192.168.1.20:12345/share/k4W_ACyrtHxtuYw7YBE2kB",
+      id: "k4W_ACyrtHxtuYw7YBE2kA",
+      url: "http://192.168.1.20:12345/share/k4W_ACyrtHxtuYw7YBE2kA",
       title: "Support",
       enabled: false,
     };

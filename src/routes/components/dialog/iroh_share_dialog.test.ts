@@ -66,6 +66,10 @@ it("keeps creation failures inline, clears them on edits and recovers on retry",
 });
 
 it("interprets SQLite invitation timestamps as UTC before local formatting", () => {
+  const source = readFileSync(
+    new URL("../share/iroh_invite_card.svelte", import.meta.url),
+    "utf8",
+  );
   const node = parse(source, { modern: true }).instance!.content.body.find(
     (node) =>
       node.type === "FunctionDeclaration" &&

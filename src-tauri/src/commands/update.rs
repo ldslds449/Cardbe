@@ -2,8 +2,6 @@ use crate::errors::CommandError;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::time::Duration;
-use tauri::AppHandle;
-use tauri_plugin_opener::OpenerExt;
 
 const UPDATE_CONFIG: &str = include_str!("../../../src/config/update.json");
 
@@ -170,47 +168,9 @@ fn is_valid_github_segment(value: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || "-_.".contains(character))
 }
 
-fn is_allowed_external_url(value: &str) -> bool {
-    tauri::Url::parse(value)
-        .map(|url| matches!(url.scheme(), "http" | "https"))
-        .unwrap_or(false)
-}
-
-#[tauri::command]
-pub fn open_external_url(app: AppHandle, url: String) -> Result<(), CommandError> {
-    if !is_allowed_external_url(&url) {
-        return Err(CommandError::ExternalUrlInvalid);
-    }
-
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(CommandError::internal)
-}
-
-#[tauri::command]
-pub fn open_latest_release(app: AppHandle) -> Result<(), CommandError> {
-    let config: UpdateConfig =
-        serde_json::from_str(UPDATE_CONFIG).map_err(CommandError::internal)?;
-    if !is_valid_github_segment(&config.github_owner)
-        || !is_valid_github_segment(&config.github_repository)
-    {
-        return Err(CommandError::internal(
-            "Invalid GitHub repository in update configuration",
-        ));
-    }
-
-    let url = format!(
-        "https://github.com/{}/{}/releases/latest",
-        config.github_owner, config.github_repository,
-    );
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(CommandError::internal)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{find_update, is_allowed_external_url, is_valid_github_segment, GitHubRelease};
+    use super::{find_update, is_valid_github_segment, GitHubRelease};
 
     #[test]
     fn accepts_github_owner_and_repository_names() {
@@ -223,15 +183,6 @@ mod tests {
         assert!(!is_valid_github_segment(""));
         assert!(!is_valid_github_segment("owner/repository"));
         assert!(!is_valid_github_segment("github.com?next="));
-    }
-
-    #[test]
-    fn allows_only_http_and_https_external_urls() {
-        assert!(is_allowed_external_url("https://example.com/docs"));
-        assert!(is_allowed_external_url("http://localhost:3000/path"));
-        assert!(!is_allowed_external_url("javascript:alert(1)"));
-        assert!(!is_allowed_external_url("file:///etc/passwd"));
-        assert!(!is_allowed_external_url("not a url"));
     }
 
     #[test]

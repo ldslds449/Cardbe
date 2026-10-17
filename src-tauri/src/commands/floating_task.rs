@@ -1,5 +1,5 @@
 use crate::errors::CommandError;
-use crate::state::SharedAppData;
+use crate::state::{lock_app, SharedAppData};
 use tauri::{AppHandle, State};
 
 fn ensure_task_exists(
@@ -7,9 +7,7 @@ fn ensure_task_exists(
     board_id: i64,
     task_id: i64,
 ) -> Result<(), CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let guard = lock_app(state)?;
     if !guard
         .database
         .board_exists(board_id)

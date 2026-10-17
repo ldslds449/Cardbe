@@ -1,5 +1,9 @@
 use crate::errors::{CommandError, DomainError};
-use crate::{models::TaskSummary, state::SharedAppData, storage::TaskExplorerQuery};
+use crate::{
+    models::TaskSummary,
+    state::{lock_app, SharedAppData},
+    storage::TaskExplorerQuery,
+};
 use tauri::Manager;
 
 const TASK_EXPLORER_PAGE_SIZE: usize = 50;
@@ -49,9 +53,7 @@ pub async fn list_all_tasks(
     let limit = limit.unwrap_or(TASK_EXPLORER_PAGE_SIZE).clamp(1, 100);
     let path = {
         let state = app.state::<SharedAppData>();
-        let guard = state
-            .lock()
-            .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+        let guard = lock_app(&state)?;
         guard.database.path().to_owned()
     };
     let rows = tauri::async_runtime::spawn_blocking(move || {

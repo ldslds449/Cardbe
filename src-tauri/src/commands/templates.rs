@@ -1,7 +1,7 @@
 use crate::errors::{CommandError, DomainError};
 use crate::{
     models::{StoredData, TaskTemplate},
-    state::{update_stored_for_board, SharedAppData},
+    state::{lock_app, update_stored_for_board, SharedAppData},
 };
 use tauri::State;
 
@@ -31,9 +31,7 @@ pub fn get_task_templates(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
 ) -> Result<Vec<TaskTemplate>, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    let guard = lock_app(&state)?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }
@@ -124,9 +122,7 @@ pub fn copy_task_template_to_board(
     template_id: i64,
     target_board_id: i64,
 ) -> Result<(), CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }

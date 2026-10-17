@@ -2,7 +2,7 @@ use crate::{
     errors::CommandError,
     flow::{self, FlowData, FlowLayout, Relationship},
     models::BoardRole,
-    state::{AppData, SharedAppData},
+    state::{lock_app, AppData, SharedAppData},
 };
 use tauri::State;
 
@@ -27,9 +27,7 @@ pub fn get_flow(
     state: State<'_, SharedAppData>,
     expected_board_id: i64,
 ) -> Result<FlowData, CommandError> {
-    let guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let guard = lock_app(&state)?;
     check_context(&guard, expected_board_id, false)?;
     guard
         .database
@@ -43,9 +41,7 @@ pub fn save_flow_layout(
     expected_board_id: i64,
     layout: FlowLayout,
 ) -> Result<(), CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     check_context(&guard, expected_board_id, true)?;
     guard
         .database
@@ -59,9 +55,7 @@ pub fn create_task_relationship(
     expected_board_id: i64,
     relationship: Relationship,
 ) -> Result<Relationship, CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     check_context(&guard, expected_board_id, true)?;
     let relationship = flow::normalize(relationship);
     guard
@@ -77,9 +71,7 @@ pub fn remove_task_relationship(
     expected_board_id: i64,
     relationship: Relationship,
 ) -> Result<(), CommandError> {
-    let mut guard = state
-        .lock()
-        .map_err(|_| CommandError::internal("Application state lock is poisoned"))?;
+    let mut guard = lock_app(&state)?;
     check_context(&guard, expected_board_id, true)?;
     guard
         .database

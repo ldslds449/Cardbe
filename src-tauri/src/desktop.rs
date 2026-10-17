@@ -8,7 +8,7 @@ use tauri_plugin_global_shortcut::ShortcutState;
 
 use crate::global_shortcuts::{self, ShortcutRegistry};
 use crate::models::ShortcutAction;
-use crate::state::SharedAppData;
+use crate::state::{lock_app, SharedAppData};
 
 const FLOATING_TASK_LABEL_PREFIX: &str = "float-task-";
 
@@ -39,7 +39,7 @@ pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
 pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let database_ready = app.try_state::<SharedAppData>().is_some();
     if database_ready {
-        if let Ok(guard) = app.state::<SharedAppData>().lock() {
+        if let Ok(guard) = lock_app(&app.state::<SharedAppData>()) {
             app.state::<ShortcutRegistry>()
                 .load(&guard.stored.settings.global_shortcuts);
         }
@@ -172,9 +172,9 @@ pub fn set_menu_labels<R: Runtime>(app: &AppHandle<R>, labels: [String; 6]) -> R
 
 fn global_shortcuts_enabled<R: Runtime>(app: &AppHandle<R>) -> Result<bool, String> {
     let state = app.state::<SharedAppData>();
-    let guard = state.lock().map_err(|error| {
+    let guard = lock_app(&state).map_err(|error| {
         log::error!(target: "desktop", "Could not read the global shortcut setting: {error}");
-        "Application state lock is poisoned".to_string()
+        error.to_string()
     })?;
     Ok(guard.stored.settings.global_shortcuts_enabled)
 }

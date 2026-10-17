@@ -204,7 +204,6 @@
       if (generation !== board_content_generation) {
         return false;
       }
-      console.error(m.ui_couldn_t_load_shared_board_content(), error);
       toast.error(translateCommandError(error));
       return false;
     } finally {
@@ -415,7 +414,6 @@
       );
     } catch (error) {
       logger.error("share.publish.failed", error);
-      console.error(m.ui_couldn_t_publish_board_share(), error);
       toast.error(
         parseCommandError(error)
           ? translateCommandError(error)
@@ -457,7 +455,6 @@
       );
     } catch (error) {
       logger.error("share.disable.failed", error);
-      console.error(m.ui_couldn_t_disable_board_share(), error);
       onShareRevokeError?.(target.id, error);
       toast.error(translateCommandError(error));
     } finally {
@@ -518,7 +515,6 @@
       toast.success(m.ui_published_view_enabled());
     } catch (error) {
       logger.error("share.enable.failed", error);
-      console.error(m.ui_couldn_t_enable_board_share(), error);
       toast.error(
         parseCommandError(error)
           ? translateCommandError(error)
@@ -548,7 +544,6 @@
       toast.success(m.ui_published_view_deleted());
     } catch (error) {
       logger.error("share.delete.failed", error);
-      console.error(m.ui_couldn_t_delete_board_share(), error);
       onShareRevokeError?.(deleted_id, error);
       toast.error(translateCommandError(error));
     } finally {
