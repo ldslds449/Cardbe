@@ -254,6 +254,15 @@ pub fn prepare_output(
             .cloned()
             .map(|task| Operation::UpsertExternalTask { task, column: None }),
     );
+    // Source upserts merge against current task ownership, so concurrent user or remote
+    // edits need not discard them. General operations still require the run snapshot.
+    if changeset
+        .operations
+        .iter()
+        .all(|op| matches!(op, Operation::UpsertExternalTask { .. }))
+    {
+        changeset.version = version(db, instance.board_id)?;
+    }
     let mut prepared = prepare(db, instance, run_id, changeset)?;
     prepared.cursor = Some(output.cursor.clone());
     Ok(prepared)

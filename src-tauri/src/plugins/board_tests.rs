@@ -481,6 +481,143 @@ fn remote_snapshot_invalidates_changeset_without_overwriting_remote_content() {
 }
 
 #[test]
+fn source_upserts_rebase_after_concurrent_edits_but_general_operations_stay_stale() {
+    let mut f = Fixture::new();
+    let snapshot = version(&f.db, f.instance.board_id).unwrap();
+    let mut data = f.db.read_board_complete(f.instance.board_id).unwrap();
+    data.columns[0].tasks[0].title = "Concurrent".into();
+    f.db.replace_board_as_local_edit(f.instance.board_id, &data)
+        .unwrap();
+    let task = super::runtime::ExternalTask {
+        external_key: "source:1".into(),
+        title: "Imported".into(),
+        description: String::new(),
+        url: String::new(),
+        state: "open".into(),
+        labels: vec![],
+        updated_at: String::new(),
+        column_id: 1,
+    };
+    let general = super::runtime::RuntimeOutput {
+        changeset: Some(ChangeSet {
+            version: snapshot.clone(),
+            operations: vec![Operation::CreateColumn {
+                key: "new".into(),
+                name: "New".into(),
+                color: String::new(),
+            }],
+        }),
+        snapshot_version: snapshot.clone(),
+        tasks: vec![task.clone()],
+        cursor: None,
+        logs: vec![],
+    };
+    assert!(matches!(
+        prepare_output(&f.db, f.instance.clone(), "run".into(), &general),
+        Err(DomainError::StaleBoardRequest)
+    ));
+    let declared = super::runtime::RuntimeOutput {
+        changeset: Some(ChangeSet {
+            version: "other".into(),
+            operations: vec![],
+        }),
+        snapshot_version: snapshot.clone(),
+        tasks: vec![task.clone()],
+        cursor: None,
+        logs: vec![],
+    };
+    assert!(matches!(
+        prepare_output(&f.db, f.instance.clone(), "run".into(), &declared),
+        Err(DomainError::StaleBoardRequest)
+    ));
+    let upserts = super::runtime::RuntimeOutput {
+        changeset: None,
+        snapshot_version: snapshot,
+        tasks: vec![task],
+        cursor: Some("next".into()),
+        logs: vec![],
+    };
+    let prepared = prepare_output(&f.db, f.instance.clone(), "run".into(), &upserts).unwrap();
+    f.db.commit_changeset(&prepared).unwrap();
+    let board = f.db.read_board_complete(f.instance.board_id).unwrap();
+    assert_eq!(board.columns[0].tasks[0].title, "Concurrent");
+    assert!(board.columns[0]
+        .tasks
+        .iter()
+        .any(|task| task.title == "Imported"));
+    cleanup(f);
+}
+
+#[test]
+fn source_limit_prunes_only_deleted_task_mappings_before_failing() {
+    let mut f = Fixture::new();
+    let board = f.instance.board_id;
+    let insert = |f: &Fixture, key: &str, task: i64, payload: &str| {
+        f.db.plugin_connection()
+            .execute(
+                "INSERT INTO cardbe_plugin_sources VALUES(?1,?2,?3,?4,?5)",
+                rusqlite::params![f.instance.id, key, board, task, payload],
+            )
+            .unwrap();
+    };
+    let tx = f.db.plugin_connection().unchecked_transaction().unwrap();
+    for index in 0..20_001 {
+        insert(&f, &format!("deleted:{index}"), 1_000_000 + index, "{}");
+    }
+    insert(&f, "live", 10, "{}");
+    tx.commit().unwrap();
+    let output = |f: &Fixture, key: &str| super::runtime::RuntimeOutput {
+        changeset: None,
+        snapshot_version: version(&f.db, board).unwrap(),
+        tasks: vec![super::runtime::ExternalTask {
+            external_key: key.into(),
+            title: "Imported".into(),
+            description: String::new(),
+            url: String::new(),
+            state: "open".into(),
+            labels: vec![],
+            updated_at: String::new(),
+            column_id: 1,
+        }],
+        cursor: None,
+        logs: vec![],
+    };
+    let prepared =
+        prepare_output(&f.db, f.instance.clone(), "run".into(), &output(&f, "new")).unwrap();
+    f.db.commit_changeset(&prepared).unwrap();
+    let keys: Vec<String> =
+        f.db.plugin_connection()
+            .prepare("SELECT external_key FROM cardbe_plugin_sources ORDER BY external_key")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+    assert_eq!(keys, vec!["live", "new"]);
+    // Live mappings are never pruned, so an oversized live set still fails without writing.
+    let large = format!("\"{}\"", "x".repeat(140_000));
+    let tx = f.db.plugin_connection().unchecked_transaction().unwrap();
+    for task in 11..261 {
+        insert(&f, &format!("live:{task}"), task, &large);
+    }
+    tx.commit().unwrap();
+    let token = version(&f.db, board).unwrap();
+    let prepared = prepare_output(
+        &f.db,
+        f.instance.clone(),
+        "run".into(),
+        &output(&f, "another"),
+    )
+    .unwrap();
+    assert!(matches!(
+        f.db.commit_changeset(&prepared),
+        Err(DomainError::InvalidArgument)
+    ));
+    assert_eq!(version(&f.db, board).unwrap(), token);
+    cleanup(f);
+}
+
+#[test]
 fn changeset_uses_actual_pinned_order_and_host_allocated_task_ids() {
     let mut f = Fixture::new();
     let mut data = f.db.read_board_complete(f.instance.board_id).unwrap();

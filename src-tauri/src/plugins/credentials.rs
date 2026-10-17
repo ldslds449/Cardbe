@@ -1,6 +1,6 @@
 use super::{
     runtime::RuntimeError,
-    types::{CredentialDestination, PluginPackage},
+    types::{CredentialDestination, HttpAuth, PluginPackage},
 };
 use reqwest::Url;
 use std::collections::{BTreeMap, BTreeSet};
@@ -9,7 +9,33 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct CredentialScope {
     pub domain: String,
     pub path_prefix: String,
-    pub bearer_secret: Option<String>,
+    pub auth: Option<HttpAuth>,
+}
+
+pub fn valid_header_name(name: &str) -> bool {
+    name.len() <= 128
+        && reqwest::header::HeaderName::from_bytes(name.as_bytes()).is_ok()
+        && !matches!(
+            name.to_ascii_lowercase().as_str(),
+            "authorization"
+                | "host"
+                | "cookie"
+                | "cookie2"
+                | "content-length"
+                | "connection"
+                | "keep-alive"
+                | "proxy-authorization"
+                | "proxy-authenticate"
+                | "proxy-connection"
+                | "te"
+                | "trailer"
+                | "transfer-encoding"
+                | "upgrade"
+                | "accept"
+                | "content-type"
+                | "user-agent"
+        )
+        && !name.to_ascii_lowercase().starts_with("sec-")
 }
 
 pub fn valid_path_prefix(path: &str) -> bool {
@@ -24,42 +50,72 @@ pub fn valid_path_prefix(path: &str) -> bool {
 }
 
 pub fn valid_rules(package: &PluginPackage) -> bool {
-    package.http_credentials.as_ref().is_none_or(|rules| {
-        rules.len() <= 64
-            && rules.iter().all(|rule| {
-                valid_path_prefix(&rule.path_prefix)
-                    && rule.bearer_secret.as_ref().is_none_or(|key| {
-                        package
-                            .settings
-                            .iter()
-                            .any(|f| f.key == *key && f.kind == "secret")
-                    })
-                    && match &rule.destination {
-                        CredentialDestination::Domain { domain } => {
-                            super::http::contains_domain(&package.domains, domain)
-                        }
-                        CredentialDestination::BaseUrl { setting } => {
-                            package.settings.iter().any(|f| {
-                                f.key == *setting
-                                    && f.kind == "text"
-                                    && f.default.as_ref().is_none_or(|value| {
-                                        value
-                                            .as_str()
-                                            .is_some_and(|s| s.is_empty() || base_url(s).is_some())
-                                    })
+    matches!(package.manifest_version, 1 | 2)
+        && package.http_credentials.as_ref().is_none_or(|rules| {
+            rules.len() <= 64
+                && rules.iter().all(|rule| {
+                    (package.manifest_version == 2 || rule.auth.is_none())
+                        && valid_path_prefix(&rule.path_prefix)
+                        && !(rule.auth.is_some() && rule.bearer_secret.is_some())
+                        && rule.auth.as_ref().is_none_or(|auth| match auth {
+                            HttpAuth::Bearer { .. } => true,
+                            HttpAuth::Header { name, .. } => valid_header_name(name),
+                        })
+                        && rule
+                            .auth
+                            .as_ref()
+                            .map(HttpAuth::secret)
+                            .or(rule.bearer_secret.as_deref())
+                            .is_none_or(|key| {
+                                package
+                                    .settings
+                                    .iter()
+                                    .any(|f| f.key == key && f.kind == "secret")
                             })
+                        && match &rule.destination {
+                            CredentialDestination::Domain { domain } => {
+                                super::http::contains_domain(&package.domains, domain)
+                            }
+                            CredentialDestination::BaseUrl { setting } => {
+                                package.settings.iter().any(|f| {
+                                    f.key == *setting
+                                        && f.kind == "text"
+                                        && f.default.as_ref().is_none_or(|value| {
+                                            value.as_str().is_some_and(|s| {
+                                                s.is_empty() || base_url(s).is_some_and(|url| {
+                                                crate::commands::plugins::valid_instance_domains(
+                                                    package,
+                                                    &[super::http::url_domain(&url)],
+                                                )
+                                            })
+                                            })
+                                        })
+                                })
+                            }
                         }
-                    }
-            })
-            && rules.iter().enumerate().all(|(index, rule)| {
-                !rules[..index].iter().any(|other| {
-                    rule.destination == other.destination && rule.path_prefix == other.path_prefix
                 })
-            })
-    })
+                && rules.iter().enumerate().all(|(index, rule)| {
+                    !rules[..index].iter().any(|other| {
+                        rule.destination == other.destination
+                            && rule.path_prefix == other.path_prefix
+                    })
+                })
+        })
 }
 
 pub fn base_url(value: &str) -> Option<Url> {
+    // Check the original path before URL parsing removes dot segments.
+    let (_, authority_and_path) = value.split_once("://")?;
+    let path = authority_and_path
+        .find('/')
+        .map_or("/", |index| &authority_and_path[index..]);
+    if path.contains("//") {
+        return None;
+    }
+    let path = path.strip_suffix('/').unwrap_or(path);
+    if !valid_path_prefix(if path.is_empty() { "/" } else { path }) {
+        return None;
+    }
     let url = super::http::request_url(value).ok()?;
     if url.query().is_some() || value.contains('#') || value.contains('\\') {
         return None;
@@ -149,7 +205,11 @@ pub fn resolve(
         scopes.push(CredentialScope {
             domain,
             path_prefix,
-            bearer_secret: rule.bearer_secret.clone(),
+            auth: rule.auth.clone().or_else(|| {
+                rule.bearer_secret
+                    .clone()
+                    .map(|secret| HttpAuth::Bearer { secret })
+            }),
         });
     }
     Ok(Some(scopes))
@@ -276,9 +336,9 @@ mod tests {
         assert_eq!(scopes.len(), 3);
         assert_eq!(scopes[0].domain, "custom.example.com");
         assert_eq!(scopes[0].path_prefix, "/api/tasks");
-        assert_eq!(scopes[0].bearer_secret.as_deref(), Some("token"));
+        assert_eq!(scopes[0].auth.as_ref().map(HttpAuth::secret), Some("token"));
         assert_eq!(scopes[1].path_prefix, "/api/public");
-        assert!(scopes[1].bearer_secret.is_none());
+        assert!(scopes[1].auth.is_none());
         assert_eq!(scopes[2].domain, "fixed.example.com");
         assert_eq!(scopes[2].path_prefix, "/");
         assert_eq!(resolve(&pkg, &BTreeMap::new()).unwrap().unwrap().len(), 1);
@@ -346,6 +406,13 @@ mod tests {
             "https://custom.example.com/api#fragment",
             "https://custom.example.com/api%2fother",
             "https://custom.example.com/api\\other",
+            "https://custom.example.com//",
+            "https://custom.example.com/api//",
+            "https://custom.example.com/api//tasks",
+            "https://custom.example.com/a/../api",
+            "https://custom.example.com/a/./api",
+            "https://custom.example.com/%2e%2e/api",
+            "https://custom.example.com/api/..",
         ] {
             let config = BTreeMap::from([("base_url".into(), json!(url))]);
             assert!(

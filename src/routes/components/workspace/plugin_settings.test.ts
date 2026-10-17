@@ -4,7 +4,11 @@ import { transpile } from "typescript";
 import { expect, it, vi } from "vite-plus/test";
 import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { parseCommandError } from "$lib/command-errors";
-import { canonicalPluginDomain, isNewerPluginVersion } from "$lib/plugins";
+import {
+  canonicalPluginDomain,
+  isNewerPluginVersion,
+  validPluginManifestVersion,
+} from "$lib/plugins";
 
 const source = readFileSync(
   new URL("./plugin_settings.svelte", import.meta.url),
@@ -426,6 +430,7 @@ function setupInstall(invoke: ReturnType<typeof vi.fn>) {
     "invoke",
     "parseCommandError",
     "isNewerPluginVersion",
+    "validPluginManifestVersion",
     transpile(`
     let session = 0, installation = null, open=true, error=null,
       updateTarget=null,updatePreview=null,updateSuccess=false;
@@ -436,7 +441,12 @@ function setupInstall(invoke: ReturnType<typeof vi.fn>) {
       updateState:()=>({updatePreview,updateSuccess,error}),
       close: () => { session++; open=false; installation = null; closeUpdate(); } };
   `),
-  )(invoke, parseCommandError, isNewerPluginVersion);
+  )(
+    invoke,
+    parseCommandError,
+    isNewerPluginVersion,
+    validPluginManifestVersion,
+  );
 }
 
 it("shows the selected filename while installing and preserves the successful package", async () => {
@@ -938,6 +948,7 @@ it("rejects incompatible or non-newer automatic update previews", async () => {
     { id: "other" },
     { api_version: "2.0.0" },
     { storage_schema_version: 2 },
+    { manifest_version: 3 },
     { version: "0.9.0" },
   ]) {
     const invoke = vi.fn().mockResolvedValue({

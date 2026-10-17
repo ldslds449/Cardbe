@@ -184,9 +184,47 @@ pub(crate) fn persist_sources(
         }
         connection.execute("INSERT INTO cardbe_plugin_sources(instance_id,external_key,board_id,task_id,last_import) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(instance_id,board_id,external_key) DO UPDATE SET last_import=excluded.last_import",params![instance.id,key,instance.board_id,change.link.task_id,serde_json::to_string(&change.link).map_err(|e| DomainError::Internal(e.to_string()))?]).map_err(|e| DomainError::repository(Box::new(e)))?;
     }
+    if !within_source_limits(connection, instance)? {
+        prune_tombstones(connection, instance, changes)?;
+        if !within_source_limits(connection, instance)? {
+            return Err(DomainError::InvalidArgument);
+        }
+    }
+    Ok(())
+}
+fn within_source_limits(
+    connection: &rusqlite::Connection,
+    instance: &PluginInstance,
+) -> Result<bool, DomainError> {
     let (count, bytes): (i64,i64) = connection.query_row("SELECT count(*),coalesce(sum(length(CAST(last_import AS BLOB))),0) FROM cardbe_plugin_sources WHERE instance_id=?1", [&instance.id], |r| Ok((r.get(0)?,r.get(1)?))).map_err(|e| DomainError::repository(Box::new(e)))?;
-    if count > 20000 || bytes > 32 * 1024 * 1024 {
-        return Err(DomainError::InvalidArgument);
+    Ok(count <= 20000 && bytes <= 32 * 1024 * 1024)
+}
+/// At the limit, forgets mappings whose task is neither on its board nor archived there.
+/// The source may then recreate those deleted tasks; live and archived tasks keep their links.
+fn prune_tombstones(
+    connection: &rusqlite::Connection,
+    instance: &PluginInstance,
+    changes: &std::collections::HashMap<String, SourceChange>,
+) -> Result<(), DomainError> {
+    let repository = |e: rusqlite::Error| DomainError::repository(Box::new(e));
+    // Board rows are written after sources, so this run's mappings are skipped by key.
+    let tombstones = connection
+        .prepare("SELECT s.board_id,s.external_key FROM cardbe_plugin_sources s WHERE s.instance_id=?1 AND NOT EXISTS(SELECT 1 FROM cardbe_tasks t WHERE t.board_id=s.board_id AND t.id=s.task_id) AND NOT EXISTS(SELECT 1 FROM cardbe_archives a WHERE a.board_id=s.board_id AND a.task_id=s.task_id)")
+        .map_err(repository)?
+        .query_map([&instance.id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+        .map_err(repository)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(repository)?;
+    for (board_id, key) in tombstones {
+        if board_id == instance.board_id && changes.contains_key(&key) {
+            continue;
+        }
+        connection
+            .execute(
+                "DELETE FROM cardbe_plugin_sources WHERE instance_id=?1 AND board_id=?2 AND external_key=?3",
+                params![instance.id, board_id, key],
+            )
+            .map_err(repository)?;
     }
     Ok(())
 }

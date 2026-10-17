@@ -36,18 +36,64 @@ pub enum CredentialDestination {
     Domain { domain: String },
     BaseUrl { setting: String },
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HttpCredentialRule {
     pub destination: CredentialDestination,
     pub path_prefix: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bearer_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<HttpAuth>,
+}
+impl<'de> Deserialize<'de> for HttpCredentialRule {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        fn present<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
+            deserializer: D,
+        ) -> Result<Option<T>, D::Error> {
+            T::deserialize(deserializer).map(Some)
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Rule {
+            destination: CredentialDestination,
+            path_prefix: String,
+            #[serde(default, deserialize_with = "present")]
+            bearer_secret: Option<Option<String>>,
+            #[serde(default, deserialize_with = "present")]
+            auth: Option<Option<HttpAuth>>,
+        }
+        let rule = Rule::deserialize(deserializer)?;
+        if rule.auth.is_some() && rule.bearer_secret.is_some() {
+            return Err(serde::de::Error::custom("Conflicting credential formats"));
+        }
+        Ok(Self {
+            destination: rule.destination,
+            path_prefix: rule.path_prefix,
+            bearer_secret: rule.bearer_secret.flatten(),
+            auth: rule.auth.flatten(),
+        })
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HttpAuth {
+    Bearer { secret: String },
+    Header { name: String, secret: String },
+}
+impl HttpAuth {
+    pub fn secret(&self) -> &str {
+        match self {
+            Self::Bearer { secret } | Self::Header { secret, .. } => secret,
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginPackage {
     pub id: String,
     pub name: LocalizedText,
     pub version: String,
+    #[serde(default = "legacy_manifest_version")]
+    pub manifest_version: u32,
     pub api_version: String,
     pub storage_schema_version: u32,
     #[serde(default)]
@@ -65,6 +111,9 @@ pub struct PluginPackage {
     pub http_credentials: Option<Vec<HttpCredentialRule>>,
     #[serde(default)]
     pub settings: Vec<SettingField>,
+}
+fn legacy_manifest_version() -> u32 {
+    1
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PendingDomain {

@@ -35,6 +35,7 @@
   import {
     invalidPluginSettings,
     invalidPluginCredentialSettings,
+    validPluginManifestVersion,
     pluginCredentialScopes,
     pluginErrorMessage,
     pluginLogMessage,
@@ -417,6 +418,7 @@
     }
     if (
       preview.package.id !== target.id ||
+      !validPluginManifestVersion(preview.package) ||
       preview.package.api_version !== target.api_version ||
       preview.package.storage_schema_version !==
         target.storage_schema_version ||
@@ -1632,9 +1634,10 @@
                 {#each credentialScopes as scope}
                   <p class="text-sm break-all">
                     {scope.secret
-                      ? m.plugin_credential_scope({
+                      ? m.plugin_credential_scope_header({
                           domain: scope.domain,
                           path: scope.path,
+                          header: scope.header,
                           credential: pluginText(
                             editing.settings.find(
                               (field) => field.key === scope.secret,

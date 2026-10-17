@@ -89,6 +89,24 @@ fn recover(runs: &mut [PluginRun], instances: &mut [PluginInstance], at: i64) {
             instance.last_run_status = Some("cancelled".into());
         }
     }
+    // Closing the app during a run interrupts it once; a second consecutive
+    // interruption suggests a crash loop, so only then is the instance disabled.
+    let repeated: std::collections::HashSet<String> = runs
+        .iter()
+        .filter(|run| run.status == "running")
+        .filter(|run| {
+            runs.iter()
+                .filter(|previous| {
+                    previous.instance_id == run.instance_id
+                        && previous.status != "running"
+                        && previous.started_at <= run.started_at
+                        && previous.id != run.id
+                })
+                .max_by_key(|previous| previous.started_at)
+                .is_some_and(|previous| previous.status == "interrupted")
+        })
+        .map(|run| run.id.clone())
+        .collect();
     for run in runs.iter_mut().filter(|run| run.status == "running") {
         run.status = "interrupted".into();
         run.finished_at = Some(at);
@@ -96,7 +114,9 @@ fn recover(runs: &mut [PluginRun], instances: &mut [PluginInstance], at: i64) {
             .iter_mut()
             .find(|instance| instance.id == run.instance_id)
         {
-            instance.enabled = false;
+            if repeated.contains(&run.id) {
+                instance.enabled = false;
+            }
             instance.running = false;
             instance.last_run_status = Some("interrupted".into());
         }
@@ -230,6 +250,16 @@ pub(crate) fn same_authorization(original: &PluginInstance, current: &PluginInst
         && current.config == original.config
         && current.allowed_domains == original.allowed_domains
         && current.secret_fields == original.secret_fields
+}
+fn record_failure(instance: &mut PluginInstance, error: Option<CommandError>) {
+    // Concurrent board edits are not plugin faults; retry on the normal schedule.
+    if !matches!(error, Some(CommandError::StaleBoardRequest)) {
+        instance.failures = instance.failures.saturating_add(1);
+    }
+    instance.last_error = error;
+    if instance.failures >= 3 {
+        instance.enabled = false;
+    }
 }
 fn next_run(at: i64, interval: u64, failures: u32, retry: Option<u32>) -> Option<i64> {
     if interval == 0 {
@@ -369,12 +399,12 @@ fn prepare_http_policy(
         for key in credential_scopes
             .iter()
             .flatten()
-            .filter_map(|scope| scope.bearer_secret.as_ref())
+            .filter_map(|scope| scope.auth.as_ref().map(super::types::HttpAuth::secret))
             .collect::<std::collections::BTreeSet<_>>()
         {
-            if instance.secret_fields.contains(key) {
+            if instance.secret_fields.iter().any(|field| field == key) {
                 if let Some(value) = read_secret(key)? {
-                    credentials.insert(key.clone(), value);
+                    credentials.insert(key.to_owned(), value);
                 }
             }
         }
@@ -631,11 +661,7 @@ pub async fn run(
         let transaction = connection.unchecked_transaction().map_err(internal)?;
         if let Some(current) = current.as_mut() {
             if record.status == "failed" {
-                current.failures = current.failures.saturating_add(1);
-                current.last_error = record.error.clone();
-                if current.failures >= 3 {
-                    current.enabled = false;
-                }
+                record_failure(current, record.error.clone());
             } else if record.status == "success" {
                 current.failures = 0;
                 current.last_error = None;
@@ -752,16 +778,22 @@ mod tests {
     #[test]
     fn scoped_policy_reads_only_assigned_current_instance_secrets() {
         let package: PluginPackage = serde_json::from_value(serde_json::json!({
-            "id":"fixture", "name":"Fixture", "version":"1.0.0", "api_version":"1.0.0", "storage_schema_version":1,
+            "id":"fixture", "name":"Fixture", "version":"1.0.0", "manifest_version":2, "api_version":"1.0.0", "storage_schema_version":1,
             "domains":["fixed.example.com"], "allow_custom_domains":true,
             "settings":[{"key":"url","type":"text","label":"URL"},{"key":"token","type":"secret","label":"Token"},{"key":"fixed","type":"secret","label":"Fixed"},{"key":"unused","type":"secret","label":"Unused"}],
             "http_credentials":[
-                {"destination":{"type":"base_url","setting":"url"},"path_prefix":"/tasks","bearer_secret":"token"},
+                {"destination":{"type":"base_url","setting":"url"},"path_prefix":"/tasks","auth":{"type":"header","name":"X-API-Key","secret":"token"}},
                 {"destination":{"type":"base_url","setting":"url"},"path_prefix":"/admin","bearer_secret":"token"},
                 {"destination":{"type":"domain","domain":"fixed.example.com"},"path_prefix":"/","bearer_secret":"fixed"}
             ]
         })).unwrap();
         let mut instance = instance("scoped");
+        let mut future = package.clone();
+        future.manifest_version = 3;
+        assert!(prepare_http_policy(&instance, &future, |_| panic!(
+            "unsupported manifests must not read secrets"
+        ))
+        .is_err());
         instance.config.insert(
             "url".into(),
             serde_json::json!("https://custom.example.com/api"),
@@ -992,6 +1024,24 @@ mod tests {
         );
     }
     #[test]
+    fn stale_board_failures_do_not_count_toward_disabling() {
+        let mut current = instance("one");
+        for _ in 0..5 {
+            record_failure(&mut current, Some(CommandError::StaleBoardRequest));
+        }
+        assert_eq!(current.failures, 0);
+        assert!(current.enabled);
+        assert!(matches!(
+            current.last_error,
+            Some(CommandError::StaleBoardRequest)
+        ));
+        for _ in 0..3 {
+            record_failure(&mut current, Some(CommandError::InternalError));
+        }
+        assert_eq!(current.failures, 3);
+        assert!(!current.enabled);
+    }
+    #[test]
     fn changed_authorization_prevents_commit() {
         let original = instance("one");
         let mut current = original.clone();
@@ -1009,23 +1059,35 @@ mod tests {
         assert!(!same_authorization(&original, &current));
     }
     #[test]
-    fn restart_marks_interrupted_and_disables_only_affected_instance() {
-        let mut instances = vec![instance("one"), instance("two")];
-        let mut runs = vec![PluginRun {
-            id: "run".into(),
-            instance_id: "one".into(),
-            trigger: "manual".into(),
-            started_at: 1,
-            finished_at: None,
-            status: "running".into(),
+    fn restart_disables_only_after_consecutive_interruptions_of_the_same_instance() {
+        let run = |id: &str, instance: &str, started_at: i64, status: &str| PluginRun {
+            id: id.into(),
+            instance_id: instance.into(),
+            trigger: "schedule".into(),
+            started_at,
+            finished_at: (status != "running").then_some(started_at),
+            status: status.into(),
             error: None,
             logs: vec![],
             created: 0,
             updated: 0,
-        }];
+        };
+        let mut instances = vec![instance("one"), instance("two")];
+        let mut runs = vec![
+            run("old", "one", 1, "interrupted"),
+            run("success", "one", 2, "success"),
+            run("current", "one", 3, "running"),
+            run("other", "two", 1, "interrupted"),
+        ];
         recover(&mut runs, &mut instances, 5);
-        assert_eq!(runs[0].status, "interrupted");
-        assert_eq!(runs[0].finished_at, Some(5));
+        assert_eq!(runs[2].status, "interrupted");
+        assert_eq!(runs[2].finished_at, Some(5));
+        assert!(instances[0].enabled && !instances[0].running);
+        assert_eq!(instances[0].last_run_status.as_deref(), Some("interrupted"));
+        assert!(instances[1].enabled);
+        runs.push(run("next", "one", 6, "running"));
+        recover(&mut runs, &mut instances, 7);
+        assert_eq!(runs[4].status, "interrupted");
         assert!(!instances[0].enabled);
         assert!(instances[1].enabled);
     }

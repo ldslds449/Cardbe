@@ -4,6 +4,7 @@ import {
   canonicalPluginDomain,
   invalidPluginSettings,
   invalidPluginCredentialSettings,
+  validPluginManifestVersion,
   pluginCredentialScopes,
   pluginDefaults,
   pluginText,
@@ -57,15 +58,23 @@ it("resolves credential scopes for consent without exposing secrets or granting 
       domain: "custom.example.com",
       path: "/api/tasks",
       secret: "token",
+      header: "Authorization: Bearer",
       setting: "base_url",
     },
     {
       domain: "custom.example.com",
       path: "/api/public",
       secret: null,
+      header: "Authorization: Bearer",
       setting: "base_url",
     },
-    { domain: "fixed.example.com", path: "/", secret: "token", setting: null },
+    {
+      domain: "fixed.example.com",
+      path: "/",
+      secret: "token",
+      header: "Authorization: Bearer",
+      setting: null,
+    },
   ]);
   expect(pluginCredentialScopes(credentialPackage, {})).toHaveLength(1);
   expect(pluginDefaults(credentialPackage)).toEqual({});
@@ -105,6 +114,13 @@ it("validates base URL destinations and resolved rule collisions before saving",
     "https://custom.example.com/api#fragment",
     "https://custom.example.com/api%2fother",
     "https://custom.example.com/api\\other",
+    "https://custom.example.com//",
+    "https://custom.example.com/api//",
+    "https://custom.example.com/api//tasks",
+    "https://custom.example.com/a/../api",
+    "https://custom.example.com/a/./api",
+    "https://custom.example.com/%2e%2e/api",
+    "https://custom.example.com/api/..",
   ]) {
     expect(
       invalidPluginCredentialSettings(credentialPackage, { base_url: url }),
@@ -116,6 +132,7 @@ it("validates base URL destinations and resolved rule collisions before saving",
   }
   for (const url of [
     "https://custom.example.com/api/",
+    "https://custom.example.com/",
     "https://custom.example.com:443/api",
     "https://custom.example.com:8443/api",
     "https://fixed.example.com",
@@ -146,12 +163,113 @@ it("validates base URL destinations and resolved rule collisions before saving",
 it("translates credential scope consent messages in both languages", () => {
   for (const catalog of [en, zh]) {
     expect(catalog.plugin_credentials_help).toBeTruthy();
+    expect(catalog.plugin_credential_scope_header).toContain("{header}");
     expect(catalog.plugin_update_credentials).toBeTruthy();
     for (const parameter of ["{domain}", "{path}", "{credential}"]) {
       expect(catalog.plugin_credential_scope).toContain(parameter);
     }
     expect(catalog.plugin_credential_scope_public).toContain("{domain}");
   }
+});
+
+it("validates API key headers and displays the credential scope without secret values", () => {
+  const pkg: PluginPackage = {
+    ...credentialPackage,
+    manifest_version: 2,
+    http_credentials: [
+      {
+        destination: { type: "base_url", setting: "base_url" },
+        path_prefix: "/tasks",
+        auth: { type: "header", name: "X-API-Key", secret: "token" },
+      },
+    ],
+  };
+  const config = { base_url: "https://custom.example.com:8443/api/" };
+  expect(invalidPluginCredentialSettings(pkg, config)).toEqual([]);
+  expect(pluginCredentialScopes(pkg, config)).toEqual([
+    {
+      domain: "custom.example.com:8443",
+      path: "/api/tasks",
+      secret: "token",
+      header: "X-API-Key",
+      setting: "base_url",
+    },
+  ]);
+  for (const name of [
+    "Authorization",
+    "hOsT",
+    "Cookie",
+    "Content-Length",
+    "Connection",
+    "Proxy-Authorization",
+    "Transfer-Encoding",
+    "Sec-Fetch-Site",
+    "Content-Type",
+    "",
+    "X-API-Key\r\nOther",
+    "x".repeat(129),
+  ]) {
+    pkg.http_credentials![0].auth = { type: "header", name, secret: "token" };
+    expect(invalidPluginCredentialSettings(pkg, config), name).toEqual([
+      "token",
+    ]);
+  }
+  pkg.http_credentials![0].auth = { type: "bearer", secret: "token" };
+  expect(invalidPluginCredentialSettings(pkg, config)).toEqual([]);
+  pkg.http_credentials![0].bearer_secret = null;
+  expect(invalidPluginCredentialSettings(pkg, config)).toEqual(["token"]);
+  for (const token of [
+    "value\r\nX-Injected: yes",
+    "value\0",
+    "x".repeat(8193),
+  ]) {
+    expect(invalidPluginSettings(pkg.settings, {}, { token }, [])).toContain(
+      "token",
+    );
+  }
+});
+it("defaults missing manifest versions to v1 and requires v2 for auth objects", () => {
+  expect(validPluginManifestVersion(credentialPackage)).toBe(true);
+  for (const manifest_version of [1, 2]) {
+    expect(
+      validPluginManifestVersion({ ...credentialPackage, manifest_version }),
+    ).toBe(true);
+  }
+  for (const manifest_version of [
+    0,
+    3,
+    -1,
+    1.5,
+    NaN,
+    null as unknown as number,
+  ]) {
+    const pkg = { ...credentialPackage, manifest_version };
+    expect(validPluginManifestVersion(pkg)).toBe(false);
+    expect(invalidPluginCredentialSettings(pkg, {})).toContain(
+      "http_credentials",
+    );
+  }
+  const http_credentials: PluginPackage["http_credentials"] = [
+    {
+      destination: { type: "domain", domain: "fixed.example.com" },
+      path_prefix: "/",
+      auth: { type: "bearer", secret: "token" },
+    },
+  ];
+  expect(
+    validPluginManifestVersion({ ...credentialPackage, http_credentials }),
+  ).toBe(false);
+  expect(
+    validPluginManifestVersion({
+      ...credentialPackage,
+      http_credentials,
+      manifest_version: 2,
+    }),
+  ).toBe(true);
+  http_credentials[0].auth = null;
+  expect(
+    validPluginManifestVersion({ ...credentialPackage, http_credentials }),
+  ).toBe(true);
 });
 
 it("compares stable plugin releases numerically and rejects malformed versions and downgrades", () => {
@@ -344,6 +462,22 @@ describe("plugin settings", () => {
     expect(
       invalidPluginSettings(fields, { ...config, limit: 11 }, {}, ["token"]),
     ).toEqual(["limit"]);
+    for (const token of ["tab\tand space ~", "x".repeat(8192)]) {
+      expect(invalidPluginSettings(fields, config, { token }, [])).toEqual([]);
+    }
+    for (const token of [
+      "bad\r\nX-Injected: yes",
+      "bad\0",
+      "del\x7f",
+      "權杖",
+      "café",
+      "emoji😀",
+      "x".repeat(8193),
+    ]) {
+      expect(invalidPluginSettings(fields, config, { token }, [])).toEqual([
+        "token",
+      ]);
+    }
   });
   it("does not put secret defaults or nullable defaults into config", () => {
     const pkg = {

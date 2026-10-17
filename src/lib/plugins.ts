@@ -38,6 +38,7 @@ export interface PluginPackage {
   id: string;
   name: PluginText;
   version: string;
+  manifest_version?: number;
   api_version: string;
   storage_schema_version: number;
   description: PluginText;
@@ -54,6 +55,44 @@ export interface HttpCredentialRule {
     | { type: "base_url"; setting: string };
   path_prefix: string;
   bearer_secret?: string | null;
+  auth?:
+    | { type: "bearer"; secret: string }
+    | { type: "header"; name: string; secret: string }
+    | null;
+}
+export function validPluginManifestVersion(pkg: PluginPackage): boolean {
+  const version = pkg.manifest_version === undefined ? 1 : pkg.manifest_version;
+  return (
+    (version === 1 || version === 2) &&
+    (version === 2 || !pkg.http_credentials?.some((rule) => rule.auth != null))
+  );
+}
+
+function validCredentialHeader(name: string): boolean {
+  return (
+    name.length <= 128 &&
+    /^[!#$%&'*+.^_`|~0-9a-z-]+$/i.test(name) &&
+    !name.toLowerCase().startsWith("sec-") &&
+    ![
+      "authorization",
+      "host",
+      "cookie",
+      "cookie2",
+      "content-length",
+      "connection",
+      "keep-alive",
+      "proxy-authorization",
+      "proxy-authenticate",
+      "proxy-connection",
+      "te",
+      "trailer",
+      "transfer-encoding",
+      "upgrade",
+      "accept",
+      "content-type",
+      "user-agent",
+    ].includes(name.toLowerCase())
+  );
 }
 
 function validCredentialPath(path: string): boolean {
@@ -71,6 +110,18 @@ function credentialBaseUrl(value: unknown): URL | null {
     typeof value !== "string" ||
     value.length > 8192 ||
     /[?#\\]/.test(value)
+  ) {
+    return null;
+  }
+  // Check the original path before URL parsing removes dot segments.
+  const match = /^https:\/\/[^/]+(\/.*)?$/i.exec(value);
+  if (!match) {
+    return null;
+  }
+  const rawPath = match[1] ?? "/";
+  if (
+    rawPath.includes("//") ||
+    !validCredentialPath(rawPath.replace(/\/$/, "") || "/")
   ) {
     return null;
   }
@@ -144,7 +195,11 @@ export function pluginCredentialScopes(
       {
         domain,
         path: rule.path_prefix === "/" ? base || "/" : base + rule.path_prefix,
-        secret: rule.bearer_secret ?? null,
+        secret: rule.auth?.secret ?? rule.bearer_secret ?? null,
+        header:
+          rule.auth?.type === "header"
+            ? rule.auth.name
+            : "Authorization: Bearer",
         setting:
           rule.destination.type === "base_url"
             ? rule.destination.setting
@@ -159,7 +214,27 @@ export function invalidPluginCredentialSettings(
   config: Record<string, unknown>,
 ): string[] {
   const invalid = new Set<string>();
+  if (!validPluginManifestVersion(pkg)) {
+    invalid.add("http_credentials");
+  }
   for (const rule of pkg.http_credentials ?? []) {
+    const secret = rule.auth?.secret ?? rule.bearer_secret;
+    if (
+      ("auth" in rule && "bearer_secret" in rule) ||
+      (rule.auth?.type === "header" &&
+        !validCredentialHeader(rule.auth.name)) ||
+      (secret != null &&
+        !pkg.settings.some(
+          (field) => field.key === secret && field.type === "secret",
+        ))
+    ) {
+      invalid.add(
+        secret ??
+          (rule.destination.type === "base_url"
+            ? rule.destination.setting
+            : "http_credentials"),
+      );
+    }
     if (rule.destination.type !== "base_url") {
       continue;
     }
@@ -333,6 +408,14 @@ export function invalidPluginSettings(
       }
       if (field.type === "select") {
         return !field.options?.some((option) => option.value === value);
+      }
+      if (field.type === "secret" && typeof value === "string") {
+        // Match the backend HTTP header-value check: visible ASCII, spaces and tabs only.
+        return (
+          !/^[\t\x20-\x7e]*$/.test(value) ||
+          value.length > 8192 ||
+          (field.required && !value.trim())
+        );
       }
       return typeof value !== "string" || (field.required && !value.trim());
     })

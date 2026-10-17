@@ -187,6 +187,7 @@ fn release_version(value: &str) -> Option<[u64; 3]> {
 }
 fn validate_update(old: &PluginPackage, new: &PluginPackage) -> Result<(), CommandError> {
     if old.id != new.id
+        || !crate::plugins::credentials::valid_rules(new)
         || old.api_version != new.api_version
         || old.storage_schema_version != new.storage_schema_version
     {
@@ -200,7 +201,8 @@ fn validate_update(old: &PluginPackage, new: &PluginPackage) -> Result<(), Comma
     Ok(())
 }
 fn update_requires_review(old: &PluginPackage, new: &PluginPackage) -> bool {
-    old.domains != new.domains
+    old.manifest_version != new.manifest_version
+        || old.domains != new.domains
         || old.allow_custom_domains != new.allow_custom_domains
         || old.http_credentials != new.http_credentials
         || serde_json::to_value(&old.settings).ok() != serde_json::to_value(&new.settings).ok()
@@ -476,6 +478,30 @@ fn parse_package(bytes: &[u8]) -> Result<PluginPackage, CommandError> {
     }
     Ok(package)
 }
+/// Removes files left by an uninstalled package. Callers verify the ID is not installed.
+fn clear_orphaned_package(
+    root: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), CommandError> {
+    let Ok(metadata) = std::fs::symlink_metadata(destination) else {
+        return Ok(());
+    };
+    if metadata.file_type().is_symlink()
+        || !metadata.is_dir()
+        || destination
+            .canonicalize()
+            .map_err(CommandError::internal)?
+            .parent()
+            != Some(
+                root.canonicalize()
+                    .map_err(CommandError::internal)?
+                    .as_path(),
+            )
+    {
+        return Err(CommandError::InvalidArgument);
+    }
+    std::fs::remove_dir_all(destination).map_err(CommandError::internal)
+}
 fn install_package(
     app: tauri::AppHandle,
     bytes: Vec<u8>,
@@ -496,9 +522,7 @@ fn install_package(
     }
     let directory = destination.parent().ok_or(CommandError::InvalidArgument)?;
     std::fs::create_dir_all(directory).map_err(CommandError::internal)?;
-    if destination.exists() {
-        return Err(CommandError::InvalidArgument);
-    }
+    clear_orphaned_package(directory, &destination)?;
     std::fs::create_dir(&destination).map_err(CommandError::internal)?;
     if destination
         .canonicalize()
@@ -738,6 +762,7 @@ fn updated_secret_fields(
             .iter()
             .any(|f| f.key == *key && f.kind == "secret")
             || value.len() > 8192
+            || reqwest::header::HeaderValue::from_str(value).is_err()
         {
             return Err(CommandError::InvalidArgument);
         }
@@ -811,7 +836,10 @@ fn resolve_domain(
         .filter(|pending| pending.run_id == run_id)
         .ok_or(CommandError::InvalidArgument)?;
     let trigger = pending.trigger.clone();
-    if instance.needs_review || !instance.enabled {
+    if instance.needs_review
+        || !instance.enabled
+        || (allow && !crate::plugins::credentials::valid_rules(package))
+    {
         return Err(CommandError::PermissionDenied);
     }
     if allow {
@@ -1032,8 +1060,11 @@ pub fn remove_plugin_package(app: tauri::AppHandle, plugin_id: String) -> Result
         );
     }
     remove_locked(c, &instances, &namespaces, Some(&plugin_id))?;
+    // The package is already removed; installation clears any leftover directory.
     if let Some(resolved) = resolved {
-        std::fs::remove_dir_all(resolved).map_err(CommandError::internal)?;
+        if std::fs::remove_dir_all(resolved).is_err() {
+            log::warn!(target: "plugins", "Could not remove files of an uninstalled plugin");
+        }
     }
     let _ = app.emit("cardbe:plugins-changed", ());
     Ok(())
@@ -1130,6 +1161,52 @@ mod tests {
                 Err(CommandError::InvalidArgument)
             ));
         }
+    }
+    #[test]
+    fn manifest_versions_default_validate_persist_and_upgrade_independently() {
+        let mut manifest = serde_json::to_value(package("1.0.0")).unwrap();
+        manifest.as_object_mut().unwrap().remove("manifest_version");
+        let old = parse_package(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+        assert_eq!(old.manifest_version, 1);
+        for version in [
+            serde_json::json!(0),
+            serde_json::json!(3),
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::json!("2"),
+            serde_json::Value::Null,
+            serde_json::json!(4294967296_u64),
+        ] {
+            manifest["manifest_version"] = version;
+            assert!(parse_package(&serde_json::to_vec(&manifest).unwrap()).is_err());
+        }
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        storage::initialize(&connection).unwrap();
+        let mut legacy = serde_json::to_value(&old).unwrap();
+        legacy.as_object_mut().unwrap().remove("manifest_version");
+        storage::put(&connection, "package", &old.id, &legacy).unwrap();
+        assert_eq!(
+            storage::list::<PluginPackage>(&connection, "package").unwrap()[0].manifest_version,
+            1
+        );
+        for version in [1, 2] {
+            manifest["manifest_version"] = version.into();
+            let current = parse_package(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+            assert_eq!(current.manifest_version, version);
+            storage::put(&connection, "package", &current.id, &current).unwrap();
+            assert_eq!(
+                storage::list::<PluginPackage>(&connection, "package").unwrap()[0].manifest_version,
+                version
+            );
+        }
+        manifest["version"] = "1.1.0".into();
+        let upgraded = parse_package(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+        assert!(validate_update(&old, &upgraded).is_ok());
+        assert!(update_requires_review(&old, &upgraded));
+        assert!(!credentials_changed(&old, &upgraded));
+        let mut future = upgraded;
+        future.manifest_version = 3;
+        assert!(validate_update(&old, &future).is_err());
     }
     #[test]
     fn plugin_update_switches_revision_atomically_and_preserves_local_data() {
@@ -1326,6 +1403,12 @@ mod tests {
         );
         assert!(resolve_domain(&mut pending.clone(), &package, "stale-run", true).is_err());
         let mut needs_review = pending.clone();
+        let mut future = package.clone();
+        future.manifest_version = 3;
+        assert!(resolve_domain(&mut pending.clone(), &future, "run-1", true).is_err());
+        let mut declined = pending.clone();
+        resolve_domain(&mut declined, &future, "run-1", false).unwrap();
+        assert!(!declined.enabled && declined.pending_domain.is_none());
         needs_review.needs_review = true;
         assert!(resolve_domain(&mut needs_review, &package, "run-1", true).is_err());
         let mut disabled = pending.clone();
@@ -1498,6 +1581,86 @@ mod tests {
             ]
         });
         let old = parse_package(&serde_json::to_vec(&manifest).unwrap()).unwrap();
+        let mut header = manifest.clone();
+        header["http_credentials"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("bearer_secret");
+        header["http_credentials"][0]["auth"] =
+            serde_json::json!({"type":"header", "name":"X-API-Key", "secret":"token"});
+        assert!(parse_package(&serde_json::to_vec(&header).unwrap()).is_err());
+        header["manifest_version"] = 2.into();
+        let keyed = parse_package(&serde_json::to_vec(&header).unwrap()).unwrap();
+        assert!(update_requires_review(&old, &keyed) && credentials_changed(&old, &keyed));
+        assert_eq!(
+            parse_package(&serde_json::to_vec(&keyed).unwrap())
+                .unwrap()
+                .http_credentials,
+            keyed.http_credentials
+        );
+        let mut renamed = header.clone();
+        renamed["http_credentials"][0]["auth"]["name"] = "Api-Key".into();
+        let renamed = parse_package(&serde_json::to_vec(&renamed).unwrap()).unwrap();
+        assert!(update_requires_review(&keyed, &renamed) && credentials_changed(&keyed, &renamed));
+        for name in [
+            "Authorization",
+            "hOsT",
+            "Cookie",
+            "Content-Length",
+            "Connection",
+            "Proxy-Authorization",
+            "Transfer-Encoding",
+            "Sec-Fetch-Site",
+            "Content-Type",
+            "",
+            "X-API-Key\r\nOther",
+        ] {
+            let mut invalid = header.clone();
+            invalid["http_credentials"][0]["auth"]["name"] = name.into();
+            assert!(
+                parse_package(&serde_json::to_vec(&invalid).unwrap()).is_err(),
+                "{name}"
+            );
+        }
+        for legacy in [serde_json::Value::Null, serde_json::json!("token")] {
+            let mut invalid = header.clone();
+            invalid["http_credentials"][0]["bearer_secret"] = legacy;
+            assert!(parse_package(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        }
+        header["http_credentials"][0]["auth"] =
+            serde_json::json!({"type":"bearer", "secret":"token"});
+        assert!(parse_package(&serde_json::to_vec(&header).unwrap()).is_ok());
+        header["http_credentials"][0]["auth"]["secret"] = "missing".into();
+        assert!(parse_package(&serde_json::to_vec(&header).unwrap()).is_err());
+        let mut defaults = manifest.clone();
+        defaults["allow_custom_domains"] = serde_json::json!(false);
+        for url in [
+            "https://custom.example.com/api",
+            "https://fixed.example.com:8443/api",
+            "https://fixed.example.com/api//",
+            "https://fixed.example.com/a/../api",
+        ] {
+            defaults["settings"][0]["default"] = serde_json::json!(url);
+            assert!(
+                parse_package(&serde_json::to_vec(&defaults).unwrap()).is_err(),
+                "{url}"
+            );
+        }
+        for url in [
+            "",
+            "https://fixed.example.com/",
+            "https://fixed.example.com:443/api/",
+        ] {
+            defaults["settings"][0]["default"] = serde_json::json!(url);
+            assert!(
+                parse_package(&serde_json::to_vec(&defaults).unwrap()).is_ok(),
+                "{url}"
+            );
+        }
+        defaults["allow_custom_domains"] = serde_json::json!(true);
+        defaults["settings"][0]["default"] =
+            serde_json::json!("https://custom.example.com:8443/api/");
+        assert!(parse_package(&serde_json::to_vec(&defaults).unwrap()).is_ok());
         let c = rusqlite::Connection::open_in_memory().unwrap();
         storage::initialize(&c).unwrap();
         storage::put(&c, "package", &old.id, &old).unwrap();
@@ -1555,6 +1718,8 @@ mod tests {
         for invalid in [
             BTreeMap::from([("missing".into(), "fixture".into())]),
             BTreeMap::from([("token".into(), "x".repeat(8193))]),
+            BTreeMap::from([("token".into(), "bad\r\nX-Injected: yes".into())]),
+            BTreeMap::from([("token".into(), "bad\0".into())]),
         ] {
             assert!(updated_secret_fields(&package, Some(&previous), &invalid).is_err());
         }
@@ -1593,5 +1758,25 @@ mod tests {
             .query_row("SELECT count(*) FROM cardbe_plugin_data", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0);
+    }
+    #[test]
+    fn reinstall_clears_files_left_by_an_uninstalled_package_inside_the_root() {
+        let base = std::env::temp_dir().join(format!("cardbe-orphan-test-{}", id()));
+        let root = base.join("plugins");
+        let destination = root.join("example");
+        std::fs::create_dir_all(destination.join("revision")).unwrap();
+        std::fs::write(destination.join("revision").join("component.wasm"), b"old").unwrap();
+        clear_orphaned_package(&root, &destination).unwrap();
+        assert!(!destination.exists());
+        clear_orphaned_package(&root, &destination).unwrap();
+        std::fs::write(&destination, b"file").unwrap();
+        assert!(clear_orphaned_package(&root, &destination).is_err());
+        assert!(destination.exists());
+        std::fs::remove_file(&destination).unwrap();
+        let outside = base.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        assert!(clear_orphaned_package(&root, &outside).is_err());
+        assert!(outside.exists());
+        std::fs::remove_dir_all(base).unwrap();
     }
 }
