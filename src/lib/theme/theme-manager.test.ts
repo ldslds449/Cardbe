@@ -1,5 +1,6 @@
 import {
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -34,6 +35,10 @@ vi.mock("svelte-sonner", () => ({ toast: { error: mocks.error } }));
 vi.mock("$lib/logger", () => ({ logger: { warn: vi.fn() } }));
 
 describe("theme persistence", () => {
+  beforeAll(async () => {
+    // Warm the transform cache outside test timeouts; Paraglide catalogs are large.
+    await import("./theme-manager.svelte");
+  }, 30_000);
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
