@@ -546,7 +546,7 @@
               </Button>
             </div>
           </div>
-          <div class="flex min-h-0 flex-1 flex-col gap-3 bg-background p-4">
+          <div class="flex min-h-0 flex-1 flex-col gap-3 bg-background p-2">
             {#key selected_note.id}
               <RichTextEditor
                 bind:ref={note_ref}
@@ -554,7 +554,7 @@
                 bind:previewing={note_previewing}
                 showControls={false}
                 containerClass="flex min-h-0 flex-1 flex-col"
-                class="min-h-0 flex-1 overflow-y-auto border-0 bg-transparent px-0 font-sans text-base leading-6 shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
+                class="min-h-0 flex-1 overflow-y-auto rounded-md border-0 bg-transparent px-3 py-2 font-sans text-base leading-6 shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
                 placeholder={m.note_write()}
                 aria-label={m.note_content()}
                 disabled={deleting_id === selected_note.id}

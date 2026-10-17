@@ -157,7 +157,7 @@
       style={props.style}
       class={cn(
         props.class,
-        "editor-scroll-area overflow-hidden px-3 sm:px-3 focus-within:ring-2 focus-within:ring-ring/50",
+        "editor-scroll-area overflow-hidden p-0 focus-within:ring-2 focus-within:ring-ring/50 sm:p-0",
       )}
     >
       <Textarea
@@ -166,7 +166,7 @@
         bind:value
         class={cn(
           props.class,
-          "h-auto min-h-full flex-none resize-none overflow-hidden border-0 p-0 shadow-none focus-visible:ring-0 sm:p-0",
+          "h-auto min-h-full flex-none resize-none overflow-hidden border-0 shadow-none focus-visible:ring-0",
         )}
         id={props.id}
         placeholder={props.placeholder}
