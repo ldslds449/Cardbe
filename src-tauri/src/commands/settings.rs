@@ -169,6 +169,75 @@ fn colorref([red, green, blue]: [u8; 3]) -> u32 {
     u32::from(red) | u32::from(green) << 8 | u32::from(blue) << 16
 }
 
+#[derive(serde::Serialize)]
+pub struct GlobalShortcutStatus {
+    pub action: crate::models::ShortcutAction,
+    /// `None` when the user turned this shortcut off.
+    pub shortcut: Option<String>,
+    pub default_shortcut: &'static str,
+    /// False when global shortcuts are off or another app owns the keys.
+    pub active: bool,
+}
+
+#[derive(serde::Serialize)]
+pub struct GlobalShortcutOverview {
+    /// The group switch shared with the tray menu.
+    pub enabled: bool,
+    pub shortcuts: Vec<GlobalShortcutStatus>,
+}
+
+#[tauri::command]
+pub fn get_global_shortcuts(app: AppHandle) -> Result<GlobalShortcutOverview, CommandError> {
+    #[cfg(desktop)]
+    {
+        crate::global_shortcuts::overview(&app)
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        Ok(GlobalShortcutOverview {
+            enabled: false,
+            shortcuts: Vec::new(),
+        })
+    }
+}
+
+#[tauri::command]
+pub fn set_global_shortcuts_enabled(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<GlobalShortcutOverview, CommandError> {
+    #[cfg(desktop)]
+    {
+        crate::global_shortcuts::set_enabled(&app, enabled)
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, enabled);
+        Err(CommandError::InvalidArgument)
+    }
+}
+
+/// Saves one device-local global shortcut; an empty value turns it off.
+/// `take_over` moves a combination from the action that currently uses it.
+#[tauri::command]
+pub fn set_global_shortcut(
+    app: AppHandle,
+    action: crate::models::ShortcutAction,
+    shortcut: String,
+    take_over: Option<bool>,
+) -> Result<GlobalShortcutOverview, CommandError> {
+    #[cfg(desktop)]
+    {
+        crate::global_shortcuts::set(&app, action, &shortcut, take_over.unwrap_or(false))
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, action, shortcut, take_over);
+        Err(CommandError::InvalidArgument)
+    }
+}
+
 #[cfg(test)]
 mod theme_tests {
     #[test]
@@ -219,7 +288,7 @@ pub fn set_language(
 #[tauri::command]
 pub async fn set_desktop_menu_labels(
     app: tauri::AppHandle,
-    labels: [String; 5],
+    labels: [String; 6],
     startup: State<'_, crate::StartupError>,
 ) -> Result<(), CommandError> {
     #[cfg(desktop)]

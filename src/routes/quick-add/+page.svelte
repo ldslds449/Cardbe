@@ -15,6 +15,10 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { LogicalSize } from "@tauri-apps/api/dpi";
   import { onMount, tick } from "svelte";
+  import {
+    display_shortcut,
+    type GlobalShortcutStatus,
+  } from "$lib/global-shortcuts";
 
   import CheckIcon from "@lucide/svelte/icons/check";
   import ListTodoIcon from "@lucide/svelte/icons/list-todo";
@@ -46,7 +50,19 @@
       .setTitle(`${mode === "task" ? m.task_new() : m.ui_new_note()} · Cardbe`)
       .catch((error) => logger.warn("quick_add.title_language.failed", error));
   });
-  const shortcut = mode === "task" ? "Ctrl + Alt + T" : "Ctrl + Alt + N";
+  let shortcut = $state<string | null>(null);
+
+  function load_shortcut() {
+    const action = mode === "task" ? "quick_task" : "quick_note";
+    void invoke<GlobalShortcutStatus[]>("get_global_shortcuts")
+      .then((statuses) => {
+        const configured = statuses.find(
+          (status) => status.action === action,
+        )?.shortcut;
+        shortcut = configured ? display_shortcut(configured) : null;
+      })
+      .catch((error) => logger.warn("quick_add.shortcut_load.failed", error));
+  }
 
   let columns = $state<ColumnSummary[]>([]);
   let boards = $state<Array<{ id: number; name: string }>>([]);
@@ -164,6 +180,7 @@
           return;
         }
         database_ready = true;
+        load_shortcut();
         if (mode === "task") {
           void load_columns();
         }
@@ -180,6 +197,7 @@
       if (!database_ready) {
         return;
       }
+      load_shortcut();
       error = "";
       if (mode === "task") {
         void load_columns(true);
@@ -369,7 +387,9 @@
         <h1 class="text-base font-semibold tracking-tight">
           {mode === "task" ? m.task_new() : m.ui_new_note()}
         </h1>
-        <p class="mt-0.5 text-xs text-muted-foreground">{shortcut}</p>
+        {#if shortcut}
+          <p class="mt-0.5 text-xs text-muted-foreground">{shortcut}</p>
+        {/if}
       </div>
     </div>
     <Button

@@ -139,6 +139,8 @@ pub enum CommandError {
     ShareExpirationInvalid,
     CalendarFontNotFound,
     ExternalUrlInvalid,
+    ShortcutUnavailable,
+    ShortcutAlreadyAssigned,
     UpdateRequestFailed,
     UpdateReleaseDataInvalid,
     ShareAccessRevoked,

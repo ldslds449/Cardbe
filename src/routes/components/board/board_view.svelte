@@ -313,6 +313,7 @@
                 onExportTask={() => onExportTask(task)}
                 onDeleteTask={() => board.delete_task(task.id)}
                 onArchiveTask={() => board.archive_task(task.id)}
+                onFloatTask={() => void board.float_task(task.id)}
                 onTogglePin={() =>
                   void board.update_task(task.id, {
                     ...task,

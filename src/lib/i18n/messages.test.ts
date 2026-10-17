@@ -99,6 +99,7 @@ describe("core messages", () => {
         expect([
           m.task_new(),
           m.ui_new_note(),
+          m.tray_toggle_floating_tasks(),
           m.tray_enable_shortcuts(),
           m.tray_show(),
           m.tray_quit(),
@@ -107,6 +108,7 @@ describe("core messages", () => {
             ? [
                 "新增任務",
                 "新增筆記",
+                "顯示／隱藏浮動任務",
                 "啟用全域快捷鍵",
                 "顯示 Cardbe",
                 "結束 Cardbe",
@@ -114,6 +116,7 @@ describe("core messages", () => {
             : [
                 "New Task",
                 "New Note",
+                "Show/Hide Floating Tasks",
                 "Enable global shortcuts",
                 "Show Cardbe",
                 "Quit Cardbe",

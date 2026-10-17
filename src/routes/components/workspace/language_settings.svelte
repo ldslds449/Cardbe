@@ -2,9 +2,11 @@
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
   import { m } from "$lib/paraglide/messages.js";
   import { language, isLanguagePreference } from "$lib/i18n";
   import ThemeSettings from "./theme_settings.svelte";
+  import GlobalShortcutSettings from "./global_shortcut_settings.svelte";
   import { board } from "../../board.svelte";
 
   let { open = $bindable(false) }: { open: boolean } = $props();
@@ -59,7 +61,10 @@
             <Select.Item value="zh-TW">繁體中文</Select.Item>
           </Select.Content>
         </Select.Root>
+        <Separator />
         <ThemeSettings />
+        <Separator />
+        <GlobalShortcutSettings />
       </div>
     </ScrollArea>
   </Dialog.Content>

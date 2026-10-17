@@ -1,44 +1,35 @@
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Manager, Runtime, Window, WindowEvent,
+    App, AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window,
+    WindowEvent,
 };
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
 
-use crate::state::{update_stored, SharedAppData};
+use crate::global_shortcuts::{self, ShortcutRegistry};
+use crate::models::ShortcutAction;
+use crate::state::SharedAppData;
 
-const QUICK_TASK_SHORTCUT: &str = "Ctrl+Alt+T";
-const QUICK_NOTE_SHORTCUT: &str = "Ctrl+Alt+N";
-const SHOW_CARDBE_SHORTCUT: &str = "Ctrl+Alt+C";
+const FLOATING_TASK_LABEL_PREFIX: &str = "float-task-";
 
-fn quick_task_shortcut() -> Shortcut {
-    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyT)
-}
-
-fn quick_note_shortcut() -> Shortcut {
-    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyN)
-}
-
-fn show_cardbe_shortcut() -> Shortcut {
-    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyC)
+fn run_shortcut_action<R: Runtime>(app: &AppHandle<R>, action: ShortcutAction) {
+    match action {
+        ShortcutAction::QuickTask => show_quick_add_window(app, "quick-task"),
+        ShortcutAction::QuickNote => show_quick_add_window(app, "quick-note"),
+        ShortcutAction::FloatingTasks => toggle_floating_task_windows(app),
+        ShortcutAction::ShowCardbe => show_main_window(app),
+    }
 }
 
 pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
-    let task_shortcut = quick_task_shortcut();
-    let note_shortcut = quick_note_shortcut();
-    let show_shortcut = show_cardbe_shortcut();
-    builder.plugin(
+    builder.manage(ShortcutRegistry::default()).plugin(
         tauri_plugin_global_shortcut::Builder::new()
-            .with_handler(move |app, pressed, event| {
+            .with_handler(|app, pressed, event| {
                 if event.state() != ShortcutState::Pressed {
                     return;
                 }
-                if pressed == &task_shortcut {
-                    show_quick_add_window(app, "quick-task");
-                } else if pressed == &note_shortcut {
-                    show_quick_add_window(app, "quick-note");
-                } else if pressed == &show_shortcut {
-                    show_main_window(app);
+                if let Some(action) = app.state::<ShortcutRegistry>().action_for(pressed) {
+                    run_shortcut_action(app, action);
                 }
             })
             .build(),
@@ -47,31 +38,43 @@ pub fn configure<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
 
 pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let database_ready = app.try_state::<SharedAppData>().is_some();
+    if database_ready {
+        if let Ok(guard) = app.state::<SharedAppData>().lock() {
+            app.state::<ShortcutRegistry>()
+                .load(&guard.stored.settings.global_shortcuts);
+        }
+    }
     let shortcuts_enabled =
         database_ready && global_shortcuts_enabled(app.app_handle()).unwrap_or(true);
     if shortcuts_enabled {
-        if let Err(error) = set_global_shortcuts_enabled(app.app_handle(), true) {
-            log::error!(target: "desktop", "Could not enable Cardbe global shortcuts: {error}");
-        }
+        global_shortcuts::apply_enabled(app.app_handle(), true);
     }
 
+    let registry = app.state::<ShortcutRegistry>();
     let quick_task = MenuItem::with_id(
         app,
         "quick-task",
-        format!("New Task\t{QUICK_TASK_SHORTCUT}"),
+        registry.menu_text(ShortcutAction::QuickTask),
         database_ready,
         None::<&str>,
     )?;
     let quick_note = MenuItem::with_id(
         app,
         "quick-note",
-        format!("New Note\t{QUICK_NOTE_SHORTCUT}"),
+        registry.menu_text(ShortcutAction::QuickNote),
+        database_ready,
+        None::<&str>,
+    )?;
+    let floating_toggle = MenuItem::with_id(
+        app,
+        "toggle-floating-tasks",
+        registry.menu_text(ShortcutAction::FloatingTasks),
         database_ready,
         None::<&str>,
     )?;
     let shortcut_toggle = CheckMenuItem::with_id(
         app,
-        "toggle-shortcuts",
+        global_shortcuts::TOGGLE_MENU_ID,
         "Enable global shortcuts",
         database_ready,
         shortcuts_enabled,
@@ -80,7 +83,7 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
     let show = MenuItem::with_id(
         app,
         "show",
-        format!("Show Cardbe\t{SHOW_CARDBE_SHORTCUT}"),
+        registry.menu_text(ShortcutAction::ShowCardbe),
         true,
         None::<&str>,
     )?;
@@ -91,6 +94,7 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
         &[
             &quick_task,
             &quick_note,
+            &floating_toggle,
             &shortcut_toggle,
             &show,
             &separator,
@@ -117,36 +121,17 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "quick-task" if database_ready => show_quick_add_window(app, "quick-task"),
             "quick-note" if database_ready => show_quick_add_window(app, "quick-note"),
-            "toggle-shortcuts" if database_ready => {
-                let was_enabled = match global_shortcuts_enabled(app) {
-                    Ok(enabled) => enabled,
-                    Err(_) => return,
+            "toggle-floating-tasks" if database_ready => toggle_floating_task_windows(app),
+            global_shortcuts::TOGGLE_MENU_ID if database_ready => {
+                let Ok(was_enabled) = global_shortcuts_enabled(app) else {
+                    return;
                 };
-                let enabled = !was_enabled;
-                if let Err(error) = set_global_shortcuts_enabled(app, enabled) {
-                    log::error!(target: "desktop", "Could not change Cardbe global shortcuts: {error}");
+                if let Err(error) = global_shortcuts::set_enabled(app, !was_enabled) {
+                    log::error!(target: "desktop", "Could not save the global shortcut setting: {error:?}");
+                    // The check item toggles itself when clicked.
                     if let Err(error) = shortcut_toggle_for_menu.set_checked(was_enabled) {
                         log::warn!(target: "desktop", "Could not restore the global shortcut menu state: {error}");
                     }
-                    return;
-                }
-
-                let state = app.state::<SharedAppData>();
-                if let Err(error) = update_stored(&state, |data| {
-                    data.settings.global_shortcuts_enabled = enabled;
-                    Ok(())
-                }) {
-                    log::error!(target: "desktop", "Could not save the global shortcut setting: {error}");
-                    if let Err(error) = set_global_shortcuts_enabled(app, was_enabled) {
-                        log::error!(target: "desktop", "Could not roll back global shortcut changes: {error}");
-                    }
-                    if let Err(error) = shortcut_toggle_for_menu.set_checked(was_enabled) {
-                        log::warn!(target: "desktop", "Could not restore the global shortcut menu state: {error}");
-                    }
-                    return;
-                }
-                if let Err(error) = shortcut_toggle_for_menu.set_checked(enabled) {
-                    log::warn!(target: "desktop", "Could not update the global shortcut menu state: {error}");
                 }
             }
             "show" => show_main_window(app),
@@ -162,21 +147,18 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-pub fn set_menu_labels<R: Runtime>(app: &AppHandle<R>, labels: [String; 5]) -> Result<(), String> {
+pub fn set_menu_labels<R: Runtime>(app: &AppHandle<R>, labels: [String; 6]) -> Result<(), String> {
     let menu = app
         .try_state::<Menu<R>>()
         .ok_or("Desktop menu is not ready")?;
-    for (label, (id, shortcut)) in labels.into_iter().zip([
-        ("quick-task", Some(QUICK_TASK_SHORTCUT)),
-        ("quick-note", Some(QUICK_NOTE_SHORTCUT)),
-        ("toggle-shortcuts", None),
-        ("show", Some(SHOW_CARDBE_SHORTCUT)),
-        ("quit", None),
-    ]) {
-        let text = match shortcut {
-            Some(shortcut) => format!("{label}\t{shortcut}"),
-            None => label,
-        };
+    let [quick_task, quick_note, floating_tasks, toggle_shortcuts, show, quit] = labels;
+    app.state::<ShortcutRegistry>()
+        .set_menu_labels([quick_task, quick_note, floating_tasks, show]);
+    global_shortcuts::refresh_menu(app);
+    for (id, text) in [
+        (global_shortcuts::TOGGLE_MENU_ID, toggle_shortcuts),
+        ("quit", quit),
+    ] {
         if let Some(item) = menu.get(id) {
             if let Some(item) = item.as_menuitem() {
                 item.set_text(&text).map_err(|error| error.to_string())?;
@@ -195,50 +177,6 @@ fn global_shortcuts_enabled<R: Runtime>(app: &AppHandle<R>) -> Result<bool, Stri
         "Application state lock is poisoned".to_string()
     })?;
     Ok(guard.stored.settings.global_shortcuts_enabled)
-}
-
-fn set_global_shortcuts_enabled<R: Runtime>(
-    app: &AppHandle<R>,
-    enabled: bool,
-) -> Result<(), String> {
-    let manager = app.global_shortcut();
-    let shortcuts = [
-        quick_task_shortcut(),
-        quick_note_shortcut(),
-        show_cardbe_shortcut(),
-    ];
-    let previous_registration = shortcuts.map(|shortcut| manager.is_registered(shortcut));
-
-    let result: Result<(), String> = (|| {
-        for (shortcut, was_registered) in shortcuts.iter().copied().zip(previous_registration) {
-            if enabled && !was_registered {
-                manager
-                    .register(shortcut)
-                    .map_err(|error| error.to_string())?;
-            }
-            if !enabled && was_registered {
-                manager
-                    .unregister(shortcut)
-                    .map_err(|error| error.to_string())?;
-            }
-        }
-        Ok(())
-    })();
-
-    if result.is_err() {
-        for (shortcut, was_registered) in shortcuts.iter().copied().zip(previous_registration) {
-            if was_registered {
-                if let Err(error) = manager.register(shortcut) {
-                    log::error!(target: "desktop", "Could not restore a global shortcut after a failed update: {error}");
-                }
-            } else {
-                if let Err(error) = manager.unregister(shortcut) {
-                    log::error!(target: "desktop", "Could not remove a global shortcut after a failed update: {error}");
-                }
-            }
-        }
-    }
-    result
 }
 
 pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
@@ -271,8 +209,86 @@ fn show_quick_add_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
     }
 }
 
+fn floating_task_label(board_id: i64, task_id: i64) -> String {
+    format!("{FLOATING_TASK_LABEL_PREFIX}{board_id}-{task_id}")
+}
+
+/// Opens one always-on-top reminder window per task, or focuses the existing
+/// one. The window-state plugin restores its last position and size by label.
+pub fn open_floating_task_window<R: Runtime>(
+    app: &AppHandle<R>,
+    board_id: i64,
+    task_id: i64,
+) -> tauri::Result<()> {
+    let label = floating_task_label(board_id, task_id);
+    if let Some(window) = app.get_webview_window(&label) {
+        window.unminimize()?;
+        window.show()?;
+        return window.set_focus();
+    }
+    WebviewWindowBuilder::new(
+        app,
+        label,
+        WebviewUrl::App(format!("float-task?board={board_id}&task={task_id}").into()),
+    )
+    .title("Cardbe")
+    .inner_size(320.0, 220.0)
+    .min_inner_size(220.0, 120.0)
+    .decorations(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .maximizable(false)
+    .minimizable(false)
+    .build()
+    .map(|_| ())
+}
+
+/// Hides every floating task while any is visible; otherwise shows them all.
+/// Hidden windows stay open, so they are still restored on the next launch.
+fn toggle_floating_task_windows<R: Runtime>(app: &AppHandle<R>) {
+    let windows: Vec<_> = app
+        .webview_windows()
+        .into_iter()
+        .filter(|(label, _)| label.starts_with(FLOATING_TASK_LABEL_PREFIX))
+        .map(|(_, window)| window)
+        .collect();
+    let hide = windows
+        .iter()
+        .any(|window| window.is_visible().unwrap_or(false));
+    for window in windows {
+        let result = if hide { window.hide() } else { window.show() };
+        if let Err(error) = result {
+            log::warn!(target: "desktop", "Could not toggle a floating task window: {error}");
+        }
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenTaskRequest {
+    board_id: i64,
+    task_id: i64,
+}
+
+pub fn open_task_in_main_window<R: Runtime>(
+    app: &AppHandle<R>,
+    board_id: i64,
+    task_id: i64,
+) -> tauri::Result<()> {
+    show_main_window(app);
+    app.emit_to(
+        "main",
+        "cardbe:open-task",
+        OpenTaskRequest { board_id, task_id },
+    )
+}
+
 pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     match event {
+        // Floating reminders close for real; the main and quick-add windows
+        // stay alive in the background.
+        WindowEvent::CloseRequested { .. }
+            if window.label().starts_with(FLOATING_TASK_LABEL_PREFIX) => {}
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             if let Err(error) = window.hide() {
@@ -290,6 +306,18 @@ pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn floating_task_labels_match_the_capability_pattern() {
+        assert_eq!(super::floating_task_label(12, 34), "float-task-12-34");
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        assert!(capability["windows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|window| window == "float-task-*"));
+    }
+
     #[test]
     fn quick_add_windows_are_precreated_and_hidden() {
         let config: tauri::Config =

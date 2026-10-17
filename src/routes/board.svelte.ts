@@ -43,6 +43,7 @@ import type { Archive, ArchiveSummary } from "./type/archive.svelte";
 import { parse_import_summary, type ImportSummary } from "./utils/import-data";
 import { addMission } from "./utils/mission.svelte";
 import { TaskExpansionState } from "./task-expansion.svelte";
+import { open_floating_task } from "$lib/floating-tasks";
 
 // Keep drag-and-drop responsive by waiting until the user has finished a
 // short sequence of moves before persisting it to disk.
@@ -1216,6 +1217,19 @@ export class BoardStore {
     } catch (error) {
       logger.error("board.expired_task_detail_load.failed", error);
       return null;
+    }
+  }
+
+  async float_task(task_id: string) {
+    const boardId = this.active_board_id;
+    if (boardId === null) {
+      return;
+    }
+    try {
+      await open_floating_task({ boardId, taskId: get_task_id(task_id) });
+    } catch (error) {
+      logger.error("board.task_float.failed", error);
+      toast.error(translateCommandError(error));
     }
   }
 

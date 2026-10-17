@@ -4,6 +4,7 @@
   import { getLocale } from "$lib/i18n";
   import { m } from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
+  import { restore_floating_tasks } from "$lib/floating-tasks";
   import { onMount, untrack } from "svelte";
   import { getName, getVersion } from "@tauri-apps/api/app";
   import { invoke } from "@tauri-apps/api/core";
@@ -752,6 +753,7 @@
           if (disposed) {
             return;
           }
+          void restore_floating_tasks();
           restore_managed_share_state(
             board.boards.length === 1 ? board.boards[0].id : undefined,
           );
@@ -909,6 +911,24 @@
           });
       },
     );
+    const open_task_listener = listen<{ boardId?: number; taskId?: number }>(
+      "cardbe:open-task",
+      async (event) => {
+        const { boardId, taskId } = event.payload;
+        if (!Number.isInteger(boardId) || !Number.isInteger(taskId)) {
+          return;
+        }
+        if (!(await board.switch_board(boardId!))) {
+          return;
+        }
+        const task = await board.get_expired_task_detail(`task_${taskId}`);
+        if (task) {
+          view_task_by_id(task);
+        } else {
+          toast.error(m.task_missing());
+        }
+      },
+    );
     const iroh_remote_push_listener = listen<{
       board_id: number;
       revision: number;
@@ -926,6 +946,7 @@
       window.clearTimeout(update_check_timeout);
       void data_changed_listener.then((unlisten) => unlisten());
       void iroh_remote_push_listener.then((unlisten) => unlisten());
+      void open_task_listener.then((unlisten) => unlisten());
       document.removeEventListener("keydown", handle_shortcut);
       window.removeEventListener("cardbe:open-card", handle_open_card);
       window.removeEventListener(

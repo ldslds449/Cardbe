@@ -4,6 +4,8 @@ mod commands;
 mod desktop;
 mod errors;
 mod flow;
+#[cfg(desktop)]
+mod global_shortcuts;
 mod link_preview;
 mod loro_board;
 mod models;
@@ -13,8 +15,8 @@ mod state;
 mod storage;
 
 use commands::{
-    archive, board, boards, calendar_export, diagnostics, import_export, iroh_share, notes,
-    notifications, settings, share, task_explorer, templates, update,
+    archive, board, boards, calendar_export, diagnostics, floating_task, import_export, iroh_share,
+    notes, notifications, settings, share, task_explorer, templates, update,
 };
 use state::AppData;
 #[cfg(all(debug_assertions, desktop))]
@@ -456,6 +458,8 @@ pub fn run() {
             diagnostics::get_diagnostics,
             diagnostics::open_log_folder,
             diagnostics::export_debug_information,
+            floating_task::open_floating_task,
+            floating_task::open_task_in_main_window,
             import_export::export_data,
             import_export::import_data,
             import_export::import_board_as_new,
@@ -495,6 +499,9 @@ pub fn run() {
             settings::set_language,
             settings::set_theme,
             settings::set_window_caption_color,
+            settings::get_global_shortcuts,
+            settings::set_global_shortcut,
+            settings::set_global_shortcuts_enabled,
             settings::set_desktop_menu_labels,
             settings::take_recovery_messages,
             get_startup_error,

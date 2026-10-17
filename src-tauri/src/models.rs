@@ -269,7 +269,68 @@ pub struct Settings {
     #[serde(default = "default_true")]
     pub task_expand_mode: bool,
     #[serde(default)]
+    pub global_shortcuts: GlobalShortcutSettings,
+    #[serde(default)]
     pub iroh_network: IrohNetworkSettings,
+}
+
+/// Device-local key bindings. `None` uses the action's default and an empty
+/// string turns the shortcut off.
+#[derive(Deserialize, Serialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct GlobalShortcutSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quick_task: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quick_note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub floating_tasks: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_cardbe: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ShortcutAction {
+    QuickTask,
+    QuickNote,
+    FloatingTasks,
+    ShowCardbe,
+}
+
+impl ShortcutAction {
+    pub const ALL: [Self; 4] = [
+        Self::QuickTask,
+        Self::QuickNote,
+        Self::FloatingTasks,
+        Self::ShowCardbe,
+    ];
+
+    pub fn default_shortcut(self) -> &'static str {
+        match self {
+            Self::QuickTask => "Ctrl+Alt+T",
+            Self::QuickNote => "Ctrl+Alt+N",
+            Self::FloatingTasks => "Ctrl+Alt+F",
+            Self::ShowCardbe => "Ctrl+Alt+C",
+        }
+    }
+
+    pub fn setting(self, settings: &GlobalShortcutSettings) -> Option<&str> {
+        match self {
+            Self::QuickTask => settings.quick_task.as_deref(),
+            Self::QuickNote => settings.quick_note.as_deref(),
+            Self::FloatingTasks => settings.floating_tasks.as_deref(),
+            Self::ShowCardbe => settings.show_cardbe.as_deref(),
+        }
+    }
+
+    pub fn setting_mut(self, settings: &mut GlobalShortcutSettings) -> &mut Option<String> {
+        match self {
+            Self::QuickTask => &mut settings.quick_task,
+            Self::QuickNote => &mut settings.quick_note,
+            Self::FloatingTasks => &mut settings.floating_tasks,
+            Self::ShowCardbe => &mut settings.show_cardbe,
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -284,6 +345,7 @@ impl Default for Settings {
             notify_enabled: false,
             global_shortcuts_enabled: true,
             task_expand_mode: true,
+            global_shortcuts: GlobalShortcutSettings::default(),
             iroh_network: IrohNetworkSettings::default(),
         }
     }

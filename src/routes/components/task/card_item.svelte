@@ -2,7 +2,6 @@
   import TaskActionItems from "../task/task_action_items.svelte";
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
-  import { formatDate, formatDateTime } from "$lib/i18n";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Collapsible from "$lib/components/ui/collapsible/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -19,6 +18,7 @@
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
   import Share2Icon from "@lucide/svelte/icons/share-2";
   import PinIcon from "@lucide/svelte/icons/pin";
+  import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
   import MoveTaskDialog from "../dialog/move_task_dialog.svelte";
 
@@ -28,7 +28,7 @@
   import LabelBadge from "../label_badge.svelte";
   import ChecklistDisplay from "./checklist_display.svelte";
   import DeleteTaskDialog from "./delete_task_dialog.svelte";
-  import { due_status } from "./due-status";
+  import { due_label, due_label_class } from "./due-label";
 
   interface CardItemProps {
     task: Task;
@@ -47,6 +47,7 @@
     onDeleteTask: () => void;
     onArchiveTask: () => void;
     onTogglePin?: () => void;
+    onFloatTask?: () => void;
   }
 
   let {
@@ -66,6 +67,7 @@
     onDeleteTask = () => {},
     onArchiveTask = () => {},
     onTogglePin,
+    onFloatTask,
   }: CardItemProps = $props();
 
   const { ref, isDragging, isDropTarget } = useSortable({
@@ -85,40 +87,7 @@
   let delete_confirm_open = $state(false);
   let move_dialog_open = $state(false);
   let due_metadata = $derived(
-    (() => {
-      if (!task.due_time) {
-        return undefined;
-      }
-
-      const now = new Date();
-      const include_year = task.due_time.getFullYear() !== now.getFullYear();
-      const options: Intl.DateTimeFormatOptions = {
-        month: "short",
-        day: "numeric",
-        year: include_year ? "numeric" : undefined,
-      };
-      const has_time =
-        task.due_time.getHours() !== 0 ||
-        task.due_time.getMinutes() !== 0 ||
-        task.due_time.getSeconds() !== 0;
-      const date = has_time
-        ? formatDateTime(task.due_time, {
-            ...options,
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : formatDate(task.due_time, options);
-      const status = due_status(task.due_time, now);
-      return {
-        text:
-          status === "today"
-            ? m.task_due_today({ date })
-            : status === "soon"
-              ? m.task_due_soon({ date })
-              : date,
-        status,
-      };
-    })(),
+    task.due_time ? due_label(task.due_time, new Date()) : undefined,
   );
 </script>
 
@@ -172,15 +141,9 @@
         {/if}
         {#if due_metadata != undefined}
           <span
-            class={`inline-flex items-center gap-1.5 text-xs ${
-              due_metadata.status === "overdue"
-                ? "text-destructive"
-                : due_metadata.status === "today"
-                  ? "font-medium text-warning"
-                  : due_metadata.status === "soon"
-                    ? "font-medium text-warning"
-                    : "text-muted-foreground"
-            }`}
+            class={`inline-flex items-center gap-1.5 text-xs ${due_label_class(
+              due_metadata.status,
+            )}`}
           >
             {#if due_metadata.status === "overdue"}
               <CircleAlertIcon class="size-3.5 shrink-0" />
@@ -262,6 +225,12 @@
                 onDelete={() => (delete_confirm_open = true)}
               >
                 {#snippet extra()}
+                  {#if onFloatTask}
+                    <DropdownMenu.Item onclick={onFloatTask}>
+                      <PictureInPicture2Icon />
+                      {m.task_float_on_desktop()}
+                    </DropdownMenu.Item>
+                  {/if}
                   <DropdownMenu.Item onclick={onDuplicateTask}>
                     <CopyIcon />
                     {m.task_duplicate_action()}

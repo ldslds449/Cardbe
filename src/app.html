@@ -13,6 +13,10 @@
     <link rel="stylesheet" href="%sveltekit.assets%/themes.css" />
     <script>
       (() => {
+        // Floating task windows are small, so they use a minimal loader.
+        if (document.location?.pathname.startsWith("/float-task")) {
+          document.documentElement.dataset.startup = "compact";
+        }
         const ids = [
           "light",
           "dark",
@@ -163,6 +167,20 @@
       }
       html.dark .startup-progress::after {
         background: var(--primary, #fafafa);
+      }
+      html[data-startup="compact"] .startup-card {
+        width: 56px;
+        height: auto;
+        padding: 0;
+        border: 0;
+        background: none;
+        box-shadow: none;
+      }
+      html[data-startup="compact"] .startup-brand {
+        display: none;
+      }
+      html[data-startup="compact"] .startup-progress {
+        height: 3px;
       }
       @media (prefers-reduced-motion: reduce) {
         #app-startup {

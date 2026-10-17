@@ -32,6 +32,7 @@
         labels: [
           m.task_new(),
           m.ui_new_note(),
+          m.tray_toggle_floating_tasks(),
           m.tray_enable_shortcuts(),
           m.tray_show(),
           m.tray_quit(),
@@ -84,7 +85,9 @@
     logger.info("app.mounted");
     const dismiss_startup = () =>
       document.getElementById("app-startup")?.classList.add("is-ready");
-    const waits_for_workspace = window.location.pathname === "/";
+    const waits_for_workspace =
+      window.location.pathname === "/" ||
+      window.location.pathname.startsWith("/float-task");
     if (waits_for_workspace) {
       window.addEventListener("cardbe:workspace-ready", dismiss_startup, {
         once: true,
