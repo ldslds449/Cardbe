@@ -22,10 +22,11 @@ it.each(["en", "zh-TW"] as const)(
       const notes = [{ id: 1, title: "Original", content: "Body" }];
       const actions = {
         read_only: false,
+        locked: false,
         notes_unavailable: false,
         onEdit: () => {},
         onRemove: () => {},
-        onResize: () => {},
+        onScale: () => {},
         editing_id: null,
         onSaveText: async () => true,
         onCancelEdit: () => {},

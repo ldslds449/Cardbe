@@ -4,15 +4,17 @@ import type { Column } from "../../type/column.svelte";
 import type { Task } from "../../type/task.svelte";
 import type { Archive } from "../../type/archive.svelte";
 
-export type RelationshipKind = "related_to" | "depends_on";
+// Arrows are only visual; each pair of tasks has at most one line.
 export interface Relationship {
   source: number;
   target: number;
-  kind: RelationshipKind;
+  source_arrow: boolean;
+  target_arrow: boolean;
 }
 export interface FlowLayout {
   annotations?: FlowAnnotation[];
-  nodes: { task_id: number; x: number; y: number }[];
+  // Scale is omitted while a card keeps the default size.
+  nodes: { task_id: number; x: number; y: number; scale?: number }[];
   viewport: Viewport | null;
   connections?: Record<
     string,
@@ -24,6 +26,7 @@ export type FlowAnnotation = {
   x: number;
   y: number;
   width: number;
+  scale?: number;
 } & ({ kind: "text"; text: string } | { kind: "note"; note_id: number });
 export interface NotePreview {
   id: number;
@@ -35,10 +38,16 @@ export type AnnotationNode = Node<
     annotation: FlowAnnotation;
     note?: NotePreview;
     notes_unavailable: boolean;
+    // Also true while saving; `locked` is only the board's read-only state.
     read_only: boolean;
+    locked: boolean;
     onEdit: (annotation: FlowAnnotation) => void;
     onRemove: (id: string) => void;
-    onResize: () => void;
+    onScale: (
+      id: string,
+      change: (scale: number) => number,
+      selection: boolean,
+    ) => void;
     editing_id: string | null;
     onSaveText: (id: string, text: string) => Promise<boolean>;
     onCancelEdit: () => void;
@@ -53,9 +62,10 @@ export function build_annotations(
   actions: Pick<
     AnnotationNode["data"],
     | "read_only"
+    | "locked"
     | "onEdit"
     | "onRemove"
-    | "onResize"
+    | "onScale"
     | "notes_unavailable"
     | "editing_id"
     | "onSaveText"
@@ -67,7 +77,8 @@ export function build_annotations(
     id: `annotation_${annotation.id}`,
     type: "annotation",
     position: { x: annotation.x, y: annotation.y },
-    width: annotation.width,
+    // The stored width is unscaled; the card's content is zoomed to fit.
+    width: annotation.width * (annotation.scale ?? 1),
     data: {
       annotation,
       note:
@@ -76,24 +87,111 @@ export function build_annotations(
     },
   }));
 }
+export interface FlowTab {
+  id: string;
+  name: string;
+}
 export interface FlowData {
+  tab_id: string;
   layout: FlowLayout;
   relationships: Relationship[];
+  tabs: FlowTab[];
+}
+
+export function moved_tab_ids(
+  tabs: FlowTab[],
+  id: string,
+  offset: number,
+): string[] | null {
+  const ids = tabs.map((tab) => tab.id);
+  const from = ids.indexOf(id);
+  const to = from + offset;
+  if (from < 0 || to < 0 || to >= ids.length || offset === 0) {
+    return null;
+  }
+  ids.splice(from, 1);
+  ids.splice(to, 0, id);
+  return ids;
+}
+
+// Prefer the tab to the right, matching common browser tab behavior.
+// Order while a tab is dragged over another tab; null when nothing moves.
+export function dragged_tab_ids(
+  ids: string[],
+  source: string,
+  target: string,
+): string[] | null {
+  const from = ids.indexOf(source);
+  const to = ids.indexOf(target);
+  if (from === -1 || to === -1 || from === to) {
+    return null;
+  }
+  const next = [...ids];
+  next.splice(to, 0, ...next.splice(from, 1));
+  return next;
+}
+
+export function tab_after_delete(tabs: FlowTab[], id: string): string | null {
+  const index = tabs.findIndex((tab) => tab.id === id);
+  const remaining = tabs.filter((tab) => tab.id !== id);
+  return (
+    remaining[Math.min(Math.max(index, 0), remaining.length - 1)]?.id ?? null
+  );
 }
 export type TaskNode = Node<
   {
     task: Task;
     column: string;
+    // Also true while saving; `locked` is only the board's read-only state.
     read_only: boolean;
+    locked: boolean;
     archived: boolean;
     onOpen: (task: Task) => void;
     onEdit: (task: Task) => void;
     onRemove: (id: string) => void;
     onArchive: (task: Task) => void;
     onDelete: (task: Task) => void;
+    onScale: (
+      id: string,
+      change: (scale: number) => number,
+      selection: boolean,
+    ) => void;
+    scale: number;
   },
   "task"
 >;
+// Card sizes scale a whole card, including its text, and snap to 5% steps between 50% and 200%.
+export function clamp_scale(value: number): number {
+  return Math.min(2, Math.max(0.5, Math.round(value * 20) / 20));
+}
+
+// Resizes the given task and annotation nodes, omitting the default size.
+export function scaled_layout(
+  layout: FlowLayout,
+  ids: ReadonlySet<string>,
+  change: (scale: number) => number,
+): FlowLayout {
+  const resized = <T extends { scale?: number }>(entry: T): T => {
+    const { scale: current, ...rest } = entry;
+    const scale = change(current ?? 1);
+    return (scale === 1 ? rest : { ...rest, scale }) as T;
+  };
+  return {
+    ...layout,
+    nodes: layout.nodes.map((node) =>
+      ids.has(`task_${node.task_id}`) ? resized(node) : node,
+    ),
+    ...(layout.annotations
+      ? {
+          annotations: layout.annotations.map((annotation) =>
+            ids.has(`annotation_${annotation.id}`)
+              ? resized(annotation)
+              : annotation,
+          ),
+        }
+      : {}),
+  };
+}
 export type RelationshipEdge = Edge<{ relationship: Relationship }>;
 
 export function card_edge_point(
@@ -168,7 +266,7 @@ export function added_layout(
 }
 
 export function relationship_id(edge: Relationship): string {
-  return `${edge.kind}:${edge.source}:${edge.target}`;
+  return `${edge.source}:${edge.target}`;
 }
 
 export function connected_layout(
@@ -198,7 +296,14 @@ export function build_nodes(
   columns: Column[],
   actions: Pick<
     TaskNode["data"],
-    "read_only" | "onOpen" | "onEdit" | "onRemove" | "onArchive" | "onDelete"
+    | "read_only"
+    | "locked"
+    | "onOpen"
+    | "onEdit"
+    | "onRemove"
+    | "onArchive"
+    | "onDelete"
+    | "onScale"
   >,
   search_ids: ReadonlySet<string> | null = null,
   archives: Pick<Archive, "task">[] = [],
@@ -233,7 +338,7 @@ export function build_nodes(
             type: "task" as const,
             position: { x: position.x, y: position.y },
             hidden: search_ids !== null && !search_ids.has(id),
-            data: { ...entry, ...actions },
+            data: { ...entry, ...actions, scale: position.scale ?? 1 },
             ariaLabel: entry.task.title,
           },
         ]
@@ -241,10 +346,12 @@ export function build_nodes(
   });
 }
 
+const arrow = { type: MarkerType.ArrowClosed, width: 22, height: 22 };
+
 export function build_edges(
   relationships: Relationship[],
   nodes: CanvasNode[],
-  label: (kind: RelationshipKind) => string,
+  label: (edge: Relationship) => string,
   connections: FlowLayout["connections"] = {},
 ): RelationshipEdge[] {
   const visible = new Set(
@@ -270,16 +377,14 @@ export function build_edges(
         connections?.[relationship_id(edge)]?.source_handle ?? "right",
       targetHandle:
         connections?.[relationship_id(edge)]?.target_handle ?? "left",
-      ariaLabel: label(edge.kind),
+      ariaLabel: label(edge),
       style:
         archived.has(`task_${edge.source}`) ||
         archived.has(`task_${edge.target}`)
           ? "stroke-dasharray: 5 4"
           : undefined,
-      markerEnd:
-        edge.kind === "depends_on"
-          ? { type: MarkerType.ArrowClosed }
-          : undefined,
+      markerStart: edge.source_arrow ? arrow : undefined,
+      markerEnd: edge.target_arrow ? arrow : undefined,
       data: { relationship: edge },
     }));
 }
@@ -298,11 +403,7 @@ export function moved_layout(
       ? {
           annotations: layout.annotations.map((annotation) => {
             const node = rendered.get(`annotation_${annotation.id}`);
-            return {
-              ...annotation,
-              ...node?.position,
-              width: node?.width ?? node?.measured?.width ?? annotation.width,
-            };
+            return { ...annotation, ...node?.position };
           }),
         }
       : {}),

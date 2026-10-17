@@ -11,6 +11,8 @@ import {
   available_task_columns,
   missing_archive_task_ids,
   card_edge_point,
+  scaled_layout,
+  clamp_scale,
   type FlowLayout,
 } from "./flow";
 import { create_task } from "../../type/task.svelte";
@@ -25,7 +27,7 @@ const layout: FlowLayout = {
   viewport: { x: 0, y: 0, zoom: 1 },
 };
 
-it("projects live note references, preserves missing references, and saves annotation movement and width", () => {
+it("projects live note references, preserves missing references, and saves annotation movement", () => {
   const annotated: FlowLayout = {
     ...layout,
     annotations: [
@@ -44,9 +46,10 @@ it("projects live note references, preserves missing references, and saves annot
   const actions = {
     notes_unavailable: false,
     read_only: false,
+    locked: false,
     onEdit: () => {},
     onRemove: () => {},
-    onResize: () => {},
+    onScale: () => {},
     editing_id: null,
     onSaveText: async () => true,
     onCancelEdit: () => {},
@@ -59,6 +62,16 @@ it("projects live note references, preserves missing references, and saves annot
     "annotation_missing-1",
   ]);
   expect(nodes[1].data.note).toEqual(notes[0]);
+  expect(
+    build_annotations(
+      {
+        ...annotated,
+        annotations: [{ ...annotated.annotations![0], scale: 0.5 }],
+      },
+      notes,
+      actions,
+    )[0].width,
+  ).toBe(140);
   expect(nodes[2].data.note).toBeUndefined();
   expect(nodes[1].data.annotation).not.toHaveProperty("content");
   expect(
@@ -72,8 +85,8 @@ it("projects live note references, preserves missing references, and saves annot
     build_annotations(annotated, [], actions)[1].data.note,
   ).toBeUndefined();
   nodes[0].position = { x: -50, y: 80 };
+  // Rendered widths include the card scale and are never stored.
   nodes[0].width = 420;
-  nodes[0].measured = { width: 280, height: 80 };
   const moved = moved_layout(annotated, nodes.slice(0, 2), {
     x: 0,
     y: 0,
@@ -82,7 +95,7 @@ it("projects live note references, preserves missing references, and saves annot
   expect(moved.annotations?.[0]).toMatchObject({
     x: -50,
     y: 80,
-    width: 420,
+    width: 280,
     text: "說明 🐈\n第二行",
   });
   expect(moved.annotations?.[2]).toEqual(annotated.annotations?.[2]);
@@ -120,11 +133,13 @@ it("adds existing tasks at the canvas context position, retaining spacing and de
 });
 const actions = {
   read_only: false,
+  locked: false,
   onOpen: () => {},
   onEdit: () => {},
   onRemove: () => {},
   onArchive: () => {},
   onDelete: () => {},
+  onScale: () => {},
 };
 const columns = [
   create_column("column_1", "Ready", "", [
@@ -177,14 +192,14 @@ describe("Flow task projection", () => {
       task: create_task("task_99", "Archived"),
     };
     const relationships = [
-      { source: 1, target: 99, kind: "related_to" as const },
-      { source: 99, target: 2, kind: "related_to" as const },
-      { source: 1, target: 2, kind: "related_to" as const },
+      { source: 1, target: 99, source_arrow: false, target_arrow: false },
+      { source: 99, target: 2, source_arrow: false, target_arrow: false },
+      { source: 1, target: 2, source_arrow: false, target_arrow: false },
     ];
     const edges = build_edges(
       relationships,
       build_nodes(layout, columns, actions, null, [archive]),
-      (kind) => kind,
+      (edge) => `${edge.source}-${edge.target}`,
     );
     expect(edges[0].style).toBe("stroke-dasharray: 5 4");
     expect(edges[1].style).toBe("stroke-dasharray: 5 4");
@@ -197,7 +212,7 @@ describe("Flow task projection", () => {
       build_edges(
         relationships,
         build_nodes(layout, restored, actions, null, [archive]),
-        (kind) => kind,
+        (edge) => `${edge.source}-${edge.target}`,
       ).every((edge) => edge.style === undefined),
     ).toBe(true);
   });
@@ -211,9 +226,9 @@ describe("Flow task projection", () => {
     expect(nodes[2].position).toEqual({ x: -40, y: 100 });
     expect(
       build_edges(
-        [{ source: 1, target: 99, kind: "related_to" }],
+        [{ source: 1, target: 99, source_arrow: false, target_arrow: false }],
         nodes,
-        (kind) => kind,
+        (edge) => `${edge.source}-${edge.target}`,
       ),
     ).toHaveLength(1);
     const restored = [create_column("column_1", "Ready", "", [archive.task])];
@@ -223,7 +238,12 @@ describe("Flow task projection", () => {
   });
 
   it("preserves dragged connection sides when the backend reverses an undirected pair and after reload", () => {
-    const relationship = { source: 1, target: 2, kind: "related_to" as const };
+    const relationship = {
+      source: 1,
+      target: 2,
+      source_arrow: false,
+      target_arrow: false,
+    };
     const saved = connected_layout(layout, relationship, {
       source: "task_2",
       target: "task_1",
@@ -234,13 +254,14 @@ describe("Flow task projection", () => {
     const edge = build_edges(
       [relationship],
       build_nodes(restored, columns, actions),
-      (kind) => kind,
+      (edge) => `${edge.source}-${edge.target}`,
       restored.connections,
     )[0];
     expect(edge.sourceHandle).toBe("bottom");
     expect(edge.targetHandle).toBe("right");
+    // Lines are labelled only for assistive technology, never on the canvas.
     expect(edge.label).toBeUndefined();
-    expect(edge.ariaLabel).toBe("related_to");
+    expect(edge.ariaLabel).toBe("1-2");
   });
 
   it("keeps every connector side through movement, pan, zoom, further additions, and serialization", () => {
@@ -251,7 +272,8 @@ describe("Flow task projection", () => {
           const relationship = {
             source: 1,
             target: 2,
-            kind: "related_to" as const,
+            source_arrow: false,
+            target_arrow: false,
           };
           const connected = connected_layout(layout, relationship, {
             source: reverse ? "task_2" : "task_1",
@@ -271,7 +293,7 @@ describe("Flow task projection", () => {
           const edge = build_edges(
             [relationship],
             build_nodes(restored, columns, actions),
-            (kind) => kind,
+            (edge) => `${edge.source}-${edge.target}`,
             restored.connections,
           )[0];
           expect(edge.sourceHandle).toBe(reverse ? targetHandle : sourceHandle);
@@ -280,6 +302,62 @@ describe("Flow task projection", () => {
         }
       }
     }
+  });
+  it("snaps dragged sizes to 5% steps between half and double size", () => {
+    expect(clamp_scale(0.83)).toBe(0.85);
+    expect(clamp_scale(0.1)).toBe(0.5);
+    expect(clamp_scale(3)).toBe(2);
+    expect(clamp_scale(1.01)).toBe(1);
+  });
+  it("scales chosen cards and omits the default size", () => {
+    const annotated: FlowLayout = {
+      ...layout,
+      annotations: [
+        { id: "a", kind: "text", text: "", x: 0, y: 0, width: 280 },
+        {
+          id: "b",
+          kind: "text",
+          text: "",
+          x: 0,
+          y: 0,
+          width: 280,
+          scale: 1.25,
+        },
+      ],
+    };
+    const small = scaled_layout(
+      annotated,
+      new Set(["task_1", "annotation_a"]),
+      () => 0.75,
+    );
+    expect(small.nodes[0]).toStrictEqual({
+      task_id: 1,
+      x: 10,
+      y: 20,
+      scale: 0.75,
+    });
+    expect(small.nodes[1]).toBe(layout.nodes[1]);
+    expect(small.annotations?.[0].scale).toBe(0.75);
+    expect(build_nodes(small, columns, actions)[0].data.scale).toBe(0.75);
+    expect(build_nodes(small, columns, actions)[1].data.scale).toBe(1);
+    const reset = scaled_layout(
+      small,
+      new Set(["task_1", "annotation_b"]),
+      () => 1,
+    );
+    // Stepping changes each card from its own size.
+    const larger = scaled_layout(
+      annotated,
+      new Set(["annotation_a", "annotation_b"]),
+      (scale) => clamp_scale(scale + 0.1),
+    );
+    expect(larger.annotations?.map((entry) => entry.scale)).toEqual([
+      1.1, 1.35,
+    ]);
+    expect(reset.nodes[0]).toStrictEqual({ task_id: 1, x: 10, y: 20 });
+    expect(reset.annotations?.[1]).not.toHaveProperty("scale");
+    // Moving cards keeps their size.
+    expect(moved_layout(small, [], small.viewport!).nodes[0].scale).toBe(0.75);
   });
   it("uses only canvas members and current task data, with existing editor callbacks", () => {
     const nodes = build_nodes(layout, columns, actions);
@@ -301,9 +379,9 @@ describe("Flow task projection", () => {
     expect(nodes[1].hidden).toBe(true);
     expect(
       build_edges(
-        [{ source: 1, target: 2, kind: "related_to" }],
+        [{ source: 1, target: 2, source_arrow: false, target_arrow: false }],
         nodes,
-        (kind) => kind,
+        (edge) => `${edge.source}-${edge.target}`,
       ),
     ).toEqual([]);
     expect(layout.nodes).toHaveLength(3);
@@ -319,23 +397,31 @@ describe("Flow task projection", () => {
     expect(layout.nodes[0].x).toBe(10);
   });
 
-  it("gives dependencies a source-to-prerequisite arrow and related edges no arrow", () => {
-    const edges = build_edges(
-      [
-        { source: 1, target: 2, kind: "depends_on" },
-        { source: 1, target: 2, kind: "related_to" },
-      ],
-      build_nodes(layout, columns, actions),
-      (kind) => kind,
+  it("draws large arrows only at the ends that ask for them", () => {
+    const nodes = build_nodes(layout, columns, actions);
+    const label = () => "";
+    const arrow = { type: "arrowclosed", width: 22, height: 22 };
+    const [plain, forward, backward, both] = [
+      [false, false],
+      [false, true],
+      [true, false],
+      [true, true],
+    ].map(
+      ([source_arrow, target_arrow]) =>
+        build_edges(
+          [{ source: 1, target: 2, source_arrow, target_arrow }],
+          nodes,
+          label,
+        )[0],
     );
-    expect(edges[0]).toMatchObject({
-      source: "task_1",
-      target: "task_2",
-      ariaLabel: "depends_on",
-      markerEnd: { type: "arrowclosed" },
-    });
-    expect(edges[1].markerEnd).toBeUndefined();
-    expect(edges[0].id).not.toBe(edges[1].id);
+    expect(plain.markerStart).toBeUndefined();
+    expect(plain.markerEnd).toBeUndefined();
+    expect(forward).toMatchObject({ markerEnd: arrow });
+    expect(forward.markerStart).toBeUndefined();
+    expect(backward).toMatchObject({ markerStart: arrow });
+    expect(backward.markerEnd).toBeUndefined();
+    expect(both).toMatchObject({ markerStart: arrow, markerEnd: arrow });
+    expect(plain.id).toBe("1:2");
   });
 
   it("integrates with native views and keeps canvas removal separate from task deletion", () => {

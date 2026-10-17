@@ -14,7 +14,16 @@ const node = parse(source, { modern: true }).instance!.content.body.find(
 )!;
 const { start, end } = node as typeof node & { start: number; end: number };
 class Element {
-  constructor(private pane = false) {}
+  constructor(
+    private pane = false,
+    private edge: string | null = null,
+  ) {}
+  closest() {
+    return this.edge === null ? null : this;
+  }
+  getAttribute(name: string) {
+    return name === "data-id" ? this.edge : null;
+  }
   classList = {
     contains: (name: string) => this.pane && name === "svelte-flow__pane",
   };
@@ -27,9 +36,16 @@ function canvas() {
     "Element",
     "viewport",
     transpile(`
-    let insertion_position = null;
+    let insertion_position = null, context_edge_id = null, selected_edges = [];
+    let context_edge_snapshot = null;
+    const relationship_of = (id) => (id ? { id } : null);
     ${source.slice(start, end)}
-    return { open: canvas_contextmenu, position: () => insertion_position };
+    return {
+      open: canvas_contextmenu,
+      position: () => insertion_position,
+      edge: () => ({ context_edge_id, selected_edges }),
+      snapshot: () => context_edge_snapshot,
+    };
   `),
   )(Element, { x: -200, y: 80, zoom: 0.5 });
 }
@@ -55,4 +71,28 @@ it("leaves node and control context menus alone, and uses default insertion for 
   expect(view.position()).toBeNull();
   view.open({ target: trigger, currentTarget: trigger, preventDefault });
   expect(view.position()).toBeNull();
+});
+it("opens relationship options on an edge and selects it", () => {
+  const view = canvas();
+  const preventDefault = vi.fn();
+  view.open({
+    target: new Element(false, "1:2"),
+    currentTarget: new Element(),
+    preventDefault,
+  });
+  expect(preventDefault).not.toHaveBeenCalled();
+  expect(view.edge()).toEqual({
+    context_edge_id: "1:2",
+    selected_edges: ["1:2"],
+  });
+  // The menu keeps showing this line even if it is removed while closing.
+  expect(view.snapshot()).toEqual({ id: "1:2" });
+  view.open({
+    target: new Element(true),
+    currentTarget: new Element(),
+    clientX: 0,
+    clientY: 0,
+    preventDefault,
+  });
+  expect(view.edge().context_edge_id).toBeNull();
 });

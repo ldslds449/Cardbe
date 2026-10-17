@@ -1,18 +1,21 @@
 <script lang="ts">
-  import { NodeResizeControl, type NodeProps } from "@xyflow/svelte";
+  import type { NodeProps } from "@xyflow/svelte";
   import type { AnnotationNode } from "./flow";
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import * as m from "$lib/paraglide/messages";
   import Markdown from "../markdown.svelte";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
+  import CardSizeMenu from "./card_size_menu.svelte";
+  import CardScaleHandle from "./card_scale_handle.svelte";
   import { onMount, tick, untrack } from "svelte";
   import { registerUnsavedChanges } from "$lib/unsaved-changes";
   import { Textarea } from "$lib/components/ui/textarea";
-  let { data, selected }: NodeProps<AnnotationNode> = $props();
+  let { id, data, selected }: NodeProps<AnnotationNode> = $props();
   let draft = $state("");
   let editor = $state<HTMLTextAreaElement | null>(null);
   let frame = $state<HTMLElement | null>(null);
   let committing = $state(false);
+  let preview = $state<number | null>(null);
   let pending_commit = $state(false);
   const editing = $derived(
     data.editing_id === data.annotation.id && data.annotation.kind === "text",
@@ -73,9 +76,10 @@
 <ContextMenu.Root>
   <ContextMenu.Trigger
     bind:ref={frame}
+    style={`width: ${data.annotation.width}px; zoom: ${preview ?? data.annotation.scale ?? 1}`}
     tabindex={0}
     aria-haspopup="menu"
-    class={`block w-full overflow-hidden text-foreground focus-visible:ring-2 focus-visible:ring-ring ${data.annotation.kind === "note" ? "rounded-sm border border-border bg-background pb-4 shadow-sm" : "p-3"} ${editing ? "bg-accent/50 outline-2 outline-dashed outline-primary outline-offset-2" : selected ? "ring-2 ring-ring" : ""}`}
+    class={`block w-full overflow-hidden text-foreground focus-visible:ring-2 focus-visible:ring-ring ${data.annotation.kind === "note" ? "rounded-sm border border-border bg-background pb-3 shadow-sm" : "p-3"} ${editing ? "bg-accent/50 outline-2 outline-dashed outline-primary outline-offset-2" : selected ? "ring-2 ring-ring" : ""}`}
     aria-label={data.annotation.kind === "text"
       ? m.flow_annotation()
       : m.flow_note_reference()}
@@ -121,13 +125,13 @@
       {/if}
     {:else}
       <div
-        class="flex items-center gap-2 border-b bg-muted/40 px-4 py-2.5 text-xs font-medium text-muted-foreground"
+        class="flex items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground"
       >
         <FileTextIcon class="size-3.5" />
         {m.flow_note_reference()}
       </div>
       <p
-        class="px-4 pt-4 line-clamp-2 break-words font-semibold text-lg leading-6"
+        class="px-3 pt-2.5 line-clamp-2 break-words font-semibold text-base leading-6"
       >
         {data.note
           ? data.note.title.trim() || m.note_untitled()
@@ -137,7 +141,7 @@
       </p>
       {#if data.note}
         <div
-          class="nodrag nopan mx-4 mt-3 max-h-48 overflow-hidden border-l-2 border-border pl-3 break-words text-sm leading-6 text-muted-foreground"
+          class="nodrag nopan mx-3 mt-2 max-h-24 overflow-hidden border-l-2 border-border pl-3 break-words text-sm leading-6 text-muted-foreground"
         >
           <Markdown
             md={Array.from(data.note.content).slice(0, 500).join("") ||
@@ -149,7 +153,13 @@
     {/if}
   </ContextMenu.Trigger>
   <ContextMenu.Content>
-    {#if !data.read_only}
+    <!-- Menus ignore pending saves so they stay steady while stepping sizes. -->
+    {#if !data.locked}
+      <CardSizeMenu
+        scale={data.annotation.scale ?? 1}
+        onScale={(change) =>
+          data.onScale(`annotation_${data.annotation.id}`, change, true)}
+      />
       <ContextMenu.Item
         onclick={() => data.onRemove(`annotation_${data.annotation.id}`)}
         >{m.flow_remove_annotation()}</ContextMenu.Item
@@ -157,13 +167,14 @@
     {/if}
   </ContextMenu.Content>
 </ContextMenu.Root>
-{#if selected && !data.read_only}
-  <NodeResizeControl
-    position="right"
-    resizeDirection="horizontal"
-    minWidth={160}
-    maxWidth={1200}
-    color="var(--primary)"
-    onResizeEnd={data.onResize}
+{#if selected && !data.locked}
+  <CardScaleHandle
+    {id}
+    scale={data.annotation.scale ?? 1}
+    target={frame}
+    base_width={data.annotation.width}
+    onPreview={(scale) => (preview = scale)}
+    onCommit={(scale) =>
+      data.onScale(`annotation_${data.annotation.id}`, () => scale, false)}
   />
 {/if}

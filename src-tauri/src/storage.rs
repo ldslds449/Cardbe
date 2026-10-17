@@ -411,20 +411,47 @@ impl Database {
         &self.path
     }
 
-    pub fn read_flow(&self, board_id: i64) -> StorageResult<crate::flow::FlowData> {
-        crate::flow::read(&self.connection, board_id)
+    pub fn read_flow(
+        &self,
+        board_id: i64,
+        tab_id: Option<&str>,
+    ) -> StorageResult<crate::flow::FlowData> {
+        crate::flow::read(&self.connection, board_id, tab_id)
+    }
+
+    pub fn read_flow_backup(&self, board_id: i64) -> StorageResult<crate::flow::FlowData> {
+        crate::flow::read_backup(&self.connection, board_id)
     }
 
     pub fn save_flow_layout(
         &mut self,
         board_id: i64,
+        tab_id: &str,
         layout: &crate::flow::FlowLayout,
     ) -> StorageResult<()> {
         let tx = self.connection.transaction()?;
+        if !crate::flow::tabs(&tx, board_id)?
+            .iter()
+            .any(|tab| tab.id == tab_id)
+        {
+            return Err(DomainError::FlowTabNotFound.into());
+        }
         crate::flow::validate_layout(layout, &crate::flow::task_ids(&tx, board_id)?)?;
-        crate::flow::save_layout(&tx, board_id, layout)?;
+        crate::flow::save_layout(&tx, board_id, tab_id, layout)?;
         tx.commit()?;
         Ok(())
+    }
+
+    pub fn change_flow_tabs(
+        &mut self,
+        board_id: i64,
+        change: impl FnOnce(&Transaction<'_>) -> StorageResult<()>,
+    ) -> StorageResult<Vec<crate::flow::FlowTab>> {
+        let tx = self.connection.transaction()?;
+        change(&tx)?;
+        let tabs = crate::flow::tabs(&tx, board_id)?;
+        tx.commit()?;
+        Ok(tabs)
     }
 
     pub fn change_relationship(
@@ -437,22 +464,9 @@ impl Database {
         let tx = self.connection.transaction()?;
         if remove {
             crate::flow::delete_relationship(&tx, board_id, relationship)?;
-            let mut layout = crate::flow::read(&tx, board_id)?.layout;
-            let key = format!(
-                "{}:{}:{}",
-                if relationship.kind == crate::flow::RelationshipKind::RelatedTo {
-                    "related_to"
-                } else {
-                    "depends_on"
-                },
-                relationship.source,
-                relationship.target
-            );
-            if layout.connections.remove(&key).is_some() {
-                crate::flow::save_layout(&tx, board_id, &layout)?;
-            }
+            crate::flow::remove_connection(&tx, board_id, relationship)?;
         } else {
-            let data = crate::flow::read(&tx, board_id)?;
+            let data = crate::flow::read(&tx, board_id, None)?;
             crate::flow::validate_relationship(
                 &data.relationships,
                 relationship,
@@ -460,6 +474,21 @@ impl Database {
             )?;
             crate::flow::insert_relationship(&tx, board_id, relationship)?;
         }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn update_relationship(
+        &mut self,
+        board_id: i64,
+        relationship: &crate::flow::Relationship,
+    ) -> StorageResult<()> {
+        let tx = self.connection.transaction()?;
+        crate::flow::update_relationship(
+            &tx,
+            board_id,
+            &crate::flow::normalize(relationship.clone()),
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -2201,6 +2230,27 @@ impl Database {
             .optional()?
             .map(|payload| serde_json::from_str(&payload).map_err(Into::into))
             .transpose()
+    }
+
+    /// Loads archived tasks in request order, skipping duplicates and missing IDs.
+    pub fn load_archive_tasks(&self, board_id: i64, task_ids: &[i64]) -> StorageResult<Vec<Task>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT payload FROM cardbe_archives WHERE board_id=?1 AND task_id=?2")?;
+        let mut seen = std::collections::HashSet::new();
+        let mut tasks = Vec::new();
+        for task_id in task_ids {
+            if !seen.insert(*task_id) {
+                continue;
+            }
+            if let Some(payload) = statement
+                .query_row(params![board_id, task_id], |row| row.get::<_, String>(0))
+                .optional()?
+            {
+                tasks.push(serde_json::from_str(&payload)?);
+            }
+        }
+        Ok(tasks)
     }
 
     pub fn list_all_task_page(

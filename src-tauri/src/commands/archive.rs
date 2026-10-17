@@ -112,6 +112,28 @@ pub fn get_archive_task(
         .and_then(|task| task.ok_or(CommandError::TaskNotFound))
 }
 
+/// Batch lookup for canvases; archived tasks that no longer exist are omitted.
+#[tauri::command]
+pub fn get_archive_tasks(
+    state: State<'_, SharedAppData>,
+    expected_board_id: i64,
+    task_ids: Vec<i64>,
+) -> Result<Vec<Task>, CommandError> {
+    if task_ids.len() > 100_000 {
+        return Err(CommandError::InvalidArgument);
+    }
+    let guard = state
+        .lock()
+        .map_err(|_| "Application state lock is poisoned".to_string())?;
+    if guard.active_board_id != expected_board_id {
+        return Err(CommandError::StaleBoardRequest);
+    }
+    guard
+        .database
+        .load_archive_tasks(expected_board_id, &task_ids)
+        .map_err(CommandError::repository)
+}
+
 #[tauri::command]
 pub fn archive_task(
     state: State<'_, SharedAppData>,

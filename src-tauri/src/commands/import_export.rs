@@ -41,7 +41,7 @@ pub fn export_all_boards(state: State<'_, SharedAppData>) -> Result<String, Comm
             Ok(AllBoardsExportBoard {
                 flow: guard
                     .database
-                    .read_flow(board.id)
+                    .read_flow_backup(board.id)
                     .map_err(CommandError::repository)?,
                 name: board.name,
                 data: ExportData {

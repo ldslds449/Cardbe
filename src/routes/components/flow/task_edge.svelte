@@ -1,6 +1,11 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { BezierEdge, useInternalNode, type EdgeProps } from "@xyflow/svelte";
+  import {
+    BaseEdge,
+    getBezierPath,
+    useInternalNode,
+    type EdgeProps,
+  } from "@xyflow/svelte";
   import { card_edge_point, type RelationshipEdge } from "./flow";
   let {
     id,
@@ -50,18 +55,16 @@
         : undefined,
     );
   });
+  const [path] = $derived(
+    getBezierPath({
+      sourceX: source_point.x,
+      sourceY: source_point.y,
+      targetX: target_point.x,
+      targetY: target_point.y,
+      sourcePosition,
+      targetPosition,
+    }),
+  );
 </script>
 
-<BezierEdge
-  {id}
-  {style}
-  {markerStart}
-  {markerEnd}
-  {interactionWidth}
-  sourceX={source_point.x}
-  sourceY={source_point.y}
-  targetX={target_point.x}
-  targetY={target_point.y}
-  {sourcePosition}
-  {targetPosition}
-/>
+<BaseEdge {id} {path} {style} {markerStart} {markerEnd} {interactionWidth} />

@@ -3,7 +3,6 @@
   import { listen } from "@tauri-apps/api/event";
   import * as InputGroup from "$lib/components/ui/input-group";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
-  import Markdown from "../markdown.svelte";
   import SearchIcon from "@lucide/svelte/icons/search";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import AnnotationNodeComponent from "./annotation_node.svelte";
@@ -32,6 +31,9 @@
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import UnlinkIcon from "@lucide/svelte/icons/unlink";
   import * as Dialog from "$lib/components/ui/dialog";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog";
+  import FlowTabs from "./flow_tabs.svelte";
+  import { Separator } from "$lib/components/ui/separator";
   import * as Field from "$lib/components/ui/field";
   import * as Empty from "$lib/components/ui/empty";
   import TaskSelectionPicker from "../task/task_selection_picker.svelte";
@@ -60,15 +62,19 @@
     type NotePreview,
     build_edges,
     moved_layout,
+    scaled_layout,
     added_layout,
     connected_layout,
     available_task_columns,
     missing_archive_task_ids,
+    moved_tab_ids,
+    tab_after_delete,
+    relationship_id,
     type RelationshipEdge,
     type FlowData,
+    type FlowTab,
     type FlowLayout,
     type Relationship,
-    type RelationshipKind,
   } from "./flow";
 
   let {
@@ -103,10 +109,34 @@
     annotation: AnnotationNodeComponent,
   };
   const edgeTypes = { task: TaskEdgeComponent };
+  const tab_storage_key = `cardbe-flow-tab:${untrack(() => board_id)}`;
+  function recalled_tab() {
+    try {
+      return window.localStorage.getItem(tab_storage_key) ?? "";
+    } catch {
+      return "";
+    }
+  }
+  function remember_tab(id: string) {
+    try {
+      window.localStorage.setItem(tab_storage_key, id);
+    } catch {
+      // The last selected tab is only a convenience.
+    }
+  }
   let data = $state.raw<FlowData>({
+    tab_id: "",
     layout: { nodes: [], viewport: null },
     relationships: [],
+    tabs: [],
   });
+  let tabs = $state.raw<FlowTab[]>([]);
+  let tab_id = $state(recalled_tab());
+  let tab_busy = $state(false);
+  let renaming_tab_id = $state<string | null>(null);
+  let deleting_tab = $state.raw<FlowTab | null>(null);
+  let load_request = 0;
+  let requested_tab = "";
   let nodes = $state.raw<CanvasNode[]>([]);
   let edges = $state.raw<RelationshipEdge[]>([]);
   let viewport = $state.raw<Viewport>({ x: 0, y: 0, zoom: 1 });
@@ -131,7 +161,21 @@
   let selected_note_ids = $state<number[]>([]);
   let editing_annotation_id = $state<string | null>(null);
   let insertion_position = $state.raw<{ x: number; y: number } | null>(null);
+  let context_edge_id = $state<string | null>(null);
+  // Keeps the edge menu while it closes after its line has been removed.
+  let context_edge_snapshot = $state.raw<Relationship | null>(null);
+  let context_menu_open = $state(false);
   function canvas_contextmenu(event: MouseEvent) {
+    const edge =
+      event.target instanceof Element
+        ? event.target.closest(".svelte-flow__edge[data-id]")
+        : null;
+    context_edge_id = edge?.getAttribute("data-id") ?? null;
+    context_edge_snapshot = relationship_of(context_edge_id);
+    if (context_edge_id !== null) {
+      selected_edges = [context_edge_id];
+      return;
+    }
     if (
       !(event.target instanceof Element) ||
       (!event.target.classList.contains("svelte-flow__pane") &&
@@ -274,13 +318,34 @@
   let selected_edges = $state<string[]>([]);
   let disposed = false;
   let pending_layout: FlowLayout | null = null;
+  let idle_waiters: (() => void)[] = [];
   function finish_saving() {
     saving = false;
-    if (pending_layout && !disposed) {
+    if (pending_layout) {
       const next = { ...pending_layout, connections: data.layout.connections };
       pending_layout = null;
-      void save_layout(next);
+      if (disposed) {
+        // The view closed while saving; still persist the last queued layout.
+        void invoke("save_flow_layout", {
+          expectedBoardId: board_id,
+          tabId: tab_id,
+          layout: next,
+        }).catch((error) => toast.error(translateCommandError(error)));
+      } else {
+        void save_layout(next);
+      }
     }
+    if (!saving) {
+      const waiters = idle_waiters;
+      idle_waiters = [];
+      waiters.forEach((resolve) => resolve());
+    }
+  }
+  // Tab changes wait for queued saves so layouts never cross tabs.
+  function wait_idle() {
+    return saving
+      ? new Promise<void>((resolve) => idle_waiters.push(resolve))
+      : Promise.resolve();
   }
   const visible_ids = $derived(
     nodes
@@ -310,8 +375,39 @@
     "minimap.ariaLabel": m.flow_minimap(),
     "handle.ariaLabel": m.flow_handle(),
   });
-  const relationship_label = (value: RelationshipKind) =>
-    value === "depends_on" ? m.flow_depends_on() : m.flow_related_to();
+  function relationship_label(edge: Relationship) {
+    const names = {
+      source: task_title(edge.source),
+      target: task_title(edge.target),
+    };
+    if (edge.source_arrow && edge.target_arrow) {
+      return m.flow_edge_label_both(names);
+    }
+    if (edge.source_arrow || edge.target_arrow) {
+      return edge.target_arrow
+        ? m.flow_edge_label_arrow(names)
+        : m.flow_edge_label_arrow({
+            source: names.target,
+            target: names.source,
+          });
+    }
+    return m.flow_edge_label(names);
+  }
+  const relationship_of = (id: string | null) =>
+    edges.find((edge) => edge.id === id)?.data?.relationship ?? null;
+  const toolbar_relationship = $derived(
+    selected_edges.length === 1 ? relationship_of(selected_edges[0]) : null,
+  );
+  const context_relationship = $derived(
+    relationship_of(context_edge_id) ?? context_edge_snapshot,
+  );
+  function task_title(id: number) {
+    const node = nodes.find((node) => node.id === `task_${id}`);
+    return (
+      (node?.type === "task" && node.data.task.title.trim()) ||
+      m.task_untitled()
+    );
+  }
   function update_selection(selection: Edge[]) {
     const ids = selection.map((edge) => edge.id);
     // Selection callbacks also fire when projected arrays change.
@@ -350,31 +446,24 @@
     const cached = new Map(
       archives.map((archive) => [get_task_id(archive.task.id), archive.task]),
     );
-    const result: Pick<Archive, "task">[] = [];
     try {
-      for (const taskId of ids) {
-        if (disposed || request !== archive_request) {
-          return;
-        }
-        const task = cached.get(taskId);
-        if (task) {
-          result.push({ task });
-          continue;
-        }
-        try {
-          const serialized = await invoke<TaskSerialized>("get_archive_task", {
+      const missing = ids.filter((id) => !cached.has(id));
+      const fetched = missing.length
+        ? await invoke<TaskSerialized[]>("get_archive_tasks", {
             expectedBoardId: board_id,
-            taskId,
-          });
-          result.push({ task: deserialize_task(serialized) });
-        } catch (error) {
-          if (parseCommandError(error)?.code !== "TASK_NOT_FOUND") {
-            throw error;
-          }
-        }
-      }
+            taskIds: missing,
+          })
+        : [];
       if (!disposed && request === archive_request) {
-        canvas_archives = result;
+        for (const serialized of fetched) {
+          const task = deserialize_task(serialized);
+          cached.set(get_task_id(task.id), task);
+        }
+        // Tasks deleted since the canvas was saved are simply absent.
+        canvas_archives = ids.flatMap((id) => {
+          const task = cached.get(id);
+          return task ? [{ task }] : [];
+        });
       }
     } catch (error) {
       if (!disposed && request === archive_request) {
@@ -393,6 +482,7 @@
       columns,
       {
         read_only: read_only || saving,
+        locked: read_only,
         onOpen: (task) =>
           canvas_archives.some((archive) => archive.task.id === task.id)
             ? onViewArchivedTask(task)
@@ -405,6 +495,7 @@
         onDelete: onDeleteTask,
         onEdit: onEditTask,
         onRemove: remove_node,
+        onScale: scale_nodes,
       },
       search_task_ids,
       canvas_archives,
@@ -413,12 +504,13 @@
       ...build_annotations(data.layout, notes, {
         notes_unavailable: notes_loading || notes_error !== null,
         read_only: read_only || saving,
+        locked: read_only,
         onEdit: edit_annotation,
         editing_id: editing_annotation_id,
         onSaveText: save_annotation_text,
         onCancelEdit: () => (editing_annotation_id = null),
         onRemove: remove_node,
-        onResize: save_positions,
+        onScale: scale_nodes,
       }),
     );
     untrack(() => {
@@ -439,26 +531,141 @@
     ).map((edge) => ({ ...edge, selected: selected_edges.includes(edge.id) }));
   });
 
-  async function load() {
+  async function load(next = tab_id) {
+    const request = ++load_request;
+    clearTimeout(viewport_timer);
+    viewport_timer = undefined;
     loaded = false;
     canvas_ready = false;
     archive_request++;
     load_error = null;
     pending_layout = null;
+    editing_annotation_id = null;
+    selected_edges = [];
     try {
       const result = await invoke<FlowData>("get_flow", {
         expectedBoardId: board_id,
+        tabId: next || null,
       });
-      if (disposed) {
+      if (disposed || request !== load_request) {
         return;
       }
       data = result;
+      tabs = result.tabs;
+      tab_id = result.tab_id;
+      remember_tab(result.tab_id);
       viewport = result.layout.viewport ?? { x: 0, y: 0, zoom: 1 };
       loaded = true;
     } catch (error) {
-      if (!disposed) {
+      if (!disposed && request === load_request) {
         load_error = error;
       }
+    }
+  }
+  // `tab_id` changes only after loading, so queued saves keep their original tab.
+  async function switch_tab(id: string) {
+    requested_tab = id;
+    if (id === tab_id && loaded) {
+      return;
+    }
+    flush_viewport_save();
+    await wait_idle();
+    if (!disposed && id === requested_tab) {
+      await load(id);
+    }
+  }
+  async function change_tabs(request: () => Promise<FlowTab[]>) {
+    if (read_only || tab_busy) {
+      return false;
+    }
+    tab_busy = true;
+    try {
+      tabs = await request();
+      return true;
+    } catch (error) {
+      toast.error(translateCommandError(error));
+      if (parseCommandError(error)?.code === "FLOW_TAB_NOT_FOUND") {
+        void switch_tab("");
+      }
+      return false;
+    } finally {
+      tab_busy = false;
+    }
+  }
+  async function create_tab() {
+    const id = crypto.randomUUID();
+    const name = m.flow_tab_new_name({ number: formatNumber(tabs.length + 1) });
+    if (
+      await change_tabs(() =>
+        invoke<FlowTab[]>("create_flow_tab", {
+          expectedBoardId: board_id,
+          tabId: id,
+          name,
+        }),
+      )
+    ) {
+      await switch_tab(id);
+      if (tab_id === id) {
+        renaming_tab_id = id;
+      }
+    }
+  }
+  async function rename_tab(id: string, name: string) {
+    if (tabs.find((tab) => tab.id === id)?.name === name.trim()) {
+      return true;
+    }
+    return change_tabs(() =>
+      invoke<FlowTab[]>("rename_flow_tab", {
+        expectedBoardId: board_id,
+        tabId: id,
+        name,
+      }),
+    );
+  }
+  // Show the new order immediately so dropped tabs do not snap back while saving.
+  async function reorder_tabs(ids: string[]) {
+    if (read_only || tab_busy) {
+      return;
+    }
+    const previous = tabs;
+    tabs = ids.flatMap((id) => previous.filter((tab) => tab.id === id));
+    if (
+      !(await change_tabs(() =>
+        invoke<FlowTab[]>("reorder_flow_tabs", {
+          expectedBoardId: board_id,
+          tabIds: ids,
+        }),
+      ))
+    ) {
+      tabs = previous;
+    }
+  }
+  function move_tab(id: string, offset: number) {
+    const ids = moved_tab_ids(tabs, id, offset);
+    if (ids) {
+      void reorder_tabs(ids);
+    }
+  }
+  async function delete_tab(id: string) {
+    const next = tab_after_delete(tabs, id);
+    if (!next) {
+      return;
+    }
+    if (id === tab_id) {
+      clearTimeout(viewport_timer);
+      viewport_timer = undefined;
+      await wait_idle();
+    }
+    if (
+      (await change_tabs(() =>
+        invoke<FlowTab[]>("delete_flow_tab", {
+          expectedBoardId: board_id,
+          tabId: id,
+        }),
+      )) &&
+      id === tab_id
+    ) {
+      await switch_tab(next);
     }
   }
   onMount(() => {
@@ -476,11 +683,37 @@
     return () => {
       window.removeEventListener("focus", on_focus);
       void listener.then((unlisten) => unlisten());
+      flush_viewport_save();
       disposed = true;
     };
   });
 
+  // Panning and zooming save only after the viewport settles.
+  const viewport_save_delay = 800;
+  let viewport_timer: ReturnType<typeof setTimeout> | undefined;
+  function schedule_viewport_save() {
+    clearTimeout(viewport_timer);
+    viewport_timer = setTimeout(flush_viewport_save, viewport_save_delay);
+  }
+  function flush_viewport_save() {
+    if (viewport_timer === undefined) {
+      return;
+    }
+    clearTimeout(viewport_timer);
+    viewport_timer = undefined;
+    const saved = data.layout.viewport;
+    if (
+      saved?.x !== viewport.x ||
+      saved.y !== viewport.y ||
+      saved.zoom !== viewport.zoom
+    ) {
+      save_positions();
+    }
+  }
   async function save_layout(layout: FlowLayout) {
+    // Every layout save carries the current viewport.
+    clearTimeout(viewport_timer);
+    viewport_timer = undefined;
     if (read_only || !loaded || disposed) {
       return false;
     }
@@ -491,7 +724,11 @@
     data = { ...data, layout };
     saving = true;
     try {
-      await invoke("save_flow_layout", { expectedBoardId: board_id, layout });
+      await invoke("save_flow_layout", {
+        expectedBoardId: board_id,
+        tabId: tab_id,
+        layout,
+      });
       if (!disposed) {
         data = { ...data, layout };
       }
@@ -540,14 +777,38 @@
       add_open = false;
     }
   }
-  function remove_node(id: string) {
-    void save_layout({
-      ...moved_layout(data.layout, nodes, viewport),
-      nodes: data.layout.nodes.filter((node) => `task_${node.task_id}` !== id),
-      annotations: (data.layout.annotations ?? []).filter(
-        (entry) => `annotation_${entry.id}` !== id,
+  // Removal keeps unsaved movement of the remaining items.
+  function without_nodes(ids: ReadonlySet<string>): FlowLayout {
+    const layout = pending_layout ?? moved_layout(data.layout, nodes, viewport);
+    return {
+      ...layout,
+      nodes: layout.nodes.filter((node) => !ids.has(`task_${node.task_id}`)),
+      annotations: (layout.annotations ?? []).filter(
+        (entry) => !ids.has(`annotation_${entry.id}`),
       ),
-    });
+    };
+  }
+  // Menu choices on a selected card resize the whole selection; dragging resizes one card.
+  function scale_nodes(
+    id: string,
+    change: (scale: number) => number,
+    selection: boolean,
+  ) {
+    const selected = nodes
+      .filter((node) => node.selected)
+      .map((node) => node.id);
+    const ids = new Set(selection && selected.includes(id) ? selected : [id]);
+    // Steps made during a save build on the queued layout, so none are lost.
+    void save_layout(
+      scaled_layout(
+        pending_layout ?? moved_layout(data.layout, nodes, viewport),
+        ids,
+        change,
+      ),
+    );
+  }
+  function remove_node(id: string) {
+    void save_layout(without_nodes(new Set([id])));
   }
   async function create_relationship(connection: Connection) {
     if (read_only || saving || !loaded) {
@@ -562,7 +823,9 @@
           relationship: {
             source: get_task_id(connection.source),
             target: get_task_id(connection.target),
-            kind: "related_to",
+            // New lines point to the task they were dragged to.
+            source_arrow: false,
+            target_arrow: true,
           },
         },
       );
@@ -581,6 +844,40 @@
       }
     } catch (error) {
       toast.error(translateCommandError(error));
+    } finally {
+      finish_saving();
+    }
+  }
+  async function change_arrows(
+    current: Relationship,
+    arrows: Partial<Pick<Relationship, "source_arrow" | "target_arrow">>,
+  ) {
+    if (read_only || saving || !loaded) {
+      return;
+    }
+    saving = true;
+    try {
+      const saved = await invoke<Relationship>("change_task_relationship", {
+        expectedBoardId: board_id,
+        relationship: { ...current, ...arrows },
+      });
+      if (!disposed) {
+        data = {
+          ...data,
+          relationships: data.relationships.map((edge) =>
+            relationship_id(edge) === relationship_id(saved) ? saved : edge,
+          ),
+          layout: moved_layout(data.layout, nodes, viewport),
+        };
+      }
+    } catch (error) {
+      toast.error(translateCommandError(error));
+      if (
+        !disposed &&
+        parseCommandError(error)?.code === "RELATIONSHIP_NOT_FOUND"
+      ) {
+        await load();
+      }
     } finally {
       finish_saving();
     }
@@ -613,12 +910,7 @@
               ),
             },
             relationships: data.relationships.filter(
-              (edge) =>
-                !(
-                  edge.source === relationship.source &&
-                  edge.target === relationship.target &&
-                  edge.kind === relationship.kind
-                ),
+              (edge) => relationship_id(edge) !== id,
             ),
           };
         }
@@ -638,16 +930,7 @@
     edges: removed_edges,
   }) => {
     if (removed.length) {
-      const ids = new Set(removed.map((node) => node.id));
-      await save_layout({
-        ...moved_layout(data.layout, nodes, viewport),
-        annotations: (data.layout.annotations ?? []).filter(
-          (entry) => !ids.has(`annotation_${entry.id}`),
-        ),
-        nodes: data.layout.nodes.filter(
-          (node) => !ids.has(`task_${node.task_id}`),
-        ),
-      });
+      await save_layout(without_nodes(new Set(removed.map((node) => node.id))));
     } else {
       await remove_relationships(removed_edges.map((edge) => edge.id));
     }
@@ -657,7 +940,7 @@
 </script>
 
 <div class="flow-canvas flex h-full min-h-0 flex-col bg-background">
-  <div class="flex flex-wrap items-center gap-2 border-b p-3">
+  <div class="flex items-center gap-2 border-b px-3 py-2">
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
         class={buttonVariants({ size: "sm", variant: "outline" })}
@@ -693,16 +976,74 @@
         >
       </DropdownMenu.Content>
     </DropdownMenu.Root>
+    {#if tabs.length}
+      <Separator
+        orientation="vertical"
+        class="data-[orientation=vertical]:h-5"
+      />
+      <FlowTabs
+        {tabs}
+        active_id={tab_id}
+        panel_id="flow-tab-panel"
+        {read_only}
+        busy={tab_busy}
+        bind:renaming_id={renaming_tab_id}
+        onSelect={(id) => void switch_tab(id)}
+        onCreate={create_tab}
+        onRename={rename_tab}
+        onMove={move_tab}
+        onReorder={(ids) => void reorder_tabs(ids)}
+        onDelete={(id) =>
+          (deleting_tab = tabs.find((tab) => tab.id === id) ?? null)}
+      />
+    {/if}
+    {#if toolbar_relationship}
+      {@const relationship = toolbar_relationship}
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger
+          class={buttonVariants({ size: "sm", variant: "ghost" })}
+          disabled={read_only || saving}
+          >{m.flow_arrows()}<ChevronDownIcon /></DropdownMenu.Trigger
+        >
+        <DropdownMenu.Content align="start" class="max-w-80">
+          <DropdownMenu.CheckboxItem
+            checked={relationship.target_arrow}
+            closeOnSelect={false}
+            disabled={saving}
+            onCheckedChange={(checked) =>
+              void change_arrows(relationship, { target_arrow: checked })}
+            ><span class="truncate"
+              >{m.flow_arrow_to({
+                name: task_title(relationship.target),
+              })}</span
+            ></DropdownMenu.CheckboxItem
+          >
+          <DropdownMenu.CheckboxItem
+            checked={relationship.source_arrow}
+            closeOnSelect={false}
+            disabled={saving}
+            onCheckedChange={(checked) =>
+              void change_arrows(relationship, { source_arrow: checked })}
+            ><span class="truncate"
+              >{m.flow_arrow_to({
+                name: task_title(relationship.source),
+              })}</span
+            ></DropdownMenu.CheckboxItem
+          >
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+    {/if}
     {#if selected_edges.length > 0}
       <Button
         size="sm"
         variant="ghost"
+        class="text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/20"
         disabled={read_only || saving}
         onclick={() => remove_relationships(selected_edges)}
         ><UnlinkIcon />{m.flow_disconnect()}</Button
       >
     {/if}
-    <div class="ml-auto flex items-center gap-2">
+    <div class="ml-auto flex shrink-0 items-center gap-2">
       {#if saving || archive_loading}
         <span class="text-xs text-muted-foreground" role="status">
           {saving ? m.flow_saving() : m.board_loading()}
@@ -724,137 +1065,218 @@
       </Popover.Root>
     </div>
   </div>
-  {#if archive_error}
-    <div
-      role="alert"
-      class="flex items-center gap-2 px-3 text-sm text-destructive"
-    >
-      <span>{translateCommandError(archive_error)}</span>
-      <Button size="sm" variant="link" onclick={() => refresh_archives()}
-        >{m.board_search_retry()}</Button
+  <div
+    id="flow-tab-panel"
+    class="flex min-h-0 flex-1 flex-col"
+    role={tabs.length ? "tabpanel" : undefined}
+    aria-labelledby={tabs.length ? `flow-tab-${tab_id}` : undefined}
+  >
+    {#if archive_error}
+      <div
+        role="alert"
+        class="flex items-center gap-2 px-3 text-sm text-destructive"
       >
-    </div>
-  {/if}
-  {#if notes_error}
-    <div
-      role="alert"
-      class="flex items-center gap-2 px-3 text-sm text-destructive"
-    >
-      <span>{translateCommandError(notes_error)}</span>
-      <Button size="sm" variant="link" onclick={refresh_notes}
-        >{m.note_retry()}</Button
-      >
-    </div>
-  {/if}
-  <ContextMenu.Root>
-    <ContextMenu.Trigger
-      class="relative min-h-0 flex-1"
-      tabindex={0}
-      aria-label={m.workspace_flow()}
-      aria-haspopup="menu"
-      disabled={read_only || !loaded}
-      oncontextmenu={canvas_contextmenu}
-    >
-      {#if loaded && canvas_ready}
-        <SvelteFlow
-          bind:nodes
-          bind:edges
-          bind:viewport
-          {nodeTypes}
-          {edgeTypes}
-          connectionMode={ConnectionMode.Loose}
-          proOptions={{ hideAttribution: true }}
-          {ariaLabelConfig}
-          defaultMarkerColor="var(--muted-foreground)"
-          onkeyup={save_keyboard_position}
-          minZoom={0.1}
-          maxZoom={4}
-          fitView
-          fitViewOptions={{ padding: 0.2, minZoom: 0.1, maxZoom: 1 }}
-          panOnScroll
-          zoomOnScroll={false}
-          panOnDrag={[1]}
-          panActivationKey={null}
-          selectionOnDrag
-          selectionKey={null}
-          selectionMode={SelectionMode.Partial}
-          onlyRenderVisibleElements
-          nodesDraggable={!read_only && !saving}
-          nodesConnectable={!read_only && !saving}
-          deleteKey={read_only || saving ? null : ["Backspace", "Delete"]}
-          onnodedragstop={save_positions}
-          onselectiondragstop={save_positions}
-          onmoveend={save_positions}
-          onbeforeconnect={(connection) => {
-            void create_relationship(connection);
-            return false;
-          }}
-          onbeforedelete={before_delete}
-          onselectionchange={({ edges: selection }) =>
-            update_selection(selection)}
+        <span>{translateCommandError(archive_error)}</span>
+        <Button size="sm" variant="link" onclick={() => refresh_archives()}
+          >{m.board_search_retry()}</Button
         >
-          <Background patternColor="var(--border)" />
-          <Controls
-            showLock={false}
-            fitViewOptions={{ padding: 0.2, duration: 200 }}
-          />
-        </SvelteFlow>
-        {#if nodes.length === 0 && !archive_loading && !archive_error}
-          <div
-            class="pointer-events-none absolute inset-0 grid place-items-center p-6"
+      </div>
+    {/if}
+    {#if notes_error}
+      <div
+        role="alert"
+        class="flex items-center gap-2 px-3 text-sm text-destructive"
+      >
+        <span>{translateCommandError(notes_error)}</span>
+        <Button size="sm" variant="link" onclick={refresh_notes}
+          >{m.note_retry()}</Button
+        >
+      </div>
+    {/if}
+    <ContextMenu.Root bind:open={context_menu_open}>
+      <ContextMenu.Trigger
+        class="relative min-h-0 flex-1"
+        tabindex={0}
+        aria-label={m.workspace_flow()}
+        aria-haspopup="menu"
+        disabled={read_only || !loaded}
+        oncontextmenu={canvas_contextmenu}
+      >
+        {#if loaded && canvas_ready}
+          <SvelteFlow
+            bind:nodes
+            bind:edges
+            bind:viewport
+            {nodeTypes}
+            {edgeTypes}
+            connectionMode={ConnectionMode.Loose}
+            proOptions={{ hideAttribution: true }}
+            {ariaLabelConfig}
+            defaultMarkerColor="var(--muted-foreground)"
+            onkeyup={save_keyboard_position}
+            minZoom={0.1}
+            maxZoom={4}
+            fitView={data.layout.viewport === null}
+            fitViewOptions={{ padding: 0.2, minZoom: 0.1, maxZoom: 1 }}
+            panOnScroll
+            zoomOnScroll={false}
+            panOnDrag={[1]}
+            panActivationKey={null}
+            selectionOnDrag
+            selectionKey={null}
+            selectionMode={SelectionMode.Partial}
+            onlyRenderVisibleElements
+            nodesDraggable={!read_only && !saving}
+            nodesConnectable={!read_only && !saving}
+            deleteKey={read_only || saving ? null : ["Backspace", "Delete"]}
+            onnodedragstop={save_positions}
+            onselectiondragstop={save_positions}
+            onmoveend={schedule_viewport_save}
+            onbeforeconnect={(connection) => {
+              void create_relationship(connection);
+              return false;
+            }}
+            onbeforedelete={before_delete}
+            onselectionchange={({ edges: selection }) =>
+              update_selection(selection)}
           >
-            <Empty.Root class="bg-card/90">
-              <Empty.Header
-                ><Empty.Title>{m.flow_empty()}</Empty.Title><Empty.Description
-                  >{m.flow_empty_description()}</Empty.Description
-                ></Empty.Header
-              >
-              <Empty.Content
-                ><Button
-                  class="pointer-events-auto"
-                  disabled={read_only || saving}
-                  onclick={() => {
-                    insertion_position = null;
-                    add_open = true;
-                  }}>{m.flow_add_tasks()}</Button
-                ></Empty.Content
-              >
-            </Empty.Root>
+            <Background patternColor="var(--border)" />
+            <Controls
+              showLock={false}
+              fitViewOptions={{ padding: 0.2, duration: 200 }}
+            />
+          </SvelteFlow>
+          {#if nodes.length === 0 && !archive_loading && !archive_error}
+            <div
+              class="pointer-events-none absolute inset-0 grid place-items-center p-6"
+            >
+              <Empty.Root class="bg-card/90">
+                <Empty.Header
+                  ><Empty.Title>{m.flow_empty()}</Empty.Title><Empty.Description
+                    >{m.flow_empty_description()}</Empty.Description
+                  ></Empty.Header
+                >
+                <Empty.Content
+                  ><Button
+                    class="pointer-events-auto"
+                    disabled={read_only || saving}
+                    onclick={() => {
+                      insertion_position = null;
+                      add_open = true;
+                    }}>{m.flow_add_tasks()}</Button
+                  ></Empty.Content
+                >
+              </Empty.Root>
+            </div>
+          {/if}
+        {:else if load_error}
+          <div class="grid h-full place-content-center gap-3 p-6 text-center">
+            <p>{translateCommandError(load_error)}</p>
+            <Button onclick={() => load()}>{m.board_search_retry()}</Button>
           </div>
+        {:else}<div
+            class="grid h-full place-items-center text-muted-foreground"
+          >
+            {m.board_loading()}
+          </div>{/if}
+      </ContextMenu.Trigger>
+      <ContextMenu.Content class="max-w-80">
+        {#if context_relationship}
+          {@const relationship = context_relationship}
+          <ContextMenu.CheckboxItem
+            checked={relationship.target_arrow}
+            closeOnSelect={false}
+            disabled={saving}
+            onCheckedChange={(checked) =>
+              void change_arrows(relationship, { target_arrow: checked })}
+            ><span class="truncate"
+              >{m.flow_arrow_to({
+                name: task_title(relationship.target),
+              })}</span
+            ></ContextMenu.CheckboxItem
+          >
+          <ContextMenu.CheckboxItem
+            checked={relationship.source_arrow}
+            closeOnSelect={false}
+            disabled={saving}
+            onCheckedChange={(checked) =>
+              void change_arrows(relationship, { source_arrow: checked })}
+            ><span class="truncate"
+              >{m.flow_arrow_to({
+                name: task_title(relationship.source),
+              })}</span
+            ></ContextMenu.CheckboxItem
+          >
+          <ContextMenu.Separator />
+          <ContextMenu.Item
+            variant="destructive"
+            disabled={saving}
+            onclick={() => {
+              context_menu_open = false;
+              void remove_relationships([relationship_id(relationship)]);
+            }}><UnlinkIcon />{m.flow_disconnect()}</ContextMenu.Item
+          >
+        {:else}
+          <ContextMenu.Item
+            disabled={read_only || saving || !loaded}
+            onclick={() => (add_open = true)}
+            ><ListPlusIcon />{m.flow_add_tasks()}</ContextMenu.Item
+          >
+          <ContextMenu.Item
+            disabled={read_only || saving || !loaded}
+            onclick={() => {
+              note_query = "";
+              selected_note_ids = [];
+              note_picker_open = true;
+              void refresh_notes();
+            }}><FileTextIcon />{m.flow_add_note()}</ContextMenu.Item
+          >
+          <ContextMenu.Separator />
+          <ContextMenu.Item
+            disabled={read_only || saving || !loaded}
+            onclick={add_annotation}
+            ><TypeIcon />{m.flow_add_annotation()}</ContextMenu.Item
+          >
         {/if}
-      {:else if load_error}
-        <div class="grid h-full place-content-center gap-3 p-6 text-center">
-          <p>{translateCommandError(load_error)}</p>
-          <Button onclick={load}>{m.board_search_retry()}</Button>
-        </div>
-      {:else}<div class="grid h-full place-items-center text-muted-foreground">
-          {m.board_loading()}
-        </div>{/if}
-    </ContextMenu.Trigger>
-    <ContextMenu.Content>
-      <ContextMenu.Item
-        disabled={read_only || saving || !loaded}
-        onclick={() => (add_open = true)}
-        ><ListPlusIcon />{m.flow_add_tasks()}</ContextMenu.Item
-      >
-      <ContextMenu.Item
-        disabled={read_only || saving || !loaded}
-        onclick={() => {
-          note_query = "";
-          selected_note_ids = [];
-          note_picker_open = true;
-          void refresh_notes();
-        }}><FileTextIcon />{m.flow_add_note()}</ContextMenu.Item
-      >
-      <ContextMenu.Separator />
-      <ContextMenu.Item
-        disabled={read_only || saving || !loaded}
-        onclick={add_annotation}
-        ><TypeIcon />{m.flow_add_annotation()}</ContextMenu.Item
-      >
-    </ContextMenu.Content>
-  </ContextMenu.Root>
+      </ContextMenu.Content>
+    </ContextMenu.Root>
+  </div>
 </div>
+
+<AlertDialog.Root
+  open={deleting_tab !== null}
+  onOpenChange={(open) => {
+    if (!open) {
+      deleting_tab = null;
+    }
+  }}
+>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title
+        >{m.flow_tab_delete_title({
+          name: deleting_tab?.name.trim() || m.flow_tab_default(),
+        })}</AlertDialog.Title
+      >
+      <AlertDialog.Description
+        >{m.flow_tab_delete_description()}</AlertDialog.Description
+      >
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>{m.common_cancel()}</AlertDialog.Cancel>
+      <AlertDialog.Action
+        variant="destructive"
+        onclick={() => {
+          const tab = deleting_tab;
+          deleting_tab = null;
+          if (tab) {
+            void delete_tab(tab.id);
+          }
+        }}>{m.common_delete()}</AlertDialog.Action
+      >
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>
 
 <Dialog.Root bind:open={add_open}>
   <Dialog.Content
@@ -921,9 +1343,8 @@
           >
         {:else}
           {#each available_notes as note (note.id)}<label
-              class={`flex cursor-pointer items-start gap-3 rounded-md px-4 py-4 text-left hover:bg-muted/50 ${selected_note_ids.includes(note.id) ? "bg-accent/50" : ""}`}
+              class={`flex cursor-pointer items-center gap-3 rounded-md px-4 py-2.5 text-left hover:bg-muted/50 ${selected_note_ids.includes(note.id) ? "bg-accent/50" : ""}`}
               ><Checkbox
-                class="mt-3"
                 disabled={read_only || saving || !loaded}
                 checked={selected_note_ids.includes(note.id)}
                 aria-label={note.title.trim() || m.note_untitled()}
@@ -935,25 +1356,10 @@
                     selected_note_ids = [...selected_note_ids, note.id];
                   }
                 }}
-              /><span
-                class="flex size-10 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground"
-                ><FileTextIcon class="size-5" /></span
-              >
-              <div class="min-w-0 flex-1">
-                <p class="line-clamp-2 break-words text-sm font-medium">
-                  {note.title.trim() || m.note_untitled()}
-                </p>
-                <div
-                  inert
-                  class="pointer-events-none mt-1 max-h-10 overflow-hidden break-words text-xs font-normal leading-5 text-muted-foreground [&_.markdown-render]:!text-xs [&_.markdown-render]:!leading-5"
-                >
-                  <Markdown
-                    md={Array.from(note.content).slice(0, 500).join("") ||
-                      m.note_empty()}
-                    compact
-                  />
-                </div>
-              </div>
+              /><FileTextIcon class="size-4 shrink-0 text-muted-foreground" />
+              <span class="min-w-0 flex-1 truncate text-sm font-medium">
+                {note.title.trim() || m.note_untitled()}
+              </span>
             </label>
           {:else}<div
               class="flex flex-col items-center gap-3 px-4 py-12 text-center text-muted-foreground"
@@ -1019,6 +1425,12 @@
   .flow-canvas :global(.svelte-flow__node.draggable.dragging),
   .flow-canvas :global(.svelte-flow__nodesselection-rect:active) {
     cursor: grabbing;
+  }
+  .flow-canvas :global(.svelte-flow__edge-label) {
+    padding: 0 0.25rem;
+    font-size: 0.6875rem;
+    line-height: 1rem;
+    color: var(--muted-foreground);
   }
   .flow-canvas :global(.svelte-flow__handle.connectionindicator) {
     cursor: pointer;
