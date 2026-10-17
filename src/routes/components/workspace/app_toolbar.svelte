@@ -192,6 +192,17 @@
           </Menubar.Content>
         </Menubar.Menu>
         <Menubar.Menu>
+          <Menubar.Trigger>{m.settings_title()}</Menubar.Trigger>
+          <Menubar.Content>
+            <Menubar.Item onclick={() => (settings_open = true)}
+              >{m.settings_title()}</Menubar.Item
+            >
+            <Menubar.Item onclick={() => (plugins_open = true)}
+              >{m.plugin_title()}</Menubar.Item
+            >
+          </Menubar.Content>
+        </Menubar.Menu>
+        <Menubar.Menu>
           <Menubar.Trigger>{m.menu_help()}</Menubar.Trigger>
           <Menubar.Content>
             <Menubar.Item onclick={() => (about_open = true)}>
@@ -201,17 +212,6 @@
             <Menubar.Item onclick={() => (diagnostics_open = true)}>
               {m.menu_diagnostics()}
             </Menubar.Item>
-          </Menubar.Content>
-        </Menubar.Menu>
-        <Menubar.Menu>
-          <Menubar.Trigger>{m.settings_title()}</Menubar.Trigger>
-          <Menubar.Content>
-            <Menubar.Item onclick={() => (settings_open = true)}
-              >{m.settings_title()}</Menubar.Item
-            >
-            <Menubar.Item onclick={() => (plugins_open = true)}
-              >{m.plugin_title()}</Menubar.Item
-            >
           </Menubar.Content>
         </Menubar.Menu>
       </div>

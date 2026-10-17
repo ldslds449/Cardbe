@@ -48,7 +48,7 @@
     ontoggleqr: () => void;
     ondelete: () => void;
     ondevicesopenchange: (open: boolean) => void;
-    onreview: (node_id: string) => void;
+    onreview: (node_id: string, trigger: HTMLElement) => void;
     onrevoke: (node_id: string) => void;
   } = $props();
   const sync_time = $derived(
@@ -73,12 +73,19 @@
 <Card.Root class="gap-3 p-4 shadow-none">
   <div class="flex flex-wrap items-center justify-between gap-2">
     <div>
-      <Card.Title class="text-base">{invite.board_name}</Card.Title
+      <Card.Title class="text-base"
+        >{invite.permission === "viewer"
+          ? m.share_viewer_invitation()
+          : m.share_editor_invitation()}</Card.Title
       ><Card.Description>{invitation_date(invite.created_at)}</Card.Description>
     </div>
     <Badge variant={invite.enabled ? "secondary" : "outline"}
       >{invite.enabled ? m.explorer_active() : m.ui_disabled()}</Badge
     >
+  </div>
+  <div class="grid min-w-0 gap-1 text-xs text-muted-foreground">
+    <span>{m.share_invitation_id()}</span>
+    <code class="break-all select-all">{invite.invite_id}</code>
   </div>
   <Collapsible.Root class="rounded-md border">
     <Collapsible.Trigger
@@ -152,7 +159,7 @@
       >{qr_visible ? m.ui_hide_qr() : m.ui_show_qr()}</Button
     >
     <Button class="ml-auto" variant="destructive" onclick={ondelete}
-      >{m.common_delete()}</Button
+      >{m.ui_delete_invitation()}</Button
     >
   </div>
   {#if invite.devices.length > 0}
@@ -211,7 +218,8 @@
                 {#if device.status === IrohDeviceStatus.Pending}
                   <Button
                     size="sm"
-                    onclick={() => onreview(device.node_id)}
+                    onclick={(event) =>
+                      onreview(device.node_id, event.currentTarget)}
                     aria-haspopup="dialog">{m.ui_review()}</Button
                   >
                 {:else if device.status === IrohDeviceStatus.Approved}

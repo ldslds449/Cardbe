@@ -1763,5 +1763,38 @@
   "flow_note_reference": "Note",
   "flow_open_note": "Open original note",
   "flow_note_description": "Choose an existing note to display on the canvas. Removing it from the canvas keeps the original note.",
-  "flow_no_available_notes": "No notes available to add"
+  "flow_no_available_notes": "No notes available to add",
+  "share_loading_invitations": "Loading invitations…",
+  "share_board_summary": [
+    {
+      "declarations": [
+        "input invites",
+        "input devices",
+        "local invitesFormatted = invites: number",
+        "local devicesFormatted = devices: number"
+      ],
+      "match": {
+        "invites=1, devices=1": "{invitesFormatted} invitation · {devicesFormatted} approved device entry",
+        "invites=1, devices=*": "{invitesFormatted} invitation · {devicesFormatted} approved device entries",
+        "invites=*, devices=1": "{invitesFormatted} invitations · {devicesFormatted} approved device entry",
+        "invites=*, devices=*": "{invitesFormatted} invitations · {devicesFormatted} approved device entries"
+      }
+    }
+  ],
+  "share_invites_and_devices_help": "Manage each invitation and its devices below. Permissions apply to devices using that invitation.",
+  "share_invitation_board": "Shared board: {name}",
+  "share_shared_board_label": "Shared board",
+  "share_viewer_invitation": "Read-only invitation",
+  "share_editor_invitation": "Editing invitation",
+  "share_more_actions": "More",
+  "share_qr_generating": "Generating QR code…",
+  "share_qr_failed": "The invitation was created and its link is ready to copy, but the QR code could not be generated: {error}",
+  "share_qr_retry": "Retry QR code",
+  "share_invitation_id": "Invitation ID",
+  "share_back_to_board": "Back to board details",
+  "share_disabled_invitation_approval_help": "This invitation is disabled. Approval will be saved, but sharing must be enabled before the device can sync.",
+  "share_back_to_overview": "Back to board list",
+  "share_connection_paths_help": "Multiple addresses can belong to the same device. Direct IP may use NAT traversal; Iroh does not report whether hole punching was required.",
+  "share_connection_path_pending": "Iroh has not reported the active path yet.",
+  "share_connection_not_observed": "No connection observed this session. Connect or sync to collect details."
 }

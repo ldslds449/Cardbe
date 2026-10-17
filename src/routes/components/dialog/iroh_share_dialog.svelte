@@ -1,6 +1,6 @@
 <script lang="ts">
   import { registerUnsavedChanges } from "$lib/unsaved-changes";
-  import { formatNumber } from "$lib/i18n";
+  import { formatNumber, getLocale } from "$lib/i18n";
   import * as m from "$lib/paraglide/messages.js";
   import {
     type CommandError,
@@ -17,8 +17,10 @@
   import ClipboardIcon from "@lucide/svelte/icons/clipboard";
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import PlusIcon from "@lucide/svelte/icons/plus";
   import XIcon from "@lucide/svelte/icons/x";
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as ButtonGroup from "$lib/components/ui/button-group/index.js";
@@ -75,13 +77,19 @@
     pending_delete = $state<Invite | null>(null),
     delete_confirm_open = $state(false);
   let create_error = $state<CommandError | null>(null);
+  let create_generation = 0;
+  let qr_loading = $state(false);
+  let qr_error = $state<CommandError | null>(null);
   let visible_qr_id = $state<string | null>(null),
     invite_access = $state<Record<string, InviteAccess>>({}),
     loading_access_id = $state<string | null>(null);
   let manage_view = $state<"mine" | "received">("mine");
   let manage_view_button = $state<HTMLButtonElement | null>(null);
   let host_error = $state<unknown>(null);
-  let pending_only = $state(false);
+  let managed_board_id = $state<number | null>(null);
+  let detail_heading = $state<HTMLHeadingElement | null>(null);
+  let manage_viewport = $state<HTMLDivElement | null>(null);
+  let share_return_to_manage = $state(false);
   let loading_invites = $state(false);
   let manage_error = $state<unknown>(null);
   let device_action_pending = $state(false);
@@ -97,29 +105,95 @@
   let connection_update_errors = $state<Record<number, CommandError>>({});
   let saving_connection_id = $state<number | null>(null);
   let connection_dialog_id = $state<number | null>(null);
-  const visible_invites = $derived(
-    invites
-      .filter(
-        (invite) =>
-          !pending_only ||
-          invite.devices.some(
-            (device) => device.status === IrohDeviceStatus.Pending,
-          ),
-      )
-      .sort(
-        (a, b) =>
-          Number(
-            b.devices.some(
-              (device) => device.status === IrohDeviceStatus.Pending,
-            ),
-          ) -
-          Number(
-            a.devices.some(
-              (device) => device.status === IrohDeviceStatus.Pending,
-            ),
-          ),
-      ),
+  function group_invites(items: Invite[]) {
+    const groups = new Map<
+      number,
+      {
+        board_id: number;
+        board_name: string;
+        invites: Invite[];
+        approved: number;
+      }
+    >();
+    for (const invite of items) {
+      let group = groups.get(invite.board_id);
+      if (!group) {
+        group = {
+          board_id: invite.board_id,
+          board_name: invite.board_name,
+          invites: [],
+          approved: 0,
+        };
+        groups.set(invite.board_id, group);
+      }
+      group.invites.push(invite);
+      group.approved += invite.devices.filter(
+        (device) => device.status === IrohDeviceStatus.Approved,
+      ).length;
+    }
+    return [...groups.values()];
+  }
+  const shared_boards = $derived(group_invites(invites));
+  const managed_board = $derived(
+    shared_boards.find((item) => item.board_id === managed_board_id),
   );
+  const visible_invites = $derived(managed_board?.invites ?? []);
+  const pending_requests = $derived(
+    invites.flatMap((invite) =>
+      invite.devices
+        .filter((device) => device.status === IrohDeviceStatus.Pending)
+        .map((device) => ({ invite, device })),
+    ),
+  );
+  async function open_managed_board(id: number) {
+    managed_board_id = id;
+    visible_qr_id = null;
+    await tick();
+    manage_viewport?.scrollTo({ top: 0 });
+    detail_heading?.focus({ preventScroll: true });
+  }
+  async function back_to_overview() {
+    managed_board_id = null;
+    visible_qr_id = null;
+    await tick();
+    manage_viewport?.scrollTo({ top: 0 });
+    manage_view_button?.focus({ preventScroll: true });
+  }
+  function open_share() {
+    share_return_to_manage = flow === "manage";
+    if (share_return_to_manage) {
+      selected_board_id = managed_board?.board_id ?? selected_board_id;
+    }
+    invalidate();
+    flow = "share";
+  }
+  async function leave_share() {
+    invalidate();
+    flow = share_return_to_manage ? "manage" : "home";
+    await tick();
+    if (share_return_to_manage) {
+      manage_viewport?.scrollTo({ top: 0 });
+      (detail_heading ?? manage_view_button)?.focus({ preventScroll: true });
+    }
+  }
+  const sync_time = $derived(
+    new Intl.DateTimeFormat(getLocale(), {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+  );
+  function invitation_date(value: string) {
+    // SQLite datetime('now') is UTC but omits the timezone.
+    const date = new Date(
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+        ? `${value.replace(" ", "T")}Z`
+        : value,
+    );
+    return Number.isNaN(date.getTime())
+      ? m.share_creation_date_unavailable()
+      : m.share_created_date({ date: sync_time.format(date) });
+  }
+
   function verification_id(id: string) {
     return id.match(/.{1,4}/g)?.join(" ") ?? id;
   }
@@ -165,6 +239,27 @@
     null,
   );
   let approval_open = $state(false);
+  let approval_trigger = $state<HTMLElement | null>(null);
+  function open_device_review(
+    invite: Invite,
+    node_id: string,
+    trigger: HTMLElement,
+  ) {
+    approval_trigger = trigger;
+    approval_candidate = { invite, node_id };
+    device_id_verified = false;
+    approval_open = true;
+  }
+  async function restore_review_focus() {
+    await tick();
+    const target = approval_trigger?.isConnected
+      ? approval_trigger
+      : detail_heading?.isConnected
+        ? detail_heading
+        : manage_view_button;
+    target?.focus({ preventScroll: true });
+    approval_trigger = null;
+  }
   let revoke_candidate = $state<{ invite: Invite; node_id: string } | null>(
     null,
   );
@@ -232,6 +327,7 @@
       untrack(() => {
         flow = "manage";
         manage_view = view;
+        managed_board_id = null;
         void load();
       });
     }
@@ -264,11 +360,13 @@
     ticket = "";
     board.iroh_last_error = null;
     permission = "viewer";
-    generated = null;
-    create_error = null;
+    invalidate();
     waiting_device_id = null;
     received_waiting_id = null;
     manage_view = "mine";
+    managed_board_id = null;
+    share_return_to_manage = false;
+    approval_trigger = null;
     visible_qr_id = null;
     connection_dialog_id = null;
     connection_tickets = {};
@@ -301,8 +399,11 @@
     }
   }
   function invalidate() {
+    create_generation++;
     generated = null;
     create_error = null;
+    qr_error = null;
+    qr_loading = false;
   }
   function open_join() {
     ticket = "";
@@ -340,21 +441,30 @@
     });
   }
   async function create() {
-    if (selected_board_id === null) {
+    if (creating || selected_board_id === null) {
       return;
     }
+    const board_id = selected_board_id;
+    const board_name = selected_board?.name ?? m.board_title();
+    const requested_permission = permission;
+    invalidate();
+    const generation = create_generation;
+    const current = () =>
+      generation === create_generation && open && flow === "share";
     creating = true;
-    create_error = null;
     try {
       const created = await board.create_iroh_invite(
-        selected_board_id,
-        permission,
+        board_id,
+        requested_permission,
       );
+      if (!current()) {
+        return;
+      }
       generated = {
         ticket: created,
-        qr: await invoke<string>("iroh_invite_qr_svg", { ticket: created }),
-        board_name: selected_board?.name ?? m.board_title(),
-        permission,
+        qr: "",
+        board_name,
+        permission: requested_permission,
       };
       let copied = false;
       try {
@@ -364,16 +474,54 @@
         logger.warn("iroh.invite_create_copy.failed", e);
         /* The visible link can still be copied later. */
       }
-      await load();
+      if (!current()) {
+        return;
+      }
+      await load(true);
+      if (!current()) {
+        return;
+      }
       toast.success(
         copied ? m.ui_invitation_copied() : m.ui_invitation_created(),
       );
+      void generate_qr();
     } catch (e) {
       logger.error("iroh.invite_create.failed", e);
+      if (!current()) {
+        return;
+      }
       create_error = parseCommandError(e) ?? { code: "INTERNAL_ERROR" };
       toast.error(translateCommandError(e));
     } finally {
       creating = false;
+    }
+  }
+  async function generate_qr() {
+    const target = generated;
+    if (!target || qr_loading) {
+      return;
+    }
+    const generation = create_generation;
+    const current = () =>
+      generation === create_generation && open && flow === "share";
+    qr_loading = true;
+    qr_error = null;
+    try {
+      const qr = await invoke<string>("iroh_invite_qr_svg", {
+        ticket: target.ticket,
+      });
+      if (current()) {
+        generated = { ...target, qr };
+      }
+    } catch (error) {
+      logger.warn("iroh.invite_qr.failed", error);
+      if (current()) {
+        qr_error = parseCommandError(error) ?? { code: "INTERNAL_ERROR" };
+      }
+    } finally {
+      if (generation === create_generation) {
+        qr_loading = false;
+      }
     }
   }
   async function copy() {
@@ -676,6 +824,13 @@
   }
 </script>
 
+{#snippet invitation_identity(invite_id: string)}
+  <div class="grid min-w-0 gap-1 text-xs text-muted-foreground">
+    <span>{m.share_invitation_id()}</span>
+    <code class="break-all select-all">{invite_id}</code>
+  </div>
+{/snippet}
+
 <Dialog.Root bind:open>
   <Dialog.Content
     showCloseButton={flow !== "network" &&
@@ -705,6 +860,12 @@
         if (!discard_network_open) {
           leave_network(false, true);
         }
+      } else if (flow === "manage" && managed_board) {
+        event.preventDefault();
+        void back_to_overview();
+      } else if (flow === "share") {
+        event.preventDefault();
+        void leave_share();
       }
     }}
     class={(flow === "manage" || flow === "network") &&
@@ -726,32 +887,60 @@
         ><XIcon class="size-4" /></Button
       >
     {/if}
-    <Dialog.Header class={flow === "network" ? "pr-6" : ""}>
-      <Dialog.Title
-        >{received_waiting_id !== null
-          ? m.ui_waiting_for_approval()
-          : flow === "home"
-            ? m.ui_board_sharing()
-            : flow === "share"
-              ? m.ui_share_a_board()
-              : flow === "join"
-                ? m.ui_join_a_shared_board()
-                : flow === "network"
-                  ? m.share_connection_settings()
-                  : m.ui_manage_board_sharing()}</Dialog.Title
-      >
-      {#if flow === "home"}
-        <Dialog.Description
-          >{m.ui_collaborate_in_cardbe_with_read_only_or_editing_access()}</Dialog.Description
+    {#if flow === "manage" && managed_board && received_waiting_id === null}
+      <Dialog.Header class="shrink-0 gap-3 border-b pb-4 text-left">
+        <Button
+          variant="outline"
+          size="sm"
+          class="w-fit"
+          onclick={() => void back_to_overview()}
+          ><ArrowLeftIcon />{m.share_back_to_overview()}</Button
         >
-      {:else if flow === "manage" && received_waiting_id === null}
-        <Dialog.Description
-          >{m.ui_manage_boards_you_share_and_boards_shared_with_you()}</Dialog.Description
+        <div class="min-w-0 space-y-2 pr-6">
+          <p class="text-xs text-muted-foreground">
+            {m.share_shared_board_label()}
+          </p>
+          <Dialog.Title
+            bind:ref={detail_heading}
+            tabindex={-1}
+            class="break-words rounded-sm leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >{managed_board.board_name}</Dialog.Title
+          >
+          <Dialog.Description
+            >{m.share_invites_and_devices_help()}</Dialog.Description
+          >
+        </div>
+      </Dialog.Header>
+    {:else}
+      <Dialog.Header class={flow === "network" ? "shrink-0 pr-6" : "shrink-0"}>
+        <Dialog.Title
+          >{received_waiting_id !== null
+            ? m.ui_waiting_for_approval()
+            : flow === "home"
+              ? m.ui_board_sharing()
+              : flow === "share"
+                ? m.ui_share_a_board()
+                : flow === "join"
+                  ? m.ui_join_a_shared_board()
+                  : flow === "network"
+                    ? m.share_connection_settings()
+                    : m.ui_manage_board_sharing()}</Dialog.Title
         >
-      {:else if flow === "network"}
-        <Dialog.Description>{m.share_network_description()}</Dialog.Description>
-      {/if}
-    </Dialog.Header>
+        {#if flow === "home"}
+          <Dialog.Description
+            >{m.ui_collaborate_in_cardbe_with_read_only_or_editing_access()}</Dialog.Description
+          >
+        {:else if flow === "manage" && received_waiting_id === null}
+          <Dialog.Description
+            >{m.ui_manage_boards_you_share_and_boards_shared_with_you()}</Dialog.Description
+          >
+        {:else if flow === "network"}
+          <Dialog.Description
+            >{m.share_network_description()}</Dialog.Description
+          >
+        {/if}
+      </Dialog.Header>
+    {/if}
     <div
       class={(flow === "manage" || flow === "network" || flow === "share") &&
       received_waiting_id === null
@@ -760,15 +949,23 @@
           ? "grid gap-2"
           : "grid gap-4"}
     >
-      {#if flow !== "home" && !waiting_device_id && received_waiting_id === null}
+      {#if flow !== "home" && !waiting_device_id && received_waiting_id === null && !(flow === "manage" && managed_board)}
         <Button
           variant="outline"
           size="sm"
-          class="w-fit"
+          class="w-fit shrink-0"
           disabled={network.saving}
           onclick={() =>
-            flow === "network" ? leave_network() : (flow = "home")}
-          ><ArrowLeftIcon />{m.share_back_to_sharing()}</Button
+            flow === "network"
+              ? leave_network()
+              : flow === "share"
+                ? leave_share()
+                : (flow = "home")}
+          ><ArrowLeftIcon />{flow === "share" && share_return_to_manage
+            ? managed_board
+              ? m.share_back_to_board()
+              : m.share_back_to_overview()
+            : m.share_back_to_sharing()}</Button
         >
       {/if}
       {#if received_waiting_id !== null || waiting_device_id}
@@ -839,7 +1036,7 @@
         <div class="grid gap-3 sm:grid-cols-2">
           <button
             class="rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onclick={() => (flow = "share")}
+            onclick={() => open_share()}
           >
             <Card.Root
               class="h-full gap-2 p-4 transition-colors hover:bg-accent"
@@ -898,6 +1095,7 @@
             <label class="grid gap-2 text-sm font-medium"
               >{m.board_title()}<Select.Root
                 type="single"
+                disabled={creating}
                 value={selected_board_id?.toString() ?? ""}
                 onValueChange={(v) => {
                   selected_board_id = v ? Number(v) : null;
@@ -917,6 +1115,7 @@
             ><label class="grid gap-2 text-sm font-medium"
               >{m.ui_permission()}<Select.Root
                 type="single"
+                disabled={creating}
                 value={permission}
                 onValueChange={(v) => {
                   permission = v as "viewer" | "editor";
@@ -945,11 +1144,31 @@
                       : m.board_can_edit()}</Badge
                   >
                 </div>
-                <div
-                  class="qr mx-auto aspect-square w-full max-w-56 overflow-hidden rounded-md bg-white p-2"
-                >
-                  {@html generated.qr}
-                </div>
+                {#if generated.qr}<div
+                    class="qr mx-auto aspect-square w-full max-w-56 overflow-hidden rounded-md bg-white p-2"
+                  >
+                    {@html generated.qr}
+                  </div>
+                {:else if qr_loading}
+                  <p
+                    class="flex items-center gap-2 text-sm text-muted-foreground"
+                    role="status"
+                  >
+                    <LoaderCircleIcon
+                      class="size-4 animate-spin"
+                    />{m.share_qr_generating()}
+                  </p>
+                {/if}
+                {#if qr_error}
+                  <p class="text-sm text-muted-foreground" role="status">
+                    {m.share_qr_failed({
+                      error: translateCommandError(qr_error),
+                    })}
+                  </p>
+                  <Button variant="outline" onclick={() => void generate_qr()}
+                    >{m.share_qr_retry()}</Button
+                  >
+                {/if}
                 <Button variant="outline" onclick={() => void copy()}
                   >{m.ui_copy_invitation_link()}</Button
                 ><Card.Description
@@ -1009,45 +1228,67 @@
           >{joining ? m.ui_connecting() : m.ui_request_access()}</Button
         >
       {:else}
-        <ButtonGroup.Root
-          class="grid grid-cols-2"
-          role="group"
-          aria-label={m.ui_sharing_management_views()}
-        >
-          <Button
-            bind:ref={manage_view_button}
-            variant={manage_view === "mine" ? "secondary" : "outline"}
-            aria-pressed={manage_view === "mine"}
-            onclick={() => (manage_view = "mine")}
-            >{m.share_owned_count({ count: invites.length })}</Button
+        {#if !managed_board}
+          <ButtonGroup.Root
+            class="grid shrink-0 grid-cols-2"
+            role="group"
+            aria-label={m.ui_sharing_management_views()}
           >
+            <Button
+              bind:ref={manage_view_button}
+              variant={manage_view === "mine" ? "secondary" : "outline"}
+              aria-pressed={manage_view === "mine"}
+              onclick={() => {
+                manage_view = "mine";
+                managed_board_id = null;
+                visible_qr_id = null;
+              }}>{m.share_owned_count({ count: shared_boards.length })}</Button
+            >
+            <Button
+              variant={manage_view === "received" ? "secondary" : "outline"}
+              aria-pressed={manage_view === "received"}
+              onclick={() => {
+                manage_view = "received";
+                managed_board_id = null;
+                visible_qr_id = null;
+              }}
+              >{m.share_received_count({
+                count: received_boards.length,
+              })}</Button
+            >
+          </ButtonGroup.Root>
+        {/if}
+        <div class="flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <p class="text-xs text-muted-foreground">
+            {managed_board
+              ? m.share_board_summary({
+                  invites: managed_board.invites.length,
+                  devices: managed_board.approved,
+                })
+              : manage_view === "mine"
+                ? m.share_manage_auto_help()
+                : m.share_received_auto_help()}
+          </p>
           <Button
-            variant={manage_view === "received" ? "secondary" : "outline"}
-            aria-pressed={manage_view === "received"}
-            onclick={() => (manage_view = "received")}
-            >{m.share_received_count({ count: received_boards.length })}</Button
+            size="sm"
+            variant="outline"
+            class="shrink-0"
+            onclick={() => {
+              if (manage_view === "mine") {
+                open_share();
+              } else {
+                open_join();
+              }
+            }}
+            ><PlusIcon />{managed_board
+              ? m.ui_create_new_invitation()
+              : manage_view === "mine"
+                ? m.ui_share_a_board()
+                : m.ui_join_a_shared_board()}</Button
           >
-        </ButtonGroup.Root>
-        <div
-          class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
-        >
-          {#if manage_view === "mine"}
-            <div class="flex items-center gap-2">
-              <Checkbox id="pending-devices-only" bind:checked={pending_only} />
-              <Label for="pending-devices-only" class="text-xs"
-                >{m.share_pending_filter({
-                  count: formatNumber(pending_count),
-                })}</Label
-              >
-            </div>
-          {:else}<span>{m.share_owner_sync()}</span>{/if}
         </div>
-        <p class="text-xs text-muted-foreground">
-          {manage_view === "mine"
-            ? m.share_manage_auto_help()
-            : m.share_received_auto_help()}
-        </p>
         <ScrollArea
+          bind:viewport={manage_viewport}
           class="min-h-0 flex-1"
           orientation="vertical"
           scrollbarYClasses="w-2"
@@ -1089,6 +1330,8 @@
                 <Card.Root class="p-4 shadow-none"
                   ><Card.Description
                     >{m.ui_no_boards_have_been_shared_with_you()}</Card.Description
+                  ><Button variant="outline" onclick={open_join}
+                    >{m.ui_join_a_shared_board()}</Button
                   ></Card.Root
                 >
               {:else}
@@ -1136,58 +1379,110 @@
                 >
                 <Card.Description
                   >{m.share_first_board_description()}</Card.Description
+                ><Button onclick={() => open_share()}
+                  >{m.ui_share_a_board()}</Button
                 ></Card.Root
               >
             {:else}
-              {#if pending_count > 0}
-                <div
-                  class="flex items-center gap-3 rounded-lg border border-primary/25 bg-primary/5 p-3 text-sm"
-                >
-                  <ShieldCheckIcon class="size-5 text-primary" />
-                  <span class="flex-1"
-                    >{m.share_waiting_count({ count: pending_count })}</span
+              {#if !managed_board}
+                {#if pending_requests.length > 0}
+                  <section
+                    class="grid gap-2 rounded-lg border border-primary/25 bg-primary/5 p-3"
+                    aria-label={m.share_waiting_count({ count: pending_count })}
                   >
-                </div>
+                    <h3 class="text-sm font-semibold">
+                      {m.share_waiting_count({ count: pending_count })}
+                    </h3>
+                    {#each pending_requests as request (request.invite.invite_id + request.device.node_id)}
+                      <div
+                        class="flex items-center gap-3 rounded-md border bg-background p-3"
+                      >
+                        <div class="min-w-0 flex-1">
+                          <p class="truncate text-sm font-medium">
+                            {request.invite.board_name}
+                          </p>
+                          <p class="text-xs text-muted-foreground">
+                            {request.invite.permission === "viewer"
+                              ? m.board_read_only()
+                              : m.board_can_edit()} · {invitation_date(
+                              request.invite.created_at,
+                            )}
+                          </p>
+                          <code class="text-xs text-muted-foreground"
+                            >{request.device.node_id.slice(
+                              0,
+                              8,
+                            )}…{request.device.node_id.slice(-8)}</code
+                          >
+                          {@render invitation_identity(
+                            request.invite.invite_id,
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          aria-haspopup="dialog"
+                          onclick={(event) =>
+                            open_device_review(
+                              request.invite,
+                              request.device.node_id,
+                              event.currentTarget,
+                            )}>{m.ui_review()}</Button
+                        >
+                      </div>
+                    {/each}
+                  </section>
+                {/if}
+                {#each shared_boards as item (item.board_id)}
+                  <Button
+                    variant="outline"
+                    class="h-auto w-full justify-between gap-3 p-4 text-left whitespace-normal"
+                    onclick={() => void open_managed_board(item.board_id)}
+                  >
+                    <span class="grid min-w-0 gap-1"
+                      ><span class="break-words font-semibold"
+                        >{item.board_name}</span
+                      ><span class="text-xs font-normal text-muted-foreground"
+                        >{m.share_board_summary({
+                          invites: item.invites.length,
+                          devices: item.approved,
+                        })}</span
+                      ></span
+                    ><ChevronRightIcon class="shrink-0" />
+                  </Button>
+                {/each}
+              {:else}
+                {#each visible_invites as invite (invite.invite_id)}
+                  <IrohInviteCard
+                    {invite}
+                    updating={updating_invite_id !== null}
+                    loading_access={loading_access_id === invite.invite_id}
+                    qr_visible={visible_qr_id === invite.invite_id}
+                    qr_svg={visible_qr_id === invite.invite_id
+                      ? invite_access[invite.invite_id]?.qr_svg
+                      : undefined}
+                    devices_open={expanded_devices[invite.invite_id]}
+                    device_connections={connection_details.devices}
+                    onupdate={(change) => void update(invite, change)}
+                    oncopy={() => void copy_invite(invite)}
+                    ontoggleqr={() => void toggle_qr(invite)}
+                    ondelete={() => {
+                      pending_delete = invite;
+                      delete_confirm_open = true;
+                    }}
+                    ondevicesopenchange={(value) =>
+                      (expanded_devices = {
+                        ...expanded_devices,
+                        [invite.invite_id]: value,
+                      })}
+                    onreview={(node_id, trigger) =>
+                      open_device_review(invite, node_id, trigger)}
+                    onrevoke={(node_id) => {
+                      revoke_candidate = { invite, node_id };
+                      revoke_open = true;
+                    }}
+                  />
+                {/each}
               {/if}
-              {#if visible_invites.length === 0}<p
-                  class="rounded-md border p-4 text-sm text-muted-foreground"
-                >
-                  {m.share_no_pending()}
-                </p>{/if}
-              {#each visible_invites as invite (invite.invite_id)}
-                <IrohInviteCard
-                  {invite}
-                  updating={updating_invite_id !== null}
-                  loading_access={loading_access_id === invite.invite_id}
-                  qr_visible={visible_qr_id === invite.invite_id}
-                  qr_svg={visible_qr_id === invite.invite_id
-                    ? invite_access[invite.invite_id]?.qr_svg
-                    : undefined}
-                  devices_open={expanded_devices[invite.invite_id]}
-                  device_connections={connection_details.devices}
-                  onupdate={(change) => void update(invite, change)}
-                  oncopy={() => void copy_invite(invite)}
-                  ontoggleqr={() => void toggle_qr(invite)}
-                  ondelete={() => {
-                    pending_delete = invite;
-                    delete_confirm_open = true;
-                  }}
-                  ondevicesopenchange={(value) =>
-                    (expanded_devices = {
-                      ...expanded_devices,
-                      [invite.invite_id]: value,
-                    })}
-                  onreview={(node_id) => {
-                    approval_candidate = { invite, node_id };
-                    device_id_verified = false;
-                    approval_open = true;
-                  }}
-                  onrevoke={(node_id) => {
-                    revoke_candidate = { invite, node_id };
-                    revoke_open = true;
-                  }}
-                />
-              {/each}
             {/if}
           </div>
         </ScrollArea>
@@ -1221,7 +1516,12 @@
       ><AlertDialog.Description
         >{m.share_invite_delete_description()}</AlertDialog.Description
       ></AlertDialog.Header
-    ><AlertDialog.Footer
+    >
+    {#if pending_delete}
+      <p class="break-words text-sm font-medium">{pending_delete.board_name}</p>
+      {@render invitation_identity(pending_delete.invite_id)}
+    {/if}
+    <AlertDialog.Footer
       ><AlertDialog.Cancel
         onclick={() => {
           pending_delete = null;
@@ -1237,7 +1537,7 @@
   ><AlertDialog.Content
     onCloseAutoFocus={(event) => {
       event.preventDefault();
-      manage_view_button?.focus({ preventScroll: true });
+      void restore_review_focus();
     }}
     onEscapeKeydown={(event) => {
       if (device_action_pending) {
@@ -1256,6 +1556,7 @@
       ></AlertDialog.Header
     >
     {#if approval_candidate}
+      {@render invitation_identity(approval_candidate.invite.invite_id)}
       <div class="flex flex-wrap items-center gap-2 text-sm">
         <span class="font-medium">{approval_candidate.invite.board_name}</span>
         <Badge variant="secondary"
@@ -1266,7 +1567,7 @@
       </div>
       {#if !approval_candidate.invite.enabled}
         <p class="text-sm text-muted-foreground">
-          {m.share_disabled_invitation_help()}
+          {m.share_disabled_invitation_approval_help()}
         </p>
       {/if}
       <div class="rounded-lg border bg-muted/30 p-3">

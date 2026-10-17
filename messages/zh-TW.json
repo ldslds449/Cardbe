@@ -1653,5 +1653,35 @@
   "flow_note_reference": "筆記",
   "flow_open_note": "開啟原筆記",
   "flow_note_description": "選擇要顯示在畫布上的現有筆記。從畫布移除不會刪除原筆記。",
-  "flow_no_available_notes": "沒有可加入的筆記"
+  "flow_no_available_notes": "沒有可加入的筆記",
+  "share_loading_invitations": "正在載入邀請…",
+  "share_board_summary": [
+    {
+      "declarations": [
+        "input invites",
+        "input devices",
+        "local invitesFormatted = invites: number",
+        "local devicesFormatted = devices: number"
+      ],
+      "match": {
+        "invites=*, devices=*": "{invitesFormatted} 個邀請 · {devicesFormatted} 筆已核准裝置"
+      }
+    }
+  ],
+  "share_invites_and_devices_help": "在下方管理各個邀請與所屬裝置。邀請權限適用於透過該邀請加入的裝置。",
+  "share_invitation_board": "分享的看板：{name}",
+  "share_shared_board_label": "分享的看板",
+  "share_viewer_invitation": "唯讀邀請",
+  "share_editor_invitation": "可編輯邀請",
+  "share_more_actions": "更多",
+  "share_qr_generating": "正在產生 QR Code…",
+  "share_qr_failed": "邀請已建立，仍可複製連結，但 QR Code 產生失敗：{error}",
+  "share_qr_retry": "重新產生 QR Code",
+  "share_invitation_id": "邀請識別碼",
+  "share_back_to_board": "返回看板詳情",
+  "share_disabled_invitation_approval_help": "此邀請已停用。核准結果仍會儲存，但必須啟用此邀請後，裝置才能同步。",
+  "share_back_to_overview": "返回看板清單",
+  "share_connection_paths_help": "同一裝置可能有多個位址。直接連線可能透過 NAT 穿透；Iroh 不會回報是否曾使用打洞。",
+  "share_connection_path_pending": "Iroh 尚未回報目前的連線路徑。",
+  "share_connection_not_observed": "本次工作階段尚無連線紀錄。連線或同步後即可查看詳情。"
 }
