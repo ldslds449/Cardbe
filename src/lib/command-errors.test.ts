@@ -103,6 +103,91 @@ describe("command error boundary", () => {
     }
   });
 
+  it("explains rejected plugin packages without echoing unsafe package text", () => {
+    const reasons = [
+      "ARCHIVE_TOO_LARGE",
+      "ARCHIVE_UNREADABLE",
+      "ARCHIVE_TOO_MANY_ENTRIES",
+      "UNSAFE_PATH",
+      "MANIFEST_MISSING",
+      "MANIFEST_DUPLICATE",
+      "COMPONENT_MISSING",
+      "MANIFEST_TOO_LARGE",
+      "COMPONENT_TOO_LARGE",
+      "MANIFEST_MALFORMED",
+      "INVALID_ID",
+      "INVALID_VERSION",
+      "UNSUPPORTED_API_VERSION",
+      "UNSUPPORTED_STORAGE_SCHEMA",
+      "UNSUPPORTED_MANIFEST_VERSION",
+      "INVALID_DOMAINS",
+      "INVALID_CODES",
+      "LEGACY_CREDENTIALS",
+      "INVALID_SETTINGS",
+      "INVALID_CREDENTIAL_RULES",
+      "INVALID_COMPONENT",
+      "DOWNLOAD_URL_INVALID",
+      "DOWNLOAD_FAILED",
+      "PACKAGE_LIMIT",
+    ];
+    const source = readFileSync(
+      new URL("../../src-tauri/src/errors.rs", import.meta.url),
+      "utf8",
+    ).replaceAll("\r\n", "\n");
+    const rust = [
+      ...source
+        .split("pub enum PluginPackageIssue {")[1]
+        .split("\n}")[0]
+        .matchAll(/^    ([A-Z]\w+),/gm),
+    ].map(([, variant]) =>
+      variant.replace(/(?<!^)[A-Z]/g, (letter) => `_${letter}`).toUpperCase(),
+    );
+    expect(rust).toEqual(reasons);
+    for (const locale of ["en", "zh-TW"] as const) {
+      applyLanguagePreference(locale);
+      const messages = new Set(
+        reasons.map((reason) =>
+          translateCommandError({ code: "PLUGIN_PACKAGE_INVALID", reason }),
+        ),
+      );
+      expect(messages.size).toBe(reasons.length);
+      expect(messages.has(m.plugin_package_invalid())).toBe(false);
+      expect(
+        translateCommandError({
+          code: "PLUGIN_PACKAGE_INVALID",
+          reason: "UNSUPPORTED_API_VERSION",
+          api_version: "1.0.0",
+        }),
+      ).toContain("1.0.0");
+      expect(
+        translateCommandError({
+          code: "PLUGIN_PACKAGE_INVALID",
+          reason: "INVALID_SETTINGS",
+          setting: "api_url",
+        }),
+      ).toContain("api_url");
+    }
+    applyLanguagePreference("en");
+    expect(
+      parseCommandError({
+        code: "PLUGIN_PACKAGE_INVALID",
+        reason: "UNSUPPORTED_API_VERSION",
+        api_version: "token=secret",
+        setting: "Bad Key<script>",
+        detail: "private",
+      }),
+    ).toEqual({
+      code: "PLUGIN_PACKAGE_INVALID",
+      reason: "UNSUPPORTED_API_VERSION",
+    });
+    expect(
+      translateCommandError({
+        code: "PLUGIN_PACKAGE_INVALID",
+        reason: "FROM_A_NEWER_HOST",
+      }),
+    ).toBe(m.plugin_package_invalid());
+  });
+
   it("preserves structured sharing state without parsing backend wording", () => {
     expect(
       parseCommandError({

@@ -167,6 +167,15 @@ pub enum CommandError {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<PluginFailureReason>,
     },
+    PluginPackageInvalid {
+        reason: PluginPackageIssue,
+        /// Validated manifest setting key, never other package text.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        setting: Option<String>,
+        /// Validated `x.y.z` API version declared by the package.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        api_version: Option<String>,
+    },
     PluginUpdateNotNewer,
     PluginUpdateBusy,
     PluginUpdateStale,
@@ -234,6 +243,14 @@ impl CommandError {
         let detail = crate::commands::diagnostics::redact_diagnostic_logs(source.to_string());
         log::error!(target: "command", "{detail}");
         Self::InternalError
+    }
+
+    pub fn plugin_package(reason: PluginPackageIssue) -> Self {
+        Self::PluginPackageInvalid {
+            reason,
+            setting: None,
+            api_version: None,
+        }
     }
 
     pub fn repository(source: Box<dyn std::error::Error>) -> Self {
@@ -336,6 +353,36 @@ pub enum PluginFailureReason {
     WasmTrap,
     InvalidGuestError,
     InvalidCredential,
+}
+
+/// Why a plugin package was rejected during installation or update.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PluginPackageIssue {
+    ArchiveTooLarge,
+    ArchiveUnreadable,
+    ArchiveTooManyEntries,
+    UnsafePath,
+    ManifestMissing,
+    ManifestDuplicate,
+    ComponentMissing,
+    ManifestTooLarge,
+    ComponentTooLarge,
+    ManifestMalformed,
+    InvalidId,
+    InvalidVersion,
+    UnsupportedApiVersion,
+    UnsupportedStorageSchema,
+    UnsupportedManifestVersion,
+    InvalidDomains,
+    InvalidCodes,
+    LegacyCredentials,
+    InvalidSettings,
+    InvalidCredentialRules,
+    InvalidComponent,
+    DownloadUrlInvalid,
+    DownloadFailed,
+    PackageLimit,
 }
 
 #[allow(dead_code)]

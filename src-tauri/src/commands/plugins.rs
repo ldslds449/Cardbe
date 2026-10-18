@@ -1,5 +1,5 @@
 use crate::{
-    errors::CommandError,
+    errors::{CommandError, PluginPackageIssue},
     plugins::{
         manager::{self, PluginManager},
         storage,
@@ -124,7 +124,9 @@ fn read_local_package(path: String) -> Result<(Vec<u8>, Vec<u8>), CommandError> 
             .len()
             > crate::plugins::package::ARCHIVE_LIMIT as u64
         {
-            return Err(CommandError::InvalidArgument);
+            return Err(CommandError::plugin_package(
+                PluginPackageIssue::ArchiveTooLarge,
+            ));
         }
         return crate::plugins::package::unpack(
             std::fs::read(selected).map_err(CommandError::internal)?,
@@ -140,26 +142,33 @@ fn read_local_package(path: String) -> Result<(Vec<u8>, Vec<u8>), CommandError> 
     };
     let manifest = root.join("manifest.json");
     let component = root.join("component.wasm");
-    if manifest
-        .canonicalize()
+    let contained = |path: &std::path::Path, missing| match path.canonicalize() {
+        Ok(path) if path.parent() == Some(root.as_path()) => Ok(()),
+        Ok(_) => Err(CommandError::plugin_package(PluginPackageIssue::UnsafePath)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(CommandError::plugin_package(missing))
+        }
+        Err(error) => Err(CommandError::internal(error)),
+    };
+    contained(&manifest, PluginPackageIssue::ManifestMissing)?;
+    contained(&component, PluginPackageIssue::ComponentMissing)?;
+    if std::fs::metadata(&manifest)
         .map_err(CommandError::internal)?
-        .parent()
-        != Some(root.as_path())
-        || component
-            .canonicalize()
-            .map_err(CommandError::internal)?
-            .parent()
-            != Some(root.as_path())
-        || std::fs::metadata(&manifest)
-            .map_err(CommandError::internal)?
-            .len()
-            > 65536
-        || std::fs::metadata(&component)
-            .map_err(CommandError::internal)?
-            .len()
-            > crate::plugins::package::COMPONENT_LIMIT
+        .len()
+        > 65536
     {
-        return Err(CommandError::InvalidArgument);
+        return Err(CommandError::plugin_package(
+            PluginPackageIssue::ManifestTooLarge,
+        ));
+    }
+    if std::fs::metadata(&component)
+        .map_err(CommandError::internal)?
+        .len()
+        > crate::plugins::package::COMPONENT_LIMIT
+    {
+        return Err(CommandError::plugin_package(
+            PluginPackageIssue::ComponentTooLarge,
+        ));
     }
     let bytes = std::fs::read(&manifest).map_err(CommandError::internal)?;
     Ok((
@@ -188,12 +197,21 @@ fn release_version(value: &str) -> Option<[u64; 3]> {
 /// 1.1.0 changed the task record, so draft 1.0.0 components are not supported.
 const SUPPORTED_API_VERSIONS: [&str; 1] = ["1.1.0"];
 fn validate_update(old: &PluginPackage, new: &PluginPackage) -> Result<(), CommandError> {
-    if old.id != new.id
-        || !crate::plugins::credentials::valid_rules(new)
-        || !SUPPORTED_API_VERSIONS.contains(&new.api_version.as_str())
-        || old.storage_schema_version != new.storage_schema_version
-    {
+    if old.id != new.id {
         return Err(CommandError::InvalidArgument);
+    }
+    if !SUPPORTED_API_VERSIONS.contains(&new.api_version.as_str()) {
+        return Err(unsupported_api_version(new));
+    }
+    if old.storage_schema_version != new.storage_schema_version {
+        return Err(CommandError::plugin_package(
+            PluginPackageIssue::UnsupportedStorageSchema,
+        ));
+    }
+    if !crate::plugins::credentials::valid_rules(new) {
+        return Err(CommandError::plugin_package(
+            PluginPackageIssue::InvalidCredentialRules,
+        ));
     }
     let old_version = release_version(&old.version).ok_or(CommandError::InvalidArgument)?;
     let new_version = release_version(&new.version).ok_or(CommandError::InvalidArgument)?;
@@ -234,6 +252,10 @@ fn update_candidate(
     }
     Ok(old)
 }
+fn validate_component(component: &[u8]) -> Result<(), CommandError> {
+    crate::plugins::runtime::validate_component(component)
+        .map_err(|_| CommandError::plugin_package(PluginPackageIssue::InvalidComponent))
+}
 fn select_package(
     app: tauri::AppHandle,
     manifest: Vec<u8>,
@@ -249,8 +271,7 @@ fn select_package(
         return install_package(app, manifest, component)
             .map(|package| PluginPackageSelection::Installed { package });
     };
-    crate::plugins::runtime::validate_component(&component)
-        .map_err(|_| CommandError::InvalidArgument)?;
+    validate_component(&component)?;
     let state = app.state::<SharedAppData>();
     let guard = state.lock().map_err(CommandError::internal)?;
     let current = storage::list::<PluginPackage>(guard.database.plugin_connection(), "package")?
@@ -442,21 +463,39 @@ fn valid_default(field: &SettingField) -> bool {
         _ => false,
     }
 }
-fn parse_package(bytes: &[u8]) -> Result<PluginPackage, CommandError> {
-    if bytes.len() > 65536 {
-        return Err(CommandError::InvalidArgument);
+/// Only a well-formed `x.y.z` value is echoed back to the frontend.
+fn unsupported_api_version(package: &PluginPackage) -> CommandError {
+    CommandError::PluginPackageInvalid {
+        reason: PluginPackageIssue::UnsupportedApiVersion,
+        setting: None,
+        api_version: release_version(&package.api_version).map(|_| package.api_version.clone()),
     }
-    let package: PluginPackage =
-        serde_json::from_slice(bytes).map_err(|_| CommandError::InvalidArgument)?;
+}
+fn parse_package(bytes: &[u8]) -> Result<PluginPackage, CommandError> {
+    let invalid = CommandError::plugin_package;
+    if bytes.len() > 65536 {
+        return Err(invalid(PluginPackageIssue::ManifestTooLarge));
+    }
+    let package: PluginPackage = serde_json::from_slice(bytes)
+        .map_err(|_| invalid(PluginPackageIssue::ManifestMalformed))?;
+    if !valid_id(&package.id) {
+        return Err(invalid(PluginPackageIssue::InvalidId));
+    }
     // Installed versions must stay comparable so later in-place updates remain possible.
-    if !valid_id(&package.id)
-        || release_version(&package.version).is_none()
-        || !SUPPORTED_API_VERSIONS.contains(&package.api_version.as_str())
-        || package.storage_schema_version != 1
-        || package.settings.len() > 32
-        || !valid_domains(&package.domains)
-    {
-        return Err(CommandError::InvalidArgument);
+    if release_version(&package.version).is_none() {
+        return Err(invalid(PluginPackageIssue::InvalidVersion));
+    }
+    if !SUPPORTED_API_VERSIONS.contains(&package.api_version.as_str()) {
+        return Err(unsupported_api_version(&package));
+    }
+    if package.storage_schema_version != 1 {
+        return Err(invalid(PluginPackageIssue::UnsupportedStorageSchema));
+    }
+    if !matches!(package.manifest_version, 1 | 2) {
+        return Err(invalid(PluginPackageIssue::UnsupportedManifestVersion));
+    }
+    if !valid_domains(&package.domains) {
+        return Err(invalid(PluginPackageIssue::InvalidDomains));
     }
     if package.error_codes.len() > 64
         || package.log_codes.len() > 64
@@ -465,17 +504,22 @@ fn parse_package(bytes: &[u8]) -> Result<PluginPackage, CommandError> {
             .iter()
             .chain(&package.log_codes)
             .any(|c| !valid_code(c))
-        || (package.http_credentials.is_none()
-            && (package
-                .settings
-                .iter()
-                .filter(|f| f.kind == "secret")
-                .count()
-                > 1
-                || (package.settings.iter().any(|f| f.kind == "secret")
-                    && package.domains.len() != 1)))
     {
-        return Err(CommandError::InvalidArgument);
+        return Err(invalid(PluginPackageIssue::InvalidCodes));
+    }
+    if package.http_credentials.is_none()
+        && (package
+            .settings
+            .iter()
+            .filter(|f| f.kind == "secret")
+            .count()
+            > 1
+            || (package.settings.iter().any(|f| f.kind == "secret") && package.domains.len() != 1))
+    {
+        return Err(invalid(PluginPackageIssue::LegacyCredentials));
+    }
+    if package.settings.len() > 32 {
+        return Err(invalid(PluginPackageIssue::InvalidSettings));
     }
     let mut keys = std::collections::HashSet::new();
     for f in &package.settings {
@@ -496,11 +540,15 @@ fn parse_package(bytes: &[u8]) -> Result<PluginPackage, CommandError> {
             || f.min.zip(f.max).is_some_and(|(min, max)| min > max)
             || !valid_default(f)
         {
-            return Err(CommandError::InvalidArgument);
+            return Err(CommandError::PluginPackageInvalid {
+                reason: PluginPackageIssue::InvalidSettings,
+                setting: valid_id(&f.key).then(|| f.key.clone()),
+                api_version: None,
+            });
         }
     }
     if !crate::plugins::credentials::valid_rules(&package) {
-        return Err(CommandError::InvalidArgument);
+        return Err(invalid(PluginPackageIssue::InvalidCredentialRules));
     }
     Ok(package)
 }
@@ -534,8 +582,7 @@ fn install_package(
     component: Vec<u8>,
 ) -> Result<PluginPackage, CommandError> {
     let package = parse_package(&bytes)?;
-    crate::plugins::runtime::validate_component(&component)
-        .map_err(|_| CommandError::InvalidArgument)?;
+    validate_component(&component)?;
     let destination = manager::package_root(&app)
         .map_err(CommandError::from)?
         .join(&package.id);
@@ -543,8 +590,13 @@ fn install_package(
     let g = s.lock().map_err(CommandError::internal)?;
     let c = g.database.plugin_connection();
     let installed = storage::list::<PluginPackage>(c, "package")?;
-    if installed.len() >= 50 || installed.iter().any(|p| p.id == package.id) {
+    if installed.iter().any(|p| p.id == package.id) {
         return Err(CommandError::InvalidArgument);
+    }
+    if installed.len() >= 50 {
+        return Err(CommandError::plugin_package(
+            PluginPackageIssue::PackageLimit,
+        ));
     }
     let directory = destination.parent().ok_or(CommandError::InvalidArgument)?;
     std::fs::create_dir_all(directory).map_err(CommandError::internal)?;
@@ -1187,12 +1239,117 @@ mod tests {
                 "api_version" => next.api_version = api_version.into(),
                 _ => next.storage_schema_version = 2,
             }
-            assert!(matches!(
-                validate_update(&old, &next),
-                Err(CommandError::InvalidArgument)
-            ));
+            let error = validate_update(&old, &next).unwrap_err();
+            match field {
+                "id" => assert!(matches!(error, CommandError::InvalidArgument)),
+                "api_version" => assert!(matches!(
+                    error,
+                    CommandError::PluginPackageInvalid {
+                        reason: PluginPackageIssue::UnsupportedApiVersion,
+                        ..
+                    }
+                )),
+                _ => assert!(matches!(
+                    error,
+                    CommandError::PluginPackageInvalid {
+                        reason: PluginPackageIssue::UnsupportedStorageSchema,
+                        ..
+                    }
+                )),
+            }
         }
         assert!(validate_update(&old, &package("2.0.0")).is_ok());
+    }
+    #[test]
+    fn rejected_manifests_report_safe_specific_reasons() {
+        let base = serde_json::json!({
+            "id":"example", "name":"Example", "version":"1.0.0",
+            "api_version":"1.1.0", "storage_schema_version":1,
+        });
+        let reject = |change: &dyn Fn(&mut serde_json::Value)| {
+            let mut manifest = base.clone();
+            change(&mut manifest);
+            serde_json::to_value(
+                parse_package(&serde_json::to_vec(&manifest).unwrap()).unwrap_err(),
+            )
+            .unwrap()
+        };
+        let issue =
+            |reason: &str| serde_json::json!({"code":"PLUGIN_PACKAGE_INVALID","reason":reason});
+        assert_eq!(
+            serde_json::to_value(parse_package(b"{not json").unwrap_err()).unwrap(),
+            issue("MANIFEST_MALFORMED")
+        );
+        assert_eq!(
+            serde_json::to_value(parse_package(&vec![b' '; 65537]).unwrap_err()).unwrap(),
+            issue("MANIFEST_TOO_LARGE")
+        );
+        assert_eq!(reject(&|m| m["id"] = "Bad ID".into()), issue("INVALID_ID"));
+        assert_eq!(
+            reject(&|m| m["version"] = "v1".into()),
+            issue("INVALID_VERSION")
+        );
+        assert_eq!(
+            reject(&|m| m["api_version"] = "1.0.0".into()),
+            serde_json::json!({
+                "code":"PLUGIN_PACKAGE_INVALID",
+                "reason":"UNSUPPORTED_API_VERSION",
+                "api_version":"1.0.0",
+            })
+        );
+        // Arbitrary package text is never echoed back.
+        assert_eq!(
+            reject(&|m| m["api_version"] = "token=secret".into()),
+            issue("UNSUPPORTED_API_VERSION")
+        );
+        assert_eq!(
+            reject(&|m| m["storage_schema_version"] = 2.into()),
+            issue("UNSUPPORTED_STORAGE_SCHEMA")
+        );
+        assert_eq!(
+            reject(&|m| m["manifest_version"] = 3.into()),
+            issue("UNSUPPORTED_MANIFEST_VERSION")
+        );
+        assert_eq!(
+            reject(&|m| m["domains"] = serde_json::json!(["http://bad"])),
+            issue("INVALID_DOMAINS")
+        );
+        assert_eq!(
+            reject(&|m| m["error_codes"] = serde_json::json!(["lower"])),
+            issue("INVALID_CODES")
+        );
+        assert_eq!(
+            reject(&|m| {
+                m["domains"] = serde_json::json!(["api.example.com"]);
+                m["settings"] = serde_json::json!([
+                    {"key":"a","label":"A","type":"secret"},
+                    {"key":"b","label":"B","type":"secret"},
+                ]);
+            }),
+            issue("LEGACY_CREDENTIALS")
+        );
+        assert_eq!(
+            reject(&|m| m["settings"] = serde_json::json!([
+                {"key":"limit","label":"Limit","type":"number","default":"many"},
+            ])),
+            serde_json::json!({
+                "code":"PLUGIN_PACKAGE_INVALID",
+                "reason":"INVALID_SETTINGS",
+                "setting":"limit",
+            })
+        );
+        assert_eq!(
+            reject(&|m| m["settings"] = serde_json::json!([
+                {"key":"Bad Key","label":"Bad","type":"text"},
+            ])),
+            issue("INVALID_SETTINGS")
+        );
+        assert_eq!(
+            reject(&|m| m["http_credentials"] = serde_json::json!([
+                {"destination":{"type":"domain","domain":"other.example.com"},"path_prefix":"/"},
+            ])),
+            issue("INVALID_CREDENTIAL_RULES")
+        );
     }
     #[test]
     fn install_requires_updatable_versions_and_typed_setting_defaults() {

@@ -71,10 +71,46 @@ const pluginFailureMessages = {
   INVALID_CREDENTIAL: () => m.plugin_failure_invalid_credential(),
 };
 
+const pluginPackageMessages = {
+  ARCHIVE_TOO_LARGE: () => m.plugin_package_archive_too_large(),
+  ARCHIVE_UNREADABLE: () => m.plugin_package_archive_unreadable(),
+  ARCHIVE_TOO_MANY_ENTRIES: () => m.plugin_package_archive_too_many_entries(),
+  UNSAFE_PATH: () => m.plugin_package_unsafe_path(),
+  MANIFEST_MISSING: () => m.plugin_package_manifest_missing(),
+  MANIFEST_DUPLICATE: () => m.plugin_package_manifest_duplicate(),
+  COMPONENT_MISSING: () => m.plugin_package_component_missing(),
+  MANIFEST_TOO_LARGE: () => m.plugin_package_manifest_too_large(),
+  COMPONENT_TOO_LARGE: () => m.plugin_package_component_too_large(),
+  MANIFEST_MALFORMED: () => m.plugin_package_manifest_malformed(),
+  INVALID_ID: () => m.plugin_package_invalid_id(),
+  INVALID_VERSION: () => m.plugin_package_invalid_version(),
+  UNSUPPORTED_API_VERSION: () => m.plugin_package_unsupported_api(),
+  UNSUPPORTED_STORAGE_SCHEMA: () =>
+    m.plugin_package_unsupported_storage_schema(),
+  UNSUPPORTED_MANIFEST_VERSION: () =>
+    m.plugin_package_unsupported_manifest_version(),
+  INVALID_DOMAINS: () => m.plugin_package_invalid_domains(),
+  INVALID_CODES: () => m.plugin_package_invalid_codes(),
+  LEGACY_CREDENTIALS: () => m.plugin_package_legacy_credentials(),
+  INVALID_SETTINGS: () => m.plugin_package_invalid_settings(),
+  INVALID_CREDENTIAL_RULES: () => m.plugin_package_invalid_credential_rules(),
+  INVALID_COMPONENT: () => m.plugin_package_invalid_component(),
+  DOWNLOAD_URL_INVALID: () => m.plugin_package_download_url_invalid(),
+  DOWNLOAD_FAILED: () => m.plugin_package_download_failed(),
+  PACKAGE_LIMIT: () => m.plugin_package_limit(),
+};
+export type PluginPackageIssue = keyof typeof pluginPackageMessages;
+
 type PluginParams = Record<string, string | number | boolean | null>;
 export type CommandError =
   | { code: keyof typeof coreMessages }
   | { code: "NETWORK_SETTINGS_INVALID"; field: NetworkSettingsField }
+  | {
+      code: "PLUGIN_PACKAGE_INVALID";
+      reason?: PluginPackageIssue;
+      setting?: string;
+      api_version?: string;
+    }
   | { code: "SHARE_APPROVAL_REQUIRED"; device_id: string }
   | { code: "PLUGIN_PERMISSION_DENIED"; plugin_id: string; permission: string }
   | {
@@ -129,6 +165,32 @@ export function parseCommandError(value: unknown): CommandError | null {
         return { code, field: value.field as NetworkSettingsField };
       }
       return null;
+    }
+    if (code === "PLUGIN_PACKAGE_INVALID") {
+      // Unknown reasons from a newer host keep the generic package message.
+      const reason =
+        typeof value.reason === "string" &&
+        Object.hasOwn(pluginPackageMessages, value.reason)
+          ? (value.reason as PluginPackageIssue)
+          : undefined;
+      const setting =
+        typeof value.setting === "string" &&
+        /^[a-z0-9_-]{1,100}$/.test(value.setting)
+          ? value.setting
+          : undefined;
+      const api_version =
+        typeof value.api_version === "string" &&
+        /^(0|[1-9]\d{0,9})\.(0|[1-9]\d{0,9})\.(0|[1-9]\d{0,9})$/.test(
+          value.api_version,
+        )
+          ? value.api_version
+          : undefined;
+      return {
+        code,
+        ...(reason ? { reason } : {}),
+        ...(setting ? { setting } : {}),
+        ...(api_version ? { api_version } : {}),
+      };
     }
     if (!identifier(value.plugin_id)) {
       return null;
@@ -203,6 +265,18 @@ export function translateCommandError(
       }
     case "SHARE_APPROVAL_REQUIRED":
       return m.ui_access_request_sent();
+    case "PLUGIN_PACKAGE_INVALID":
+      if (error.reason === "UNSUPPORTED_API_VERSION" && error.api_version) {
+        return m.plugin_package_unsupported_api_version({
+          version: error.api_version,
+        });
+      }
+      if (error.reason === "INVALID_SETTINGS" && error.setting) {
+        return m.plugin_package_invalid_setting({ setting: error.setting });
+      }
+      return error.reason
+        ? pluginPackageMessages[error.reason]()
+        : m.plugin_package_invalid();
     case "PLUGIN_PERMISSION_DENIED":
       return m.error_plugin_permission_denied();
     case "PLUGIN_EXECUTION_FAILED":
