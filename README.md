@@ -94,6 +94,9 @@ Sharing is always off until you turn it on. Learn more in [Sharing and privacy](
 2. Download the Windows installer, or the portable `.exe` if you prefer not to install anything.
 3. Open Cardbe and create your first board.
 
+> [!NOTE]
+> Cardbe is not code-signed yet, so Windows may show a "Windows protected your PC" message the first time you open it. Select **More info**, then **Run anyway**. Only do this for files downloaded from the official [Releases page](https://github.com/ldslds449/Cardbe/releases).
+
 Cardbe currently provides ready-to-use downloads for Windows. Developers can [build it from source](docs/development.md).
 
 ## Privacy at a glance
