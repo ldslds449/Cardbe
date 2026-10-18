@@ -4,8 +4,8 @@ use crate::{
     state::{
         load_archives_for_board, lock_app, update_stored_with_archives_for_board, SharedAppData,
     },
+    task_dates::{add_local_days, add_local_months, due_limit_millis, local_day_number},
 };
-use chrono::{DateTime, Duration, Months, Utc};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
@@ -43,19 +43,31 @@ fn advance_due_time(
     interval: u32,
 ) -> Result<u128, DomainError> {
     let due_time = i64::try_from(due_time).map_err(|_| "Task due time is out of range")?;
-    let date = DateTime::<Utc>::from_timestamp_millis(due_time)
-        .ok_or_else(|| "Task due time is invalid".to_string())?;
     let interval = interval.max(1);
+    // Local calendar arithmetic keeps the wall-clock time and month-end days
+    // the user sees, and matches the calendar preview.
     let next = match frequency {
-        RecurrenceFrequency::Daily => date.checked_add_signed(Duration::days(i64::from(interval))),
-        RecurrenceFrequency::Weekly => {
-            date.checked_add_signed(Duration::weeks(i64::from(interval)))
-        }
-        RecurrenceFrequency::Monthly => date.checked_add_months(Months::new(interval)),
+        RecurrenceFrequency::Daily => add_local_days(due_time, i64::from(interval)),
+        RecurrenceFrequency::Weekly => add_local_days(due_time, 7 * i64::from(interval)),
+        RecurrenceFrequency::Monthly => add_local_months(due_time, interval),
     }
     .ok_or_else(|| "The next recurring task date is out of range".to_string())?;
-    u128::try_from(next.timestamp_millis())
+    u128::try_from(next)
         .map_err(|_| DomainError::Internal("The next task date is before 1970".into()))
+}
+
+/// Moves the start by as many local days as the due date moved, keeping its
+/// wall-clock time so date-only starts stay date-only.
+fn shift_start_time(start_time: u128, original_due_time: u128, next_due_time: u128) -> u128 {
+    let local = |time: u128| i64::try_from(time).ok();
+    let days = local(next_due_time)
+        .and_then(local_day_number)
+        .zip(local(original_due_time).and_then(local_day_number))
+        .map(|(next, original)| next - original);
+    days.zip(local(start_time))
+        .and_then(|(days, start)| add_local_days(start, days))
+        .and_then(|start| u128::try_from(start).ok())
+        .unwrap_or_else(|| start_time.saturating_add(next_due_time - original_due_time))
 }
 
 fn next_recurring_task(task: &Task, now: u128, id: i64) -> Result<Option<Task>, DomainError> {
@@ -69,12 +81,12 @@ fn next_recurring_task(task: &Task, now: u128, id: i64) -> Result<Option<Task>, 
     let mut next_due_time = original_due_time;
     loop {
         next_due_time = advance_due_time(next_due_time, recurrence.frequency, recurrence.interval)?;
-        if next_due_time > now {
+        // A date-only occurrence stays current until the end of its day.
+        if due_limit_millis(next_due_time, task.due_at_midnight) > now {
             break;
         }
     }
 
-    let shift = next_due_time - original_due_time;
     let mut next = task.clone();
     next.id = id;
     next.due_time = Some(next_due_time);
@@ -83,7 +95,7 @@ fn next_recurring_task(task: &Task, now: u128, id: i64) -> Result<Option<Task>, 
     next.start_time = if task.created_time == 0 || task.start_time == 0 {
         0
     } else {
-        task.start_time.saturating_add(shift)
+        shift_start_time(task.start_time, original_due_time, next_due_time)
     };
     next.created_time = now;
     for item in &mut next.items {
@@ -238,13 +250,45 @@ mod tests {
     }
 
     #[test]
-    fn monthly_recurrence_clamps_to_the_end_of_the_month() {
-        let task = recurring_task(1_706_659_200_000, RecurrenceFrequency::Monthly); // 2024-01-31 UTC
-        let next = next_recurring_task(&task, 1_706_659_200_000, 9)
+    fn date_only_occurrence_stays_current_until_the_day_ends() {
+        use chrono::{Local, TimeZone};
+        let at = |day, hour| {
+            u128::try_from(
+                Local
+                    .with_ymd_and_hms(2026, 10, day, hour, 0, 0)
+                    .earliest()
+                    .unwrap()
+                    .timestamp_millis(),
+            )
+            .unwrap()
+        };
+        let task = recurring_task(at(13, 0), RecurrenceFrequency::Daily);
+
+        let next = next_recurring_task(&task, at(14, 10), 8).unwrap().unwrap();
+        assert_eq!(next.due_time, Some(at(14, 0)));
+    }
+
+    #[test]
+    fn monthly_recurrence_clamps_to_the_end_of_the_local_month() {
+        use chrono::{Local, TimeZone};
+        let at = |month, day, hour| {
+            u128::try_from(
+                Local
+                    .with_ymd_and_hms(2024, month, day, hour, 0, 0)
+                    .earliest()
+                    .unwrap()
+                    .timestamp_millis(),
+            )
+            .unwrap()
+        };
+        let mut task = recurring_task(at(1, 31, 0), RecurrenceFrequency::Monthly);
+        task.start_time = at(1, 29, 0);
+        let next = next_recurring_task(&task, at(1, 31, 0), 9)
             .unwrap()
             .unwrap();
 
-        assert_eq!(next.due_time, Some(1_709_164_800_000)); // 2024-02-29 UTC
+        assert_eq!(next.due_time, Some(at(2, 29, 0)));
+        assert_eq!(next.start_time, at(2, 27, 0));
     }
 }
 

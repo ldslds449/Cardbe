@@ -96,6 +96,8 @@ impl TryFrom<model::Task> for wit::Task {
                 .transpose()
                 .map_err(|_| DomainError::InvalidArgument)?,
             created_time: optional_time(created_time)?,
+            start_at_midnight: t.start_at_midnight,
+            due_at_midnight: t.due_at_midnight,
             labels: t.labels,
             items: t
                 .items
@@ -123,6 +125,8 @@ impl From<wit::Task> for model::Task {
             color: t.color,
             start_time: t.start_time.map_or(0, u128::from),
             due_time: t.due_time.map(u128::from),
+            start_at_midnight: t.start_at_midnight,
+            due_at_midnight: t.due_at_midnight,
             // Creation time is host-stamped; guest values are ignored.
             created_time: 0,
             labels: t.labels,
@@ -277,6 +281,8 @@ mod tests {
             color: "#123456".into(),
             start_time: 1_800_000_000_000,
             due_time: Some(1_800_000_100_000),
+            start_at_midnight: false,
+            due_at_midnight: true,
             created_time: 1_700_000_000_000,
             labels: vec!["Label".into()],
             items: vec![model::TaskItem {

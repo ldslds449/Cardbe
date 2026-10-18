@@ -63,7 +63,8 @@ const TASK_SEARCH_CTE: &str = "WITH tasks AS (
              ), summaries AS (
                SELECT *, json_extract(payload, '$.due_time') AS due_time,
                       json_extract(payload, '$.title') AS title,
-                      json_extract(payload, '$.recurrence') AS recurrence
+                      json_extract(payload, '$.recurrence') AS recurrence,
+                      COALESCE(json_extract(payload, '$.due_at_midnight'), 0) AS due_at_midnight
                FROM tasks
              )
              , eligible AS (SELECT * FROM summaries
@@ -71,7 +72,7 @@ const TASK_SEARCH_CTE: &str = "WITH tasks AS (
                AND (CASE ?4
                  WHEN 'active' THEN archived=0
                  WHEN 'archived' THEN archived=1
-                 WHEN 'overdue' THEN archived=0 AND due_time<?5
+                 WHEN 'overdue' THEN archived=0 AND due_time<?5 AND (due_time<>?11 OR due_at_midnight)
                  WHEN 'recurring' THEN archived=0 AND recurrence IS NOT NULL
                  ELSE 1 END)
                AND (CASE ?6 WHEN 'none' THEN due_time IS NULL
@@ -102,6 +103,10 @@ fn search_params(filter: &TaskExplorerQuery) -> StorageResult<Vec<rusqlite::type
         opt(filter.due_end),
         opt(filter.archive_start),
         opt(filter.archive_end),
+        // A date-only due date today is stored at this midnight and is not
+        // overdue until the day ends; earlier midnights already are. A chosen
+        // 00:00 (`due_at_midnight`) is overdue as soon as it passes.
+        Value::Integer(crate::task_dates::local_day_start(filter.now)),
     ])
 }
 
@@ -133,13 +138,13 @@ fn hybrid_search(
         format!(
             "{TASK_SEARCH_CTE} SELECT e.search_id,e.title FROM eligible e
             JOIN cardbe_task_search s ON s.rowid=e.search_id
-            WHERE instr(lower(s.body),lower(?11))>0 ORDER BY e.search_id LIMIT ?12"
+            WHERE instr(lower(s.body),lower(?12))>0 ORDER BY e.search_id LIMIT ?13"
         )
     } else {
         format!(
             "{TASK_SEARCH_CTE} SELECT e.search_id,e.title FROM cardbe_task_fts
             JOIN eligible e ON e.search_id=cardbe_task_fts.rowid
-            WHERE cardbe_task_fts MATCH ?11 ORDER BY bm25(cardbe_task_fts),e.search_id LIMIT ?12"
+            WHERE cardbe_task_fts MATCH ?12 ORDER BY bm25(cardbe_task_fts),e.search_id LIMIT ?13"
         )
     };
     let mut statement = connection.prepare(&sql)?;
@@ -2281,12 +2286,12 @@ impl Database {
              FROM eligible
              WHERE (?1 IS NULL OR search_id IN (SELECT value FROM json_each(?1)))
              ORDER BY
-               CASE WHEN ?11='due' THEN due_time IS NULL END,
-               CASE WHEN ?11='due' THEN due_time END,
-               CASE WHEN ?11='archived' THEN CAST(archived_at AS INTEGER) END DESC,
-               CASE WHEN ?11='column' THEN column_name END COLLATE NOCASE,
+               CASE WHEN ?12='due' THEN due_time IS NULL END,
+               CASE WHEN ?12='due' THEN due_time END,
+               CASE WHEN ?12='archived' THEN CAST(archived_at AS INTEGER) END DESC,
+               CASE WHEN ?12='column' THEN column_name END COLLATE NOCASE,
                title COLLATE NOCASE, board_id, archived, task_id
-             LIMIT ?12 OFFSET ?13",
+             LIMIT ?13 OFFSET ?14",
         );
         let mut statement = self.connection.prepare(&sql)?;
         let rows = statement
@@ -2306,6 +2311,7 @@ impl Database {
                     filter.due_end,
                     filter.archive_start,
                     filter.archive_end,
+                    crate::task_dates::local_day_start(filter.now),
                     filter.sort,
                     i64::try_from(limit)?,
                     offset,
@@ -3861,6 +3867,63 @@ mod tests {
         }
         drop(loaded);
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn task_explorer_keeps_date_only_due_dates_on_time_until_the_day_ends() {
+        use chrono::{Local, TimeZone};
+        let at = |day, hour| {
+            Local
+                .with_ymd_and_hms(2026, 10, day, hour, 0, 0)
+                .earliest()
+                .unwrap()
+                .timestamp_millis()
+        };
+        let dir = test_dir("task-explorer-date-only-overdue");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let data = StoredData {
+            columns: vec![Column {
+                id: 1,
+                name: "Todo".into(),
+                color: String::new(),
+                sort_order: Default::default(),
+                tasks: [
+                    (1, at(13, 0), false),
+                    (2, at(14, 0), false),
+                    (3, at(14, 9), false),
+                    (4, at(14, 11), false),
+                    (5, at(14, 0), true),
+                ]
+                .into_iter()
+                .map(|(id, due_time, due_at_midnight)| Task {
+                    id,
+                    title: format!("Task {id}"),
+                    due_time: Some(u128::try_from(due_time).unwrap()),
+                    due_at_midnight,
+                    ..Task::default()
+                })
+                .collect(),
+            }],
+            ..StoredData::default()
+        };
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &data)
+            .unwrap();
+        let filter = TaskExplorerQuery {
+            status: "overdue".into(),
+            sort: "due".into(),
+            now: at(14, 10),
+            ..Default::default()
+        };
+
+        let rows = loaded.database.list_all_task_page(&filter, 0, 10).unwrap();
+        assert_eq!(
+            rows.iter().map(|row| row.task.id).collect::<Vec<_>>(),
+            vec![1, 5, 3]
+        );
     }
 
     #[test]

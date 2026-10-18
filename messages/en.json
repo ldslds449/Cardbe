@@ -523,6 +523,21 @@
   "calendar_label": "Task due date calendar",
   "calendar_legend": "Calendar item legend",
   "calendar_recurring_preview": "Recurring preview",
+  "calendar_multi_day": "Multi-day task",
+  "calendar_starts": "Starts",
+  "calendar_invalid_range": "Starts after due",
+  "calendar_date_range": "{start} – {end}",
+  "calendar_span_label": "{title}, {range}",
+  "calendar_resize_start": "Drag to change the start date",
+  "calendar_resize_end": "Drag to change the due date",
+  "calendar_more_tasks": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "+{countFormatted} more"
+      }
+    }
+  ],
   "focus_nothing": "Nothing here",
   "focus_view": "Today focus view",
   "focus_clear": "All clear",

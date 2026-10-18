@@ -195,6 +195,8 @@ fn write_task(map: &LoroMap, task: &Task, archive_time: Option<u128>) -> Result<
     set_field(map, "color", &task.color)?;
     set_field(map, "start_time", &task.start_time)?;
     set_field(map, "due_time", &task.due_time)?;
+    set_field(map, "start_at_midnight", &task.start_at_midnight)?;
+    set_field(map, "due_at_midnight", &task.due_at_midnight)?;
     set_field(map, "created_time", &task.created_time)?;
     set_field(map, "labels", &task.labels)?;
     set_field(map, "items", &task.items)?;
@@ -414,6 +416,18 @@ fn field<T: for<'a> Deserialize<'a>>(value: &serde_json::Value, key: &str) -> Re
     serde_json::from_str(text).map_err(|e| e.to_string())
 }
 
+/// A field added after the first Loro format; older peers never write it.
+fn optional_field<T: Default + for<'a> Deserialize<'a>>(
+    value: &serde_json::Value,
+    key: &str,
+) -> Result<T, String> {
+    if value.get(key).is_some() {
+        field(value, key)
+    } else {
+        Ok(T::default())
+    }
+}
+
 fn task_from_map(id: i64, map: &serde_json::Value) -> Result<Task, String> {
     Ok(Task {
         id,
@@ -426,6 +440,8 @@ fn task_from_map(id: i64, map: &serde_json::Value) -> Result<Task, String> {
         color: field(map, "color")?,
         start_time: field(map, "start_time")?,
         due_time: field(map, "due_time")?,
+        start_at_midnight: optional_field(map, "start_at_midnight")?,
+        due_at_midnight: optional_field(map, "due_at_midnight")?,
         created_time: if map.get("created_time").is_some() {
             field(map, "created_time")?
         } else {

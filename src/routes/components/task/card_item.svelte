@@ -87,7 +87,9 @@
   let delete_confirm_open = $state(false);
   let move_dialog_open = $state(false);
   let due_metadata = $derived(
-    task.due_time ? due_label(task.due_time, new Date()) : undefined,
+    task.due_time
+      ? due_label(task.due_time, new Date(), task.due_at_midnight)
+      : undefined,
   );
 </script>
 

@@ -13,6 +13,7 @@ mod plugins;
 mod search;
 mod state;
 mod storage;
+mod task_dates;
 
 use commands::{
     archive, board, boards, calendar_export, diagnostics, external, floating_task, import_export,

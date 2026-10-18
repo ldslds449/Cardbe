@@ -2,6 +2,7 @@ use crate::errors::{CommandError, DomainError};
 use crate::{
     models::Task,
     state::{lock_app, SharedAppData},
+    task_dates::due_limit_millis,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
@@ -16,8 +17,10 @@ fn current_time_millis() -> Result<u128, DomainError> {
 
 fn notification_key(board_id: i64, task: &Task, now: u128) -> Option<(i64, i64, u128)> {
     let due_time = task.due_time?;
-    (due_time < now && task.id >= 0 && !task.title.is_empty())
-        .then_some((board_id, task.id, due_time))
+    (due_limit_millis(due_time, task.due_at_midnight) < now
+        && task.id >= 0
+        && !task.title.is_empty())
+    .then_some((board_id, task.id, due_time))
 }
 
 fn expired_notification(
@@ -144,6 +147,37 @@ mod tests {
         task.due_time = Some(100);
         task.title.clear();
         assert_eq!(notification_key(1, &task, 300), None);
+    }
+
+    #[test]
+    fn date_only_due_dates_notify_after_the_day_ends() {
+        use chrono::{Local, TimeZone};
+        let midnight = |day| {
+            u128::try_from(
+                Local
+                    .with_ymd_and_hms(2026, 10, day, 0, 0, 0)
+                    .earliest()
+                    .unwrap()
+                    .timestamp_millis(),
+            )
+            .unwrap()
+        };
+        let task = task_with_due_time(midnight(14));
+
+        assert_eq!(notification_key(1, &task, midnight(14) + 3_600_000), None);
+        assert_eq!(
+            notification_key(1, &task, midnight(15)),
+            Some((1, 7, midnight(14)))
+        );
+
+        let chosen = Task {
+            due_at_midnight: true,
+            ..task
+        };
+        assert_eq!(
+            notification_key(1, &chosen, midnight(14) + 3_600_000),
+            Some((1, 7, midnight(14)))
+        );
     }
 
     #[test]

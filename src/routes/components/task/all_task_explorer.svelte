@@ -40,6 +40,7 @@
   } from "../../utils/task-explorer";
   import { get_column_id } from "../../type/column.svelte";
   import { display_task_color } from "../../utils/task-color";
+  import { is_date_only } from "../../utils/task-date-range";
   import UnarchiveTaskDialog from "../archive/unarchive_task_dialog.svelte";
   import VirtualList from "../virtual_list.svelte";
 
@@ -301,14 +302,12 @@
     return task.due_time.toLocaleString(getLocale(), {
       month: "short",
       day: "numeric",
-      hour:
-        task.due_time.getHours() || task.due_time.getMinutes()
-          ? "2-digit"
-          : undefined,
-      minute:
-        task.due_time.getHours() || task.due_time.getMinutes()
-          ? "2-digit"
-          : undefined,
+      hour: is_date_only(task.due_time, task.due_at_midnight)
+        ? undefined
+        : "2-digit",
+      minute: is_date_only(task.due_time, task.due_at_midnight)
+        ? undefined
+        : "2-digit",
       year:
         task.due_time.getFullYear() === now.getFullYear()
           ? undefined

@@ -17,6 +17,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import type { Archive } from "../../type/archive.svelte";
   import type { Column } from "../../type/column.svelte";
+  import { is_date_only } from "../../utils/task-date-range";
   import MonthPicker from "../calendar/month_picker.svelte";
   import {
     build_calendar_days,
@@ -402,13 +403,11 @@
       : selected_entry_keys.filter((key) => !keys.has(key));
   }
 
-  function format_time(date: Date | undefined): string {
-    if (
-      !date ||
-      (date.getHours() === 0 &&
-        date.getMinutes() === 0 &&
-        date.getSeconds() === 0)
-    ) {
+  function format_time(
+    date: Date | undefined,
+    at_midnight: boolean | undefined,
+  ): string {
+    if (!date || is_date_only(date, at_midnight)) {
       return "";
     }
     return date.toLocaleTimeString(getLocale(), {
@@ -979,9 +978,12 @@
                     />
                     <span class="min-w-0 flex-1">
                       <span class="block truncate text-sm"
-                        >{#if format_time(entry.task.due_time)}
+                        >{#if format_time(entry.task.due_time, entry.task.due_at_midnight)}
                           <span class="mr-1 text-muted-foreground"
-                            >{format_time(entry.task.due_time)}</span
+                            >{format_time(
+                              entry.task.due_time,
+                              entry.task.due_at_midnight,
+                            )}</span
                           >
                         {/if}
                         {entry.task.title || m.task_untitled()}</span

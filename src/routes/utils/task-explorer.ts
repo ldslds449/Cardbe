@@ -1,3 +1,5 @@
+import { due_limit } from "./task-date-range";
+
 export interface SearchOptions {
   candidate_limit?: number;
   result_limit?: number;
@@ -32,9 +34,15 @@ export function date_range_bounds(
 }
 
 export function is_overdue(
-  task: { due_time?: Date },
+  task: { due_time?: Date; due_at_midnight?: boolean },
   now: Date,
   archived_at?: Date,
 ): boolean {
-  return !archived_at && Boolean(task.due_time && task.due_time < now);
+  return (
+    !archived_at &&
+    Boolean(
+      task.due_time &&
+      due_limit(task.due_time, task.due_at_midnight) < now.getTime(),
+    )
+  );
 }

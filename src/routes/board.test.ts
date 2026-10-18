@@ -1000,6 +1000,52 @@ describe("Undo scope and shared Task Explorer updates", () => {
     },
   );
 
+  it("restores calendar date changes when saving the task fails", async () => {
+    const store = create_store();
+    vi.mocked(toast.error).mockClear();
+    const task = create_task(
+      "task_1",
+      "Span",
+      "",
+      "",
+      new Date(2026, 9, 19, 9),
+      new Date(2026, 9, 22, 18),
+    );
+    store.columns[0].tasks = [task];
+    let reject_update: (error: unknown) => void = () => {};
+    invoke_mock.mockImplementation((command) =>
+      command === "update_task"
+        ? new Promise((_, reject) => {
+            reject_update = reject;
+          })
+        : Promise.resolve([]),
+    );
+
+    const update = store.update_task(task.id, {
+      ...task,
+      start_time: new Date(2026, 9, 21, 9),
+      due_time: new Date(2026, 9, 24, 18),
+    });
+    expect(store.columns[0].tasks[0].start_time).toEqual(
+      new Date(2026, 9, 21, 9),
+    );
+    await vi.waitFor(() =>
+      expect(
+        invoke_mock.mock.calls.some(([command]) => command === "update_task"),
+      ).toBe(true),
+    );
+    reject_update({ code: "INTERNAL_ERROR" });
+
+    expect(await update).toBe(false);
+    expect(store.columns[0].tasks[0].start_time).toEqual(
+      new Date(2026, 9, 19, 9),
+    );
+    expect(store.columns[0].tasks[0].due_time).toEqual(
+      new Date(2026, 9, 22, 18),
+    );
+    expect(toast.error).toHaveBeenCalled();
+  });
+
   it("persists task expansion and restores it when saving fails", async () => {
     const store = create_store();
     store.can_undo = false;

@@ -11,17 +11,21 @@
   import ClockIcon from "@lucide/svelte/icons/clock";
   import XIcon from "@lucide/svelte/icons/x";
   import { CalendarDate, Time, type DateValue } from "@internationalized/date";
+  import { is_date_only } from "../utils/task-date-range";
 
   const id = $props.id();
 
   let {
     value = $bindable<Date | undefined>(),
+    at_midnight = $bindable<boolean | undefined>(),
     emptyLabel = m.task_due_none(),
     clearLabel = m.task_due_clear(),
     invalid = false,
     labelledby,
   }: {
     value?: Date;
+    /** The value is a chosen 00:00 rather than a date without a time. */
+    at_midnight?: boolean;
     emptyLabel?: string;
     clearLabel?: string;
     invalid?: boolean;
@@ -33,14 +37,10 @@
 
   let open = $state(false);
 
-  // Midnight means "date only"; the value is only written by user actions so
-  // opening a form never changes its draft.
+  // Exact midnight means "date only"; the value is only written by user
+  // actions so opening a form never changes its draft.
   const has_time = $derived(
-    value !== undefined &&
-      (value.getHours() !== 0 ||
-        value.getMinutes() !== 0 ||
-        value.getSeconds() !== 0 ||
-        value.getMilliseconds() !== 0),
+    value !== undefined && !is_date_only(value, at_midnight),
   );
   const date = $derived(
     value
@@ -57,26 +57,30 @@
       : DEFAULT_TIME,
   );
 
-  function compose(next_date: DateValue, next_time: Time | undefined): Date {
-    return new Date(
+  function set_value(next_date: DateValue, next_time: Time | undefined) {
+    value = new Date(
       next_date.year,
       next_date.month - 1,
       next_date.day,
       next_time?.hour ?? 0,
       next_time?.minute ?? 0,
     );
+    at_midnight =
+      next_time && next_time.hour === 0 && next_time.minute === 0
+        ? true
+        : undefined;
   }
 
   function set_date(next_date: DateValue | undefined) {
     if (!next_date) {
       return;
     }
-    value = compose(next_date, has_time ? time : undefined);
+    set_value(next_date, has_time ? time : undefined);
   }
 
   function set_time(next_time: Time | undefined) {
     if (date && next_time) {
-      value = compose(date, next_time);
+      set_value(date, next_time);
     }
   }
 
@@ -163,7 +167,7 @@
                 size="sm"
                 onclick={() => {
                   if (date) {
-                    value = compose(date, undefined);
+                    set_value(date, undefined);
                   }
                 }}
               >
@@ -196,7 +200,10 @@
       class="shrink-0 text-muted-foreground"
       aria-label={clearLabel}
       title={clearLabel}
-      onclick={() => (value = undefined)}
+      onclick={() => {
+        value = undefined;
+        at_midnight = undefined;
+      }}
     >
       <XIcon class="size-4" />
     </Button>

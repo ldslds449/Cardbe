@@ -15,7 +15,7 @@ function make_column(): Column {
 }
 
 describe("build_focus_groups", () => {
-  it("groups tasks by their local due date", () => {
+  it("groups tasks by their due time", () => {
     const column = make_column();
     column.tasks = [
       create_task(
@@ -55,16 +55,40 @@ describe("build_focus_groups", () => {
 
     const groups = build_focus_groups([column], new Date(2026, 6, 25, 16), "");
 
-    expect(groups.overdue.map(({ task }) => task.title)).toEqual(["Yesterday"]);
-    expect(groups.today.map(({ task }) => task.title)).toEqual([
+    expect(groups.overdue.map(({ task }) => task.title)).toEqual([
+      "Yesterday",
       "This morning",
-      "Tonight",
     ]);
+    expect(groups.today.map(({ task }) => task.title)).toEqual(["Tonight"]);
     expect(groups.upcoming.map(({ task }) => task.title)).toEqual(["Tomorrow"]);
     expect(groups.unscheduled.map(({ task }) => task.title)).toEqual([
       "Someday",
     ]);
     expect(focus_task_count(groups)).toBe(5);
+  });
+
+  it("keeps a date-only due date in today until the day ends", () => {
+    const column = make_column();
+    column.tasks = [
+      create_task(
+        "task_1",
+        "Yesterday",
+        "",
+        "",
+        undefined,
+        new Date(2026, 6, 24),
+      ),
+      create_task("task_2", "Today", "", "", undefined, new Date(2026, 6, 25)),
+    ];
+
+    const groups = build_focus_groups(
+      [column],
+      new Date(2026, 6, 25, 23, 59),
+      "",
+    );
+
+    expect(groups.overdue.map(({ task }) => task.title)).toEqual(["Yesterday"]);
+    expect(groups.today.map(({ task }) => task.title)).toEqual(["Today"]);
   });
 
   it("uses the existing full-text task search", () => {
@@ -116,7 +140,7 @@ describe("build_focus_groups", () => {
       ),
     ];
 
-    const groups = build_focus_groups([column], new Date(2026, 6, 25, 12), "");
+    const groups = build_focus_groups([column], new Date(2026, 6, 25, 8), "");
 
     expect(groups.today.map(({ task }) => task.title)).toEqual([
       "Earlier",

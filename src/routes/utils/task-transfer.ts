@@ -10,6 +10,10 @@ const BINARY_PREFIX = "cardbe-task:v1:";
 const BINARY_VERSION = 2;
 // Version 1 stored the creation time where version 2 stores the start time.
 const LEGACY_BINARY_VERSION = 1;
+// Version 2 may end with a byte of chosen-midnight flags, written only when one
+// is set.
+const START_AT_MIDNIGHT = 1;
+const DUE_AT_MIDNIGHT = 2;
 const MAX_SHARED_TEXT_LENGTH = 2_000_000;
 const MAX_DECOMPRESSED_BYTES = 8_000_000;
 const MAX_COLLECTION_ITEMS = 100_000;
@@ -93,6 +97,9 @@ class BinaryReader {
 
 function encode_task(task: Task): Uint8Array {
   const writer = new BinaryWriter();
+  const midnight_flags =
+    (task.start_time && task.start_at_midnight ? START_AT_MIDNIGHT : 0) |
+    (task.due_time && task.due_at_midnight ? DUE_AT_MIDNIGHT : 0);
   writer.byte(BINARY_VERSION);
   writer.string(task.title);
   writer.string(task.description);
@@ -117,6 +124,9 @@ function encode_task(task: Task): Uint8Array {
   writer.byte(recurrence_code);
   if (task.recurrence) {
     writer.uint32(task.recurrence.interval);
+  }
+  if (midnight_flags) {
+    writer.byte(midnight_flags);
   }
   return writer.finish();
 }
@@ -166,11 +176,13 @@ function decode_task(bytes: Uint8Array): Task {
     }
     recurrence = { frequency, interval };
   }
+  const midnight_flags =
+    version === BINARY_VERSION && !reader.done() ? reader.byte() : 0;
   if (!reader.done()) {
     throw new Error(m.task_transfer_unexpected());
   }
 
-  return create_task(
+  const task = create_task(
     "",
     title,
     description,
@@ -183,6 +195,13 @@ function decode_task(bytes: Uint8Array): Task {
     items,
     recurrence,
   );
+  if (task.start_time && midnight_flags & START_AT_MIDNIGHT) {
+    task.start_at_midnight = true;
+  }
+  if (task.due_time && midnight_flags & DUE_AT_MIDNIGHT) {
+    task.due_at_midnight = true;
+  }
+  return task;
 }
 
 async function gzip(data: Uint8Array): Promise<Uint8Array> {

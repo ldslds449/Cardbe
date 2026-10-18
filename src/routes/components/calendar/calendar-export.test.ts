@@ -17,7 +17,13 @@ function fixture() {
   const task = create_task("task_1", "Ship calendar export", "", "#3b82f6");
   task.due_time = new Date(2026, 8, 5, 9, 30);
   const column = create_column("column_1", "Doing", "", [task]);
-  const entry: CalendarTask = { task, column, archived: false, preview: false };
+  const entry: CalendarTask = {
+    task,
+    column,
+    archived: false,
+    preview: false,
+    range: { kind: "due", start_day: 0, end_day: 0, invalid: false },
+  };
   const day: CalendarDay = {
     date: new Date(2026, 8, 5),
     key: "2026-09-05",

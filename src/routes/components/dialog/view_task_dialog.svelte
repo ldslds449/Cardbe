@@ -14,6 +14,7 @@
 
   import { recurrence_label, type Task } from "../../type/task.svelte";
   import { display_task_color } from "../../utils/task-color";
+  import { is_date_only } from "../../utils/task-date-range";
   import Markdown from "../markdown.svelte";
   import ChecklistDisplay from "../task/checklist_display.svelte";
   import LabelBadge from "../label_badge.svelte";
@@ -33,6 +34,17 @@
       return m.common_not_set();
     }
     return formatDateTime(date);
+  }
+
+  // Date-only start and due values have no meaningful time to show.
+  function formatTaskDate(
+    date: Date | undefined,
+    at_midnight: boolean | undefined,
+  ): string {
+    if (date && is_date_only(date, at_midnight)) {
+      return formatDateTime(date, { dateStyle: "medium" });
+    }
+    return formatDate(date);
   }
 </script>
 
@@ -59,7 +71,7 @@
                 <span>{m.task_start_time()}</span>
               </div>
               <p class="text-sm text-muted-foreground">
-                {formatDate(task.start_time)}
+                {formatTaskDate(task.start_time, task.start_at_midnight)}
               </p>
             </div>
 
@@ -81,7 +93,7 @@
                 <span>{m.task_due_time()}</span>
               </div>
               <p class="text-sm text-muted-foreground">
-                {formatDate(task.due_time)}
+                {formatTaskDate(task.due_time, task.due_at_midnight)}
               </p>
             </div>
 

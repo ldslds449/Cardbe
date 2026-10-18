@@ -23,6 +23,7 @@
   import type { Column } from "../../type/column.svelte";
   import type { Task } from "../../type/task.svelte";
   import { display_task_color } from "../../utils/task-color";
+  import { is_date_only } from "../../utils/task-date-range";
   import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
   import LabelBadge from "../label_badge.svelte";
   import {
@@ -93,11 +94,7 @@
       day: "numeric",
       year: include_year ? "numeric" : undefined,
     });
-    const has_time =
-      task.due_time.getHours() !== 0 ||
-      task.due_time.getMinutes() !== 0 ||
-      task.due_time.getSeconds() !== 0;
-    return has_time
+    return !is_date_only(task.due_time, task.due_at_midnight)
       ? `${date}, ${task.due_time.toLocaleTimeString(getLocale(), {
           hour: "2-digit",
           minute: "2-digit",

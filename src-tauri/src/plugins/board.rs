@@ -277,7 +277,8 @@ fn resolve(reference: &Reference, columns: &HashMap<String, i64>) -> Result<i64,
     }
 }
 fn valid_task(task: &Task) -> bool {
-    valid_task_fields(task) && start_within_due(task.start_time, task.due_time)
+    valid_task_fields(task)
+        && start_within_due(task.start_time, task.due_time, task.due_at_midnight)
 }
 /// Only checks times the guest changes: a date-only due synced from another
 /// time zone is not local midnight here, so round-tripping it must not fail.
@@ -289,8 +290,9 @@ fn valid_task_update(previous: &Task, task: &Task) -> bool {
         previous.start_time
     };
     valid_task_fields(task)
-        && ((task.start_time, task.due_time) == (previous_start, previous.due_time)
-            || start_within_due(task.start_time, task.due_time))
+        && ((task.start_time, task.due_time, task.due_at_midnight)
+            == (previous_start, previous.due_time, previous.due_at_midnight)
+            || start_within_due(task.start_time, task.due_time, task.due_at_midnight))
 }
 fn valid_task_fields(task: &Task) -> bool {
     !task.title.trim().is_empty()
@@ -324,29 +326,9 @@ fn valid_task_fields(task: &Task) -> bool {
 }
 /// Mirrors the task dialog: a start may not follow the due time, and a
 /// date-only due date (local midnight) covers its whole local day.
-fn start_within_due(start: u128, due: Option<u128>) -> bool {
+fn start_within_due(start: u128, due: Option<u128>, due_at_midnight: bool) -> bool {
     let Some(due) = due else { return true };
-    start == 0 || start <= due_limit(due)
-}
-fn due_limit(due: u128) -> u128 {
-    use chrono::{Local, TimeZone, Timelike};
-    let Some(local) = i64::try_from(due)
-        .ok()
-        .and_then(|ms| Local.timestamp_millis_opt(ms).single())
-    else {
-        return due;
-    };
-    if local.num_seconds_from_midnight() != 0 || local.nanosecond() != 0 {
-        return due;
-    }
-    // Add a calendar day rather than 24 hours so DST changes match the frontend.
-    local
-        .date_naive()
-        .succ_opt()
-        .and_then(|day| day.and_hms_opt(0, 0, 0))
-        .and_then(|midnight| Local.from_local_datetime(&midnight).earliest())
-        .and_then(|end| u128::try_from(end.timestamp_millis()).ok())
-        .map_or(due, |end| end - 1)
+    start == 0 || start <= crate::task_dates::due_limit_millis(due, due_at_midnight)
 }
 pub fn prepare(
     db: &Database,
@@ -627,19 +609,22 @@ mod tests {
     #[test]
     fn start_may_not_follow_due_except_within_a_date_only_due_day() {
         let due = local_ms(2026, 7, 15, 9, 30);
-        assert!(start_within_due(0, Some(due)));
-        assert!(start_within_due(due + 1, None));
-        assert!(start_within_due(due, Some(due)));
-        assert!(!start_within_due(due + 1, Some(due)));
+        assert!(start_within_due(0, Some(due), false));
+        assert!(start_within_due(due + 1, None, false));
+        assert!(start_within_due(due, Some(due), false));
+        assert!(!start_within_due(due + 1, Some(due), false));
 
         let date_only = local_ms(2026, 7, 15, 0, 0);
         let next_day = local_ms(2026, 7, 16, 0, 0);
         assert!(start_within_due(
             local_ms(2026, 7, 15, 23, 59),
-            Some(date_only)
+            Some(date_only),
+            false
         ));
-        assert!(start_within_due(next_day - 1, Some(date_only)));
-        assert!(!start_within_due(next_day, Some(date_only)));
+        assert!(start_within_due(next_day - 1, Some(date_only), false));
+        assert!(!start_within_due(next_day, Some(date_only), false));
+        // A chosen 00:00 due is a time, not the whole day.
+        assert!(!start_within_due(date_only + 1, Some(date_only), true));
 
         let task = Task {
             title: "Plan".into(),
@@ -659,6 +644,14 @@ mod tests {
             ..task.clone()
         };
         assert!(valid_task_update(&stored, &task));
+        // Marking the unchanged due as a chosen 00:00 changes its meaning.
+        assert!(!valid_task_update(
+            &stored,
+            &Task {
+                due_at_midnight: true,
+                ..task.clone()
+            }
+        ));
         assert!(!valid_task_update(
             &stored,
             &Task {

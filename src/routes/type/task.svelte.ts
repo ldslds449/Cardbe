@@ -34,6 +34,12 @@ export interface Task {
   color: string;
   start_time: Date | undefined;
   due_time: Date | undefined;
+  /**
+   * A time at local midnight is a date without a time of day unless these
+   * mark it as a chosen 00:00; see `utils/task-date-range`.
+   */
+  start_at_midnight?: boolean;
+  due_at_midnight?: boolean;
   created_time?: Date;
   labels: string[];
   items: TaskItem[];
@@ -48,6 +54,8 @@ export interface TaskSerialized {
   color: string;
   start_time: number | undefined;
   due_time: number | undefined;
+  start_at_midnight?: boolean;
+  due_at_midnight?: boolean;
   created_time?: number;
   labels: string[];
   items?: TaskItem[];
@@ -60,6 +68,8 @@ export interface TaskSummary {
   color: string;
   start_time: Date | undefined;
   due_time: Date | undefined;
+  start_at_midnight?: boolean;
+  due_at_midnight?: boolean;
   created_time?: Date;
   labels: string[];
   recurrence: Recurrence | undefined;
@@ -71,6 +81,8 @@ export interface TaskSummarySerialized {
   color: string;
   start_time: number;
   due_time: number | undefined;
+  start_at_midnight?: boolean;
+  due_at_midnight?: boolean;
   created_time?: number;
   labels: string[];
   recurrence?: Recurrence;
@@ -128,6 +140,8 @@ export function reset_task(task: Task): void {
   task.color = "";
   task.start_time = undefined;
   task.due_time = undefined;
+  task.start_at_midnight = undefined;
+  task.due_at_midnight = undefined;
   task.created_time = undefined;
   task.labels = [];
   task.items = [];
@@ -162,6 +176,8 @@ export function task_from_template(task: Task): Task {
   const result = duplicate_task(task);
   result.start_time = undefined;
   result.due_time = undefined;
+  result.start_at_midnight = undefined;
+  result.due_at_midnight = undefined;
   result.items = result.items.map((item) => ({
     ...item,
     completed: false,
@@ -193,11 +209,22 @@ export function serialize_task(task: Task): TaskSerialized {
     color: task.color,
     start_time: task.start_time?.getTime(),
     due_time: task.due_time?.getTime(),
+    ...midnight_flags(task),
     created_time: task.created_time?.getTime(),
     labels: task.labels,
     items: task.items,
     recurrence: task.recurrence,
     pinned: task.pinned ?? false,
+  };
+}
+
+/** The flags only when set, so other tasks keep their stored shape. */
+function midnight_flags(
+  task: Pick<Task, "start_at_midnight" | "due_at_midnight">,
+): Pick<Task, "start_at_midnight" | "due_at_midnight"> {
+  return {
+    ...(task.start_at_midnight ? { start_at_midnight: true } : {}),
+    ...(task.due_at_midnight ? { due_at_midnight: true } : {}),
   };
 }
 
@@ -227,6 +254,7 @@ export function deserialize_task(data: TaskSerialized): Task {
     color: data.color,
     ...deserialize_task_times(data.start_time, data.created_time),
     due_time: data.due_time ? new Date(data.due_time) : undefined,
+    ...midnight_flags(data),
     labels: data.labels,
     items: (data.items ?? []).map((item) => ({ ...item })),
     recurrence: data.recurrence ? { ...data.recurrence } : undefined,
@@ -245,6 +273,7 @@ export function deserialize_task_summary(
     color: data.color,
     ...deserialize_task_times(data.start_time, data.created_time),
     due_time: data.due_time ? new Date(data.due_time) : undefined,
+    ...midnight_flags(data),
     labels: data.labels,
     recurrence: data.recurrence ? { ...data.recurrence } : undefined,
   };

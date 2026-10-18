@@ -43,6 +43,7 @@
   import CalendarView from "./components/calendar/calendar_view.svelte";
   import StatisticsView from "./components/statistics/statistics_view.svelte";
   import type { CalendarViewMode } from "./components/calendar/calendar";
+  import type { TaskDates } from "./utils/task-date-range";
   import FocusView from "./components/focus/focus_view.svelte";
   import NotePanel from "./components/note/note_panel.svelte";
   import CardReferencePreview from "./components/card_reference_preview.svelte";
@@ -1017,9 +1018,12 @@
     void board.update_task(task.id, updated);
   }
 
-  function reschedule_task(task: Task, due_time: Date) {
+  function reschedule_task(task: Task, dates: TaskDates) {
     const updated = clone_task(task);
-    updated.due_time = new Date(due_time);
+    updated.start_time = dates.start_time && new Date(dates.start_time);
+    updated.due_time = dates.due_time && new Date(dates.due_time);
+    updated.start_at_midnight = dates.start_at_midnight;
+    updated.due_at_midnight = dates.due_at_midnight;
     void board.update_task(task.id, updated);
   }
 

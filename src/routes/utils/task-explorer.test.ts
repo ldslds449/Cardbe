@@ -25,3 +25,15 @@ it("marks past active tasks overdue, including tasks from other boards", () => {
     false,
   );
 });
+
+it("keeps a date-only due date on time until its day ends", () => {
+  const due_time = new Date(2026, 9, 14);
+  expect(is_overdue({ due_time }, new Date(2026, 9, 14, 23, 59))).toBe(false);
+  expect(is_overdue({ due_time }, new Date(2026, 9, 15))).toBe(true);
+  expect(
+    is_overdue(
+      { due_time: new Date(2026, 9, 14, 13) },
+      new Date(2026, 9, 14, 14),
+    ),
+  ).toBe(true);
+});

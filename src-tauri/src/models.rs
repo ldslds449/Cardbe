@@ -113,6 +113,10 @@ pub struct Recurrence {
     pub interval: u32,
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Task {
     #[serde(default)]
@@ -129,6 +133,13 @@ pub struct Task {
     pub start_time: u128,
     #[serde(default)]
     pub due_time: Option<u128>,
+    /// A start at local midnight is a date without a time unless the user
+    /// chose 00:00; see `crate::task_dates`. Omitted when false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub start_at_midnight: bool,
+    /// Like `start_at_midnight`, for the due time.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub due_at_midnight: bool,
     /// Milliseconds since the Unix epoch when the task was created; `0` is unknown.
     #[serde(default)]
     pub created_time: u128,
@@ -147,6 +158,10 @@ pub struct TaskSummary {
     pub color: String,
     pub start_time: u128,
     pub due_time: Option<u128>,
+    #[serde(skip_serializing_if = "is_false")]
+    pub start_at_midnight: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub due_at_midnight: bool,
     pub created_time: u128,
     pub labels: Vec<String>,
     pub recurrence: Option<Recurrence>,
@@ -160,6 +175,8 @@ impl From<&Task> for TaskSummary {
             color: task.color.clone(),
             start_time: task.start_time,
             due_time: task.due_time,
+            start_at_midnight: task.start_at_midnight,
+            due_at_midnight: task.due_at_midnight,
             created_time: task.created_time,
             labels: task.labels.clone(),
             recurrence: task.recurrence.clone(),
@@ -177,6 +194,8 @@ impl Default for Task {
             color: String::new(),
             start_time: 0,
             due_time: None,
+            start_at_midnight: false,
+            due_at_midnight: false,
             created_time: 0,
             labels: Vec::new(),
             items: Vec::new(),

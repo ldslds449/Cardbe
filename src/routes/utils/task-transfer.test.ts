@@ -75,6 +75,30 @@ describe("task transfer", () => {
     expect(imported.due_time?.getTime()).toBe(2000);
   });
 
+  it("keeps a chosen midnight", async () => {
+    const task = create_task(
+      "",
+      "Midnight",
+      "",
+      "",
+      new Date(2026, 9, 13),
+      new Date(2026, 9, 14),
+    );
+    const plain = await parse_portable_task(
+      await serialize_portable_task(task),
+    );
+    expect(plain.start_at_midnight).toBeUndefined();
+    expect(plain.due_at_midnight).toBeUndefined();
+
+    task.due_at_midnight = true;
+    const imported = await parse_portable_task(
+      await serialize_portable_task(task),
+    );
+    expect(imported.start_at_midnight).toBeUndefined();
+    expect(imported.due_at_midnight).toBe(true);
+    expect(imported.due_time).toEqual(new Date(2026, 9, 14));
+  });
+
   it("rejects a board export", async () => {
     await expect(parse_portable_task('{"columns":[]}')).rejects.toThrow(
       /supported Cardbe task/,

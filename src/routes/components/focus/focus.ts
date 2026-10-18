@@ -1,6 +1,7 @@
 import type { Column } from "../../type/column.svelte";
 import type { Task } from "../../type/task.svelte";
-import { start_of_day, task_matches_search } from "../calendar/calendar";
+import { task_matches_search } from "../calendar/calendar";
+import { due_limit } from "../../utils/task-date-range";
 
 export interface FocusTask {
   task: Task;
@@ -32,7 +33,6 @@ export function build_focus_groups(
     upcoming: [],
     unscheduled: [],
   };
-  const today_start = start_of_day(now).getTime();
   const tomorrow_start = new Date(
     now.getFullYear(),
     now.getMonth(),
@@ -45,13 +45,15 @@ export function build_focus_groups(
         continue;
       }
 
-      const due_time = task.due_time?.getTime();
       const entry = { task, column };
-      if (due_time === undefined) {
+      if (!task.due_time) {
         groups.unscheduled.push(entry);
-      } else if (due_time < today_start) {
+      } else if (
+        due_limit(task.due_time, task.due_at_midnight) < now.getTime()
+      ) {
+        // Past its due time, or past the end of the day for a date-only due.
         groups.overdue.push(entry);
-      } else if (due_time < tomorrow_start) {
+      } else if (task.due_time.getTime() < tomorrow_start) {
         groups.today.push(entry);
       } else {
         groups.upcoming.push(entry);

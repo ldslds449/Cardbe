@@ -6,6 +6,7 @@ import { exists, writeFile } from "@tauri-apps/plugin-fs";
 import { invoke } from "@tauri-apps/api/core";
 import type { Color, PDFFont, PDFPage } from "pdf-lib";
 import type { CalendarDay, CalendarTask } from "./calendar";
+import { is_date_only } from "../../utils/task-date-range";
 
 type FontkitModule = typeof import("@pdf-lib/fontkit");
 type FontkitFont = ReturnType<FontkitModule["create"]>;
@@ -238,10 +239,8 @@ function wrap_text(
   );
 }
 
-function has_time(date: Date): boolean {
-  return (
-    date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0
-  );
+function has_time(date: Date, at_midnight: boolean | undefined): boolean {
+  return !is_date_only(date, at_midnight);
 }
 
 export function calendar_export_accent(
@@ -276,7 +275,7 @@ export function calendar_export_accent(
 function task_title(entry: CalendarTask): string {
   const due_time = entry.task.due_time;
   const time =
-    due_time && has_time(due_time)
+    due_time && has_time(due_time, entry.task.due_at_midnight)
       ? `${due_time.toLocaleTimeString(getLocale(), { hour: "2-digit", minute: "2-digit", hour12: false })}  `
       : "";
   return `${time}${entry.task.title || m.task_untitled()}`;

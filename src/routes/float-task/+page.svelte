@@ -85,7 +85,9 @@
     }
   }
 
-  const due = $derived(task?.due_time ? due_label(task.due_time, now) : null);
+  const due = $derived(
+    task?.due_time ? due_label(task.due_time, now, task.due_at_midnight) : null,
+  );
 
   const window_title = $derived(
     task

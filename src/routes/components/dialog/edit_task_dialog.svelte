@@ -48,6 +48,7 @@
     task_color_presets,
   } from "../../utils/task-color";
   import DateTimePicker from "../date_time_picker.svelte";
+  import { is_valid_date_range } from "../../utils/task-date-range";
   import SortableChecklistItem from "../task/sortable_checklist_item.svelte";
 
   type CardReferenceOption = {
@@ -88,26 +89,8 @@
   } = $props();
 
   let invalid_title = $state(false);
-  let invalid_time_range = $derived(
-    task.start_time !== undefined &&
-      task.due_time !== undefined &&
-      task.start_time.getTime() > due_limit(task.due_time),
-  );
-
   // A date-only due date covers its whole day, so a start on that day is valid.
-  function due_limit(due_time: Date): number {
-    const date_only =
-      due_time.getHours() === 0 &&
-      due_time.getMinutes() === 0 &&
-      due_time.getSeconds() === 0 &&
-      due_time.getMilliseconds() === 0;
-    if (!date_only) {
-      return due_time.getTime();
-    }
-    const end = new Date(due_time);
-    end.setDate(end.getDate() + 1);
-    return end.getTime() - 1;
-  }
+  let invalid_time_range = $derived(!is_valid_date_range(task));
   let invalid_template_name = $state(false);
   let submitting = $state(false);
   let show_saving = $state(false);
@@ -614,6 +597,7 @@
                       >
                       <DateTimePicker
                         bind:value={task.start_time}
+                        bind:at_midnight={task.start_at_midnight}
                         labelledby="task-start-label"
                         emptyLabel={m.task_start_none()}
                         clearLabel={m.task_start_clear()}
@@ -626,6 +610,7 @@
                       >
                       <DateTimePicker
                         bind:value={task.due_time}
+                        bind:at_midnight={task.due_at_midnight}
                         labelledby="task-due-label"
                         invalid={invalid_time_range}
                       />

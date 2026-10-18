@@ -2,6 +2,7 @@
   import * as m from "$lib/paraglide/messages.js";
   import { getLocale } from "$lib/i18n";
   import type { Task } from "../type/task.svelte";
+  import { is_date_only } from "../utils/task-date-range";
 
   let {
     task,
@@ -25,16 +26,20 @@
       .trim();
   }
 
-  function preview_due_time(due_time: Date | undefined): string | undefined {
+  function preview_due_time(
+    due_time: Date | undefined,
+    at_midnight: boolean | undefined,
+  ): string | undefined {
     if (!due_time) {
       return undefined;
     }
+    const date_only = is_date_only(due_time, at_midnight);
     return due_time.toLocaleString(getLocale(), {
       year: "numeric",
       month: "short",
       day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+      hour: date_only ? undefined : "2-digit",
+      minute: date_only ? undefined : "2-digit",
     });
   }
 </script>
@@ -49,10 +54,10 @@
   {#if task}
     <div class="truncate text-sm font-semibold">{task.title}</div>
     <div class="mt-0.5 text-xs text-muted-foreground">{location}</div>
-    {#if preview_due_time(task.due_time)}
+    {#if preview_due_time(task.due_time, task.due_at_midnight)}
       <div class="mt-2 text-xs">
         {m.task_due_date()}
-        {preview_due_time(task.due_time)}
+        {preview_due_time(task.due_time, task.due_at_midnight)}
       </div>
     {/if}
     {#if preview_description(task.description)}

@@ -5,21 +5,30 @@
     useDraggable,
   } from "@dnd-kit-svelte/svelte";
   import type { Snippet } from "svelte";
+  import type { CalendarDragData } from "./calendar";
 
   interface CalendarTaskDraggableProps {
     task_id: string;
     instance_key: string;
+    data: CalendarDragData;
     disabled?: boolean;
     class?: string;
+    style?: string;
+    title?: string;
+    "aria-hidden"?: boolean;
     oncontextmenu?: (event: MouseEvent) => void;
-    children: Snippet;
+    children?: Snippet;
   }
 
   let {
     task_id,
     instance_key,
+    data,
     disabled = false,
     class: class_name = "",
+    style,
+    title,
+    "aria-hidden": aria_hidden,
     oncontextmenu,
     children,
   }: CalendarTaskDraggableProps = $props();
@@ -32,6 +41,7 @@
   const { ref, isDragging } = useDraggable({
     id: () => `calendar-task:${task_id}:${instance_key}`,
     type: "calendar-task",
+    data: () => data,
     disabled: () => disabled,
     sensors: dnd_sensors,
   });
@@ -41,7 +51,10 @@
 <div
   {@attach ref}
   class={`${class_name} ${isDragging.current ? "opacity-40" : ""}`}
+  {style}
+  {title}
+  aria-hidden={aria_hidden}
   {oncontextmenu}
 >
-  {@render children()}
+  {@render children?.()}
 </div>
