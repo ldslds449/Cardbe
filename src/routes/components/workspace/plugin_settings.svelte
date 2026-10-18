@@ -36,6 +36,7 @@
     invalidPluginSettings,
     invalidPluginCredentialSettings,
     validPluginManifestVersion,
+    pluginApiVersions,
     pluginCredentialScopes,
     pluginErrorMessage,
     pluginLogMessage,
@@ -419,7 +420,7 @@
     if (
       preview.package.id !== target.id ||
       !validPluginManifestVersion(preview.package) ||
-      preview.package.api_version !== target.api_version ||
+      !pluginApiVersions.includes(preview.package.api_version) ||
       preview.package.storage_schema_version !==
         target.storage_schema_version ||
       !isNewerPluginVersion(preview.current_version, preview.package.version)
@@ -1324,7 +1325,11 @@
                 {run.id}
               </p>
               {#each run.logs as log, i (i)}<p
-                  class="whitespace-pre-wrap break-words font-mono text-xs"
+                  class={[
+                    "whitespace-pre-wrap break-words font-mono text-xs",
+                    log.level === "error" && "text-destructive",
+                    log.level === "debug" && "text-muted-foreground",
+                  ]}
                 >
                   {pluginLogMessage(log)}
                 </p>{/each}

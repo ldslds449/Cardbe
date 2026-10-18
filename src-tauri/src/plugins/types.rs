@@ -187,8 +187,12 @@ pub struct InstanceInput {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunLog {
     pub level: String,
-    pub code: String,
+    /// Allowlisted diagnostic code; absent for free-text messages (API 1.1.0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     pub count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginRun {

@@ -249,6 +249,7 @@ describe("command error boundary", () => {
       "CANCELLED",
       "WASM_TRAP",
       "INVALID_GUEST_ERROR",
+      "INVALID_CREDENTIAL",
     ]) {
       const error = {
         code: "PLUGIN_EXECUTION_FAILED",

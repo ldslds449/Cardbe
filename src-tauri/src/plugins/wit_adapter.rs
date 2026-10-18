@@ -64,24 +64,38 @@ impl From<board::ColumnInfo> for wit::ColumnInfo {
         }
     }
 }
+/// Tasks saved before creation times were recorded stored their creation time
+/// in `start_time`; they have no user-chosen start.
+fn guest_times(t: &model::Task) -> (u128, u128) {
+    if t.created_time == 0 {
+        (0, t.start_time)
+    } else {
+        (t.start_time, t.created_time)
+    }
+}
+fn optional_time(value: u128) -> Result<Option<u64>, DomainError> {
+    (value != 0)
+        .then(|| u64::try_from(value))
+        .transpose()
+        .map_err(|_| DomainError::InvalidArgument)
+}
 impl TryFrom<model::Task> for wit::Task {
     type Error = DomainError;
     fn try_from(t: model::Task) -> Result<Self, Self::Error> {
+        let (start_time, created_time) = guest_times(&t);
         Ok(Self {
             id: t.id,
             title: t.title,
             description: t.description,
             pinned: t.pinned,
             color: t.color,
-            start_time: t
-                .start_time
-                .try_into()
-                .map_err(|_| DomainError::InvalidArgument)?,
+            start_time: optional_time(start_time)?,
             due_time: t
                 .due_time
                 .map(u64::try_from)
                 .transpose()
                 .map_err(|_| DomainError::InvalidArgument)?,
+            created_time: optional_time(created_time)?,
             labels: t.labels,
             items: t
                 .items
@@ -107,8 +121,9 @@ impl From<wit::Task> for model::Task {
             description: t.description,
             pinned: t.pinned,
             color: t.color,
-            start_time: t.start_time.into(),
+            start_time: t.start_time.map_or(0, u128::from),
             due_time: t.due_time.map(u128::from),
+            // Creation time is host-stamped; guest values are ignored.
             created_time: 0,
             labels: t.labels,
             items: t
@@ -262,7 +277,7 @@ mod tests {
             color: "#123456".into(),
             start_time: 1_800_000_000_000,
             due_time: Some(1_800_000_100_000),
-            created_time: 0,
+            created_time: 1_700_000_000_000,
             labels: vec!["Label".into()],
             items: vec![model::TaskItem {
                 id: "item".into(),
@@ -275,7 +290,38 @@ mod tests {
             }),
         };
         let guest = wit::Task::try_from(task.clone()).unwrap();
-        assert_eq!(model::Task::from(guest), task);
+        assert_eq!(
+            (guest.start_time, guest.created_time),
+            (Some(1_800_000_000_000), Some(1_700_000_000_000))
+        );
+        assert_eq!(
+            model::Task::from(guest),
+            model::Task {
+                created_time: 0,
+                ..task.clone()
+            }
+        );
+        let unset = wit::Task::try_from(model::Task {
+            start_time: 0,
+            ..task.clone()
+        })
+        .unwrap();
+        assert_eq!(unset.start_time, None);
+        assert_eq!(model::Task::from(unset).start_time, 0);
+        let legacy = wit::Task::try_from(model::Task {
+            created_time: 0,
+            ..task.clone()
+        })
+        .unwrap();
+        assert_eq!(
+            (legacy.start_time, legacy.created_time),
+            (None, Some(1_800_000_000_000))
+        );
+        assert!(wit::Task::try_from(model::Task {
+            created_time: u128::MAX,
+            ..task.clone()
+        })
+        .is_err());
         assert!(wit::Task::try_from(model::Task {
             start_time: u128::MAX,
             ..task.clone()

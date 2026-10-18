@@ -3,6 +3,28 @@ import { describe, expect, it } from "vite-plus/test";
 import { create_task, create_task_item } from "../type/task.svelte";
 import { parse_portable_task, serialize_portable_task } from "./task-transfer";
 
+async function transform(
+  bytes: Uint8Array,
+  stream: CompressionStream | DecompressionStream,
+): Promise<Uint8Array> {
+  const output = new Response(stream.readable).arrayBuffer();
+  const writer = stream.writable.getWriter();
+  await writer.write(bytes);
+  await writer.close();
+  return new Uint8Array(await output);
+}
+function decode_base64url(value: string): Uint8Array {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+function encode_base64url(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 describe("task transfer", () => {
   it("round trips a task without retaining its id", async () => {
     const item = create_task_item("Ship it");
@@ -25,11 +47,32 @@ describe("task transfer", () => {
     expect(shared).not.toContain("Release");
     expect(imported.id).toBe("");
     expect(imported.title).toBe("Release");
+    expect(imported.start_time?.getTime()).toBe(1000);
     expect(imported.due_time?.getTime()).toBe(2000);
     expect(imported.labels).toEqual(["work"]);
     expect(imported.recurrence).toEqual({ frequency: "weekly", interval: 2 });
     expect(imported.items[0].text).toBe("Ship it");
     expect(imported.items[0].id).not.toBe(item.id);
+  });
+
+  it("drops the creation time that version 1 codes stored as start time", async () => {
+    const shared = await serialize_portable_task(
+      create_task("task_1", "Old", "", "", new Date(1000), new Date(2000)),
+    );
+    const prefix = "cardbe-task:v1:";
+    const bytes = await transform(
+      decode_base64url(shared.slice(prefix.length)),
+      new DecompressionStream("gzip"),
+    );
+    bytes[0] = 1;
+    const legacy =
+      prefix +
+      encode_base64url(await transform(bytes, new CompressionStream("gzip")));
+
+    const imported = await parse_portable_task(legacy);
+    expect(imported.title).toBe("Old");
+    expect(imported.start_time).toBeUndefined();
+    expect(imported.due_time?.getTime()).toBe(2000);
   });
 
   it("rejects a board export", async () => {

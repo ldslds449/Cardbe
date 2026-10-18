@@ -135,8 +135,12 @@ pub(crate) fn update_task(
     let previous = &data.columns[column].tasks[index];
     let previous_labels = previous.labels.clone();
     // Creation time is immutable once known; legacy tasks may receive one here.
+    // Legacy tasks stored their creation time in start_time, so callers that
+    // omit it (plugins) must not leave a new start time read as the creation.
     if previous.created_time != 0 {
         task.created_time = previous.created_time;
+    } else if task.created_time == 0 {
+        task.created_time = previous.start_time;
     }
     task.id = task_id;
     for label in &task.labels {
@@ -146,4 +150,57 @@ pub(crate) fn update_task(
     }
     data.columns[column].tasks[index] = task;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn board(task: Task) -> StoredData {
+        let mut data = StoredData::default();
+        data.columns.push(Column {
+            id: 1,
+            name: "Todo".into(),
+            color: String::new(),
+            sort_order: ColumnSort::Custom,
+            tasks: vec![Task { id: 2, ..task }],
+        });
+        data
+    }
+
+    #[test]
+    fn update_keeps_known_creation_time_and_resolves_legacy_creation() {
+        let mut data = board(Task {
+            created_time: 1_700_000_000_000,
+            ..Task::default()
+        });
+        let edited = Task {
+            start_time: 1_800_000_000_000,
+            created_time: 5,
+            ..Task::default()
+        };
+        update_task(&mut data, 2, edited.clone()).unwrap();
+        assert_eq!(data.columns[0].tasks[0].created_time, 1_700_000_000_000);
+
+        // A legacy start_time was the creation time; a caller without
+        // created_time must not turn its new start into the creation time.
+        let mut legacy = board(Task {
+            start_time: 1_600_000_000_000,
+            ..Task::default()
+        });
+        update_task(
+            &mut legacy,
+            2,
+            Task {
+                created_time: 0,
+                ..edited
+            },
+        )
+        .unwrap();
+        let task = &legacy.columns[0].tasks[0];
+        assert_eq!(
+            (task.start_time, task.created_time),
+            (1_800_000_000_000, 1_600_000_000_000)
+        );
+    }
 }

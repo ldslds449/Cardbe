@@ -8,6 +8,7 @@ import {
   canonicalPluginDomain,
   isNewerPluginVersion,
   validPluginManifestVersion,
+  pluginApiVersions,
 } from "$lib/plugins";
 
 const source = readFileSync(
@@ -431,6 +432,7 @@ function setupInstall(invoke: ReturnType<typeof vi.fn>) {
     "parseCommandError",
     "isNewerPluginVersion",
     "validPluginManifestVersion",
+    "pluginApiVersions",
     transpile(`
     let session = 0, installation = null, open=true, error=null,
       updateTarget=null,updatePreview=null,updateSuccess=false;
@@ -446,6 +448,7 @@ function setupInstall(invoke: ReturnType<typeof vi.fn>) {
     parseCommandError,
     isNewerPluginVersion,
     validPluginManifestVersion,
+    pluginApiVersions,
   );
 }
 
@@ -863,7 +866,7 @@ const updatePreview = {
   package: {
     id: "sample",
     version: "1.1.0",
-    api_version: "1.0.0",
+    api_version: "1.1.0",
     storage_schema_version: 1,
   },
 };
@@ -966,6 +969,16 @@ it("rejects incompatible or non-newer automatic update previews", async () => {
       token: "review-token",
     });
   }
+});
+it("accepts updates between supported plugin API versions", async () => {
+  const preview = {
+    ...updatePreview,
+    package: { ...updatePreview.package, api_version: "1.1.0" },
+  };
+  const invoke = vi.fn().mockResolvedValue({ ...updateSelection, preview });
+  const settings = setupInstall(invoke);
+  await settings.installPackage({ path: "new.zip" });
+  expect(settings.updateState().updatePreview).toEqual(preview);
 });
 it("rejects stale automatic update previews", async () => {
   const invoke = vi.fn().mockResolvedValue({

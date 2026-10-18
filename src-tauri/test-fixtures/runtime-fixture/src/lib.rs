@@ -53,6 +53,42 @@ mod fixture {
                         cursor: Some("next".into()),
                     });
                 }
+                "http-request-success" | "http-request-recover" | "http-request-denied" => {
+                    use cardbe::plugin::types::{HttpMethod, HttpRequest};
+                    let mut request = HttpRequest {
+                        method: HttpMethod::Put,
+                        url: "https://api.example.com/items/1".into(),
+                        headers: vec![
+                            ("Content-Type".into(), "application/json".into()),
+                            ("If-Match".into(), "\"v1\"".into()),
+                        ],
+                        body: Some(b"{\"done\":true}".to_vec()),
+                    };
+                    if context.config_json == "http-request-denied" {
+                        request
+                            .headers
+                            .push(("Authorization".into(), "Bearer guest".into()));
+                    }
+                    // Recoverable failures leave the run usable; policy failures do not.
+                    let title = match cardbe::plugin::host::http_send(&request) {
+                        Ok(response) => format!("HTTP {}", response.status),
+                        Err(code) => format!("Recovered {code}"),
+                    };
+                    return Ok(RunOutput {
+                        changeset: None,
+                        tasks: vec![cardbe::plugin::types::ExternalTask {
+                            external_key: "fixture:request".into(),
+                            title,
+                            description: String::new(),
+                            url: String::new(),
+                            state: "open".into(),
+                            labels: vec![],
+                            updated_at: String::new(),
+                            column_id: 1,
+                        }],
+                        cursor: None,
+                    });
+                }
                 "board-changeset" | "board-post" | "board-post-catch" | "mixed"
                 | "schedule-changeset" | "typed-mutations" => {
                     if context.config_json == "schedule-changeset" {
@@ -180,6 +216,37 @@ mod fixture {
                         }),
                         cursor: Some("next".into()),
                     });
+                }
+                "logs-error" => {
+                    cardbe::plugin::host::log("ALLOWED_LOG", 3);
+                    return Err(PluginError {
+                        code: "HTTP_FAILED".into(),
+                        retry_after_seconds: None,
+                    });
+                }
+                "messages" => {
+                    use cardbe::plugin::host::log_message;
+                    use cardbe::plugin::types::LogLevel;
+                    log_message(LogLevel::Info, "fetched 3 items\nnext page");
+                    log_message(LogLevel::Warn, "token=fixture-secret\u{1b}[31m");
+                    log_message(LogLevel::Debug, &format!("{}權", "x".repeat(1022)));
+                    for _ in 0..300 {
+                        log_message(LogLevel::Error, "spam");
+                    }
+                    return Err(PluginError {
+                        code: "HTTP_FAILED".into(),
+                        retry_after_seconds: None,
+                    });
+                }
+                "logs-trap" => {
+                    cardbe::plugin::host::log("ALLOWED_LOG", 2);
+                    panic!("test trap after log");
+                }
+                "logs-loop" => {
+                    cardbe::plugin::host::log("ALLOWED_LOG", 1);
+                    loop {
+                        std::hint::spin_loop();
+                    }
                 }
                 "unknown-error" => {
                     return Err(PluginError {

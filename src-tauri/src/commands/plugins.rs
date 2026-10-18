@@ -185,10 +185,12 @@ fn release_version(value: &str) -> Option<[u64; 3]> {
         parts[2].parse().ok()?,
     ])
 }
+/// 1.1.0 changed the task record, so draft 1.0.0 components are not supported.
+const SUPPORTED_API_VERSIONS: [&str; 1] = ["1.1.0"];
 fn validate_update(old: &PluginPackage, new: &PluginPackage) -> Result<(), CommandError> {
     if old.id != new.id
         || !crate::plugins::credentials::valid_rules(new)
-        || old.api_version != new.api_version
+        || !SUPPORTED_API_VERSIONS.contains(&new.api_version.as_str())
         || old.storage_schema_version != new.storage_schema_version
     {
         return Err(CommandError::InvalidArgument);
@@ -419,14 +421,37 @@ pub async fn confirm_plugin_update(
     .await
     .map_err(CommandError::internal)?
 }
+/// Defaults must be values that saving an instance would accept for the field type.
+/// Board and column IDs are device-specific, so only their integer shape is checked here.
+fn valid_default(field: &SettingField) -> bool {
+    let Some(value) = field.default.as_ref().filter(|value| !value.is_null()) else {
+        return true;
+    };
+    match field.kind.as_str() {
+        "text" => value.as_str().is_some_and(|s| s.len() <= 4096),
+        "number" => value.as_f64().is_some_and(|n| {
+            n.is_finite()
+                && field.min.is_none_or(|min| n >= min)
+                && field.max.is_none_or(|max| n <= max)
+        }),
+        "boolean" => value.is_boolean(),
+        "select" => value
+            .as_str()
+            .is_some_and(|s| field.options.iter().any(|option| option.value == s)),
+        "board" | "column" => value.is_i64(),
+        _ => false,
+    }
+}
 fn parse_package(bytes: &[u8]) -> Result<PluginPackage, CommandError> {
     if bytes.len() > 65536 {
         return Err(CommandError::InvalidArgument);
     }
     let package: PluginPackage =
         serde_json::from_slice(bytes).map_err(|_| CommandError::InvalidArgument)?;
+    // Installed versions must stay comparable so later in-place updates remain possible.
     if !valid_id(&package.id)
-        || package.api_version != "1.0.0"
+        || release_version(&package.version).is_none()
+        || !SUPPORTED_API_VERSIONS.contains(&package.api_version.as_str())
         || package.storage_schema_version != 1
         || package.settings.len() > 32
         || !valid_domains(&package.domains)
@@ -469,6 +494,7 @@ fn parse_package(bytes: &[u8]) -> Result<PluginPackage, CommandError> {
             || f.min.is_some_and(|m| !m.is_finite())
             || f.max.is_some_and(|m| !m.is_finite())
             || f.min.zip(f.max).is_some_and(|(min, max)| min > max)
+            || !valid_default(f)
         {
             return Err(CommandError::InvalidArgument);
         }
@@ -1076,7 +1102,7 @@ mod tests {
         parse_package(
             &serde_json::to_vec(&serde_json::json!({
                 "id":"example", "name":"Example", "version":version,
-                "api_version":"1.0.0", "storage_schema_version":1,
+                "api_version":"1.1.0", "storage_schema_version":1,
             }))
             .unwrap(),
         )
@@ -1149,17 +1175,69 @@ mod tests {
         ] {
             assert!(release_version(version).is_none());
         }
-        for field in ["id", "api_version", "storage_schema_version"] {
+        for (field, api_version) in [
+            ("id", ""),
+            ("api_version", "2.0.0"),
+            ("api_version", "1.0.0"),
+            ("storage_schema_version", ""),
+        ] {
             let mut next = package("2.0.0");
             match field {
                 "id" => next.id = "other".into(),
-                "api_version" => next.api_version = "2.0.0".into(),
+                "api_version" => next.api_version = api_version.into(),
                 _ => next.storage_schema_version = 2,
             }
             assert!(matches!(
                 validate_update(&old, &next),
                 Err(CommandError::InvalidArgument)
             ));
+        }
+        assert!(validate_update(&old, &package("2.0.0")).is_ok());
+    }
+    #[test]
+    fn install_requires_updatable_versions_and_typed_setting_defaults() {
+        let base = serde_json::json!({
+            "id":"example", "name":"Example", "version":"1.0.0",
+            "api_version":"1.1.0", "storage_schema_version":1,
+        });
+        for version in ["v1.0.0", "1.0", "1.0.0-beta", "01.0.0", ""] {
+            let mut manifest = base.clone();
+            manifest["version"] = version.into();
+            assert!(
+                parse_package(&serde_json::to_vec(&manifest).unwrap()).is_err(),
+                "{version}"
+            );
+        }
+        let field = |kind: &str, default: serde_json::Value| {
+            let mut manifest = base.clone();
+            manifest["settings"] = serde_json::json!([{
+                "key":"field", "label":"Field", "type":kind, "min":1, "max":10,
+                "options":[{"value":"open","label":"Open"}], "default":default,
+            }]);
+            parse_package(&serde_json::to_vec(&manifest).unwrap())
+        };
+        for (kind, default) in [
+            ("text", serde_json::json!("value")),
+            ("text", serde_json::Value::Null),
+            ("number", serde_json::json!(5)),
+            ("boolean", serde_json::json!(true)),
+            ("select", serde_json::json!("open")),
+            ("board", serde_json::json!(1)),
+            ("column", serde_json::json!(2)),
+        ] {
+            assert!(field(kind, default.clone()).is_ok(), "{kind} {default}");
+        }
+        for (kind, default) in [
+            ("text", serde_json::json!(5)),
+            ("text", serde_json::json!("x".repeat(4097))),
+            ("number", serde_json::json!("5")),
+            ("number", serde_json::json!(11)),
+            ("boolean", serde_json::json!("true")),
+            ("select", serde_json::json!("closed")),
+            ("board", serde_json::json!("1")),
+            ("column", serde_json::json!(1.5)),
+        ] {
+            assert!(field(kind, default.clone()).is_err(), "{kind} {default}");
         }
     }
     #[test]
@@ -1320,7 +1398,7 @@ mod tests {
     }
     #[test]
     fn plugin_update_requires_review_for_settings_and_credential_scope_changes() {
-        let old = parse_package(br#"{"id":"example","name":"Example","version":"1.0.0","api_version":"1.0.0","storage_schema_version":1,"domains":["api.example.com"],"settings":[{"key":"token","type":"secret","label":"Token","required":true}]}"#).unwrap();
+        let old = parse_package(br#"{"id":"example","name":"Example","version":"1.0.0","api_version":"1.1.0","storage_schema_version":1,"domains":["api.example.com"],"settings":[{"key":"token","type":"secret","label":"Token","required":true}]}"#).unwrap();
         let mut next = old.clone();
         next.version = "1.1.0".into();
         assert!(!update_requires_review(&old, &next));
@@ -1380,7 +1458,7 @@ mod tests {
     #[test]
     fn domain_approval_is_persisted_scoped_and_validated_and_declining_pauses() {
         let package: PluginPackage = serde_json::from_value(serde_json::json!({
-            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.0.0",
+            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.1.0",
             "storage_schema_version":1, "domains":["api.example.com"]
         }))
         .unwrap();
@@ -1452,7 +1530,7 @@ mod tests {
     #[test]
     fn custom_port_pending_requests_and_grants_survive_restart_and_revocation() {
         let package: PluginPackage = serde_json::from_value(serde_json::json!({
-            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.0.0",
+            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.1.0",
             "storage_schema_version":1, "domains":["api.example.com:8443"]
         }))
         .unwrap();
@@ -1516,7 +1594,7 @@ mod tests {
     fn custom_hosts_require_manifest_opt_in_and_valid_explicit_grants() {
         let mut package: PluginPackage = serde_json::from_value(serde_json::json!({
             "id": "fixture", "name": "Fixture", "version": "1.0.0",
-            "api_version": "1.0.0", "storage_schema_version": 1,
+            "api_version": "1.1.0", "storage_schema_version": 1,
             "domains": ["api.example.com"]
         }))
         .unwrap();
@@ -1571,7 +1649,7 @@ mod tests {
     #[test]
     fn explicit_credential_rules_allow_multiple_secrets_and_require_update_review() {
         let mut manifest = serde_json::json!({
-            "id":"scoped", "name":"Scoped", "version":"1.0.0", "api_version":"1.0.0", "storage_schema_version":1,
+            "id":"scoped", "name":"Scoped", "version":"1.0.0", "api_version":"1.1.0", "storage_schema_version":1,
             "domains":["fixed.example.com"], "allow_custom_domains":true,
             "settings":[{"key":"base_url","type":"text","label":"URL"},{"key":"token","type":"secret","label":"Token"},{"key":"admin_token","type":"secret","label":"Admin token"}],
             "http_credentials":[
@@ -1694,7 +1772,7 @@ mod tests {
     #[test]
     fn credential_review_never_reactivates_secrets_that_were_not_reentered() {
         let package: PluginPackage = serde_json::from_value(serde_json::json!({
-            "id":"fixture", "name":"Fixture", "version":"1.0.0", "api_version":"1.0.0", "storage_schema_version":1,
+            "id":"fixture", "name":"Fixture", "version":"1.0.0", "api_version":"1.1.0", "storage_schema_version":1,
             "http_credentials":[], "settings":[{"key":"token","type":"secret","label":"Token"},{"key":"other_token","type":"secret","label":"Other"}]
         })).unwrap();
         let mut previous = instance();

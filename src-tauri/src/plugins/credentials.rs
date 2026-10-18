@@ -290,7 +290,7 @@ mod tests {
 
     fn package() -> PluginPackage {
         serde_json::from_value(json!({
-            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.0.0", "storage_schema_version":1,
+            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.1.0", "storage_schema_version":1,
             "domains":["fixed.example.com"], "allow_custom_domains":true,
             "settings":[{"key":"base_url","type":"text","label":"URL"},{"key":"token","type":"secret","label":"Token"}],
             "http_credentials":[

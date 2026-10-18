@@ -19,7 +19,7 @@ const credentialPackage: PluginPackage = {
   id: "scoped",
   name: "Scoped",
   version: "1.0.0",
-  api_version: "1.0.0",
+  api_version: "1.1.0",
   storage_schema_version: 1,
   description: null,
   domains: ["fixed.example.com"],
@@ -417,6 +417,17 @@ describe("plugin settings", () => {
           ).toContain(formatNumber(count));
         }
         expect(
+          pluginLogMessage({
+            level: "warn",
+            count: 0,
+            message: "page 2\nrate limited",
+          }),
+        ).toBe(
+          catalog.plugin_log_text
+            .replace("{level}", catalog.plugin_log_level_warn)
+            .replace("{message}", "page 2\nrate limited"),
+        );
+        expect(
           pluginErrorMessage({
             code: "PLUGIN_ERROR",
             plugin_id: "untrusted",
@@ -462,17 +473,21 @@ describe("plugin settings", () => {
     expect(
       invalidPluginSettings(fields, { ...config, limit: 11 }, {}, ["token"]),
     ).toEqual(["limit"]);
-    for (const token of ["tab\tand space ~", "x".repeat(8192)]) {
+    for (const token of [
+      "tab\tand space ~",
+      "權杖",
+      "café",
+      "x".repeat(8192),
+      "權".repeat(2730),
+    ]) {
       expect(invalidPluginSettings(fields, config, { token }, [])).toEqual([]);
     }
     for (const token of [
       "bad\r\nX-Injected: yes",
       "bad\0",
       "del\x7f",
-      "權杖",
-      "café",
-      "emoji😀",
       "x".repeat(8193),
+      "權".repeat(2731),
     ]) {
       expect(invalidPluginSettings(fields, config, { token }, [])).toEqual([
         "token",

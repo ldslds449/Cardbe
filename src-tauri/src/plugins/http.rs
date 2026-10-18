@@ -85,7 +85,7 @@ impl HttpPolicy {
             ("authorization", format!("Bearer {token}"))
         };
         let mut value = reqwest::header::HeaderValue::from_str(&value)
-            .map_err(|_| RuntimeError::PermissionDenied)?;
+            .map_err(|_| RuntimeError::InvalidCredential)?;
         // Keep credentials out of header debug output and HTTP/2 header compression.
         value.set_sensitive(true);
         Ok(Some((
@@ -123,51 +123,116 @@ pub(super) fn request_url(value: &str) -> Result<Url, RuntimeError> {
     }
     Ok(url)
 }
-pub(crate) async fn get(
-    value: &str,
-    policy: &HttpPolicy,
-    cancel: Arc<AtomicBool>,
-    deadline: Instant,
-) -> Result<super::runtime::bindings::cardbe::plugin::types::HttpResponse, RuntimeError> {
-    send(value, None, policy, cancel, deadline).await
+/// One guest HTTP request. Legacy GET/POST use the same validation and transport.
+#[derive(Clone, Debug)]
+pub(crate) struct Outgoing {
+    pub method: reqwest::Method,
+    pub headers: Vec<(String, String)>,
+    pub body: Option<Vec<u8>>,
 }
-pub(crate) fn validate_post(content_type: &str, body: &[u8]) -> Result<(), RuntimeError> {
-    if body.len() > 10 * 1024 * 1024 {
+impl Outgoing {
+    pub(crate) fn get() -> Self {
+        Self {
+            method: reqwest::Method::GET,
+            headers: vec![],
+            body: None,
+        }
+    }
+    pub(crate) fn post(content_type: &str, body: &[u8]) -> Self {
+        Self {
+            method: reqwest::Method::POST,
+            headers: vec![("Content-Type".into(), content_type.into())],
+            body: Some(body.to_vec()),
+        }
+    }
+}
+const BODY_LIMIT: usize = 10 * 1024 * 1024;
+/// Guest headers may not replace host-managed, transport, or credential headers.
+fn guest_header(name: &str, policy: &HttpPolicy) -> bool {
+    let lower = name.to_ascii_lowercase();
+    (matches!(lower.as_str(), "accept" | "content-type")
+        || (lower != "expect" && super::credentials::valid_header_name(name)))
+        && !policy
+            .credential_scopes
+            .iter()
+            .flatten()
+            .filter_map(|scope| match &scope.auth {
+                Some(super::types::HttpAuth::Header { name, .. }) => Some(name),
+                _ => None,
+            })
+            .any(|credential| credential.eq_ignore_ascii_case(name))
+}
+pub(crate) fn validate_request(
+    request: &Outgoing,
+    policy: &HttpPolicy,
+) -> Result<(), RuntimeError> {
+    if request
+        .body
+        .as_ref()
+        .is_some_and(|body| body.len() > BODY_LIMIT)
+        || request.headers.len() > 32
+        || request
+            .headers
+            .iter()
+            .map(|(name, value)| name.len() + value.len())
+            .sum::<usize>()
+            > 32 * 1024
+    {
         return Err(RuntimeError::ResourceLimit);
     }
-    if content_type.is_empty()
-        || content_type.len() > 256
-        || reqwest::header::HeaderValue::from_str(content_type).is_err()
+    let mut names = std::collections::HashSet::new();
+    for (name, value) in &request.headers {
+        if !names.insert(name.to_ascii_lowercase())
+            || !guest_header(name, policy)
+            || value.len() > 8192
+            || reqwest::header::HeaderValue::from_str(value).is_err()
+        {
+            return Err(RuntimeError::PermissionDenied);
+        }
+    }
+    let content_type = request
+        .headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        .map(|(_, value)| value);
+    if request.method == reqwest::Method::GET && request.body.is_some()
+        || request.body.is_some()
+            && content_type.is_none_or(|value| value.is_empty() || value.len() > 256)
     {
         return Err(RuntimeError::PermissionDenied);
     }
     Ok(())
 }
-pub(crate) async fn post(
+pub(crate) async fn request(
     value: &str,
-    content_type: &str,
-    body: &[u8],
+    outgoing: &Outgoing,
     policy: &HttpPolicy,
     cancel: Arc<AtomicBool>,
     deadline: Instant,
 ) -> Result<super::runtime::bindings::cardbe::plugin::types::HttpResponse, RuntimeError> {
-    validate_post(content_type, body)?;
-    send(value, Some((content_type, body)), policy, cancel, deadline).await
+    validate_request(outgoing, policy)?;
+    send(value, outgoing, policy, cancel, deadline).await
 }
 fn build_request(
     client: &Client,
     url: Url,
-    post: Option<(&str, &[u8])>,
+    outgoing: &Outgoing,
     policy: &HttpPolicy,
 ) -> Result<reqwest::RequestBuilder, RuntimeError> {
-    let mut request = match post {
-        Some((content_type, body)) => client
-            .post(url.clone())
-            .header("Content-Type", content_type)
-            .body(body.to_vec()),
-        None => client.get(url.clone()),
+    let mut request = client.request(outgoing.method.clone(), url.clone());
+    if !outgoing
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("accept"))
+    {
+        request = request.header("Accept", "application/json");
     }
-    .header("Accept", "application/json");
+    for (name, value) in &outgoing.headers {
+        request = request.header(name.as_str(), value.as_str());
+    }
+    if let Some(body) = &outgoing.body {
+        request = request.body(body.clone());
+    }
     if let Some((name, value)) = policy.request_auth(&url)? {
         request = request.header(name, value);
     }
@@ -175,7 +240,7 @@ fn build_request(
 }
 async fn send(
     value: &str,
-    post: Option<(&str, &[u8])>,
+    outgoing: &Outgoing,
     policy: &HttpPolicy,
     cancel: Arc<AtomicBool>,
     deadline: Instant,
@@ -202,7 +267,7 @@ async fn send(
                 .resolve_to_addrs(host, &addresses)
                 .build()
                 .map_err(|_| RuntimeError::Network)?;
-            build_request(&client, url, post, policy)?
+            build_request(&client, url, outgoing, policy)?
                 .send()
                 .await
                 .map_err(|_| RuntimeError::Network)
@@ -251,7 +316,10 @@ async fn get_with<
             return Err(RuntimeError::PermissionDenied);
         }
         let mut response = request(url, addresses).await?;
-        if response.status().is_redirection() {
+        // 304 answers a conditional request and is not a redirect.
+        if response.status().is_redirection()
+            && response.status() != reqwest::StatusCode::NOT_MODIFIED
+        {
             return Err(RuntimeError::PermissionDenied);
         }
         let headers = [
@@ -260,6 +328,9 @@ async fn get_with<
             "x-ratelimit-remaining",
             "x-ratelimit-reset",
             "content-type",
+            "etag",
+            "last-modified",
+            "location",
         ]
         .into_iter()
         .filter_map(|name| {
@@ -326,7 +397,7 @@ mod tests {
         let request = build_request(
             &client,
             Url::parse("https://api.github.com/items").unwrap(),
-            Some(("application/json", body)),
+            &legacy(Some(("application/json", body))),
             &policy,
         )
         .unwrap()
@@ -340,21 +411,143 @@ mod tests {
         let custom = build_request(
             &client,
             Url::parse("https://custom.example.com/items").unwrap(),
-            Some(("application/json", body)),
+            &legacy(Some(("application/json", body))),
             &policy,
         )
         .unwrap()
         .build()
         .unwrap();
         assert!(!custom.headers().contains_key("authorization"));
-        assert!(validate_post("application/json", &vec![0; 10 * 1024 * 1024]).is_ok());
+        let policy = HttpPolicy::default();
+        assert!(validate_request(
+            &Outgoing::post("application/json", &vec![0; BODY_LIMIT]),
+            &policy
+        )
+        .is_ok());
         assert!(matches!(
-            validate_post("application/json", &vec![0; 10 * 1024 * 1024 + 1]),
+            validate_request(
+                &Outgoing::post("application/json", &vec![0; BODY_LIMIT + 1]),
+                &policy
+            ),
             Err(RuntimeError::ResourceLimit)
         ));
         for invalid in ["", "application/json\r\nAuthorization: injected"] {
-            assert!(validate_post(invalid, body).is_err());
+            assert!(validate_request(&Outgoing::post(invalid, body), &policy).is_err());
         }
+    }
+    fn legacy(post: Option<(&str, &[u8])>) -> Outgoing {
+        post.map_or_else(Outgoing::get, |(content_type, body)| {
+            Outgoing::post(content_type, body)
+        })
+    }
+    fn send_request(
+        method: reqwest::Method,
+        headers: &[(&str, &str)],
+        body: Option<&[u8]>,
+    ) -> Outgoing {
+        Outgoing {
+            method,
+            headers: headers
+                .iter()
+                .map(|(name, value)| ((*name).into(), (*value).into()))
+                .collect(),
+            body: body.map(<[u8]>::to_vec),
+        }
+    }
+    #[test]
+    fn http_send_methods_carry_guest_headers_without_overriding_host_or_credential_headers() {
+        use reqwest::Method;
+        let mut policy = scoped_policy();
+        policy
+            .credential_scopes
+            .as_mut()
+            .unwrap()
+            .push(CredentialScope {
+                domain: "custom.example.com".into(),
+                path_prefix: "/keys".into(),
+                auth: Some(HttpAuth::Header {
+                    name: "X-API-Key".into(),
+                    secret: "token".into(),
+                }),
+            });
+        let client = Client::builder().no_proxy().build().unwrap();
+        for method in [Method::PUT, Method::PATCH, Method::DELETE, Method::POST] {
+            let outgoing = send_request(
+                method.clone(),
+                &[
+                    ("Content-Type", "application/merge-patch+json"),
+                    ("Accept", "application/vnd.github+json"),
+                    ("If-Match", "\"v1\""),
+                    ("X-GitHub-Api-Version", "2022-11-28"),
+                ],
+                Some(b"{}"),
+            );
+            validate_request(&outgoing, &policy).unwrap();
+            let request = build_request(
+                &client,
+                Url::parse("https://custom.example.com/api/tasks/1").unwrap(),
+                &outgoing,
+                &policy,
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+            assert_eq!(request.method(), method);
+            let headers = request.headers();
+            assert_eq!(headers.get_all("accept").iter().count(), 1);
+            assert_eq!(headers["accept"], "application/vnd.github+json");
+            assert_eq!(headers["content-type"], "application/merge-patch+json");
+            assert_eq!(headers["if-match"], "\"v1\"");
+            assert_eq!(headers["x-github-api-version"], "2022-11-28");
+            assert_eq!(headers["authorization"], "Bearer fixture-token");
+        }
+        let delete = send_request(Method::DELETE, &[], None);
+        validate_request(&delete, &policy).unwrap();
+        let request = build_request(
+            &client,
+            Url::parse("https://custom.example.com/api/tasks/1").unwrap(),
+            &delete,
+            &policy,
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+        assert_eq!(request.headers()["accept"], "application/json");
+        assert!(request.body().is_none());
+        for (method, headers, body) in [
+            (
+                Method::GET,
+                vec![("Content-Type", "application/json")],
+                Some(&b"{}"[..]),
+            ),
+            (Method::PUT, vec![], Some(&b"{}"[..])),
+            (Method::PUT, vec![("Content-Type", "")], Some(&b"{}"[..])),
+            (Method::PATCH, vec![("Authorization", "Bearer guest")], None),
+            (Method::PATCH, vec![("x-api-key", "guest")], None),
+            (Method::PATCH, vec![("Cookie", "a=b")], None),
+            (Method::PATCH, vec![("Host", "evil.example")], None),
+            (Method::PATCH, vec![("Expect", "100-continue")], None),
+            (Method::PATCH, vec![("Sec-Fetch-Site", "none")], None),
+            (Method::PATCH, vec![("Bad Name", "x")], None),
+            (Method::PATCH, vec![("X-Value", "a\r\nInjected: yes")], None),
+            (Method::PATCH, vec![("X-Dup", "a"), ("x-dup", "b")], None),
+        ] {
+            assert!(
+                matches!(
+                    validate_request(&send_request(method, &headers, body), &policy),
+                    Err(RuntimeError::PermissionDenied)
+                ),
+                "{headers:?}"
+            );
+        }
+        let many: Vec<_> = (0..33)
+            .map(|i| (format!("X-{i}"), "v".to_owned()))
+            .collect();
+        let many: Vec<_> = many.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+        assert!(matches!(
+            validate_request(&send_request(Method::GET, &many, None), &policy),
+            Err(RuntimeError::ResourceLimit)
+        ));
     }
     fn deadline() -> Instant {
         Instant::now() + Duration::from_secs(3)
@@ -385,7 +578,7 @@ mod tests {
         let url = authorized_url("https://api.github.com:8443/path", &policy).unwrap();
         let client = Client::new();
         for body in [None, Some(("application/json", b"{}".as_slice()))] {
-            let request = build_request(&client, url.clone(), body, &policy)
+            let request = build_request(&client, url.clone(), &legacy(body), &policy)
                 .unwrap()
                 .build()
                 .unwrap();
@@ -583,10 +776,11 @@ mod tests {
             ("https://fixed.example.com/api/tasks", None),
         ] {
             for post in [None, Some(("application/json", b"{}".as_slice()))] {
-                let request = build_request(&client, Url::parse(url).unwrap(), post, &policy)
-                    .unwrap()
-                    .build()
-                    .unwrap();
+                let request =
+                    build_request(&client, Url::parse(url).unwrap(), &legacy(post), &policy)
+                        .unwrap()
+                        .build()
+                        .unwrap();
                 assert_eq!(
                     request
                         .headers()
@@ -606,7 +800,7 @@ mod tests {
         let request = build_request(
             &client,
             Url::parse("https://custom.example.com:8443/api/tasks").unwrap(),
-            None,
+            &Outgoing::get(),
             &policy,
         )
         .unwrap()
@@ -649,7 +843,7 @@ mod tests {
             |_, _| async { panic!("no HTTP for invalid header") },
         )
         .await;
-        assert!(matches!(result, Err(RuntimeError::PermissionDenied)));
+        assert!(matches!(result, Err(RuntimeError::InvalidCredential)));
     }
 
     #[test]
@@ -690,10 +884,11 @@ mod tests {
             ("https://custom.example.com:444/api/tasks", None),
         ] {
             for body in [None, Some(("application/json", &b"{}"[..]))] {
-                let request = build_request(&client, Url::parse(url).unwrap(), body, &policy)
-                    .unwrap()
-                    .build()
-                    .unwrap();
+                let request =
+                    build_request(&client, Url::parse(url).unwrap(), &legacy(body), &policy)
+                        .unwrap()
+                        .build()
+                        .unwrap();
                 assert_eq!(
                     request
                         .headers()
@@ -951,6 +1146,41 @@ mod tests {
         for bytes in [b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\nLocation: http://127.0.0.1/private\r\n\r\n".to_vec(),b"HTTP/1.1 200 OK\r\nContent-Length: 2097153\r\n\r\n".to_vec(),[b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec(),vec![b'x';2097153]].concat()] {
             let result=get_with("https://api.github.com",&policy(),cancel(),deadline(),|_|async {Ok(vec!["93.184.216.34:443".parse().unwrap()])},|_,_|async {Ok(mock_response(bytes).await)}).await;
             assert!(matches!(result,Err(RuntimeError::PermissionDenied|RuntimeError::ResourceLimit)),"{result:?}");
+        }
+    }
+    #[tokio::test]
+    async fn conditional_and_created_responses_expose_cache_and_location_headers() {
+        for (bytes, status) in [
+            (
+                b"HTTP/1.1 304 Not Modified\r\nETag: \"v2\"\r\nLast-Modified: Sat, 17 Oct 2026 00:00:00 GMT\r\nSet-Cookie: secret=1\r\n\r\n".to_vec(),
+                304,
+            ),
+            (
+                b"HTTP/1.1 201 Created\r\nContent-Length: 0\r\nLocation: /items/2\r\nETag: \"v1\"\r\n\r\n".to_vec(),
+                201,
+            ),
+        ] {
+            let response = get_with(
+                "https://api.github.com",
+                &policy(),
+                cancel(),
+                deadline(),
+                |_| async { Ok(vec!["93.184.216.34:443".parse().unwrap()]) },
+                |_, _| async { Ok(mock_response(bytes).await) },
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status, status);
+            let names: Vec<_> = response.headers.iter().map(|(name, _)| name.as_str()).collect();
+            assert!(names.contains(&"etag"));
+            assert!(!names.contains(&"set-cookie"));
+            if status == 304 {
+                assert!(names.contains(&"last-modified"));
+            } else {
+                assert!(response
+                    .headers
+                    .contains(&("location".into(), "/items/2".into())));
+            }
         }
     }
     #[tokio::test]

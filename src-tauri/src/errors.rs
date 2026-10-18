@@ -335,6 +335,7 @@ pub enum PluginFailureReason {
     Cancelled,
     WasmTrap,
     InvalidGuestError,
+    InvalidCredential,
 }
 
 #[allow(dead_code)]

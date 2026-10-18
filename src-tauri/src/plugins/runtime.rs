@@ -37,11 +37,17 @@ pub struct ExternalTask {
     pub updated_at: String,
     pub column_id: i64,
 }
+/// Either an allowlisted diagnostic code with a count, or a sanitized free-text message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RuntimeLog {
-    pub code: String,
+    pub level: String,
+    pub code: Option<String>,
     pub count: u32,
+    pub message: Option<String>,
 }
+const MESSAGE_BYTES: usize = 1024;
+const MESSAGE_COUNT: usize = 200;
+const MESSAGE_TOTAL_BYTES: usize = 64 * 1024;
 pub struct RuntimeOutput {
     pub changeset: Option<super::board::ChangeSet>,
     pub snapshot_version: String,
@@ -53,6 +59,8 @@ pub struct RuntimeOutput {
 pub enum RuntimeError {
     InvalidComponent,
     PermissionDenied,
+    /// A stored credential cannot be sent as an HTTP header value.
+    InvalidCredential,
     AuthorizationRequired(String),
     Network,
     ResourceLimit,
@@ -69,6 +77,7 @@ impl RuntimeError {
         match self {
             Self::InvalidComponent => "INVALID_COMPONENT",
             Self::PermissionDenied => "PERMISSION_DENIED",
+            Self::InvalidCredential => "INVALID_CREDENTIAL",
             Self::AuthorizationRequired(_) => "PERMISSION_DENIED",
             Self::Network => "NETWORK_FAILED",
             Self::ResourceLimit => "RESOURCE_LIMIT",
@@ -96,6 +105,8 @@ struct HostState {
     deadline: Instant,
     handle: tokio::runtime::Handle,
     logs: Vec<RuntimeLog>,
+    messages: usize,
+    message_bytes: usize,
     requests: usize,
     request_bytes: usize,
     response_bytes: usize,
@@ -234,7 +245,7 @@ impl bindings::cardbe::plugin::host::Host for HostState {
         &mut self,
         url: String,
     ) -> Result<bindings::cardbe::plugin::types::HttpResponse, String> {
-        self.request(&url, None)
+        self.request(&url, http::Outgoing::get(), false)
     }
     fn http_post(
         &mut self,
@@ -242,27 +253,103 @@ impl bindings::cardbe::plugin::host::Host for HostState {
         content_type: String,
         body: Vec<u8>,
     ) -> Result<bindings::cardbe::plugin::types::HttpResponse, String> {
-        self.request(&url, Some((&content_type, &body)))
+        self.request(&url, http::Outgoing::post(&content_type, &body), false)
+    }
+    fn http_send(
+        &mut self,
+        request: bindings::cardbe::plugin::types::HttpRequest,
+    ) -> Result<bindings::cardbe::plugin::types::HttpResponse, String> {
+        use bindings::cardbe::plugin::types::HttpMethod;
+        let outgoing = http::Outgoing {
+            method: match request.method {
+                HttpMethod::Get => reqwest::Method::GET,
+                HttpMethod::Post => reqwest::Method::POST,
+                HttpMethod::Put => reqwest::Method::PUT,
+                HttpMethod::Patch => reqwest::Method::PATCH,
+                HttpMethod::Delete => reqwest::Method::DELETE,
+            },
+            headers: request.headers,
+            body: request.body,
+        };
+        self.request(&request.url, outgoing, true)
     }
     fn log(&mut self, code: String, count: u32) {
-        if self.logs.len() < 100 && diagnostic_code(&code) && self.policy.log_codes.contains(&code)
+        if self.logs.len() - self.messages < 100
+            && diagnostic_code(&code)
+            && self.policy.log_codes.contains(&code)
         {
-            self.logs.push(RuntimeLog { code, count });
+            self.logs.push(RuntimeLog {
+                level: "info".into(),
+                code: Some(code),
+                count,
+                message: None,
+            });
         }
+    }
+    fn log_message(&mut self, level: bindings::cardbe::plugin::types::LogLevel, message: String) {
+        use bindings::cardbe::plugin::types::LogLevel;
+        let remaining = MESSAGE_TOTAL_BYTES - self.message_bytes;
+        if self.messages >= MESSAGE_COUNT || remaining == 0 {
+            return;
+        }
+        let mut message = message;
+        for secret in self
+            .policy
+            .token
+            .iter()
+            .chain(self.policy.credentials.values())
+            .filter(|secret| !secret.is_empty())
+        {
+            message = message.replace(secret.as_str(), "***");
+        }
+        let mut message: String = message
+            .chars()
+            .map(|c| {
+                if c.is_control() && c != '\n' && c != '\t' {
+                    '\u{FFFD}'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        let limit = MESSAGE_BYTES.min(remaining);
+        if message.len() > limit {
+            let mut end = limit;
+            while !message.is_char_boundary(end) {
+                end -= 1;
+            }
+            message.truncate(end);
+        }
+        self.messages += 1;
+        self.message_bytes += message.len();
+        self.logs.push(RuntimeLog {
+            level: match level {
+                LogLevel::Debug => "debug",
+                LogLevel::Info => "info",
+                LogLevel::Warn => "warn",
+                LogLevel::Error => "error",
+            }
+            .into(),
+            code: None,
+            count: 0,
+            message: Some(message),
+        });
     }
 }
 impl HostState {
+    /// `recoverable` requests return transport failures to the guest without failing the run.
     fn request(
         &mut self,
         url: &str,
-        post: Option<(&str, &[u8])>,
+        outgoing: http::Outgoing,
+        recoverable: bool,
     ) -> Result<bindings::cardbe::plugin::types::HttpResponse, String> {
         if let Some(error) = self.failure.as_ref() {
             return Err(error.code().to_owned());
         }
         self.requests += 1;
-        self.request_bytes += post.map_or(0, |(_, body)| body.len());
-        let validation = post.map_or(Ok(()), |(kind, body)| http::validate_post(kind, body));
+        self.request_bytes += outgoing.body.as_ref().map_or(0, Vec::len);
+        let validation = http::validate_request(&outgoing, &self.policy);
         let result = if let Err(error) = validation {
             Err(error)
         } else if self.requests > 100 || self.request_bytes > 32 * 1024 * 1024 {
@@ -272,7 +359,7 @@ impl HostState {
         } else if Instant::now() >= self.deadline {
             Err(RuntimeError::Timeout)
         } else {
-            self.fetch(url, post)
+            self.fetch(url, &outgoing)
         };
         match result {
             Ok(response) => {
@@ -283,6 +370,7 @@ impl HostState {
                 }
                 Ok(response)
             }
+            Err(RuntimeError::Network) if recoverable => Err(RuntimeError::Network.code().into()),
             Err(error) => {
                 let code = error.code().to_owned();
                 if self.failure.is_none() {
@@ -295,29 +383,20 @@ impl HostState {
     fn fetch(
         &mut self,
         url: &str,
-        post: Option<(&str, &[u8])>,
+        outgoing: &http::Outgoing,
     ) -> Result<bindings::cardbe::plugin::types::HttpResponse, RuntimeError> {
         #[cfg(test)]
         if let Some(fixtures) = self.fixtures.as_mut() {
             http::authorized_url(url, &self.policy)?;
             return fixtures.pop_front().ok_or(RuntimeError::Network);
         }
-        match post {
-            Some((content_type, body)) => self.handle.block_on(http::post(
-                url,
-                content_type,
-                body,
-                &self.policy,
-                self.cancel.clone(),
-                self.deadline,
-            )),
-            None => self.handle.block_on(http::get(
-                url,
-                &self.policy,
-                self.cancel.clone(),
-                self.deadline,
-            )),
-        }
+        self.handle.block_on(http::request(
+            url,
+            outgoing,
+            &self.policy,
+            self.cancel.clone(),
+            self.deadline,
+        ))
     }
 }
 fn diagnostic_code(code: &str) -> bool {
@@ -329,13 +408,24 @@ fn diagnostic_code(code: &str) -> bool {
 }
 
 /// Must run on a blocking worker. Every invocation creates and discards its own Store.
+/// On failure, `failure_logs` receives the diagnostics the guest recorded before it stopped;
+/// successful output carries its own logs.
 pub fn execute(
     bytes: &[u8],
     input: RuntimeInput,
     policy: HttpPolicy,
     cancel: Arc<AtomicBool>,
+    failure_logs: &mut Vec<RuntimeLog>,
 ) -> Result<RuntimeOutput, RuntimeError> {
-    execute_inner(bytes, input, policy, cancel, None, Duration::from_secs(60))
+    execute_inner(
+        bytes,
+        input,
+        policy,
+        cancel,
+        None,
+        Duration::from_secs(60),
+        failure_logs,
+    )
 }
 fn execute_inner(
     bytes: &[u8],
@@ -344,6 +434,7 @@ fn execute_inner(
     cancel: Arc<AtomicBool>,
     #[allow(unused_variables)] fixtures: Option<Vec<bindings::cardbe::plugin::types::HttpResponse>>,
     timeout: Duration,
+    failure_logs: &mut Vec<RuntimeLog>,
 ) -> Result<RuntimeOutput, RuntimeError> {
     if bytes.len() as u64 > super::package::COMPONENT_LIMIT || input.config_json.len() > 64 * 1024 {
         return Err(RuntimeError::ResourceLimit);
@@ -387,6 +478,8 @@ fn execute_inner(
         deadline,
         handle: tokio::runtime::Handle::current(),
         logs: vec![],
+        messages: 0,
+        message_bytes: 0,
         requests: 0,
         request_bytes: 0,
         response_bytes: 0,
@@ -491,13 +584,24 @@ fn execute_inner(
     })();
     stop.store(true, Ordering::Release);
     let _ = ticker.join();
-    if cancel.load(Ordering::Acquire) {
-        return Err(RuntimeError::Cancelled);
+    let interrupted = if cancel.load(Ordering::Acquire) {
+        Some(RuntimeError::Cancelled)
+    } else if Instant::now() >= deadline {
+        Some(RuntimeError::Timeout)
+    } else {
+        None
+    };
+    match (result, interrupted) {
+        (Ok(output), None) => Ok(output),
+        (Ok(output), Some(error)) => {
+            *failure_logs = output.logs;
+            Err(error)
+        }
+        (Err(error), interrupted) => {
+            *failure_logs = std::mem::take(&mut store.data_mut().logs);
+            Err(interrupted.unwrap_or(error))
+        }
     }
-    if Instant::now() >= deadline {
-        return Err(RuntimeError::Timeout);
-    }
-    result
 }
 
 fn prepare_component(bytes: &[u8]) -> Result<(Engine, Component, Linker<HostState>), RuntimeError> {
@@ -544,7 +648,8 @@ mod tests {
                 &oversized,
                 input("{}"),
                 policy(),
-                Arc::new(AtomicBool::new(false))
+                Arc::new(AtomicBool::new(false)),
+                &mut Vec::new()
             ),
             Err(RuntimeError::ResourceLimit)
         ));
@@ -606,7 +711,7 @@ mod tests {
             let board_id = loaded.database.active_board_id();
             let task = crate::models::Task {
                 id: 10, title: "工作 🦀".into(), description: "Details".into(), color: "#654321".into(),
-                start_time: 1_800_000_000_000, due_time: Some(1_800_000_100_000), labels: vec!["Label".into()],
+                start_time: 1_800_000_000_000, due_time: Some(1_800_000_100_000), created_time: 1_700_000_000_000, labels: vec!["Label".into()],
                 items: vec![crate::models::TaskItem { id: "item".into(), text: "Check".into(), completed: true }],
                 recurrence: Some(crate::models::Recurrence { frequency: crate::models::RecurrenceFrequency::Weekly, interval: 2 }),
                 ..Default::default()
@@ -643,6 +748,7 @@ mod tests {
                         }]
                     }),
                     Duration::from_secs(10),
+                    &mut Vec::new(),
                 );
                 if mode == "trap" {
                     assert!(matches!(result, Err(RuntimeError::Trap)));
@@ -689,13 +795,30 @@ mod tests {
         assert_eq!(
             imports,
             [
-                "cardbe:plugin/board@1.0.0",
-                "cardbe:plugin/host@1.0.0",
-                "cardbe:plugin/types@1.0.0"
+                "cardbe:plugin/board@1.1.0",
+                "cardbe:plugin/host@1.1.0",
+                "cardbe:plugin/types@1.1.0"
             ]
         );
         let exports: Vec<_> = ty.exports(&engine).map(|(name, _)| name).collect();
         assert_eq!(exports, ["run"]);
+    }
+    #[test]
+    fn api_1_0_imports_link_to_the_additive_1_1_host() {
+        let linkable = |wat: &str| {
+            let (_, component, linker) = prepare_component(wat.as_bytes()).unwrap();
+            linker.instantiate_pre(&component).is_ok()
+        };
+        let host = |version: &str, function: &str| {
+            format!(
+                r#"(component (import "cardbe:plugin/host@{version}" (instance
+                    (export "{function}" (func (param "code" string) (param "count" u32))))))"#
+            )
+        };
+        assert!(linkable(&host("1.0.0", "log")));
+        assert!(linkable(&host("1.1.0", "log")));
+        assert!(!linkable(&host("2.0.0", "log")));
+        assert!(!linkable(&host("1.0.0", "missing")));
     }
     fn run(
         mode: &str,
@@ -709,6 +832,7 @@ mod tests {
             cancelled,
             None,
             timeout,
+            &mut Vec::new(),
         )
     }
     #[tokio::test(flavor = "multi_thread")]
@@ -727,6 +851,7 @@ mod tests {
                     Arc::new(AtomicBool::new(false)),
                     Some(vec![response]),
                     Duration::from_secs(10),
+                    &mut Vec::new(),
                 )
             })
             .await
@@ -737,9 +862,43 @@ mod tests {
             assert_eq!(output.tasks[0].title, "HTTP 200");
             assert_eq!(output.tasks[0].description, "Fixture response");
             assert_eq!(output.tasks[0].column_id, 1);
-            assert_eq!(output.logs[0].code, "ALLOWED_LOG");
+            assert_eq!(output.logs[0].code.as_deref(), Some("ALLOWED_LOG"));
             assert_eq!(output.cursor.as_deref(), Some("next"));
         }
+    }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn http_send_recovers_from_transport_failures_but_not_policy_failures() {
+        let result = |mode: &'static str, responses: Option<Vec<_>>| async move {
+            tokio::task::spawn_blocking(move || {
+                execute_inner(
+                    &component("runtime-fixture"),
+                    input(mode),
+                    policy(),
+                    Arc::new(AtomicBool::new(false)),
+                    responses,
+                    Duration::from_secs(10),
+                    &mut Vec::new(),
+                )
+            })
+            .await
+            .unwrap()
+        };
+        let response = bindings::cardbe::plugin::types::HttpResponse {
+            status: 204,
+            headers: vec![],
+            body: vec![],
+        };
+        let output = result("http-request-success", Some(vec![response]))
+            .await
+            .unwrap();
+        assert_eq!(output.tasks[0].title, "HTTP 204");
+        // An empty fixture queue simulates a transport failure.
+        let output = result("http-request-recover", Some(vec![])).await.unwrap();
+        assert_eq!(output.tasks[0].title, "Recovered NETWORK_FAILED");
+        assert!(matches!(
+            result("http-request-denied", Some(vec![])).await,
+            Err(RuntimeError::PermissionDenied)
+        ));
     }
     #[tokio::test(flavor = "multi_thread")]
     async fn traps_limits_permissions_and_failure_do_not_poison_later_store() {
@@ -776,9 +935,84 @@ mod tests {
                 Err(RuntimeError::Timeout)
             ));
             assert!(matches!(
-                execute(&[], input("ok"), policy(), Arc::new(AtomicBool::new(false))),
+                execute(
+                    &[],
+                    input("ok"),
+                    policy(),
+                    Arc::new(AtomicBool::new(false)),
+                    &mut Vec::new()
+                ),
                 Err(RuntimeError::InvalidComponent)
             ));
+        })
+        .await
+        .unwrap();
+    }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn failed_runs_return_logs_recorded_before_the_failure() {
+        tokio::task::spawn_blocking(|| {
+            for (mode, timeout, count) in [
+                ("logs-error", Duration::from_secs(10), 3),
+                ("logs-trap", Duration::from_secs(10), 2),
+                ("logs-loop", Duration::from_millis(100), 1),
+            ] {
+                let mut logs = Vec::new();
+                let result = execute_inner(
+                    &component("runtime-fixture"),
+                    input(mode),
+                    policy(),
+                    Arc::new(AtomicBool::new(false)),
+                    None,
+                    timeout,
+                    &mut logs,
+                );
+                assert!(result.is_err(), "{mode}");
+                assert_eq!(logs.len(), 1, "{mode}");
+                assert_eq!(
+                    (logs[0].code.as_deref(), logs[0].count),
+                    (Some("ALLOWED_LOG"), count)
+                );
+            }
+            let mut logs = Vec::new();
+            assert!(execute_inner(
+                &component("runtime-fixture"),
+                input("logs"),
+                policy(),
+                Arc::new(AtomicBool::new(false)),
+                None,
+                Duration::from_secs(10),
+                &mut logs,
+            )
+            .is_ok());
+            assert!(logs.is_empty());
+        })
+        .await
+        .unwrap();
+    }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn text_logs_are_sanitized_redacted_and_bounded() {
+        tokio::task::spawn_blocking(|| {
+            let mut policy = policy();
+            policy.token = Some("fixture-secret".into());
+            let mut logs = Vec::new();
+            let result = execute_inner(
+                &component("runtime-fixture"),
+                input("messages"),
+                policy,
+                Arc::new(AtomicBool::new(false)),
+                None,
+                Duration::from_secs(10),
+                &mut logs,
+            );
+            assert!(matches!(result, Err(RuntimeError::Guest { .. })));
+            assert_eq!(logs.len(), MESSAGE_COUNT);
+            let text = |index: usize| (logs[index].level.as_str(), logs[index].message.as_deref());
+            assert_eq!(text(0), ("info", Some("fetched 3 items\nnext page")));
+            assert_eq!(text(1), ("warn", Some("token=***\u{FFFD}[31m")));
+            // A multibyte character crossing the per-message limit is dropped whole.
+            assert_eq!(text(2), ("debug", Some("x".repeat(1022).as_str())));
+            assert_eq!(text(3), ("error", Some("spam")));
+            assert!(logs.iter().all(|log| log.code.is_none()));
         })
         .await
         .unwrap();

@@ -335,6 +335,9 @@ fn runtime_error(
                     runtime::RuntimeError::Cancelled => PluginFailureReason::Cancelled,
                     runtime::RuntimeError::Trap => PluginFailureReason::WasmTrap,
                     runtime::RuntimeError::Guest { .. } => PluginFailureReason::InvalidGuestError,
+                    runtime::RuntimeError::InvalidCredential => {
+                        PluginFailureReason::InvalidCredential
+                    }
                     runtime::RuntimeError::PermissionDenied
                     | runtime::RuntimeError::AuthorizationRequired(_) => unreachable!(),
                 },
@@ -350,7 +353,10 @@ async fn execute(
     package: &PluginPackage,
     input: RuntimeInput,
     cancel: Arc<AtomicBool>,
-) -> Result<RuntimeOutput, (ManagerError, Option<u32>)> {
+) -> (
+    Result<RuntimeOutput, (ManagerError, Option<u32>)>,
+    Vec<runtime::RuntimeLog>,
+) {
     let preparation = (|| -> Result<_, ManagerError> {
         let root = package_root(app)?.join(&package.id);
         let path = {
@@ -365,22 +371,31 @@ async fn execute(
         let policy = prepare_http_policy(instance, package, |key| secret(&namespace, key))?;
         Ok((path, policy))
     })();
-    let (path, policy) = preparation.map_err(|error| (error, None))?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let bytes = std::fs::read(path).map_err(|_| runtime::RuntimeError::InvalidComponent)?;
-        runtime::execute(&bytes, input, policy, cancel)
+    let (path, policy) = match preparation {
+        Ok(prepared) => prepared,
+        Err(error) => return (Err((error, None)), Vec::new()),
+    };
+    let worker = tauri::async_runtime::spawn_blocking(move || {
+        let mut logs = Vec::new();
+        let result = std::fs::read(path)
+            .map_err(|_| runtime::RuntimeError::InvalidComponent)
+            .and_then(|bytes| runtime::execute(&bytes, input, policy, cancel, &mut logs));
+        (result, logs)
     })
-    .await
-    .map_err(|_| {
-        (
-            ManagerError::Host(PluginHostError::ExecutionFailed {
-                plugin_id: package.id.clone(),
-                source: "Plugin worker failed".into(),
-            }),
-            None,
-        )
-    })?
-    .map_err(|error| runtime_error(package, error))
+    .await;
+    match worker {
+        Ok((result, logs)) => (result.map_err(|error| runtime_error(package, error)), logs),
+        Err(_) => (
+            Err((
+                ManagerError::Host(PluginHostError::ExecutionFailed {
+                    plugin_id: package.id.clone(),
+                    source: "Plugin worker failed".into(),
+                }),
+                None,
+            )),
+            Vec::new(),
+        ),
+    }
 }
 fn prepare_http_policy(
     instance: &PluginInstance,
@@ -408,6 +423,14 @@ fn prepare_http_policy(
                 }
             }
         }
+    }
+    // Secrets saved before header-value validation must be re-entered before execution.
+    if token
+        .iter()
+        .chain(credentials.values())
+        .any(|value| reqwest::header::HeaderValue::from_str(value).is_err())
+    {
+        return Err(runtime_error(package, runtime::RuntimeError::InvalidCredential).0);
     }
     Ok(HttpPolicy {
         allowed_domains: instance.allowed_domains.clone(),
@@ -547,7 +570,19 @@ pub async fn run(
         storage::put(connection, "run", &record.id, &record)?;
         (instance, package, input, record)
     };
-    let result = execute(&app, &instance, &package, input, cancel.clone()).await;
+    let (result, failure_logs) = execute(&app, &instance, &package, input, cancel.clone()).await;
+    // Keep diagnostics for every outcome, including failed and cancelled runs.
+    record.logs = result
+        .as_ref()
+        .map_or(&failure_logs, |output| &output.logs)
+        .iter()
+        .map(|log| RunLog {
+            level: log.level.clone(),
+            code: log.code.clone(),
+            count: log.count,
+            message: log.message.clone(),
+        })
+        .collect();
     let mut changed = false;
     let finish = (|| -> Result<(), ManagerError> {
         let state = app.state::<SharedAppData>();
@@ -567,16 +602,6 @@ pub async fn run(
         } else {
             match result {
                 Ok(output) => {
-                    record.logs = output
-                        .logs
-                        .iter()
-                        .take(100)
-                        .map(|log| RunLog {
-                            level: "info".into(),
-                            code: log.code.clone(),
-                            count: log.count,
-                        })
-                        .collect();
                     match super::board::prepare_output(
                         &guard.database,
                         instance.clone(),
@@ -762,7 +787,7 @@ mod tests {
     #[test]
     fn updated_credentials_are_not_reused_for_changed_destinations_or_removed_fields() {
         let package: PluginPackage = serde_json::from_value(serde_json::json!({
-            "id":"example", "name":"Example", "version":"1.1.0", "api_version":"1.0.0",
+            "id":"example", "name":"Example", "version":"1.1.0", "api_version":"1.1.0",
             "storage_schema_version":1,"settings":[{"key":"token","type":"secret","label":"Token"}]
         }))
         .unwrap();
@@ -778,7 +803,7 @@ mod tests {
     #[test]
     fn scoped_policy_reads_only_assigned_current_instance_secrets() {
         let package: PluginPackage = serde_json::from_value(serde_json::json!({
-            "id":"fixture", "name":"Fixture", "version":"1.0.0", "manifest_version":2, "api_version":"1.0.0", "storage_schema_version":1,
+            "id":"fixture", "name":"Fixture", "version":"1.0.0", "manifest_version":2, "api_version":"1.1.0", "storage_schema_version":1,
             "domains":["fixed.example.com"], "allow_custom_domains":true,
             "settings":[{"key":"url","type":"text","label":"URL"},{"key":"token","type":"secret","label":"Token"},{"key":"fixed","type":"secret","label":"Fixed"},{"key":"unused","type":"secret","label":"Unused"}],
             "http_credentials":[
@@ -818,6 +843,21 @@ mod tests {
         .unwrap();
         assert_eq!(reads, 1);
         assert!(policy.credentials.is_empty());
+        for invalid in ["bad\r\nX-Injected: yes", "bad\0"] {
+            let error = prepare_http_policy(&instance, &package, |_| Ok(Some(invalid.into())))
+                .err()
+                .map(CommandError::from);
+            assert!(
+                matches!(
+                    error,
+                    Some(CommandError::PluginExecutionFailed {
+                        reason: Some(PluginFailureReason::InvalidCredential),
+                        ..
+                    }),
+                ),
+                "{error:?}"
+            );
+        }
         instance.credentials_need_review = true;
         let policy = prepare_http_policy(&instance, &package, |_| {
             panic!("unreviewed secrets must not be loaded")
@@ -857,7 +897,7 @@ mod tests {
     #[test]
     fn guest_errors_require_allowlisted_codes_and_bounded_public_retry() {
         let package: PluginPackage = serde_json::from_value(serde_json::json!({
-            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.0.0", "storage_schema_version":1, "error_codes":["RATE_LIMITED"]
+            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.1.0", "storage_schema_version":1, "error_codes":["RATE_LIMITED"]
         })).unwrap();
         let (error, retry) = runtime_error(
             &package,

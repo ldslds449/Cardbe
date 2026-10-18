@@ -60,6 +60,8 @@ export interface HttpCredentialRule {
     | { type: "header"; name: string; secret: string }
     | null;
 }
+/** WIT API versions accepted by the host; 1.x releases are additive. */
+export const pluginApiVersions = ["1.1.0"];
 export function validPluginManifestVersion(pkg: PluginPackage): boolean {
   const version = pkg.manifest_version === undefined ? 1 : pkg.manifest_version;
   return (
@@ -326,6 +328,13 @@ export function isNewerPluginVersion(current: string, next: string): boolean {
   return false;
 }
 
+/** Either an allowlisted code with a count, or plugin-written text (API 1.1.0). */
+export interface PluginRunLog {
+  level: "debug" | "info" | "warn" | "error";
+  code?: string | null;
+  count: number;
+  message?: string | null;
+}
 export interface PluginRun {
   id: string;
   instance_id: string;
@@ -340,7 +349,7 @@ export interface PluginRun {
     | "interrupted"
     | "awaiting_permission";
   error?: CommandError;
-  logs: { level: string; code: string; count: number }[];
+  logs: PluginRunLog[];
   created: number;
   updated: number;
 }
@@ -357,9 +366,19 @@ export function pluginErrorMessage(error: unknown): string {
     ? m.plugin_error_details({ message, code: parsed.plugin_error.code })
     : message;
 }
-export function pluginLogMessage(log: PluginRun["logs"][number]): string {
+const pluginLogLevels = {
+  debug: m.plugin_log_level_debug,
+  info: m.plugin_log_level_info,
+  warn: m.plugin_log_level_warn,
+  error: m.plugin_log_level_error,
+};
+export function pluginLogMessage(log: PluginRunLog): string {
+  if (log.message != null) {
+    const level = (pluginLogLevels[log.level] ?? m.plugin_log_level_info)();
+    return m.plugin_log_text({ level, message: log.message });
+  }
   const count = formatNumber(log.count);
-  return m.plugin_log_count({ code: log.code, count });
+  return m.plugin_log_count({ code: log.code ?? "", count });
 }
 
 // Secrets remain separate from config and are never restored into form drafts.
@@ -410,10 +429,13 @@ export function invalidPluginSettings(
         return !field.options?.some((option) => option.value === value);
       }
       if (field.type === "secret" && typeof value === "string") {
-        // Match the backend HTTP header-value check: visible ASCII, spaces and tabs only.
+        // Match the backend HTTP header-value check: no controls except tab.
         return (
-          !/^[\t\x20-\x7e]*$/.test(value) ||
-          value.length > 8192 ||
+          Array.from(value).some((character) => {
+            const code = character.codePointAt(0) ?? 0;
+            return (code < 32 && code !== 9) || code === 127;
+          }) ||
+          new TextEncoder().encode(value).length > 8192 ||
           (field.required && !value.trim())
         );
       }

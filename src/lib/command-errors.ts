@@ -68,6 +68,7 @@ const pluginFailureMessages = {
   CANCELLED: () => m.plugin_cancelled(),
   WASM_TRAP: () => m.plugin_failure_wasm_trap(),
   INVALID_GUEST_ERROR: () => m.plugin_failure_invalid_guest_error(),
+  INVALID_CREDENTIAL: () => m.plugin_failure_invalid_credential(),
 };
 
 type PluginParams = Record<string, string | number | boolean | null>;

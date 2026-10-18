@@ -7,7 +7,9 @@ import {
 } from "../type/task.svelte";
 
 const BINARY_PREFIX = "cardbe-task:v1:";
-const BINARY_VERSION = 1;
+const BINARY_VERSION = 2;
+// Version 1 stored the creation time where version 2 stores the start time.
+const LEGACY_BINARY_VERSION = 1;
 const MAX_SHARED_TEXT_LENGTH = 2_000_000;
 const MAX_DECOMPRESSED_BYTES = 8_000_000;
 const MAX_COLLECTION_ITEMS = 100_000;
@@ -121,7 +123,8 @@ function encode_task(task: Task): Uint8Array {
 
 function decode_task(bytes: Uint8Array): Task {
   const reader = new BinaryReader(bytes);
-  if (reader.byte() !== BINARY_VERSION) {
+  const version = reader.byte();
+  if (version !== BINARY_VERSION && version !== LEGACY_BINARY_VERSION) {
     throw new Error(m.task_transfer_version());
   }
   const title = reader.string();
@@ -172,7 +175,9 @@ function decode_task(bytes: Uint8Array): Task {
     title,
     description,
     color,
-    Number.isNaN(start_timestamp) ? undefined : new Date(start_timestamp),
+    Number.isNaN(start_timestamp) || version === LEGACY_BINARY_VERSION
+      ? undefined
+      : new Date(start_timestamp),
     Number.isNaN(due_timestamp) ? undefined : new Date(due_timestamp),
     labels,
     items,
