@@ -4,7 +4,18 @@ use crate::{
     models::{Column, ColumnSort, Task},
     state::{lock_app, undo_last_change_for_board, update_stored_for_board, SharedAppData},
 };
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Manager, State};
+
+/// New tasks record their creation time on the backend so every entry point
+/// (dialogs, Quick Add, transfers) is stamped consistently.
+fn stamp_created_time(task: &mut Task) {
+    if task.created_time == 0 {
+        if let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) {
+            task.created_time = duration.as_millis();
+        }
+    }
+}
 
 #[tauri::command]
 pub fn get_columns(
@@ -165,10 +176,11 @@ pub fn move_task(
 pub fn add_task(
     state: State<'_, SharedAppData>,
     column_id: i64,
-    task: Task,
+    mut task: Task,
     after_task_id: Option<i64>,
     expected_board_id: i64,
 ) -> Result<i64, CommandError> {
+    stamp_created_time(&mut task);
     update_stored_for_board(&state, expected_board_id, |data| {
         crate::board_mutations::add_task(data, column_id, task, after_task_id)
     })
@@ -238,6 +250,7 @@ pub(crate) fn add_task_to_board_locked(
     let column = column_index(&data, column_id)?;
     let id = data.allocate_task_id()?;
     task.id = id;
+    stamp_created_time(&mut task);
     for label in &task.labels {
         data.touch_label(label.clone());
     }

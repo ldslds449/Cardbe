@@ -78,9 +78,14 @@ fn next_recurring_task(task: &Task, now: u128, id: i64) -> Result<Option<Task>, 
     let mut next = task.clone();
     next.id = id;
     next.due_time = Some(next_due_time);
-    if next.start_time != 0 {
-        next.start_time = next.start_time.saturating_add(shift);
-    }
+    // Legacy tasks without a creation time stored it in start_time instead of
+    // a user-chosen start, so it must not become the next occurrence's start.
+    next.start_time = if task.created_time == 0 || task.start_time == 0 {
+        0
+    } else {
+        task.start_time.saturating_add(shift)
+    };
+    next.created_time = now;
     for item in &mut next.items {
         item.completed = false;
     }
@@ -195,6 +200,7 @@ mod tests {
             title: "Routine".into(),
             start_time: due_time - 3_600_000,
             due_time: Some(due_time),
+            created_time: due_time - 86_400_000,
             recurrence: Some(Recurrence {
                 frequency,
                 interval: 1,
@@ -218,7 +224,17 @@ mod tests {
         assert_eq!(next.id, 8);
         assert_eq!(next.due_time, Some(1_700_000_000_000 + 4 * 86_400_000));
         assert_eq!(next.start_time, task.start_time + 4 * 86_400_000);
+        assert_eq!(next.created_time, 1_700_000_000_000 + 3 * 86_400_000);
         assert!(!next.items[0].completed);
+
+        let legacy = Task {
+            created_time: 0,
+            ..task.clone()
+        };
+        let next = next_recurring_task(&legacy, 1_700_000_000_000 + 3 * 86_400_000, 9)
+            .unwrap()
+            .unwrap();
+        assert_eq!(next.start_time, 0);
     }
 
     #[test]

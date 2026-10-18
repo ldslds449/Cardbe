@@ -97,7 +97,7 @@ pub fn merge(
         title: incoming.title.clone(),
         description: incoming.description.clone(),
         labels: incoming.labels.clone(),
-        start_time: now() as u128,
+        created_time: now() as u128,
         ..Task::default()
     });
     Ok((

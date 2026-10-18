@@ -195,6 +195,7 @@ fn write_task(map: &LoroMap, task: &Task, archive_time: Option<u128>) -> Result<
     set_field(map, "color", &task.color)?;
     set_field(map, "start_time", &task.start_time)?;
     set_field(map, "due_time", &task.due_time)?;
+    set_field(map, "created_time", &task.created_time)?;
     set_field(map, "labels", &task.labels)?;
     set_field(map, "items", &task.items)?;
     set_field(map, "recurrence", &task.recurrence)?;
@@ -425,6 +426,11 @@ fn task_from_map(id: i64, map: &serde_json::Value) -> Result<Task, String> {
         color: field(map, "color")?,
         start_time: field(map, "start_time")?,
         due_time: field(map, "due_time")?,
+        created_time: if map.get("created_time").is_some() {
+            field(map, "created_time")?
+        } else {
+            0
+        },
         labels: field(map, "labels")?,
         items: field(map, "items")?,
         recurrence: field(map, "recurrence")?,
@@ -740,6 +746,39 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn created_time_round_trips_and_legacy_tasks_default_to_unknown() {
+        let mut data = StoredData::default();
+        data.columns.push(Column {
+            id: 1,
+            name: "Todo".into(),
+            color: String::new(),
+            sort_order: ColumnSort::Custom,
+            tasks: vec![Task {
+                id: 2,
+                start_time: 1_800_000_000_000,
+                created_time: 1_700_000_000_000,
+                ..Task::default()
+            }],
+        });
+        let update = apply_local_delta(None, &StoredData::default(), &data).unwrap();
+        assert_eq!(project(&update).unwrap().columns, data.columns);
+
+        let legacy = serde_json::json!({
+            "title": "\"Legacy\"",
+            "description": "",
+            "color": "\"\"",
+            "start_time": "1600000000000",
+            "due_time": "null",
+            "labels": "[]",
+            "items": "[]",
+            "recurrence": "null",
+        });
+        let task = task_from_map(3, &legacy).unwrap();
+        assert_eq!(task.start_time, 1_600_000_000_000);
+        assert_eq!(task.created_time, 0);
+    }
+
     #[test]
     fn incremental_upload_excludes_acknowledged_history() {
         let mut data = StoredData::default();

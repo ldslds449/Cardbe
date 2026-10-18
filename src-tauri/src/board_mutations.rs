@@ -132,7 +132,12 @@ pub(crate) fn update_task(
     mut task: Task,
 ) -> Result<(), DomainError> {
     let (column, index) = task_position(data, task_id)?;
-    let previous_labels = data.columns[column].tasks[index].labels.clone();
+    let previous = &data.columns[column].tasks[index];
+    let previous_labels = previous.labels.clone();
+    // Creation time is immutable once known; legacy tasks may receive one here.
+    if previous.created_time != 0 {
+        task.created_time = previous.created_time;
+    }
     task.id = task_id;
     for label in &task.labels {
         if !previous_labels.contains(label) {

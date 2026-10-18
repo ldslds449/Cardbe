@@ -398,8 +398,11 @@ pub fn prepare(
                 if key.is_empty() || key.len() > 128 || ids.contains_key(key) || !valid_task(task) {
                     return Err(DomainError::InvalidArgument);
                 }
-                let id =
-                    mutation::add_task(&mut after, resolve(column, &columns)?, task.clone(), None)?;
+                let mut task = task.clone();
+                if task.created_time == 0 {
+                    task.created_time = super::types::now() as u128;
+                }
+                let id = mutation::add_task(&mut after, resolve(column, &columns)?, task, None)?;
                 ids.insert(key.clone(), id);
             }
             Operation::UpdateTask { task_id, task } => {

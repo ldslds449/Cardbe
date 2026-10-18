@@ -37,6 +37,7 @@ describe("task serialization", () => {
       [checklist_item],
     );
     set_task_id(task, 42);
+    task.created_time = new Date("2026-07-15T08:00:00.000Z");
 
     const restored = deserialize_task(serialize_task(task));
 
@@ -91,6 +92,34 @@ describe("task serialization", () => {
     expect(duplicate.start_time).not.toBe(task.start_time);
     expect(duplicate.due_time).not.toBe(task.due_time);
     expect(duplicate.labels).not.toBe(task.labels);
+  });
+
+  it("keeps creation time separate from the editable start time", () => {
+    const task = create_task(
+      "task_3",
+      "Planned",
+      "",
+      "",
+      new Date("2026-08-01T00:00:00.000Z"),
+    );
+    task.created_time = new Date("2026-07-01T09:00:00.000Z");
+
+    const restored = deserialize_task(serialize_task(task));
+    expect(restored.start_time).toEqual(task.start_time);
+    expect(restored.created_time).toEqual(task.created_time);
+    expect(duplicate_task(task).created_time).toBeUndefined();
+
+    const legacy = deserialize_task({
+      id: 4,
+      title: "Legacy",
+      description: "",
+      color: "",
+      start_time: Date.parse("2026-06-01T00:00:00.000Z"),
+      due_time: undefined,
+      labels: [],
+    });
+    expect(legacy.created_time).toEqual(new Date("2026-06-01T00:00:00.000Z"));
+    expect(legacy.start_time).toBeUndefined();
   });
 
   it("defaults missing items from older serialized tasks", () => {

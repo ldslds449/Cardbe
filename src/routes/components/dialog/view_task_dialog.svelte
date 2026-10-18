@@ -8,6 +8,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
 
   import CalendarIcon from "@lucide/svelte/icons/calendar";
+  import ClockIcon from "@lucide/svelte/icons/clock";
   import TagIcon from "@lucide/svelte/icons/tag";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
 
@@ -83,6 +84,18 @@
                 {formatDate(task.due_time)}
               </p>
             </div>
+
+            {#if task.created_time}
+              <div>
+                <div class="flex items-center gap-2 text-sm font-medium mb-1">
+                  <ClockIcon class="size-4" />
+                  <span>{m.task_created_time()}</span>
+                </div>
+                <p class="text-sm text-muted-foreground">
+                  {formatDate(task.created_time)}
+                </p>
+              </div>
+            {/if}
 
             {#if task.labels && task.labels.length > 0}
               <div>

@@ -129,6 +129,9 @@ pub struct Task {
     pub start_time: u128,
     #[serde(default)]
     pub due_time: Option<u128>,
+    /// Milliseconds since the Unix epoch when the task was created; `0` is unknown.
+    #[serde(default)]
+    pub created_time: u128,
     #[serde(default)]
     pub labels: Vec<String>,
     #[serde(default)]
@@ -144,6 +147,7 @@ pub struct TaskSummary {
     pub color: String,
     pub start_time: u128,
     pub due_time: Option<u128>,
+    pub created_time: u128,
     pub labels: Vec<String>,
     pub recurrence: Option<Recurrence>,
 }
@@ -156,6 +160,7 @@ impl From<&Task> for TaskSummary {
             color: task.color.clone(),
             start_time: task.start_time,
             due_time: task.due_time,
+            created_time: task.created_time,
             labels: task.labels.clone(),
             recurrence: task.recurrence.clone(),
         }
@@ -172,6 +177,7 @@ impl Default for Task {
             color: String::new(),
             start_time: 0,
             due_time: None,
+            created_time: 0,
             labels: Vec::new(),
             items: Vec::new(),
             recurrence: None,

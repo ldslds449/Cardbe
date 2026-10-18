@@ -34,6 +34,7 @@ export interface Task {
   color: string;
   start_time: Date | undefined;
   due_time: Date | undefined;
+  created_time?: Date;
   labels: string[];
   items: TaskItem[];
   recurrence: Recurrence | undefined;
@@ -47,6 +48,7 @@ export interface TaskSerialized {
   color: string;
   start_time: number | undefined;
   due_time: number | undefined;
+  created_time?: number;
   labels: string[];
   items?: TaskItem[];
   recurrence?: Recurrence;
@@ -58,6 +60,7 @@ export interface TaskSummary {
   color: string;
   start_time: Date | undefined;
   due_time: Date | undefined;
+  created_time?: Date;
   labels: string[];
   recurrence: Recurrence | undefined;
 }
@@ -68,6 +71,7 @@ export interface TaskSummarySerialized {
   color: string;
   start_time: number;
   due_time: number | undefined;
+  created_time?: number;
   labels: string[];
   recurrence?: Recurrence;
 }
@@ -124,6 +128,7 @@ export function reset_task(task: Task): void {
   task.color = "";
   task.start_time = undefined;
   task.due_time = undefined;
+  task.created_time = undefined;
   task.labels = [];
   task.items = [];
   task.recurrence = undefined;
@@ -145,6 +150,7 @@ export function duplicate_task(task: Task): Task {
     id: "",
     start_time: task.start_time ? new Date(task.start_time) : undefined,
     due_time: task.due_time ? new Date(task.due_time) : undefined,
+    created_time: undefined,
     items: task.items.map((item) => ({
       ...item,
       id: globalThis.crypto.randomUUID(),
@@ -187,10 +193,29 @@ export function serialize_task(task: Task): TaskSerialized {
     color: task.color,
     start_time: task.start_time?.getTime(),
     due_time: task.due_time?.getTime(),
+    created_time: task.created_time?.getTime(),
     labels: task.labels,
     items: task.items,
     recurrence: task.recurrence,
     pinned: task.pinned ?? false,
+  };
+}
+
+function deserialize_task_times(
+  start_time: number | undefined,
+  created_time: number | undefined,
+): Pick<Task, "start_time" | "created_time"> {
+  // Tasks saved before start times became editable stored their creation
+  // time in start_time; they have no user-chosen start.
+  if (!created_time) {
+    return {
+      start_time: undefined,
+      created_time: start_time ? new Date(start_time) : undefined,
+    };
+  }
+  return {
+    start_time: start_time ? new Date(start_time) : undefined,
+    created_time: new Date(created_time),
   };
 }
 
@@ -200,7 +225,7 @@ export function deserialize_task(data: TaskSerialized): Task {
     title: data.title,
     description: data.description,
     color: data.color,
-    start_time: data.start_time ? new Date(data.start_time) : undefined,
+    ...deserialize_task_times(data.start_time, data.created_time),
     due_time: data.due_time ? new Date(data.due_time) : undefined,
     labels: data.labels,
     items: (data.items ?? []).map((item) => ({ ...item })),
@@ -218,7 +243,7 @@ export function deserialize_task_summary(
     id: `task_${data.id}`,
     title: data.title,
     color: data.color,
-    start_time: data.start_time ? new Date(data.start_time) : undefined,
+    ...deserialize_task_times(data.start_time, data.created_time),
     due_time: data.due_time ? new Date(data.due_time) : undefined,
     labels: data.labels,
     recurrence: data.recurrence ? { ...data.recurrence } : undefined,

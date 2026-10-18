@@ -1,237 +1,202 @@
 <script lang="ts">
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
-  import { formatDate, getLocale } from "$lib/i18n";
+  import { formatDate, formatDateTime, getLocale } from "$lib/i18n";
   import Calendar from "$lib/components/ui/calendar/calendar.svelte";
   import * as Popover from "$lib/components/ui/popover/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { TimePicker } from "$lib/components/ui/time-picker/index.js";
   import CalendarIcon from "@lucide/svelte/icons/calendar";
   import ClockIcon from "@lucide/svelte/icons/clock";
   import XIcon from "@lucide/svelte/icons/x";
-  import {
-    CalendarDate,
-    getLocalTimeZone,
-    Time,
-    today,
-    type DateValue,
-  } from "@internationalized/date";
+  import { CalendarDate, Time, type DateValue } from "@internationalized/date";
 
   const id = $props.id();
 
-  let { value = $bindable<Date | undefined>() }: { value?: Date } = $props();
+  let {
+    value = $bindable<Date | undefined>(),
+    emptyLabel = m.task_due_none(),
+    clearLabel = m.task_due_clear(),
+    invalid = false,
+    labelledby,
+  }: {
+    value?: Date;
+    emptyLabel?: string;
+    clearLabel?: string;
+    invalid?: boolean;
+    /** ID of the visible field label announced before the trigger's value. */
+    labelledby?: string;
+  } = $props();
 
-  type DueDateMode = "none" | "date" | "datetime";
+  const DEFAULT_TIME = new Time(9, 0);
 
-  let date = $state<DateValue>(today(getLocalTimeZone()));
-  let time = $state<Time>(new Time());
-  let mode = $state<DueDateMode>("none");
-  let date_open = $state(false);
-  let time_open = $state(false);
-  let initialized = false;
-  let last_written_timestamp = $state<number | undefined>(undefined);
+  let open = $state(false);
 
-  function date_has_time(value: Date): boolean {
-    return (
-      value.getHours() !== 0 ||
-      value.getMinutes() !== 0 ||
-      value.getSeconds() !== 0 ||
-      value.getMilliseconds() !== 0
-    );
-  }
+  // Midnight means "date only"; the value is only written by user actions so
+  // opening a form never changes its draft.
+  const has_time = $derived(
+    value !== undefined &&
+      (value.getHours() !== 0 ||
+        value.getMinutes() !== 0 ||
+        value.getSeconds() !== 0 ||
+        value.getMilliseconds() !== 0),
+  );
+  const date = $derived(
+    value
+      ? new CalendarDate(
+          value.getFullYear(),
+          value.getMonth() + 1,
+          value.getDate(),
+        )
+      : undefined,
+  );
+  const time = $derived(
+    value && has_time
+      ? new Time(value.getHours(), value.getMinutes())
+      : DEFAULT_TIME,
+  );
 
-  function write_value(next_value: Date | undefined) {
-    last_written_timestamp = next_value?.getTime();
-    value = next_value;
-  }
-
-  function value_from_parts(
-    next_date: DateValue,
-    next_time: Time,
-    next_mode: DueDateMode,
-  ): Date | undefined {
-    if (next_mode === "none") {
-      return undefined;
-    }
-
+  function compose(next_date: DateValue, next_time: Time | undefined): Date {
     return new Date(
       next_date.year,
       next_date.month - 1,
       next_date.day,
-      next_mode === "datetime" ? next_time.hour : 0,
-      next_mode === "datetime" ? next_time.minute : 0,
-      next_mode === "datetime" ? next_time.second : 0,
-      next_mode === "datetime" ? next_time.millisecond : 0,
+      next_time?.hour ?? 0,
+      next_time?.minute ?? 0,
     );
-  }
-
-  $effect(() => {
-    const timestamp = value?.getTime();
-    if (initialized && timestamp === last_written_timestamp) {
-      return;
-    }
-    initialized = true;
-    last_written_timestamp = timestamp;
-
-    if (!value) {
-      mode = "none";
-      return;
-    }
-
-    date = new CalendarDate(
-      value.getFullYear(),
-      value.getMonth() + 1,
-      value.getDate(),
-    );
-    time = new Time(
-      value.getHours(),
-      value.getMinutes(),
-      value.getSeconds(),
-      value.getMilliseconds(),
-    );
-    mode = date_has_time(value) ? "datetime" : "date";
-  });
-
-  $effect(() => {
-    if (!value || mode === "none") {
-      return;
-    }
-
-    const next_value = value_from_parts(date, time, mode);
-    if (!next_value) {
-      return;
-    }
-
-    if (value.getTime() !== next_value.getTime()) {
-      write_value(next_value);
-    }
-  });
-
-  function set_due_date_mode(next_mode: DueDateMode) {
-    if (next_mode === "none") {
-      mode = "none";
-      write_value(undefined);
-      return;
-    }
-
-    const next_date = value ? date : today(getLocalTimeZone());
-    const next_time = next_mode === "date" ? new Time() : time;
-    mode = next_mode;
-    date = next_date;
-    time = next_time;
-    write_value(value_from_parts(next_date, next_time, next_mode));
   }
 
   function set_date(next_date: DateValue | undefined) {
     if (!next_date) {
       return;
     }
-
-    const next_mode = mode === "none" ? "date" : mode;
-    date = next_date;
-    mode = next_mode;
-    write_value(value_from_parts(next_date, time, next_mode));
-    date_open = false;
+    value = compose(next_date, has_time ? time : undefined);
   }
 
-  function due_date_label(): string {
-    if (!value || mode === "none") {
-      return m.task_due_none();
+  function set_time(next_time: Time | undefined) {
+    if (date && next_time) {
+      value = compose(date, next_time);
     }
+  }
 
-    return formatDate(date.toDate(getLocalTimeZone()));
+  function label(): string {
+    if (!value) {
+      return emptyLabel;
+    }
+    const options: Intl.DateTimeFormatOptions = {
+      month: "short",
+      day: "numeric",
+      year:
+        value.getFullYear() !== new Date().getFullYear()
+          ? "numeric"
+          : undefined,
+    };
+    return has_time
+      ? formatDateTime(value, {
+          ...options,
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : formatDate(value, options);
   }
 </script>
 
-<div class="flex flex-wrap items-center gap-2">
-  <Popover.Root bind:open={date_open}>
-    <Popover.Trigger id="{id}-date">
+<div class="flex min-w-0 items-center gap-1">
+  <Popover.Root bind:open>
+    <Popover.Trigger id="{id}-trigger">
       {#snippet child({ props })}
         <Button
           {...props}
           variant="outline"
-          class={`justify-start font-normal ${
+          aria-invalid={invalid || undefined}
+          aria-labelledby={labelledby
+            ? `${labelledby} ${id}-trigger`
+            : undefined}
+          class={`min-w-0 flex-1 justify-start font-normal ${
             value
               ? "border-primary/30 bg-primary/5 text-foreground"
               : "border-dashed text-muted-foreground"
           }`}
         >
-          <span class="flex min-w-0 items-center gap-2">
+          {#if has_time}
+            <ClockIcon class="size-4 shrink-0 text-primary" />
+          {:else}
             <CalendarIcon
               class={`size-4 shrink-0 ${value ? "text-primary" : "text-muted-foreground"}`}
             />
-            <span class="truncate">{due_date_label()}</span>
-          </span>
+          {/if}
+          <span class="truncate">{label()}</span>
         </Button>
       {/snippet}
     </Popover.Trigger>
-    <Popover.Content class="w-auto overflow-hidden p-0" align="start">
-      <Calendar
-        locale={getLocale()}
-        type="single"
-        bind:value={date}
-        onValueChange={set_date}
-        captionLayout="dropdown"
-      />
+    <Popover.Content
+      class="w-auto overflow-hidden p-0"
+      align="start"
+      collisionPadding={8}
+    >
+      <ScrollArea
+        class="[&>[data-slot=scroll-area-viewport]]:max-h-[calc(var(--bits-popover-content-available-height)-2px)]"
+      >
+        <Calendar
+          locale={getLocale()}
+          type="single"
+          value={date}
+          onValueChange={set_date}
+          preventDeselect
+          captionLayout="dropdown"
+        />
+        <div class="space-y-3 border-t p-3">
+          {#if value && has_time}
+            <TimePicker
+              bind:time={() => time, set_time}
+              view="dotted"
+              minuteStep={5}
+              selectHours={true}
+              showSeconds={false}
+            />
+          {/if}
+          <div class="flex items-center justify-between gap-2">
+            {#if value && has_time}
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={() => {
+                  if (date) {
+                    value = compose(date, undefined);
+                  }
+                }}
+              >
+                {m.task_time_remove()}
+              </Button>
+            {:else}
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!value}
+                onclick={() => set_time(DEFAULT_TIME)}
+              >
+                <ClockIcon class="size-4" />
+                {m.task_time_add()}
+              </Button>
+            {/if}
+            <Button size="sm" onclick={() => (open = false)}
+              >{m.common_done()}</Button
+            >
+          </div>
+        </div>
+      </ScrollArea>
     </Popover.Content>
   </Popover.Root>
 
   {#if value}
-    <Popover.Root
-      bind:open={time_open}
-      onOpenChange={(next_open) => {
-        if (next_open && mode === "date") {
-          set_due_date_mode("datetime");
-        }
-      }}
-    >
-      <Popover.Trigger id="{id}-time">
-        {#snippet child({ props })}
-          <Button
-            {...props}
-            variant="outline"
-            class={`justify-start font-normal ${
-              mode === "datetime"
-                ? "border-primary/30 bg-primary/5 text-foreground"
-                : "border-dashed text-muted-foreground"
-            }`}
-          >
-            <ClockIcon
-              class={`size-4 ${mode === "datetime" ? "text-primary" : "text-muted-foreground"}`}
-            />
-            {mode === "datetime"
-              ? time.toString().slice(0, 5)
-              : m.task_time_none()}
-          </Button>
-        {/snippet}
-      </Popover.Trigger>
-      <Popover.Content class="w-auto p-3" align="start">
-        <div class="space-y-3">
-          <TimePicker
-            bind:time
-            view="dotted"
-            minuteStep={5}
-            selectHours={true}
-            showSeconds={false}
-          />
-          <div class="flex justify-end">
-            <Button
-              size="sm"
-              onclick={() => {
-                time_open = false;
-              }}>{m.common_done()}</Button
-            >
-          </div>
-        </div>
-      </Popover.Content>
-    </Popover.Root>
-
     <Button
       variant="ghost"
       size="icon"
-      class="text-muted-foreground"
-      aria-label={m.task_due_clear()}
-      onclick={() => set_due_date_mode("none")}
+      class="shrink-0 text-muted-foreground"
+      aria-label={clearLabel}
+      title={clearLabel}
+      onclick={() => (value = undefined)}
     >
       <XIcon class="size-4" />
     </Button>

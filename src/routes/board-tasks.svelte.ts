@@ -121,6 +121,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
       return Promise.resolve(false);
     }
     const new_task = clone_task(task);
+    new_task.created_time ??= new Date();
 
     // Use a temporary ID so the new card can appear before the backend has
     // allocated its persistent ID.

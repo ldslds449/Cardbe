@@ -69,6 +69,10 @@
   let slashIndex = $state(0);
   let revision = $state(0);
   let lastValue = value;
+  // Markdown re-serialization can rewrite equivalent input (for example bare
+  // URLs become `[url](url)`). Keep the caller's text until content changes.
+  let baselineValue = value;
+  let baselineMarkdown: string | null = null;
 
   const visibleSlashCommands = $derived(
     slash ? filterSlashCommands(slash.query) : [],
@@ -243,7 +247,9 @@
         handleKeyDown: handleEditorKeydown,
       },
       onUpdate: ({ editor: updatedEditor }) => {
-        const nextValue = serializeMarkdown(updatedEditor);
+        const serialized = serializeMarkdown(updatedEditor);
+        const nextValue =
+          serialized === baselineMarkdown ? baselineValue : serialized;
         lastValue = nextValue;
         value = nextValue;
         onvaluechange?.(nextValue);
@@ -261,6 +267,9 @@
       },
     });
 
+    baselineValue = value;
+    lastValue = value;
+    baselineMarkdown = serializeMarkdown(instance);
     editor = instance;
     const handle = createHandle(instance);
     ref = handle;
@@ -295,6 +304,8 @@
         contentType: "markdown",
         emitUpdate: false,
       });
+      baselineValue = content;
+      baselineMarkdown = serializeMarkdown(instance);
       updateSlashMenu(instance);
     });
   });

@@ -88,6 +88,26 @@
   } = $props();
 
   let invalid_title = $state(false);
+  let invalid_time_range = $derived(
+    task.start_time !== undefined &&
+      task.due_time !== undefined &&
+      task.start_time.getTime() > due_limit(task.due_time),
+  );
+
+  // A date-only due date covers its whole day, so a start on that day is valid.
+  function due_limit(due_time: Date): number {
+    const date_only =
+      due_time.getHours() === 0 &&
+      due_time.getMinutes() === 0 &&
+      due_time.getSeconds() === 0 &&
+      due_time.getMilliseconds() === 0;
+    if (!date_only) {
+      return due_time.getTime();
+    }
+    const end = new Date(due_time);
+    end.setDate(end.getDate() + 1);
+    return end.getTime() - 1;
+  }
   let invalid_template_name = $state(false);
   let submitting = $state(false);
   let show_saving = $state(false);
@@ -271,8 +291,8 @@
       invalid_title = true;
       return;
     }
-    if (task.id === "") {
-      task.start_time = new Date();
+    if (invalid_time_range) {
+      return;
     }
     submitting = true;
     const saving_indicator_timeout = window.setTimeout(() => {
@@ -587,9 +607,33 @@
                       </Popover.Content>
                     </Popover.Root>
                   </Field.Field>
-                  <Field.Field>
-                    <DateTimePicker bind:value={task.due_time} />
-                  </Field.Field>
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    <Field.Field data-invalid={invalid_time_range}>
+                      <Field.FieldLabel id="task-start-label"
+                        >{m.task_start_time()}</Field.FieldLabel
+                      >
+                      <DateTimePicker
+                        bind:value={task.start_time}
+                        labelledby="task-start-label"
+                        emptyLabel={m.task_start_none()}
+                        clearLabel={m.task_start_clear()}
+                        invalid={invalid_time_range}
+                      />
+                    </Field.Field>
+                    <Field.Field data-invalid={invalid_time_range}>
+                      <Field.FieldLabel id="task-due-label"
+                        >{m.task_due_time()}</Field.FieldLabel
+                      >
+                      <DateTimePicker
+                        bind:value={task.due_time}
+                        labelledby="task-due-label"
+                        invalid={invalid_time_range}
+                      />
+                    </Field.Field>
+                  </div>
+                  {#if invalid_time_range}
+                    <Field.Error>{m.task_start_after_due()}</Field.Error>
+                  {/if}
                   {#if task.due_time}
                     <Field.Field>
                       <Field.FieldLabel>{m.task_repeat()}</Field.FieldLabel>

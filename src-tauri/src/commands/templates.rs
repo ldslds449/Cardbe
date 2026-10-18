@@ -17,6 +17,7 @@ fn find_task(data: &StoredData, task_id: i64) -> Result<crate::models::Task, Dom
 fn normalize_template_task(mut task: crate::models::Task) -> crate::models::Task {
     task.id = -1;
     task.start_time = 0;
+    task.created_time = 0;
     task.due_time = None;
     task.recurrence = None;
     task.pinned = false;

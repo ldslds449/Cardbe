@@ -109,6 +109,7 @@ impl From<wit::Task> for model::Task {
             color: t.color,
             start_time: t.start_time.into(),
             due_time: t.due_time.map(u128::from),
+            created_time: 0,
             labels: t.labels,
             items: t
                 .items
@@ -261,6 +262,7 @@ mod tests {
             color: "#123456".into(),
             start_time: 1_800_000_000_000,
             due_time: Some(1_800_000_100_000),
+            created_time: 0,
             labels: vec!["Label".into()],
             items: vec![model::TaskItem {
                 id: "item".into(),
