@@ -969,7 +969,7 @@
         <DropdownMenu.Separator />
         <DropdownMenu.Item
           disabled={read_only || saving || !loaded}
-          onclick={() => {
+          onSelect={() => {
             insertion_position = null;
             void add_annotation();
           }}><TypeIcon />{m.flow_add_annotation()}</DropdownMenu.Item
@@ -1234,7 +1234,7 @@
           <ContextMenu.Separator />
           <ContextMenu.Item
             disabled={read_only || saving || !loaded}
-            onclick={add_annotation}
+            onSelect={() => void add_annotation()}
             ><TypeIcon />{m.flow_add_annotation()}</ContextMenu.Item
           >
         {/if}
