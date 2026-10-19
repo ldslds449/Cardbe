@@ -7,6 +7,7 @@
   import { onMount } from "svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
 
@@ -103,6 +104,13 @@
       : date;
   }
 
+  function restore_menu_focus(event: Event, entry: FocusTask) {
+    if (archive_focus_restore_target === entry.task.id) {
+      event.preventDefault();
+    }
+    archive_focus_restore_target = null;
+  }
+
   function ask_to_delete(task: Task) {
     delete_target = task;
     delete_confirm_open = true;
@@ -117,120 +125,142 @@
 </script>
 
 {#snippet task_row(entry: FocusTask, tone: "overdue" | "today" | "normal")}
-  <article
-    class="group relative overflow-hidden rounded-lg border bg-card shadow-xs transition-[border-color,box-shadow] hover:border-muted-foreground/40 hover:shadow-sm"
-  >
-    <button
-      type="button"
-      class="flex w-full items-center gap-3 px-3 py-3 pr-12 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      onclick={() => onViewTask(entry.task)}
-    >
-      <span
-        class="h-10 w-1 shrink-0 rounded-full"
-        style={`background-color: ${display_task_color(entry.task.color) || "var(--muted-foreground)"}`}
-      ></span>
-      <span class="min-w-0 flex-1">
-        <span class="flex min-w-0 items-center gap-2">
-          <span class="truncate text-sm font-semibold">{entry.task.title}</span>
-          <Badge
-            variant="outline"
-            class="max-w-32 shrink-0 truncate font-normal"
-          >
-            {entry.column.name}
-          </Badge>
-        </span>
-        <span
-          class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+  <ContextMenu.Root>
+    <ContextMenu.Trigger>
+      {#snippet child({ props })}
+        <article
+          {...props}
+          class="group relative overflow-hidden rounded-lg border bg-card shadow-xs transition-[border-color,box-shadow] hover:border-muted-foreground/40 hover:shadow-sm"
         >
-          <span
-            class={`inline-flex items-center gap-1 ${
-              tone === "overdue"
-                ? "font-medium text-destructive"
-                : tone === "today"
-                  ? "font-medium text-warning"
-                  : ""
-            }`}
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 px-3 py-3 pr-12 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            onclick={() => onViewTask(entry.task)}
           >
-            {#if tone === "overdue"}
-              <CircleAlertIcon class="size-3.5" />
-            {:else}
-              <ClockIcon class="size-3.5" />
-            {/if}
-            {due_label(entry.task)}
-          </span>
-          {#if entry.task.items.length > 0}
-            <span class="inline-flex items-center gap-1">
-              <CircleCheckIcon class="size-3.5" />
-              <ChecklistSummary items={entry.task.items} />
+            <span
+              class="h-10 w-1 shrink-0 rounded-full"
+              style={`background-color: ${display_task_color(entry.task.color) || "var(--muted-foreground)"}`}
+            ></span>
+            <span class="min-w-0 flex-1">
+              <span class="flex min-w-0 items-center gap-2">
+                <span class="truncate text-sm font-semibold"
+                  >{entry.task.title}</span
+                >
+                <Badge
+                  variant="outline"
+                  class="max-w-32 shrink-0 truncate font-normal"
+                >
+                  {entry.column.name}
+                </Badge>
+              </span>
+              <span
+                class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+              >
+                <span
+                  class={`inline-flex items-center gap-1 ${
+                    tone === "overdue"
+                      ? "font-medium text-destructive"
+                      : tone === "today"
+                        ? "font-medium text-warning"
+                        : ""
+                  }`}
+                >
+                  {#if tone === "overdue"}
+                    <CircleAlertIcon class="size-3.5" />
+                  {:else}
+                    <ClockIcon class="size-3.5" />
+                  {/if}
+                  {due_label(entry.task)}
+                </span>
+                {#if entry.task.items.length > 0}
+                  <span class="inline-flex items-center gap-1">
+                    <CircleCheckIcon class="size-3.5" />
+                    <ChecklistSummary items={entry.task.items} />
+                  </span>
+                {/if}
+                {#if entry.task.labels.length > 0}
+                  <span class="flex min-w-0 flex-wrap gap-1">
+                    {#each entry.task.labels as label (label)}
+                      <LabelBadge {label} class="py-0 font-normal" />
+                    {/each}
+                  </span>
+                {/if}
+              </span>
             </span>
-          {/if}
-          {#if entry.task.labels.length > 0}
-            <span class="flex min-w-0 flex-wrap gap-1">
-              {#each entry.task.labels as label (label)}
-                <LabelBadge {label} class="py-0 font-normal" />
-              {/each}
-            </span>
-          {/if}
-        </span>
-      </span>
-    </button>
+          </button>
 
-    <div
-      class="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-    >
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger>
-          {#snippet child({ props })}
-            <Button
-              {...props}
-              variant="ghost"
-              size="icon-sm"
-              class="bg-card/90 text-muted-foreground shadow-sm"
-              aria-label={m.explorer_actions_named({ name: entry.task.title })}
-              title={m.task_menu()}
-            >
-              <EllipsisIcon />
-            </Button>
-          {/snippet}
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Content
-          align="end"
-          class="min-w-36"
-          onCloseAutoFocus={(event) => {
-            if (archive_focus_restore_target === entry.task.id) {
-              event.preventDefault();
-            }
-            archive_focus_restore_target = null;
-          }}
-        >
-          <TaskActionItems
-            onView={() => onViewTask(entry.task)}
-            onEdit={() => onEditTask(entry.task)}
-            onArchive={() => {
-              archive_focus_restore_target = entry.task.id;
-              onArchiveTask(entry.task);
-            }}
-            onDelete={() => ask_to_delete(entry.task)}
+          <div
+            class="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
           >
-            {#snippet extra()}
-              <DropdownMenu.Item onclick={() => onDuplicateTask(entry.task)}>
-                <CopyIcon />
-                {m.task_duplicate_action()}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onclick={() => onSaveAsTemplate(entry.task)}>
-                <LayoutTemplateIcon />
-                {m.task_template_save()}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onclick={() => onExportTask(entry.task)}>
-                <Share2Icon />
-                {m.task_share()}
-              </DropdownMenu.Item>
-            {/snippet}
-          </TaskActionItems>
-        </DropdownMenu.Content>
-      </DropdownMenu.Root>
-    </div>
-  </article>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
+                {#snippet child({ props })}
+                  <Button
+                    {...props}
+                    variant="ghost"
+                    size="icon-sm"
+                    class="bg-card/90 text-muted-foreground shadow-sm"
+                    aria-label={m.explorer_actions_named({
+                      name: entry.task.title,
+                    })}
+                    title={m.task_menu()}
+                  >
+                    <EllipsisIcon />
+                  </Button>
+                {/snippet}
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content
+                align="end"
+                class="min-w-36"
+                onCloseAutoFocus={(event) => restore_menu_focus(event, entry)}
+              >
+                {@render menu_items(entry, false)}
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
+          </div>
+        </article>
+      {/snippet}
+    </ContextMenu.Trigger>
+    <ContextMenu.Content
+      class="min-w-36"
+      onCloseAutoFocus={(event) => restore_menu_focus(event, entry)}
+    >
+      {@render menu_items(entry, true)}
+    </ContextMenu.Content>
+  </ContextMenu.Root>
+{/snippet}
+
+{#snippet menu_items(entry: FocusTask, context: boolean)}
+  {@const Item = context ? ContextMenu.Item : DropdownMenu.Item}
+  <TaskActionItems
+    {context}
+    onView={() => onViewTask(entry.task)}
+    onEdit={read_only ? undefined : () => onEditTask(entry.task)}
+    onArchive={read_only
+      ? undefined
+      : () => {
+          archive_focus_restore_target = entry.task.id;
+          onArchiveTask(entry.task);
+        }}
+    onDelete={read_only ? undefined : () => ask_to_delete(entry.task)}
+  >
+    {#snippet extra()}
+      {#if !read_only}
+        <Item onclick={() => onDuplicateTask(entry.task)}>
+          <CopyIcon />
+          {m.task_duplicate_action()}
+        </Item>
+        <Item onclick={() => onSaveAsTemplate(entry.task)}>
+          <LayoutTemplateIcon />
+          {m.task_template_save()}
+        </Item>
+        <Item onclick={() => onExportTask(entry.task)}>
+          <Share2Icon />
+          {m.task_share()}
+        </Item>
+      {/if}
+    {/snippet}
+  </TaskActionItems>
 {/snippet}
 
 {#snippet group_section(
