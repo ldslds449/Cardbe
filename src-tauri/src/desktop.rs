@@ -233,7 +233,7 @@ pub fn open_floating_task_window<R: Runtime>(
     )
     .title("Cardbe")
     .inner_size(320.0, 220.0)
-    .min_inner_size(220.0, 120.0)
+    .min_inner_size(220.0, 32.0)
     .decorations(false)
     .always_on_top(true)
     .skip_taskbar(true)
