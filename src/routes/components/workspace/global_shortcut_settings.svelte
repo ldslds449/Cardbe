@@ -296,6 +296,7 @@
               {#snippet child({ props })}
                 <Button
                   {...props}
+                  id="global-shortcut-options-{status.action}"
                   variant="ghost"
                   size="icon-sm"
                   class="size-7 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
@@ -308,7 +309,22 @@
                 </Button>
               {/snippet}
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content align="end" class="min-w-44">
+            <DropdownMenu.Content
+              align="end"
+              class="min-w-44"
+              onCloseAutoFocus={(event) => {
+                // A pointer-opened menu never focuses its trigger, and the dialog
+                // ignores focus moved while the menu is open. If the pointer then
+                // focuses the closing menu, the dialog restores an older element,
+                // often at its top. Focus the trigger once the dialog resumes so
+                // it becomes the element the dialog restores.
+                event.preventDefault();
+                const trigger = document.getElementById(
+                  `global-shortcut-options-${status.action}`,
+                );
+                queueMicrotask(() => trigger?.focus({ preventScroll: true }));
+              }}
+            >
               <DropdownMenu.Item
                 disabled={status.shortcut === status.default_shortcut}
                 onclick={() =>
