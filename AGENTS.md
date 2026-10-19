@@ -13,6 +13,7 @@
 - Use **shadcn-svelte styling**. Reuse existing components in `$lib/components/ui` first, following `components.json` and the theme in `src/app.css`. Do not introduce React-based shadcn/ui components.
 - Refer to the official [shadcn-svelte component documentation](https://www.shadcn-svelte.com/docs/components) for component selection, composition, and usage. Adapt examples to installed versions and existing project conventions; documentation is not a reason to overwrite customized components or upgrade dependencies.
 - Follow existing Tailwind semantic colors, spacing, radii, light/dark themes, and Lucide icons. Avoid creating another design system or hardcoding arbitrary colors.
+- **Every scrollable region must use the shadcn-svelte `ScrollArea`** from `$lib/components/ui/scroll-area` (`orientation="vertical" | "horizontal" | "both"`), never a native scrollbar from `overflow-auto` / `overflow-scroll` / `overflow-x-*` / `overflow-y-*`, and never restyle native scrollbars (`[scrollbar-width:thin]`, `::-webkit-scrollbar`). This has been missed repeatedly; check it before finishing any UI change. When code needs the scrolling element (scroll position, sticky headers, virtualization, resize tracking), use `bind:viewport` and attach listeners to that viewport. `overflow-hidden` for clipping is fine.
 - Preserve keyboard interaction, focus management, form labels, and accessibility. Prefer existing Bits UI / shadcn-svelte components for new interactions.
 - Trace existing callers and data flow before making the smallest necessary change. Reuse utilities and installed packages; do not add abstractions or dependencies for speculative needs.
 
@@ -95,6 +96,7 @@
 ## Dependencies and Lock Files
 
 - **Do not independently edit, delete, regenerate, or format lock files**, including `pnpm-lock.yaml` and `src-tauri/Cargo.lock`. Only update them through the appropriate package manager when the user explicitly requests dependency changes; never edit them manually.
+- **Exception — app version bumps:** when the user asks to change Cardbe's own version (as in `release: vX.Y.Z` commits, which update `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` together), the matching `version` of the root `Cardbe` package entry in `src-tauri/Cargo.lock` may and must be updated to the same value. Change only that one line; Cargo's own lock refresh is acceptable only if its diff is that line alone. Any other lock-file change still requires an explicit dependency request.
 - Use `vp install --frozen-lockfile` for routine installation and `--locked` for Rust validation. If manifests and lock files disagree, report the cause instead of removing these restrictions or updating the locks.
 - Use the project's specified pnpm / Vite+ toolchain. Do not mix in npm, yarn, or bun and generate additional lock files.
 
