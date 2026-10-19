@@ -3,6 +3,7 @@
   import "$lib/i18n/locale.svelte";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
+  import ChartGanttIcon from "@lucide/svelte/icons/chart-gantt";
   import ChartNoAxesCombinedIcon from "@lucide/svelte/icons/chart-no-axes-combined";
   import Columns3Icon from "@lucide/svelte/icons/columns-3";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -41,6 +42,7 @@
     { id: "focus", label: m.workspace_today(), icon: SparklesIcon },
     { id: "board", label: m.board_title(), icon: Columns3Icon },
     { id: "calendar", label: m.workspace_calendar(), icon: CalendarDaysIcon },
+    { id: "gantt", label: m.workspace_gantt(), icon: ChartGanttIcon },
     { id: "flow", label: m.workspace_flow(), icon: WorkflowIcon },
     {
       id: "statistics",

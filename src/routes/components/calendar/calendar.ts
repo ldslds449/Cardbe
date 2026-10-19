@@ -312,109 +312,194 @@ export interface CalendarSpanSegment {
   continues_after: boolean;
 }
 
+export interface CalendarSingleEntry {
+  entry: CalendarTask;
+  key: string;
+  lane: number;
+}
+
 export interface CalendarWeek {
   key: string;
   days: CalendarDay[];
+  /** Visible multi-day bars. */
   segments: CalendarSpanSegment[];
-  /** Lanes rendered above the single-day lists of this week. */
-  lane_count: number;
-  /** Single-day entries per weekday, ordered by time. */
-  singles: CalendarTask[][];
-  /** Multi-day entries per weekday that did not fit in the visible lanes. */
+  /** Visible single-day entries per weekday, ordered by time. */
+  singles: CalendarSingleEntry[][];
+  /** Every entry on each weekday in display order, hidden or not. */
+  entries: CalendarTask[][];
+  /** Entries per weekday that did not fit; the last lane shows their count. */
   hidden: CalendarTask[][];
+  /** Lanes used by visible entries and overflow buttons. */
+  lane_count: number;
+}
+
+interface PlacedEntry {
+  entry: CalendarTask;
+  key: string;
+  /** Weekday columns covered in this week. */
+  start: number;
+  end: number;
+  lane: number;
+}
+
+function compare_keys(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 /**
- * Assigns each multi-day entry one lane for the whole grid so a task keeps its
- * row across weeks. Ordering by the real start day, not the clipped one, keeps
- * lanes stable when the visible range changes.
+ * Packs one week's entries into shared lanes: multi-day bars first (earlier,
+ * then longer), then single-day entries by time in the remaining gaps. Lanes
+ * are assigned per week so later weeks reuse space freed by earlier tasks.
  */
-export function assign_span_lanes(
-  spans: CalendarTask[],
-): Map<CalendarTask, number> {
-  const sorted = spans
-    .map((entry) => ({ entry, key: calendar_task_key(entry) }))
-    .sort(
-      (left, right) =>
-        left.entry.range.start_day - right.entry.range.start_day ||
-        right.entry.range.end_day - left.entry.range.end_day ||
-        Number(left.entry.preview) - Number(right.entry.preview) ||
-        Number(left.entry.archived) - Number(right.entry.archived) ||
-        (left.key < right.key ? -1 : left.key > right.key ? 1 : 0),
-    );
-  const lane_ends: number[] = [];
-  const lanes = new Map<CalendarTask, number>();
-  for (const { entry } of sorted) {
-    let lane = lane_ends.findIndex((end) => end < entry.range.start_day);
-    if (lane === -1) {
-      lane = lane_ends.length;
+function pack_week(
+  entries: CalendarTask[],
+  first_day: number,
+  last_day: number,
+): PlacedEntry[] {
+  const spans: PlacedEntry[] = [];
+  const singles: PlacedEntry[] = [];
+  for (const entry of entries) {
+    const { range } = entry;
+    const key = calendar_task_key(entry);
+    if (range.kind === "span") {
+      if (ranges_intersect(range, first_day, last_day)) {
+        spans.push({
+          entry,
+          key,
+          start: Math.max(range.start_day, first_day) - first_day,
+          end: Math.min(range.end_day, last_day) - first_day,
+          lane: 0,
+        });
+      }
+    } else if (range.start_day >= first_day && range.start_day <= last_day) {
+      const column = range.start_day - first_day;
+      singles.push({ entry, key, start: column, end: column, lane: 0 });
     }
-    lane_ends[lane] = entry.range.end_day;
-    lanes.set(entry, lane);
   }
-  return lanes;
+  spans.sort(
+    (left, right) =>
+      left.start - right.start ||
+      right.end - right.start - (left.end - left.start) ||
+      left.entry.range.start_day - right.entry.range.start_day ||
+      Number(left.entry.preview) - Number(right.entry.preview) ||
+      Number(left.entry.archived) - Number(right.entry.archived) ||
+      compare_keys(left.key, right.key),
+  );
+  singles.sort(
+    (left, right) =>
+      left.start - right.start ||
+      entry_anchor_time(left.entry) - entry_anchor_time(right.entry) ||
+      compare_keys(left.key, right.key),
+  );
+
+  const taken: boolean[][] = Array.from({ length: 7 }, () => []);
+  const placed = [...spans, ...singles];
+  for (const item of placed) {
+    let lane = 0;
+    const free = (column: number) => !taken[column][lane];
+    while (!range_columns(item).every(free)) {
+      lane += 1;
+    }
+    for (const column of range_columns(item)) {
+      taken[column][lane] = true;
+    }
+    item.lane = lane;
+  }
+  return placed;
 }
 
+function range_columns(item: { start: number; end: number }): number[] {
+  return Array.from(
+    { length: item.end - item.start + 1 },
+    (_, index) => item.start + index,
+  );
+}
+
+/**
+ * Lays out each week with at most `max_lanes` lanes. A day whose entries do not
+ * all fit gives its last lane to a "+N" button, so anything there is hidden too;
+ * a hidden bar then counts on every day it covers.
+ */
 export function layout_calendar_weeks(
   days: CalendarDay[],
   entries: CalendarTask[],
   max_lanes: number,
 ): CalendarWeek[] {
-  const spans = entries.filter((entry) => entry.range.kind === "span");
-  const lanes = assign_span_lanes(spans);
+  const lane_limit = Math.max(1, max_lanes);
   const weeks: CalendarWeek[] = [];
 
   for (let index = 0; index < days.length; index += 7) {
     const week_days = days.slice(index, index + 7);
     const first_day = day_number(week_days[0].date);
     const last_day = first_day + week_days.length - 1;
+    const placed = pack_week(entries, first_day, last_day);
+
+    const hidden = new Set<PlacedEntry>();
+    const overflow = week_days.map(() => false);
+    const hide = (item: PlacedEntry) => {
+      hidden.add(item);
+      for (const column of range_columns(item)) {
+        overflow[column] = true;
+      }
+    };
+    placed.filter((item) => item.lane >= lane_limit).forEach(hide);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const item of placed) {
+        if (
+          item.lane === lane_limit - 1 &&
+          !hidden.has(item) &&
+          range_columns(item).some((column) => overflow[column])
+        ) {
+          hide(item);
+          changed = true;
+        }
+      }
+    }
+
     const week: CalendarWeek = {
       key: week_days[0].key,
       days: week_days,
       segments: [],
-      lane_count: 0,
       singles: week_days.map(() => []),
+      entries: week_days.map(() => []),
       hidden: week_days.map(() => []),
+      lane_count: overflow.some(Boolean) ? lane_limit : 0,
     };
-
-    for (const entry of spans) {
-      const { range } = entry;
-      if (!ranges_intersect(range, first_day, last_day)) {
-        continue;
-      }
-      const start = Math.max(range.start_day, first_day);
-      const end = Math.min(range.end_day, last_day);
-      const lane = lanes.get(entry) ?? 0;
-      if (lane >= max_lanes) {
-        for (let day = start; day <= end; day++) {
-          week.hidden[day - first_day].push(entry);
+    const by_lane = [...placed].sort(
+      (left, right) => left.lane - right.lane || left.start - right.start,
+    );
+    for (const item of by_lane) {
+      for (const column of range_columns(item)) {
+        week.entries[column].push(item.entry);
+        if (hidden.has(item)) {
+          week.hidden[column].push(item.entry);
         }
+      }
+      if (hidden.has(item)) {
         continue;
       }
-      week.lane_count = Math.max(week.lane_count, lane + 1);
-      week.segments.push({
-        entry,
-        key: `${calendar_task_key(entry)}@${week.key}`,
-        lane,
-        column: start - first_day,
-        length: end - start + 1,
-        continues_before: range.start_day < start,
-        continues_after: range.end_day > end,
-      });
-    }
-
-    for (const entry of entries) {
-      const { range } = entry;
-      if (
-        range.kind !== "span" &&
-        range.start_day >= first_day &&
-        range.start_day <= last_day
-      ) {
-        week.singles[range.start_day - first_day].push(entry);
+      week.lane_count = Math.max(week.lane_count, item.lane + 1);
+      if (item.entry.range.kind === "span") {
+        const { range } = item.entry;
+        week.segments.push({
+          entry: item.entry,
+          key: `${item.key}@${week.key}`,
+          lane: item.lane,
+          column: item.start,
+          length: item.end - item.start + 1,
+          continues_before: range.start_day < first_day + item.start,
+          continues_after: range.end_day > first_day + item.end,
+        });
+      } else {
+        week.singles[item.start].push({
+          entry: item.entry,
+          key: item.key,
+          lane: item.lane,
+        });
       }
     }
-    week.singles.forEach(sort_by_anchor_time);
-    week.hidden.forEach(sort_by_anchor_time);
     weeks.push(week);
   }
   return weeks;

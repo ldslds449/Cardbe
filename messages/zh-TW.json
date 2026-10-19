@@ -108,6 +108,32 @@
   "task_pin": "釘選任務",
   "task_unpin": "取消釘選任務",
   "workspace_calendar": "行事曆",
+  "workspace_gantt": "甘特圖",
+  "gantt_label": "任務排程甘特圖",
+  "gantt_scale": "時間軸刻度",
+  "gantt_scale_day": "日",
+  "gantt_scale_week": "週",
+  "gantt_scale_month": "月",
+  "gantt_task_header": "任務",
+  "gantt_empty_title": "還沒有排程的任務",
+  "gantt_empty_description": "替任務設定開始或到期日期，就會顯示在時間軸上。",
+  "gantt_keyboard_hint": "按 Alt＋左右鍵可將任務前後移動一天；按 Alt＋Shift＋左右鍵可調整到期日期。",
+  "gantt_summary": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "共 {countFormatted} 個已排程任務"
+      }
+    }
+  ],
+  "gantt_undated_summary": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個沒有日期的任務未顯示"
+      }
+    }
+  ],
   "workspace_navigation": "工作區導覽",
   "workspace_views": "工作區檢視",
   "workspace_board_only": "可在看板檢視中使用",
@@ -486,6 +512,9 @@
   "calendar_span_label": "{title}，{range}",
   "calendar_resize_start": "拖曳以變更開始日期",
   "calendar_resize_end": "拖曳以變更到期日期",
+  "calendar_open_week": "查看 {date} 這一週",
+  "calendar_continues_before": "從前幾天延續",
+  "calendar_continues_after": "延續到後幾天",
   "calendar_more_tasks": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],

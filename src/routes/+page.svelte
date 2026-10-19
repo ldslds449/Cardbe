@@ -43,6 +43,8 @@
   import CalendarView from "./components/calendar/calendar_view.svelte";
   import StatisticsView from "./components/statistics/statistics_view.svelte";
   import type { CalendarViewMode } from "./components/calendar/calendar";
+  import GanttView from "./components/gantt/gantt_view.svelte";
+  import type { GanttScale } from "./components/gantt/gantt";
   import type { TaskDates } from "./utils/task-date-range";
   import FocusView from "./components/focus/focus_view.svelte";
   import NotePanel from "./components/note/note_panel.svelte";
@@ -86,6 +88,8 @@
   let calendar_view_mode = $state<CalendarViewMode>("month");
   let calendar_show_archived = $state(false);
   let calendar_show_recurring_previews = $state(true);
+  let gantt_scale = $state<GanttScale>("day");
+  let gantt_show_archived = $state(false);
   let startup_error = $state.raw<unknown>(null);
   let startup_check_finished = $state(false);
   const updates = new UpdateChecker();
@@ -1029,7 +1033,7 @@
 
   function switch_view(view: WorkspaceView) {
     selected_view = view;
-    if (view === "calendar") {
+    if (view === "calendar" || view === "gantt") {
       void board.ensure_archives_loaded();
     }
     const sequence = ++view_switch_sequence;
@@ -1347,6 +1351,30 @@
               read_only={active_board_read_only}
             />
           {/key}
+        </div>
+      {:else if active_view === "gantt" && !(search_text.trim() && (board.search_pending || board.search_error))}
+        <!-- The Gantt chart scrolls itself to keep its header and task list in view. -->
+        <div class="min-h-0 min-w-0 flex-1">
+          <GanttView
+            columns={board.columns}
+            archives={board.archives}
+            {search_text}
+            search_task_ids={board.search_task_ids}
+            bind:scale={gantt_scale}
+            bind:show_archived={gantt_show_archived}
+            onViewTask={view_task_by_id}
+            onViewArchivedTask={view_archived_task}
+            onEditTask={edit_task_by_id}
+            onDuplicateTask={(task) => board.duplicate_task(task.id)}
+            onSaveAsTemplate={open_save_template_dialog}
+            onExportTask={share_task}
+            onArchiveTask={(task) => board.archive_task(task.id)}
+            onUnarchiveTask={(column_id, task_id) =>
+              board.unarchive_task(column_id, task_id)}
+            onDeleteTask={(task) => board.delete_task(task.id)}
+            onRescheduleTask={reschedule_task}
+            read_only={active_board_read_only}
+          />
         </div>
       {:else}
         <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="both">

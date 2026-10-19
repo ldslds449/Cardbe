@@ -4,8 +4,10 @@
   import * as m from "$lib/paraglide/messages.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
+  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
@@ -55,16 +57,16 @@
   import {
     day_number,
     is_date_only,
-    ranges_intersect,
     task_date_range,
     task_dates,
     type TaskDateRangeKind,
     type TaskDates,
   } from "../../utils/task-date-range";
 
-  // Lanes for multi-day tasks above each week's single-day lists.
-  const MONTH_SPAN_LANES = 3;
-  const WEEK_SPAN_LANES = 8;
+  // Each week row is a grid of task lanes below the date header; the number
+  // of lanes follows the measured height so overflow becomes a "+N" button.
+  const LANE_HEIGHT_REM = 1.75;
+  const DAY_CHROME_REM = 2.375;
 
   const initial_today = start_of_day(new Date());
 
@@ -151,6 +153,8 @@
     lane: number;
     continues_before: boolean;
     continues_after: boolean;
+    /** A multi-day result draws as a bar, others as a card. */
+    span: boolean;
   }
 
   // Drag state stays outside the layout derivation so dragging never
@@ -158,6 +162,14 @@
   let active_drag: ActiveCalendarDrag | null = null;
   let span_grab: { id: string; day: number } | null = null;
   let drop_preview = $state<CalendarDropPreview | null>(null);
+  let weeks_height = $state(0);
+  // Day key of the open "+N" list; choosing a task closes it so the list
+  // does not stay above the dialog it opens.
+  let overflow_day = $state<string | null>(null);
+
+  function close_overflow() {
+    overflow_day = null;
+  }
 
   function format_time(date: Date): string {
     return date.toLocaleTimeString(getLocale(), {
@@ -197,6 +209,11 @@
       visible_date = new Date(today);
     }
     view_mode = mode;
+  }
+
+  function open_week(date: Date) {
+    visible_date = new Date(date);
+    view_mode = "week";
   }
 
   function go_to_today() {
@@ -263,6 +280,13 @@
       onDeleteTask(delete_target);
     }
     delete_target = null;
+  }
+
+  function restore_menu_focus(event: Event, entry: CalendarTask) {
+    if (archive_focus_restore_target === entry.task.id) {
+      event.preventDefault();
+    }
+    archive_focus_restore_target = null;
   }
 
   function ask_to_unarchive(task: Task) {
@@ -414,38 +438,67 @@
       : null;
   }
 
+  function lane_taken(
+    week: CalendarWeek,
+    lane: number,
+    column: number,
+    length: number,
+    task_id: string,
+  ): boolean {
+    const overlaps = (start: number, count: number) =>
+      start < column + length && start + count > column;
+    return (
+      week.segments.some(
+        (segment) =>
+          segment.lane === lane &&
+          segment.entry.task.id !== task_id &&
+          overlaps(segment.column, segment.length),
+      ) ||
+      week.singles.some(
+        (singles, day) =>
+          overlaps(day, 1) &&
+          singles.some(
+            (single) =>
+              single.lane === lane && single.entry.task.id !== task_id,
+          ),
+      ) ||
+      (lane === visible_lanes - 1 &&
+        week.hidden.some(
+          (hidden, day) => hidden.length > 0 && overlaps(day, 1),
+        ))
+    );
+  }
+
   // The dragged range clipped to one week, on the lane the task already uses.
   function ghost_segments(
     preview: CalendarDropPreview | null,
     week: CalendarWeek,
   ): CalendarGhostSegment[] {
-    if (!preview?.valid || preview.kind !== "span") {
+    if (!preview?.valid) {
       return [];
     }
+    const span = preview.kind === "span";
+    const end_day = span ? preview.end_day : preview.start_day;
     const first_day = day_number(week.days[0].date);
     const last_day = first_day + week.days.length - 1;
-    if (!ranges_intersect(preview, first_day, last_day)) {
+    if (preview.start_day > last_day || end_day < first_day) {
       return [];
     }
     const start = Math.max(preview.start_day, first_day);
-    const end = Math.min(preview.end_day, last_day);
+    const end = Math.min(end_day, last_day);
     const column = start - first_day;
     const length = end - start + 1;
-    // Prefer the task's own lane, otherwise the first lane no other bar uses;
-    // past the last lane the week grows a row while dragging.
-    const own_lane = week.segments.find(
-      (segment) => segment.entry.task.id === preview.task.id,
+    // Prefer the task's own lane, otherwise the first free lane; a full week
+    // draws the ghost over its last lane.
+    const task_id = preview.task.id;
+    const own_lane = (
+      week.segments.find((segment) => segment.entry.task.id === task_id) ??
+      week.singles.flat().find((single) => single.entry.task.id === task_id)
     )?.lane;
-    const lane_free = (lane: number) =>
-      !week.segments.some(
-        (segment) =>
-          segment.lane === lane &&
-          segment.entry.task.id !== preview.task.id &&
-          segment.column < column + length &&
-          segment.column + segment.length > column,
-      );
-    let lane = own_lane !== undefined && lane_free(own_lane) ? own_lane : 0;
-    while (!lane_free(lane)) {
+    const free = (lane: number) =>
+      !lane_taken(week, lane, column, length, task_id);
+    let lane = own_lane !== undefined && free(own_lane) ? own_lane : 0;
+    while (lane < visible_lanes - 1 && !free(lane)) {
       lane += 1;
     }
     return [
@@ -453,18 +506,11 @@
         column,
         length,
         lane,
-        continues_before: preview.start_day < first_day,
-        continues_after: preview.end_day > last_day,
+        continues_before: span && preview.start_day < first_day,
+        continues_after: span && preview.end_day > last_day,
+        span,
       },
     ];
-  }
-
-  function day_ghost(day: CalendarDay): CalendarDropPreview | null {
-    return drop_preview?.valid &&
-      drop_preview.kind !== "span" &&
-      drop_preview.start_day === day_number(day.date)
-      ? drop_preview
-      : null;
   }
 
   function task_time_label(
@@ -613,6 +659,28 @@
     ),
   );
 
+  function root_font_size(): number {
+    return (
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize) ||
+      16
+    );
+  }
+
+  let visible_lanes = $derived.by(() => {
+    if (weeks_height <= 0) {
+      return Number.POSITIVE_INFINITY;
+    }
+    const week_count = view_mode === "month" ? 6 : 1;
+    const week_height = (weeks_height - (week_count - 1)) / week_count;
+    const rem = root_font_size();
+    return Math.max(
+      1,
+      Math.floor(
+        (week_height - DAY_CHROME_REM * rem) / (LANE_HEIGHT_REM * rem),
+      ),
+    );
+  });
+
   let calendar = $derived(
     build_calendar(
       columns,
@@ -624,7 +692,7 @@
       show_recurring_previews,
       view_mode,
       search_task_ids,
-      view_mode === "month" ? MONTH_SPAN_LANES : WEEK_SPAN_LANES,
+      visible_lanes,
     ),
   );
   let calendar_days = $derived(calendar.days);
@@ -823,7 +891,7 @@
   >
     <div
       class="flex flex-none flex-col gap-px overflow-hidden rounded-xl border bg-border shadow-sm"
-      style={`min-height: max(calc(100vh - 12rem), ${view_mode === "month" ? 36 : 18}rem);`}
+      style={`height: max(calc(100vh - 12rem), ${view_mode === "month" ? 36 : 18}rem);`}
     >
       <div class="grid grid-cols-7 gap-px">
         {#each weekdays as weekday}
@@ -835,125 +903,109 @@
         {/each}
       </div>
 
-      {#each calendar.weeks as week (week.key)}
-        {@const has_hidden = week.hidden.some((entries) => entries.length > 0)}
-        {@const ghosts = ghost_segments(drop_preview, week)}
-        {@const lane_count = Math.max(
-          week.lane_count,
-          ...ghosts.map((ghost) => ghost.lane + 1),
-        )}
-        <div
-          class="grid flex-1 grid-cols-7 gap-x-px"
-          style={`grid-template-rows: auto${
-            lane_count > 0
-              ? ` repeat(${lane_count}, minmax(var(--calendar-lane-height), auto))`
-              : ""
-          }${has_hidden ? " auto" : ""} minmax(1.75rem, 1fr); --calendar-lane-height: 1.75rem;`}
-        >
-          {#each week.days as day, day_index (day.key)}
-            {@const singles = week.singles[day_index]}
-            {@const hidden = week.hidden[day_index]}
-            {@const day_count =
-              singles.length +
-              hidden.length +
-              week.segments.filter(
-                (segment) =>
-                  segment.column <= day_index &&
-                  segment.column + segment.length > day_index,
-              ).length}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <CalendarDayDropZone
-              day_key={day.key}
-              disabled={read_only}
-              preview={day_preview(day)}
-              class={`group/day row-span-full grid min-h-0 grid-rows-subgrid overflow-hidden bg-background px-1.5 pt-1.5 pb-1 ${
-                day.in_current_month
-                  ? ""
-                  : "bg-muted/30 text-muted-foreground/50"
-              } ${day.is_today ? "ring-2 ring-inset ring-primary/35" : ""}`}
-              style={`grid-column: ${day_index + 1};`}
-              title={read_only ? undefined : m.calendar_add_hint()}
-              ondblclick={read_only
-                ? undefined
-                : () => onAddTask(new Date(day.date))}
-            >
-              <div class="mb-1 flex items-center justify-between">
-                <span
-                  class={`flex size-6 items-center justify-center rounded-full text-xs tabular-nums ${
-                    day.is_today
-                      ? "bg-primary font-semibold text-primary-foreground"
-                      : ""
-                  }`}
-                >
-                  {day.date.getDate()}
-                </span>
-                <div class="flex items-center gap-1">
-                  {#if day_count > 0}
-                    <span class="text-[11px] tabular-nums text-muted-foreground"
-                      >{formatNumber(day_count)}</span
-                    >
-                  {/if}
-                  {#if !read_only}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      class="size-6 opacity-0 transition-opacity group-hover/day:opacity-100 focus-visible:opacity-100"
-                      aria-label={m.calendar_add_due({
-                        date: day.date.toLocaleDateString(getLocale(), {
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        }),
-                      })}
-                      title={m.calendar_add()}
-                      onclick={(event) => {
-                        event.stopPropagation();
-                        onAddTask(new Date(day.date));
-                      }}
-                      ondblclick={(event) => event.stopPropagation()}
-                    >
-                      <PlusIcon />
-                    </Button>
-                  {/if}
-                </div>
-              </div>
-
-              {#if has_hidden}
-                <div
-                  class="flex min-h-5 items-center"
-                  style={`grid-row: ${lane_count + 2};`}
-                >
-                  {#if hidden.length > 0}
-                    {@render hidden_tasks(day, hidden)}
-                  {/if}
-                </div>
-              {/if}
-
-              <div
-                class="min-h-0 overflow-x-hidden overflow-y-auto pt-0.5 [scrollbar-width:thin]"
-                style="grid-row: -2;"
+      <div
+        class="flex min-h-0 flex-1 flex-col gap-px"
+        bind:clientHeight={weeks_height}
+      >
+        {#each calendar.weeks as week (week.key)}
+          {@const ghosts = ghost_segments(drop_preview, week)}
+          {@const lane_count = Math.max(
+            week.lane_count,
+            ...ghosts.map((ghost) => ghost.lane + 1),
+          )}
+          <div
+            class="grid min-h-0 flex-1 basis-0 grid-cols-7 gap-x-px overflow-hidden"
+            style={`grid-template-rows: auto${
+              lane_count > 0
+                ? ` repeat(${lane_count}, var(--calendar-lane-height))`
+                : ""
+            } minmax(0, 1fr); --calendar-lane-height: ${LANE_HEIGHT_REM}rem;`}
+          >
+            {#each week.days as day, day_index (day.key)}
+              {@const day_entries = week.entries[day_index]}
+              {@const hidden = week.hidden[day_index]}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <CalendarDayDropZone
+                day_key={day.key}
+                disabled={read_only}
+                preview={day_preview(day)}
+                class={`group/day row-span-full grid min-h-0 grid-rows-subgrid overflow-hidden bg-background px-1.5 pt-1.5 pb-1 ${
+                  day.in_current_month
+                    ? ""
+                    : "bg-muted/30 text-muted-foreground/50"
+                } ${day.is_today ? "ring-2 ring-inset ring-primary/35" : ""}`}
+                style={`grid-column: ${day_index + 1};`}
+                title={read_only ? undefined : m.calendar_add_hint()}
+                ondblclick={read_only
+                  ? undefined
+                  : () => onAddTask(new Date(day.date))}
               >
-                <div class="flex flex-col gap-1">
-                  {#if day_ghost(day)}
-                    {@render ghost_card(drop_preview!)}
-                  {/if}
-                  {#each singles as entry (calendar_task_key(entry))}
-                    {@render single_task(entry)}
-                  {/each}
+                <div
+                  class="mb-1 flex items-center justify-between"
+                  style="grid-row: 1;"
+                >
+                  {@render day_number_label(day)}
+                  <div class="flex items-center gap-1">
+                    {#if day_entries.length > 0}
+                      <span
+                        class="text-[11px] tabular-nums text-muted-foreground"
+                        >{formatNumber(day_entries.length)}</span
+                      >
+                    {/if}
+                    {#if !read_only}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        class="size-6 opacity-0 transition-opacity group-hover/day:opacity-100 focus-visible:opacity-100"
+                        aria-label={m.calendar_add_due({
+                          date: day.date.toLocaleDateString(getLocale(), {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          }),
+                        })}
+                        title={m.calendar_add()}
+                        onclick={(event) => {
+                          event.stopPropagation();
+                          onAddTask(new Date(day.date));
+                        }}
+                        ondblclick={(event) => event.stopPropagation()}
+                      >
+                        <PlusIcon />
+                      </Button>
+                    {/if}
+                  </div>
                 </div>
-              </div>
-            </CalendarDayDropZone>
-          {/each}
 
-          {#each week.segments as segment (segment.key)}
-            {@render span_task(segment, week)}
-          {/each}
+                {#each week.singles[day_index] as single (single.key)}
+                  {@render single_task(single.entry, single.lane)}
+                {/each}
 
-          {#each ghosts as ghost (ghost.column)}
-            {@render ghost_bar(ghost)}
-          {/each}
-        </div>
-      {/each}
+                {#if hidden.length > 0}
+                  <div
+                    class="flex min-w-0 items-center"
+                    style={`grid-row: ${visible_lanes + 1};`}
+                  >
+                    {@render day_overflow(day, day_entries, hidden.length)}
+                  </div>
+                {/if}
+              </CalendarDayDropZone>
+            {/each}
+
+            {#each week.segments as segment (segment.key)}
+              {@render span_task(segment, week)}
+            {/each}
+
+            {#each ghosts as ghost (ghost.column)}
+              {#if ghost.span}
+                {@render ghost_bar(ghost)}
+              {:else}
+                {@render ghost_card(drop_preview!, ghost)}
+              {/if}
+            {/each}
+          </div>
+        {/each}
+      </div>
     </div>
   </DragDropProvider>
 </section>
@@ -1008,59 +1060,57 @@
     <DropdownMenu.Content
       align="end"
       class="min-w-36"
-      onCloseAutoFocus={(event) => {
-        if (archive_focus_restore_target === entry.task.id) {
-          event.preventDefault();
-        }
-        archive_focus_restore_target = null;
-      }}
+      onCloseAutoFocus={(event) => restore_menu_focus(event, entry)}
     >
-      <DropdownMenu.Item onclick={() => entry_open(entry)}>
-        <FullscreenIcon />
-        {m.task_view_details()}
-      </DropdownMenu.Item>
-      {#if entry.archived}
-        <DropdownMenu.Item onclick={() => ask_to_unarchive(entry.task)}>
-          <UndoIcon />
-          {m.calendar_unarchive()}
-        </DropdownMenu.Item>
-      {:else if !entry.preview}
-        <DropdownMenu.Item onclick={() => onEditTask(entry.task)}>
-          <PencilIcon />
-          {m.task_edit_action()}
-        </DropdownMenu.Item>
-        <DropdownMenu.Item onclick={() => onDuplicateTask(entry.task)}>
-          <CopyIcon />
-          {m.task_duplicate_action()}
-        </DropdownMenu.Item>
-        <DropdownMenu.Item onclick={() => onSaveAsTemplate(entry.task)}>
-          <LayoutTemplateIcon />
-          {m.task_template_save()}
-        </DropdownMenu.Item>
-        <DropdownMenu.Item onclick={() => onExportTask(entry.task)}>
-          <Share2Icon />
-          {m.task_share()}
-        </DropdownMenu.Item>
-        <DropdownMenu.Item
-          onSelect={() => {
-            archive_focus_restore_target = entry.task.id;
-            onArchiveTask(entry.task);
-          }}
-        >
-          <ArchiveIcon />
-          {m.task_archive_action()}
-        </DropdownMenu.Item>
-        <DropdownMenu.Separator />
-        <DropdownMenu.Item
-          variant="destructive"
-          onclick={() => ask_to_delete(entry.task)}
-        >
-          <TrashIcon />
-          {m.task_delete()}
-        </DropdownMenu.Item>
-      {/if}
+      {@render menu_items(entry, false)}
     </DropdownMenu.Content>
   </DropdownMenu.Root>
+{/snippet}
+
+{#snippet menu_items(entry: CalendarTask, context: boolean)}
+  {@const Item = context ? ContextMenu.Item : DropdownMenu.Item}
+  {@const Separator = context ? ContextMenu.Separator : DropdownMenu.Separator}
+  <Item onclick={() => entry_open(entry)}>
+    <FullscreenIcon />
+    {m.task_view_details()}
+  </Item>
+  {#if entry.archived && !read_only}
+    <Item onclick={() => ask_to_unarchive(entry.task)}>
+      <UndoIcon />
+      {m.calendar_unarchive()}
+    </Item>
+  {:else if !entry.archived && !entry.preview && !read_only}
+    <Item onclick={() => onEditTask(entry.task)}>
+      <PencilIcon />
+      {m.task_edit_action()}
+    </Item>
+    <Item onclick={() => onDuplicateTask(entry.task)}>
+      <CopyIcon />
+      {m.task_duplicate_action()}
+    </Item>
+    <Item onclick={() => onSaveAsTemplate(entry.task)}>
+      <LayoutTemplateIcon />
+      {m.task_template_save()}
+    </Item>
+    <Item onclick={() => onExportTask(entry.task)}>
+      <Share2Icon />
+      {m.task_share()}
+    </Item>
+    <Item
+      onSelect={() => {
+        archive_focus_restore_target = entry.task.id;
+        onArchiveTask(entry.task);
+      }}
+    >
+      <ArchiveIcon />
+      {m.task_archive_action()}
+    </Item>
+    <Separator />
+    <Item variant="destructive" onclick={() => ask_to_delete(entry.task)}>
+      <TrashIcon />
+      {m.task_delete()}
+    </Item>
+  {/if}
 {/snippet}
 
 {#snippet task_status_icon(entry: CalendarTask)}
@@ -1078,7 +1128,7 @@
   {/if}
 {/snippet}
 
-{#snippet single_task(entry: CalendarTask)}
+{#snippet single_task(entry: CalendarTask, lane: number)}
   {@const editable = entry_editable(entry)}
   {@const resizable = editable && !entry.range.invalid}
   {@const time_label = task_time_label(entry.task, entry.range.kind)}
@@ -1091,141 +1141,145 @@
         : entry.range.invalid
           ? m.calendar_invalid_range()
           : ""}
-  <div
-    class={`group relative min-w-0 transition-opacity ${is_drag_source(entry) ? "opacity-30" : ""}`}
-  >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <CalendarTaskDraggable
-      task_id={entry.task.id}
-      instance_key={calendar_task_key(entry)}
-      data={drag_data(entry)}
-      disabled={!editable}
-      class={`overflow-hidden rounded-md text-xs ${task_card_class(entry)}`}
-      oncontextmenu={read_only
-        ? undefined
-        : (event) => {
-            event.preventDefault();
-            if (editable) {
-              onEditTask(entry.task);
-            }
-          }}
+  <ContextMenu.Root>
+    <ContextMenu.Trigger
+      class={`group relative min-w-0 self-center transition-opacity ${is_drag_source(entry) ? "opacity-30" : ""}`}
+      style={`grid-row: ${lane + 2};`}
     >
-      <button
-        type="button"
-        class="flex h-6 w-full items-center gap-1.5 overflow-hidden px-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-        title={[entry.task.title, entry.column.name, time_label, status_label]
-          .filter(Boolean)
-          .join(" · ")}
-        onpointerup={(event) => event.currentTarget.blur()}
-        onclick={() => entry_open(entry)}
-        ondblclick={(event) => event.stopPropagation()}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <CalendarTaskDraggable
+        task_id={entry.task.id}
+        instance_key={calendar_task_key(entry)}
+        data={drag_data(entry)}
+        disabled={!editable}
+        class={`overflow-hidden rounded-md text-xs ${task_card_class(entry)}`}
       >
-        <span
-          class="h-3.5 w-1 shrink-0 rounded-full"
-          style={`background-color: ${entry_color(entry)}`}
-        ></span>
-        {#if time_label}
-          <span class="shrink-0 text-[10px] tabular-nums text-muted-foreground"
-            >{time_label}</span
-          >
-        {/if}
-        <span class={`min-w-0 flex-1 truncate ${task_title_class(entry)}`}
-          >{entry.task.title}</span
+        <button
+          type="button"
+          class="flex h-6 w-full items-center gap-1.5 overflow-hidden px-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+          title={[entry.task.title, entry.column.name, time_label, status_label]
+            .filter(Boolean)
+            .join(" · ")}
+          onpointerup={(event) => event.currentTarget.blur()}
+          onclick={() => entry_open(entry)}
+          ondblclick={(event) => event.stopPropagation()}
         >
-        <span class="flex shrink-0 text-muted-foreground">
-          {@render task_status_icon(entry)}
-        </span>
-      </button>
-    </CalendarTaskDraggable>
-    {#if resizable}
-      {@render resize_handle(entry, calendar_task_key(entry), "resize-start")}
-      {@render resize_handle(entry, calendar_task_key(entry), "resize-end")}
-    {/if}
-    {#if !read_only}
-      {@render task_menu_trigger(entry, resizable ? "right-2" : "right-0.5")}
-    {/if}
-  </div>
+          <span
+            class="h-3.5 w-1 shrink-0 rounded-full"
+            style={`background-color: ${entry_color(entry)}`}
+          ></span>
+          {#if time_label}
+            <span
+              class="shrink-0 text-[10px] tabular-nums text-muted-foreground"
+              >{time_label}</span
+            >
+          {/if}
+          <span class={`min-w-0 flex-1 truncate ${task_title_class(entry)}`}
+            >{entry.task.title}</span
+          >
+          <span class="flex shrink-0 text-muted-foreground">
+            {@render task_status_icon(entry)}
+          </span>
+        </button>
+      </CalendarTaskDraggable>
+      {#if resizable}
+        {@render resize_handle(entry, calendar_task_key(entry), "resize-start")}
+        {@render resize_handle(entry, calendar_task_key(entry), "resize-end")}
+      {/if}
+      {#if !read_only}
+        {@render task_menu_trigger(entry, resizable ? "right-2" : "right-0.5")}
+      {/if}
+    </ContextMenu.Trigger>
+    {@render task_context_content(entry)}
+  </ContextMenu.Root>
 {/snippet}
 
 {#snippet span_task(segment: CalendarSpanSegment, week: CalendarWeek)}
   {@const entry = segment.entry}
   {@const editable = entry_editable(entry)}
   {@const range_label = task_range_label(entry.task)}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class={`group relative z-10 flex min-w-0 items-center transition-opacity ${
-      is_drag_source(entry) ? "opacity-30" : ""
-    } ${
-      segment.continues_before ? "" : "ml-1.5"
-    } ${segment.continues_after ? "" : "mr-1.5"}`}
-    style={`grid-column: ${segment.column + 1} / span ${segment.length}; grid-row: ${segment.lane + 2};`}
-    onpointerdowncapture={(event) => record_span_grab(event, segment, week)}
-    ondblclick={(event) => event.stopPropagation()}
-  >
-    <CalendarTaskDraggable
-      task_id={entry.task.id}
-      instance_key={segment.key}
-      data={drag_data(entry)}
-      disabled={!editable}
-      class={`flex min-w-0 flex-1 overflow-hidden text-xs ${task_card_class(entry)} ${
-        segment.continues_before ? "rounded-l-none border-l-0" : "rounded-l-md"
-      } ${segment.continues_after ? "rounded-r-none border-r-0" : "rounded-r-md"}`}
-      oncontextmenu={read_only
-        ? undefined
-        : (event) => {
-            event.preventDefault();
-            if (editable) {
-              onEditTask(entry.task);
-            }
-          }}
+  <ContextMenu.Root>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <ContextMenu.Trigger
+      class={`group relative z-10 flex min-w-0 items-center transition-opacity ${
+        is_drag_source(entry) ? "opacity-30" : ""
+      } ${
+        segment.continues_before ? "" : "ml-1.5"
+      } ${segment.continues_after ? "" : "mr-1.5"}`}
+      style={`grid-column: ${segment.column + 1} / span ${segment.length}; grid-row: ${segment.lane + 2};`}
+      onpointerdowncapture={(event) => record_span_grab(event, segment, week)}
+      ondblclick={(event) => event.stopPropagation()}
     >
-      <button
-        type="button"
-        class="flex h-6 min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-        title={`${entry.task.title} · ${entry.column.name} · ${range_label}`}
-        aria-label={m.calendar_span_label({
-          title: entry.task.title,
-          range: range_label,
-        })}
-        onpointerup={(event) => event.currentTarget.blur()}
-        onclick={() => entry_open(entry)}
+      <CalendarTaskDraggable
+        task_id={entry.task.id}
+        instance_key={segment.key}
+        data={drag_data(entry)}
+        disabled={!editable}
+        class={`flex min-w-0 flex-1 overflow-hidden text-xs ${task_card_class(entry)} ${
+          segment.continues_before
+            ? "rounded-l-none border-l-0"
+            : "rounded-l-md"
+        } ${segment.continues_after ? "rounded-r-none border-r-0" : "rounded-r-md"}`}
       >
-        {#if segment.continues_before}
-          <ChevronLeftIcon class="size-3 shrink-0 text-muted-foreground" />
-        {:else}
+        <button
+          type="button"
+          class="flex h-6 min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+          title={`${entry.task.title} · ${entry.column.name} · ${range_label}`}
+          aria-label={m.calendar_span_label({
+            title: entry.task.title,
+            range: range_label,
+          })}
+          onpointerup={(event) => event.currentTarget.blur()}
+          onclick={() => entry_open(entry)}
+        >
+          {#if segment.continues_before}
+            <ChevronLeftIcon class="size-3 shrink-0 text-muted-foreground" />
+          {:else}
+            <span
+              class="h-3.5 w-1 shrink-0 rounded-full"
+              style={`background-color: ${entry_color(entry)}`}
+            ></span>
+          {/if}
+          <span class={`min-w-0 shrink truncate ${task_title_class(entry)}`}
+            >{entry.task.title}</span
+          >
           <span
-            class="h-3.5 w-1 shrink-0 rounded-full"
-            style={`background-color: ${entry_color(entry)}`}
-          ></span>
-        {/if}
-        <span class={`min-w-0 shrink truncate ${task_title_class(entry)}`}
-          >{entry.task.title}</span
-        >
-        <span
-          class="min-w-0 flex-1 truncate text-[10px] tabular-nums text-muted-foreground"
-          >{range_label}</span
-        >
-        <span class="flex shrink-0 text-muted-foreground">
-          {@render task_status_icon(entry)}
-        </span>
-        {#if segment.continues_after}
-          <ChevronRightIcon class="size-3 shrink-0 text-muted-foreground" />
-        {/if}
-      </button>
-    </CalendarTaskDraggable>
-    {#if editable && !segment.continues_before}
-      {@render resize_handle(entry, segment.key, "resize-start")}
-    {/if}
-    {#if editable && !segment.continues_after}
-      {@render resize_handle(entry, segment.key, "resize-end")}
-    {/if}
-    {#if !read_only}
-      {@render task_menu_trigger(
-        entry,
-        segment.continues_after ? "right-0.5" : "right-2",
-      )}
-    {/if}
-  </div>
+            class="min-w-0 flex-1 truncate text-[10px] tabular-nums text-muted-foreground"
+            >{range_label}</span
+          >
+          <span class="flex shrink-0 text-muted-foreground">
+            {@render task_status_icon(entry)}
+          </span>
+          {#if segment.continues_after}
+            <ChevronRightIcon class="size-3 shrink-0 text-muted-foreground" />
+          {/if}
+        </button>
+      </CalendarTaskDraggable>
+      {#if editable && !segment.continues_before}
+        {@render resize_handle(entry, segment.key, "resize-start")}
+      {/if}
+      {#if editable && !segment.continues_after}
+        {@render resize_handle(entry, segment.key, "resize-end")}
+      {/if}
+      {#if !read_only}
+        {@render task_menu_trigger(
+          entry,
+          segment.continues_after ? "right-0.5" : "right-2",
+        )}
+      {/if}
+    </ContextMenu.Trigger>
+    {@render task_context_content(entry)}
+  </ContextMenu.Root>
+{/snippet}
+
+{#snippet task_context_content(entry: CalendarTask, onselect?: () => void)}
+  <ContextMenu.Content
+    class="min-w-36"
+    onclick={onselect}
+    onCloseAutoFocus={(event) => restore_menu_focus(event, entry)}
+  >
+    {@render menu_items(entry, true)}
+  </ContextMenu.Content>
 {/snippet}
 
 {#snippet ghost_bar(ghost: CalendarGhostSegment)}
@@ -1251,12 +1305,13 @@
   {/if}
 {/snippet}
 
-{#snippet ghost_card(preview: CalendarDropPreview)}
+{#snippet ghost_card(preview: CalendarDropPreview, ghost: CalendarGhostSegment)}
   {@const time_label = preview.dates
     ? task_time_label(preview.dates, preview.kind)
     : ""}
   <div
-    class="pointer-events-none flex h-6.5 min-w-0 items-center gap-1.5 overflow-hidden rounded-md border-2 border-dashed border-primary bg-[color-mix(in_oklab,var(--primary)_15%,var(--card))] px-1.5 text-xs shadow-sm"
+    class="pointer-events-none relative z-30 mx-1.5 flex h-6.5 min-w-0 items-center gap-1.5 self-center overflow-hidden rounded-md border-2 border-dashed border-primary bg-[color-mix(in_oklab,var(--primary)_15%,var(--card))] px-1.5 text-xs shadow-sm"
+    style={`grid-column: ${ghost.column + 1}; grid-row: ${ghost.lane + 2};`}
     aria-hidden="true"
   >
     {#if time_label}
@@ -1302,51 +1357,140 @@
   </CalendarTaskDraggable>
 {/snippet}
 
-{#snippet hidden_tasks(day: CalendarDay, entries: CalendarTask[])}
-  <Popover.Root>
+{#snippet day_number_label(day: CalendarDay)}
+  {@const today_class = day.is_today
+    ? "bg-primary font-semibold text-primary-foreground"
+    : ""}
+  {#if view_mode === "month"}
+    {@const label = m.calendar_open_week({
+      date: formatDate(day.date, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }),
+    })}
+    <button
+      type="button"
+      class={`flex size-6 items-center justify-center rounded-full text-xs tabular-nums focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
+        today_class || "hover:bg-muted hover:text-foreground"
+      }`}
+      aria-label={label}
+      title={label}
+      onclick={(event) => {
+        event.stopPropagation();
+        open_week(day.date);
+      }}
+      ondblclick={(event) => event.stopPropagation()}
+    >
+      {formatNumber(day.date.getDate())}
+    </button>
+  {:else}
+    <span
+      class={`flex size-6 items-center justify-center rounded-full text-xs tabular-nums ${today_class}`}
+    >
+      {formatNumber(day.date.getDate())}
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet day_overflow(
+  day: CalendarDay,
+  entries: CalendarTask[],
+  hidden_count: number,
+)}
+  <Popover.Root
+    bind:open={
+      () => overflow_day === day.key,
+      (open) => (overflow_day = open ? day.key : null)
+    }
+  >
     <Popover.Trigger>
       {#snippet child({ props })}
         <button
           {...props}
           type="button"
-          class="rounded-sm px-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          class="w-full min-w-0 truncate rounded-sm px-1.5 py-0.5 text-left text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           ondblclick={(event) => event.stopPropagation()}
         >
-          {m.calendar_more_tasks({ count: entries.length })}
+          {m.calendar_more_tasks({ count: hidden_count })}
         </button>
       {/snippet}
     </Popover.Trigger>
-    <Popover.Content align="start" class="w-64 p-2">
-      <p class="mb-1.5 px-1 text-xs font-medium text-muted-foreground">
+    <Popover.Content align="start" class="w-72 p-0">
+      <p class="px-3 pt-2.5 pb-1.5 text-xs font-medium text-muted-foreground">
         {formatDate(day.date, {
           year: "numeric",
           month: "long",
           day: "numeric",
+          weekday: "long",
         })}
       </p>
-      <div class="flex max-h-64 flex-col gap-1 overflow-y-auto">
-        {#each entries as entry (calendar_task_key(entry))}
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            onclick={() => entry_open(entry)}
-          >
-            <span
-              class="h-3 w-1 shrink-0 rounded-full"
-              style={`background-color: ${entry_color(entry)}`}
-            ></span>
-            <span class="flex min-w-0 flex-1 flex-col">
-              <span
-                class={`truncate ${entry.archived ? "text-muted-foreground line-through" : entry.preview ? "text-muted-foreground" : "font-medium"}`}
-                >{entry.task.title}</span
-              >
-              <span class="truncate text-[10px] text-muted-foreground"
-                >{task_range_label(entry.task)}</span
-              >
-            </span>
-          </button>
-        {/each}
-      </div>
+      <ScrollArea class="[&>[data-slot=scroll-area-viewport]]:max-h-72">
+        <div class="flex flex-col gap-1 px-2 pb-2">
+          {#each entries as entry (calendar_task_key(entry))}
+            {@render overflow_entry(entry, day_number(day.date))}
+          {/each}
+        </div>
+      </ScrollArea>
     </Popover.Content>
   </Popover.Root>
+{/snippet}
+
+{#snippet overflow_entry(entry: CalendarTask, day: number)}
+  {@const span = entry.range.kind === "span"}
+  {@const continues_before = span && entry.range.start_day < day}
+  {@const continues_after = span && entry.range.end_day > day}
+  {@const detail = span
+    ? task_range_label(entry.task)
+    : task_time_label(entry.task, entry.range.kind)}
+  <ContextMenu.Root>
+    <ContextMenu.Trigger class="block min-w-0">
+      <button
+        type="button"
+        class={`flex w-full min-w-0 items-center gap-1.5 overflow-hidden px-2 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${task_card_class(entry)} ${
+          continues_before ? "rounded-l-sm" : "rounded-l-md"
+        } ${continues_after ? "rounded-r-sm" : "rounded-r-md"}`}
+        title={[entry.task.title, entry.column.name, detail]
+          .filter(Boolean)
+          .join(" · ")}
+        onclick={() => {
+          close_overflow();
+          entry_open(entry);
+        }}
+      >
+        {#if continues_before}
+          <ChevronLeftIcon
+            class="size-3 shrink-0 text-muted-foreground"
+            aria-label={m.calendar_continues_before()}
+          />
+        {:else}
+          <span
+            class="h-3.5 w-1 shrink-0 rounded-full"
+            style={`background-color: ${entry_color(entry)}`}
+          ></span>
+        {/if}
+        <span class="flex min-w-0 flex-1 flex-col">
+          <span class={`truncate ${task_title_class(entry)}`}
+            >{entry.task.title}</span
+          >
+          {#if detail}
+            <span
+              class="truncate text-[10px] tabular-nums text-muted-foreground"
+              >{detail}</span
+            >
+          {/if}
+        </span>
+        <span class="flex shrink-0 text-muted-foreground">
+          {@render task_status_icon(entry)}
+        </span>
+        {#if continues_after}
+          <ChevronRightIcon
+            class="size-3 shrink-0 text-muted-foreground"
+            aria-label={m.calendar_continues_after()}
+          />
+        {/if}
+      </button>
+    </ContextMenu.Trigger>
+    {@render task_context_content(entry, close_overflow)}
+  </ContextMenu.Root>
 {/snippet}

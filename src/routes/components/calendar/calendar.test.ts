@@ -301,8 +301,10 @@ describe("build_calendar", () => {
 
     expect(week.singles[index]).toEqual([
       expect.objectContaining({
-        task,
-        range: expect.objectContaining({ kind: "due" }),
+        entry: expect.objectContaining({
+          task,
+          range: expect.objectContaining({ kind: "due" }),
+        }),
       }),
     ]);
     expect(week.segments).toHaveLength(0);
@@ -327,9 +329,13 @@ describe("build_calendar", () => {
     const week = weeks[1];
 
     expect(week.segments).toHaveLength(0);
-    expect(week.singles[2].map((entry) => entry.task.id)).toEqual(["task_2"]);
-    expect(week.singles[2][0].range.kind).toBe("start");
-    expect(week.singles[3].map((entry) => entry.task.id)).toEqual(["task_3"]);
+    expect(week.singles[2].map(({ entry }) => entry.task.id)).toEqual([
+      "task_2",
+    ]);
+    expect(week.singles[2][0].entry.range.kind).toBe("start");
+    expect(week.singles[3].map(({ entry }) => entry.task.id)).toEqual([
+      "task_3",
+    ]);
     // Due-date summaries and export list tasks only by their due date.
     expect(
       days.flatMap((day) => day.tasks).map((entry) => entry.task.id),
@@ -348,7 +354,9 @@ describe("build_calendar", () => {
     expect(week.segments).toHaveLength(0);
     expect(week.singles[4]).toEqual([
       expect.objectContaining({
-        range: expect.objectContaining({ kind: "due", invalid: true }),
+        entry: expect.objectContaining({
+          range: expect.objectContaining({ kind: "due", invalid: true }),
+        }),
       }),
     ]);
   });
@@ -468,13 +476,12 @@ describe("build_calendar", () => {
     expect(forward.lane_count).toBe(2);
   });
 
-  it("keeps a cross-week task in one lane and lists hidden overflow", () => {
+  it("packs lanes per week so later weeks reuse freed lanes", () => {
     const tasks = [
-      span("task_1", new Date(2026, 0, 8), new Date(2026, 0, 13)),
-      span("task_2", new Date(2026, 0, 9), new Date(2026, 0, 12)),
-      span("task_3", new Date(2026, 0, 9), new Date(2026, 0, 10)),
+      span("task_1", new Date(2026, 0, 5), new Date(2026, 0, 9)),
+      span("task_2", new Date(2026, 0, 8), new Date(2026, 0, 13)),
     ];
-    const { weeks } = layout(tasks, new Date(2026, 0, 1), 2);
+    const { weeks } = layout(tasks, new Date(2026, 0, 1));
     const lanes = (index: number) =>
       weeks[index].segments.map((segment) => [
         segment.entry.task.id,
@@ -485,14 +492,75 @@ describe("build_calendar", () => {
       ["task_1", 0],
       ["task_2", 1],
     ]);
-    expect(lanes(2)).toEqual(lanes(1));
-    expect(weeks[1].hidden[5].map((entry) => entry.task.id)).toEqual([
+    expect(lanes(2)).toEqual([["task_2", 0]]);
+  });
+
+  it("fills free lanes with single-day tasks after multi-day bars", () => {
+    const tasks = [
+      make_task({ id: "task_1", due_time: new Date(2026, 0, 5, 9) }),
+      span("task_2", new Date(2026, 0, 6), new Date(2026, 0, 8)),
+      make_task({ id: "task_3", due_time: new Date(2026, 0, 7, 18) }),
+      make_task({ id: "task_4", due_time: new Date(2026, 0, 7, 8) }),
+    ];
+    const week = layout(tasks, new Date(2026, 0, 1)).weeks[1];
+    const singles = (column: number) =>
+      week.singles[column].map(({ entry, lane }) => [entry.task.id, lane]);
+
+    expect(week.segments.map((segment) => segment.lane)).toEqual([0]);
+    expect(singles(1)).toEqual([["task_1", 0]]);
+    expect(singles(3)).toEqual([
+      ["task_4", 1],
+      ["task_3", 2],
+    ]);
+    expect(week.entries[3].map((entry) => entry.task.id)).toEqual([
+      "task_2",
+      "task_4",
       "task_3",
     ]);
-    expect(weeks[1].hidden[6].map((entry) => entry.task.id)).toEqual([
-      "task_3",
+    expect(week.lane_count).toBe(3);
+  });
+
+  it("hides overflow behind the last lane of each affected day", () => {
+    const tasks = [
+      span("task_1", new Date(2026, 0, 5), new Date(2026, 0, 7)),
+      span("task_2", new Date(2026, 0, 6), new Date(2026, 0, 9)),
+      make_task({ id: "task_3", due_time: new Date(2026, 0, 6, 9) }),
+      make_task({ id: "task_4", due_time: new Date(2026, 0, 6, 10) }),
+      make_task({ id: "task_5", due_time: new Date(2026, 0, 9, 9) }),
+    ];
+    const week = layout(tasks, new Date(2026, 0, 1), 2).weeks[1];
+    const ids = (entries: { task: Task }[]) =>
+      entries.map((entry) => entry.task.id);
+
+    // Tuesday overflows, so task_2 in its last lane is hidden on every day it
+    // covers; Friday still shows task_5 in the first lane.
+    expect(week.segments.map((segment) => segment.entry.task.id)).toEqual([
+      "task_1",
     ]);
-    expect(weeks[1].lane_count).toBe(2);
+    expect(ids(week.hidden[2])).toEqual(["task_2", "task_3", "task_4"]);
+    expect(ids(week.hidden[4])).toEqual(["task_2"]);
+    expect(ids(week.hidden[5])).toEqual(["task_2"]);
+    expect(week.singles[5]).toEqual([expect.objectContaining({ lane: 0 })]);
+    expect(ids(week.entries[2])).toEqual([
+      "task_1",
+      "task_2",
+      "task_3",
+      "task_4",
+    ]);
+    expect(week.hidden[1]).toEqual([]);
+    expect(week.lane_count).toBe(2);
+  });
+
+  it("keeps at least one lane for the overflow button", () => {
+    const tasks = [
+      make_task({ id: "task_1", due_time: new Date(2026, 0, 6, 9) }),
+      make_task({ id: "task_2", due_time: new Date(2026, 0, 6, 10) }),
+    ];
+    const week = layout(tasks, new Date(2026, 0, 1), 0).weeks[1];
+
+    expect(week.singles[2]).toEqual([]);
+    expect(week.hidden[2]).toHaveLength(2);
+    expect(week.lane_count).toBe(1);
   });
 
   it("keeps the span of recurring previews", () => {

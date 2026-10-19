@@ -108,6 +108,44 @@
   "task_pin": "Pin Task",
   "task_unpin": "Unpin Task",
   "workspace_calendar": "Calendar",
+  "workspace_gantt": "Gantt",
+  "gantt_label": "Task schedule Gantt chart",
+  "gantt_scale": "Timeline scale",
+  "gantt_scale_day": "Day",
+  "gantt_scale_week": "Week",
+  "gantt_scale_month": "Month",
+  "gantt_task_header": "Task",
+  "gantt_empty_title": "No scheduled tasks",
+  "gantt_empty_description": "Give a task a start or due date to see it on the timeline.",
+  "gantt_keyboard_hint": "Alt+Left or Alt+Right moves the task by a day. Alt+Shift+Left or Alt+Shift+Right changes the due date.",
+  "gantt_summary": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} scheduled task",
+        "countPlural=*": "{countFormatted} scheduled tasks"
+      }
+    }
+  ],
+  "gantt_undated_summary": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task without dates is not shown",
+        "countPlural=*": "{countFormatted} tasks without dates are not shown"
+      }
+    }
+  ],
   "workspace_navigation": "Workspace navigation",
   "workspace_views": "Workspace views",
   "workspace_board_only": "Available in Board view",
@@ -530,6 +568,9 @@
   "calendar_span_label": "{title}, {range}",
   "calendar_resize_start": "Drag to change the start date",
   "calendar_resize_end": "Drag to change the due date",
+  "calendar_open_week": "Show the week of {date}",
+  "calendar_continues_before": "Continues from an earlier day",
+  "calendar_continues_after": "Continues to a later day",
   "calendar_more_tasks": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],
