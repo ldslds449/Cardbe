@@ -34,7 +34,19 @@ export interface ImportCandidate {
 
 export class BoardStore extends TaskBoardStore {
   notify_enabled = $state(false);
-  task_expand_mode = $state(true);
+  // Device-local detail visibility per board; boards without a saved choice
+  // use the older single setting.
+  private default_task_expand_mode = $state(true);
+  private board_task_expand_modes = $state<Record<number, boolean>>({});
+  get task_expand_mode() {
+    const board_id = this.active_board_id;
+    return (
+      (board_id === null
+        ? undefined
+        : this.board_task_expand_modes[board_id]) ??
+      this.default_task_expand_mode
+    );
+  }
   notification_setting_updating = $state(false);
   private expired_task_checker: ReturnType<typeof setInterval> | undefined;
 
@@ -71,11 +83,13 @@ export class BoardStore extends TaskBoardStore {
       const settings = await invoke<{
         notify_enabled: boolean;
         task_expand_mode?: boolean;
+        board_task_expand_modes?: Record<string, boolean>;
         iroh_network?: { enabled: boolean };
         language?: LanguagePreference;
       }>("get_settings");
       this.notify_enabled = settings.notify_enabled;
-      this.task_expand_mode = settings.task_expand_mode ?? true;
+      this.default_task_expand_mode = settings.task_expand_mode ?? true;
+      this.board_task_expand_modes = settings.board_task_expand_modes ?? {};
       this.iroh_enabled = settings.iroh_network?.enabled ?? false;
       applyLanguagePreference(settings.language);
     } catch (e) {
@@ -123,13 +137,20 @@ export class BoardStore extends TaskBoardStore {
   }
 
   async set_task_expand_mode(expanded: boolean) {
-    const previous = this.task_expand_mode;
-    this.task_expand_mode = expanded;
+    const board_id = this.active_board_id;
+    if (board_id === null) {
+      return;
+    }
+    const previous = this.board_task_expand_modes[board_id];
+    this.board_task_expand_modes[board_id] = expanded;
     // Switching the board-wide mode resets individually expanded tasks.
-    this.task_expansion.clear();
+    this.task_expansion.clear(board_id);
     const saved = await addMission(async () => {
       try {
-        await invoke<void>("set_task_expand_mode", { expanded });
+        await invoke<void>("set_task_expand_mode", {
+          boardId: board_id,
+          expanded,
+        });
         return true;
       } catch (error) {
         logger.error("settings.task_expand_save.failed", error);
@@ -137,8 +158,12 @@ export class BoardStore extends TaskBoardStore {
         return false;
       }
     });
-    if (!saved && this.task_expand_mode === expanded) {
-      this.task_expand_mode = previous;
+    if (!saved && this.board_task_expand_modes[board_id] === expanded) {
+      if (previous === undefined) {
+        delete this.board_task_expand_modes[board_id];
+      } else {
+        this.board_task_expand_modes[board_id] = previous;
+      }
     }
   }
 

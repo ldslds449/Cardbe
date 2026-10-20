@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 8;
 
@@ -291,8 +292,13 @@ pub struct Settings {
     pub notify_enabled: bool,
     #[serde(default = "default_true")]
     pub global_shortcuts_enabled: bool,
+    /// Fallback for boards without their own choice; older versions kept one
+    /// mode for every board.
     #[serde(default = "default_true")]
     pub task_expand_mode: bool,
+    /// Device-local task detail visibility, keyed by board ID.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub board_task_expand_modes: BTreeMap<i64, bool>,
     #[serde(default)]
     pub global_shortcuts: GlobalShortcutSettings,
     #[serde(default)]
@@ -370,6 +376,7 @@ impl Default for Settings {
             notify_enabled: false,
             global_shortcuts_enabled: true,
             task_expand_mode: true,
+            board_task_expand_modes: BTreeMap::new(),
             global_shortcuts: GlobalShortcutSettings::default(),
             iroh_network: IrohNetworkSettings::default(),
         }
@@ -662,8 +669,12 @@ mod tests {
 
     #[test]
     fn task_expand_mode_roundtrips() {
-        let settings: Settings = serde_json::from_str(r#"{"task_expand_mode":false}"#).unwrap();
+        let settings: Settings = serde_json::from_str(
+            r#"{"task_expand_mode":false,"board_task_expand_modes":{"7":true}}"#,
+        )
+        .unwrap();
         assert!(!settings.task_expand_mode);
+        assert_eq!(settings.board_task_expand_modes.get(&7), Some(&true));
         let restored: Settings =
             serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
         assert_eq!(restored, settings);

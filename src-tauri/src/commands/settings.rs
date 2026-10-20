@@ -43,10 +43,21 @@ pub fn set_notify_enabled(
 #[tauri::command]
 pub fn set_task_expand_mode(
     state: State<'_, SharedAppData>,
+    board_id: i64,
     expanded: bool,
 ) -> Result<(), CommandError> {
+    // A view preference, so viewers of shared boards may change it too.
+    if !lock_app(&state)?
+        .boards
+        .iter()
+        .any(|board| board.id == board_id)
+    {
+        return Err(crate::errors::DomainError::BoardNotFound.into());
+    }
     update_stored(&state, |data| {
-        data.settings.task_expand_mode = expanded;
+        data.settings
+            .board_task_expand_modes
+            .insert(board_id, expanded);
         Ok(())
     })
     .map_err(CommandError::from)

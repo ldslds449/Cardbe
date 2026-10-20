@@ -65,11 +65,11 @@ export class TaskExpansionState {
     }
   }
 
-  clear() {
-    if (Object.keys(this.expanded).length === 0) {
+  clear(board_id: number) {
+    if (!this.expanded[board_id]) {
       return;
     }
-    this.expanded = {};
+    this.set_board(board_id, []);
     this.persist();
   }
 

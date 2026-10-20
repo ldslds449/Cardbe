@@ -45,7 +45,7 @@ describe("TaskExpansionState", () => {
     expect(restored.is_expanded(3, "1")).toBe(false);
   });
 
-  it("prunes missing tasks and clears all boards", () => {
+  it("prunes missing tasks and clears one board", () => {
     const state = new TaskExpansionState();
     state.toggle(1, "1");
     state.toggle(1, "2");
@@ -55,10 +55,11 @@ describe("TaskExpansionState", () => {
     expect(state.is_expanded(1, "2")).toBe(true);
     expect(state.is_expanded(2, "1")).toBe(true);
 
-    state.clear();
+    state.clear(1);
     expect(state.is_expanded(1, "2")).toBe(false);
-    expect(state.is_expanded(2, "1")).toBe(false);
-    expect(new TaskExpansionState().is_expanded(2, "1")).toBe(false);
+    expect(state.is_expanded(2, "1")).toBe(true);
+    expect(new TaskExpansionState().is_expanded(1, "2")).toBe(false);
+    expect(new TaskExpansionState().is_expanded(2, "1")).toBe(true);
   });
 
   it("works when storage is unavailable", () => {
