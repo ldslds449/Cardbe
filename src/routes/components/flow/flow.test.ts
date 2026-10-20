@@ -445,10 +445,10 @@ describe("appended_layout", () => {
       nodes: [],
       viewport: { x: -60, y: 20, zoom: 2 },
     };
-    const first = appended_layout(base, 7)!;
+    const first = appended_layout(base, [7])!;
     expect(first.nodes).toEqual([{ task_id: 7, x: 50, y: 10 }]);
     expect(first.viewport).toEqual(base.viewport);
-    const second = appended_layout(first, 8)!;
+    const second = appended_layout(first, [8])!;
     expect(second.nodes[1]).toEqual({ task_id: 8, x: 50, y: 170 });
   });
 
@@ -460,11 +460,14 @@ describe("appended_layout", () => {
         { id: "a", kind: "text", text: "", x: 40, y: 40, width: 280 },
       ],
     };
-    expect(appended_layout(base, 2)!.nodes[1]).toEqual({
+    expect(appended_layout(base, [2])!.nodes[1]).toEqual({
       task_id: 2,
       x: 40,
       y: 200,
     });
-    expect(appended_layout(base, 1)).toBeNull();
+    expect(appended_layout(base, [1])).toBeNull();
+    expect(
+      appended_layout(base, [1, 9, 10])!.nodes.map((node) => node.task_id),
+    ).toEqual([1, 9, 10]);
   });
 });

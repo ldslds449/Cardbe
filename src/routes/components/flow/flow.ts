@@ -271,12 +271,17 @@ export function added_layout(
   };
 }
 
-// Adds one task near the saved viewport's top-left, below any item already placed there.
+// Adds tasks near the saved viewport's top-left, below any item already placed
+// there; returns null when every task is already on the canvas.
 export function appended_layout(
   layout: FlowLayout,
-  task_id: number,
+  task_ids: number[],
 ): FlowLayout | null {
-  if (layout.nodes.some((node) => node.task_id === task_id)) {
+  if (
+    task_ids.every((task_id) =>
+      layout.nodes.some((node) => node.task_id === task_id),
+    )
+  ) {
     return null;
   }
   const viewport = layout.viewport ?? { x: 0, y: 0, zoom: 1 };
@@ -293,7 +298,12 @@ export function appended_layout(
   ) {
     position.y += 160;
   }
-  return added_layout(layout, [`task_${task_id}`], viewport, position);
+  return added_layout(
+    layout,
+    task_ids.map((task_id) => `task_${task_id}`),
+    viewport,
+    position,
+  );
 }
 
 export function relationship_id(edge: Relationship): string {

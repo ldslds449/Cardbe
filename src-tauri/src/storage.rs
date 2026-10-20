@@ -1483,10 +1483,11 @@ impl Database {
         Ok(())
     }
 
-    pub fn move_task_to_board(
+    /// Moves the tasks in source board order; any missing task aborts the move.
+    pub fn move_tasks_to_board(
         &mut self,
         source_id: i64,
-        task_id: i64,
+        task_ids: &[i64],
         target_id: i64,
         column_id: i64,
     ) -> StorageResult<StoredData> {
@@ -1505,18 +1506,25 @@ impl Database {
             .iter()
             .position(|c| c.id == column_id)
             .ok_or(DomainError::ColumnNotFound)?;
-        let (from_column, from_task) = source
-            .columns
-            .iter()
-            .enumerate()
-            .find_map(|(i, c)| c.tasks.iter().position(|t| t.id == task_id).map(|j| (i, j)))
-            .ok_or(DomainError::TaskNotFound)?;
-        let mut task = source.columns[from_column].tasks.remove(from_task);
-        task.id = target.allocate_task_id()?;
-        for label in &task.labels {
-            target.touch_label(label.clone());
+        let selected: std::collections::HashSet<i64> = task_ids.iter().copied().collect();
+        let mut moved = Vec::with_capacity(selected.len());
+        for source_column in &mut source.columns {
+            let (tasks, kept): (Vec<Task>, Vec<Task>) = std::mem::take(&mut source_column.tasks)
+                .into_iter()
+                .partition(|task| selected.contains(&task.id));
+            source_column.tasks = kept;
+            moved.extend(tasks);
         }
-        target.columns[column].tasks.push(task);
+        if moved.len() != selected.len() {
+            return Err(DomainError::TaskNotFound.into());
+        }
+        for mut task in moved {
+            task.id = target.allocate_task_id()?;
+            for label in &task.labels {
+                target.touch_label(label.clone());
+            }
+            target.columns[column].tasks.push(task);
+        }
         target.sort_column_tasks();
         let tx = self.connection.transaction()?;
         for (id, before, after) in [
@@ -3858,7 +3866,7 @@ mod tests {
             loaded.database.board_role(-1).unwrap_err(),
             loaded
                 .database
-                .move_task_to_board(active, 1, -1, 1)
+                .move_tasks_to_board(active, &[1], -1, 1)
                 .unwrap_err(),
         ] {
             let value =
@@ -4351,7 +4359,7 @@ mod tests {
             .any(|row| row.task.id == 3));
         loaded
             .database
-            .move_task_to_board(first, 9, second, 1)
+            .move_tasks_to_board(first, &[9], second, 1)
             .unwrap();
         assert!(!loaded
             .database
@@ -6361,6 +6369,73 @@ mod tests {
     }
 
     #[test]
+    fn cross_board_batch_move_keeps_board_order_or_moves_nothing() {
+        let dir = test_dir("cross-board-batch-move");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let task = |id, title: &str| Task {
+            id,
+            title: title.into(),
+            ..Task::default()
+        };
+        let column = |id, tasks| Column {
+            id,
+            name: "Tasks".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            tasks,
+        };
+        let data = StoredData {
+            columns: vec![
+                column(0, vec![task(0, "A"), task(1, "B")]),
+                column(1, vec![task(2, "C")]),
+            ],
+            next_column_id: 2,
+            next_task_id: 3,
+            ..StoredData::default()
+        };
+        let source = loaded
+            .database
+            .create_board_with_data("Source", &data)
+            .unwrap()
+            .id;
+        let target = loaded
+            .database
+            .create_board_with_data("Target", &data)
+            .unwrap()
+            .id;
+        assert!(loaded
+            .database
+            .move_tasks_to_board(source, &[0, 99], target, 1)
+            .is_err());
+        assert_eq!(
+            loaded.database.read_board_complete(source).unwrap().columns,
+            data.columns
+        );
+
+        let remaining = loaded
+            .database
+            .move_tasks_to_board(source, &[2, 0], target, 1)
+            .unwrap();
+        let titles = |columns: &[Column]| -> Vec<Vec<String>> {
+            columns
+                .iter()
+                .map(|column| column.tasks.iter().map(|t| t.title.clone()).collect())
+                .collect()
+        };
+        assert_eq!(titles(&remaining.columns), vec![vec!["B"], vec![]]);
+        let moved = loaded.database.read_board_complete(target).unwrap();
+        assert_eq!(
+            titles(&moved.columns),
+            vec![vec!["A", "B"], vec!["C", "A", "C"]]
+        );
+        let new_ids = [moved.columns[1].tasks[1].id, moved.columns[1].tasks[2].id];
+        assert!(new_ids[0] != new_ids[1] && new_ids.iter().all(|id| *id > 2));
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn cross_board_move_preserves_task_and_rejects_read_only_boards() {
         let dir = test_dir("cross-board-move");
         fs::create_dir_all(&dir).unwrap();
@@ -6394,7 +6469,7 @@ mod tests {
             .id;
         assert!(loaded
             .database
-            .move_task_to_board(source, 0, target, 99)
+            .move_tasks_to_board(source, &[0], target, 99)
             .is_err());
         for id in [target, source] {
             loaded
@@ -6407,7 +6482,7 @@ mod tests {
                 .unwrap();
             assert!(loaded
                 .database
-                .move_task_to_board(source, 0, target, 0)
+                .move_tasks_to_board(source, &[0], target, 0)
                 .is_err());
             assert_eq!(
                 loaded.database.read_board_complete(source).unwrap().columns[0].tasks,
@@ -6428,7 +6503,7 @@ mod tests {
         }
         loaded
             .database
-            .move_task_to_board(source, 0, target, 0)
+            .move_tasks_to_board(source, &[0], target, 0)
             .unwrap();
         assert!(
             loaded.database.read_board_complete(source).unwrap().columns[0]

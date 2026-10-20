@@ -1226,6 +1226,126 @@ describe("pending task operations", () => {
     });
   });
 
+  it("moves selected tasks in the requested order as one change", async () => {
+    invoke_mock.mockResolvedValue(undefined);
+    const store = create_store(2);
+    store.columns[0].tasks = [
+      create_task("task_1", "One"),
+      create_task("task_2", "Two"),
+    ];
+    store.columns[1].tasks = [
+      create_task("task_3", "Three"),
+      create_task("task_4", "Four"),
+    ];
+
+    const move = store.move_tasks(["task_3", "task_1"], "column_2", "task_4");
+
+    expect(
+      store.columns.map((column) => column.tasks.map((t) => t.id)),
+    ).toEqual([["task_2"], ["task_3", "task_1", "task_4"]]);
+    await expect(move).resolves.toBe(true);
+    expect(invoke_mock).toHaveBeenCalledWith("move_tasks", {
+      taskIds: [3, 1],
+      toColumnId: 2,
+      beforeTaskId: 4,
+      expectedBoardId: 7,
+    });
+    expect(invoke_mock).not.toHaveBeenCalledWith(
+      "move_task",
+      expect.anything(),
+    );
+  });
+
+  it("pins selected tasks with one command", async () => {
+    invoke_mock.mockResolvedValue(undefined);
+    const store = create_store();
+    store.columns[0].tasks = [
+      create_task("task_1", "One"),
+      create_task("task_2", "Two"),
+      create_task("task_3", "Three"),
+    ];
+
+    const pin = store.set_tasks_pinned(["task_3", "task_2"], true);
+
+    expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
+      "task_2",
+      "task_3",
+      "task_1",
+    ]);
+    await expect(pin).resolves.toBe(true);
+    expect(invoke_mock).toHaveBeenCalledWith("set_tasks_pinned", {
+      taskIds: [3, 2],
+      pinned: true,
+      expectedBoardId: 7,
+    });
+  });
+
+  it("moves selected tasks to another board with one command", async () => {
+    invoke_mock.mockResolvedValue([]);
+    const store = create_store();
+    store.columns[0].tasks = [
+      create_task("task_1", "One"),
+      create_task("task_2", "Two"),
+    ];
+    vi.spyOn(store, "get_boards").mockResolvedValue(undefined);
+
+    await expect(
+      store.move_tasks_to_board(["task_1", "task_2"], 8, 3),
+    ).resolves.toBe(true);
+    expect(invoke_mock).toHaveBeenCalledWith("move_tasks_to_board", {
+      expectedBoardId: 7,
+      taskIds: [1, 2],
+      targetBoardId: 8,
+      targetColumnId: 3,
+    });
+    expect(store.can_undo).toBe(false);
+  });
+
+  it("waits for pending creations before deleting selected tasks", async () => {
+    const add_task = deferred<number>();
+    invoke_mock.mockImplementation((command) =>
+      command === "add_task" ? add_task.promise : Promise.resolve([]),
+    );
+    const store = create_store();
+    store.columns[0].tasks = [create_task("task_1", "Existing")];
+    const creation = store.add_new_task("column_1", create_task("", "New"));
+    const pending_task_id = store.columns[0].tasks[1].id;
+
+    const deletion = store.delete_tasks(["task_1", pending_task_id]);
+
+    expect(store.columns[0].tasks).toHaveLength(0);
+    add_task.resolve(42);
+    await expect(creation).resolves.toBe(true);
+    await expect(deletion).resolves.toBe(true);
+    expect(invoke_mock).toHaveBeenCalledWith("delete_tasks", {
+      taskIds: [1, 42],
+      expectedBoardId: 7,
+    });
+  });
+
+  it("reloads the board when archiving selected tasks fails", async () => {
+    invoke_mock.mockImplementation((command) =>
+      command === "archive_tasks"
+        ? Promise.reject({ code: "TASK_NOT_FOUND" })
+        : Promise.resolve([]),
+    );
+    const store = create_store();
+    store.columns[0].tasks = [
+      create_task("task_1", "One"),
+      create_task("task_2", "Two"),
+    ];
+    const get_columns = vi
+      .spyOn(store, "get_columns")
+      .mockImplementation(() => {});
+
+    await expect(store.archive_tasks(["task_1", "task_2"])).resolves.toBe(
+      false,
+    );
+    expect(store.columns[0].tasks).toHaveLength(0);
+    expect(get_columns).toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalled();
+  });
+
   it("does not restore a pending task when its creation fails", async () => {
     const add_task = deferred<number>();
     invoke_mock.mockImplementation((command) => {

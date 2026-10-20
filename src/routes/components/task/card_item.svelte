@@ -22,7 +22,9 @@
   import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
+  import SquareCheckIcon from "@lucide/svelte/icons/square-check";
   import MoveTaskDialog from "../dialog/move_task_dialog.svelte";
+  import { cn } from "$lib/utils";
 
   import { recurrence_label, type Task } from "../../type/task.svelte";
   import { tab_label, type FlowTab } from "../flow/flow";
@@ -53,6 +55,9 @@
     onFloatTask?: () => void;
     onLoadFlowTabs?: () => Promise<FlowTab[] | null>;
     onAddToFlow?: (tab: FlowTab) => void;
+    selected?: boolean;
+    selecting?: boolean;
+    onSelect?: (event: MouseEvent | null) => void;
   }
 
   let {
@@ -75,6 +80,9 @@
     onFloatTask,
     onLoadFlowTabs,
     onAddToFlow,
+    selected = false,
+    selecting = false,
+    onSelect,
   }: CardItemProps = $props();
 
   const { ref, isDragging, isDropTarget } = useSortable({
@@ -113,6 +121,33 @@
       ? due_label(task.due_time, new Date(), task.due_at_midnight)
       : undefined,
   );
+
+  // Ctrl/Cmd or Shift starts a selection; once one exists, plain clicks extend it.
+  function is_select_click(event: MouseEvent) {
+    return (
+      onSelect !== undefined &&
+      (event.ctrlKey || event.metaKey || event.shiftKey || selecting) &&
+      !(
+        event.target instanceof Element &&
+        event.target.closest("button, a, input, label")
+      )
+    );
+  }
+
+  function handle_select_click(event: MouseEvent) {
+    if (is_select_click(event)) {
+      event.preventDefault();
+      onSelect?.(event);
+    }
+  }
+
+  // dnd-kit makes the card focusable, and Chromium treats a held Ctrl/Shift as
+  // keyboard input, so focusing on mousedown would flash a focus ring.
+  function handle_select_mousedown(event: MouseEvent) {
+    if (event.button === 0 && is_select_click(event)) {
+      event.preventDefault();
+    }
+  }
 </script>
 
 <ContextMenu.Root onOpenChange={load_flow_tabs}>
@@ -121,16 +156,20 @@
     data-task-card
     class="group relative max-w-full select-none overflow-hidden"
     {@attach ref}
-    ondblclick={read_only ? undefined : onViewTask}
+    ondblclick={read_only || selecting ? undefined : onViewTask}
   >
     <Card.Root
       data-task-card-surface
-      class="relative my-1 w-full gap-2 border-2 py-3 transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground/40 hover:shadow-sm {read_only
-        ? 'cursor-pointer'
-        : ''}"
+      data-selected={selected || undefined}
+      class={cn(
+        "relative my-1 w-full gap-2 border-2 py-3 transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground/40 hover:shadow-sm",
+        read_only && "cursor-pointer",
+        selected && "border-primary bg-primary/5 hover:border-primary",
+      )}
       role={read_only ? "button" : undefined}
       tabindex={read_only ? 0 : undefined}
-      onclick={read_only ? onViewTask : undefined}
+      onclick={read_only ? onViewTask : handle_select_click}
+      onmousedown={read_only ? undefined : handle_select_mousedown}
       onkeydown={read_only
         ? (event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -325,6 +364,12 @@
   >
     {#snippet extra()}
       {#if !read_only}
+        {#if onSelect}
+          <Item title={m.task_selection_hint()} onclick={() => onSelect(null)}>
+            <SquareCheckIcon />
+            {selected ? m.task_deselect() : m.task_select()}
+          </Item>
+        {/if}
         {#if onFloatTask}
           <Item onclick={onFloatTask}>
             <PictureInPicture2Icon />

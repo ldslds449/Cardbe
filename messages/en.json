@@ -238,6 +238,142 @@
   "task_deleted": "Task deleted",
   "task_archived": "Task archived",
   "task_archived_all": "Tasks archived",
+  "task_select": "Select task",
+  "task_deselect": "Deselect task",
+  "column_select_tasks": "Select all tasks",
+  "task_selection_toolbar": "Selected task actions",
+  "task_selection_move": "Move to column",
+  "task_selection_clear": "Clear selection",
+  "task_selection_pin": "Pin",
+  "task_selection_unpin": "Unpin",
+  "task_pinned_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task pinned",
+        "countPlural=*": "{countFormatted} tasks pinned"
+      }
+    }
+  ],
+  "task_unpinned_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task unpinned",
+        "countPlural=*": "{countFormatted} tasks unpinned"
+      }
+    }
+  ],
+  "task_moved_board_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task moved to another board",
+        "countPlural=*": "{countFormatted} tasks moved to another board"
+      }
+    }
+  ],
+  "task_move_selected_board_description": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Move {countFormatted} selected task to another editable board. Moving clears this board’s undo history and cannot be undone.",
+        "countPlural=*": "Move {countFormatted} selected tasks to another editable board. Moving clears this board’s undo history and cannot be undone."
+      }
+    }
+  ],
+  "task_selection_hint": "Ctrl+click or ⌘+click to select multiple tasks, Shift+click to select a range, Esc to clear.",
+  "task_selection_selected": "Selected",
+  "task_selection_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task selected",
+        "countPlural=*": "{countFormatted} tasks selected"
+      }
+    }
+  ],
+  "task_delete_selected_confirm": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Delete {countFormatted} selected task?",
+        "countPlural=*": "Delete {countFormatted} selected tasks?"
+      }
+    }
+  ],
+  "task_deleted_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task deleted",
+        "countPlural=*": "{countFormatted} tasks deleted"
+      }
+    }
+  ],
+  "task_archived_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task archived",
+        "countPlural=*": "{countFormatted} tasks archived"
+      }
+    }
+  ],
+  "task_moved_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task moved",
+        "countPlural=*": "{countFormatted} tasks moved"
+      }
+    }
+  ],
   "task_restored": "Task restored",
   "task_updated": "Task updated",
   "task_add_error": "Couldn't add task",
@@ -1362,6 +1498,22 @@
   "task_add_to_flow": "Add to Canvas",
   "task_add_to_flow_done": "Added to “{name}”.",
   "task_add_to_flow_exists": "Already on “{name}”.",
+  "task_add_to_flow_done_count": [
+    {
+      "declarations": [
+        "input name",
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Added {countFormatted} task to “{name}”.",
+        "countPlural=*": "Added {countFormatted} tasks to “{name}”."
+      }
+    }
+  ],
+  "task_add_to_flow_exists_all": "The selected tasks are already on “{name}”.",
   "task_move_board_title": "Move Task to Board",
   "task_move_board_description": "Move “{name}” to another editable board. Moving clears this board’s undo history and cannot be undone.",
   "task_move_board_empty": "No other editable boards available.",

@@ -16,6 +16,7 @@
   import TrashIcon from "@lucide/svelte/icons/trash-2";
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import ClipboardPasteIcon from "@lucide/svelte/icons/clipboard-paste";
+  import SquareCheckIcon from "@lucide/svelte/icons/square-check";
 
   import EditableLabel from "../editable_label.svelte";
 
@@ -34,6 +35,7 @@
     onAddTask: () => void;
     onImportTask: () => void;
     onArchiveAllTasks: () => void;
+    onSelectAllTasks?: () => void;
     onUpdateSort: (sort: ColumnSort) => void;
     read_only?: boolean;
   }
@@ -48,6 +50,7 @@
     onAddTask = () => {},
     onImportTask = () => {},
     onArchiveAllTasks = () => {},
+    onSelectAllTasks,
     onUpdateSort = () => {},
     read_only = false,
   }: CardColumnProps = $props();
@@ -177,6 +180,12 @@
           {m.task_import()}
         </ContextMenu.Item>
         {#if numberTasks > 0}
+          {#if onSelectAllTasks}
+            <ContextMenu.Item onclick={onSelectAllTasks}>
+              <SquareCheckIcon />
+              {m.column_select_tasks()}
+            </ContextMenu.Item>
+          {/if}
           <ContextMenu.Item onclick={onArchiveAllTasks}>
             <ArchiveIcon />
             {m.column_archive_tasks()}

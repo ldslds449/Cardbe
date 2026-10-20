@@ -220,6 +220,88 @@
   "task_deleted": "已刪除任務",
   "task_archived": "已封存任務",
   "task_archived_all": "已封存所有任務",
+  "task_select": "選取任務",
+  "task_deselect": "取消選取任務",
+  "column_select_tasks": "選取此欄所有任務",
+  "task_selection_toolbar": "已選取任務的操作",
+  "task_selection_move": "移至欄位",
+  "task_selection_clear": "取消選取",
+  "task_selection_pin": "釘選",
+  "task_selection_unpin": "取消釘選",
+  "task_pinned_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已釘選 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "task_unpinned_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已取消釘選 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "task_moved_board_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已將 {countFormatted} 個任務移至其他看板"
+      }
+    }
+  ],
+  "task_move_selected_board_description": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "將選取的 {countFormatted} 個任務移至其他可編輯的看板。移動後會清除目前看板的復原紀錄，且無法復原此操作。"
+      }
+    }
+  ],
+  "task_selection_hint": "按住 Ctrl 或 ⌘ 點擊可選取多個任務，按住 Shift 點擊可連續選取，按 Esc 取消選取。",
+  "task_selection_selected": "已選取",
+  "task_selection_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已選取 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "task_delete_selected_confirm": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "確定要刪除選取的 {countFormatted} 個任務嗎？"
+      }
+    }
+  ],
+  "task_deleted_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已刪除 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "task_archived_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已封存 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "task_moved_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已移動 {countFormatted} 個任務"
+      }
+    }
+  ],
   "task_restored": "已還原任務",
   "task_updated": "已更新任務",
   "task_add_error": "無法新增任務",
@@ -1246,6 +1328,19 @@
   "task_add_to_flow": "加入白板",
   "task_add_to_flow_done": "已加入「{name}」。",
   "task_add_to_flow_exists": "這張卡片已在「{name}」上。",
+  "task_add_to_flow_done_count": [
+    {
+      "declarations": [
+        "input name",
+        "input count",
+        "local countFormatted = count: number"
+      ],
+      "match": {
+        "count=*": "已將 {countFormatted} 個任務加入「{name}」。"
+      }
+    }
+  ],
+  "task_add_to_flow_exists_all": "選取的任務都已在「{name}」上。",
   "task_move_board_title": "將任務移至其他看板",
   "task_move_board_description": "將「{name}」移至其他可編輯的看板。移動後會清除目前看板的復原紀錄，且無法復原此操作。",
   "task_move_board_empty": "沒有其他可編輯的看板。",

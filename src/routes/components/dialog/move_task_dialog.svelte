@@ -14,8 +14,18 @@
   import type { Task } from "../../type/task.svelte";
   import type { ColumnSerialized } from "../../type/column.svelte";
 
-  let { open = $bindable(false), task }: { open: boolean; task: Task } =
-    $props();
+  // Pass `task` for one card, or `task_ids` to move a board selection.
+  let {
+    open = $bindable(false),
+    task,
+    task_ids,
+    onMoved,
+  }: {
+    open: boolean;
+    task?: Task;
+    task_ids?: string[];
+    onMoved?: () => void;
+  } = $props();
   let target = $state("");
   let column = $state("");
   let columns = $state<ColumnSerialized[]>([]);
@@ -71,10 +81,21 @@
       return;
     }
     moving = true;
-    if (
-      await board.move_task_to_board(task.id, Number(target), Number(column))
-    ) {
+    const moved = task_ids
+      ? await board.move_tasks_to_board(
+          task_ids,
+          Number(target),
+          Number(column),
+        )
+      : task !== undefined &&
+        (await board.move_task_to_board(
+          task.id,
+          Number(target),
+          Number(column),
+        ));
+    if (moved) {
       open = false;
+      onMoved?.();
     }
     moving = false;
   }
@@ -85,9 +106,11 @@
     <Dialog.Header>
       <Dialog.Title>{m.task_move_board_title()}</Dialog.Title>
       <Dialog.Description
-        >{m.task_move_board_description({
-          name: task.title,
-        })}</Dialog.Description
+        >{task_ids
+          ? m.task_move_selected_board_description({ count: task_ids.length })
+          : m.task_move_board_description({
+              name: task?.title ?? "",
+            })}</Dialog.Description
       >
     </Dialog.Header>
     <div class="space-y-2">

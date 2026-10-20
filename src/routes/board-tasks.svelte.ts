@@ -404,6 +404,229 @@ export abstract class TaskBoardStore extends IrohBoardStore {
     });
   }
 
+  delete_tasks(task_ids: string[]): Promise<boolean> {
+    return this.run_task_batch(
+      task_ids,
+      (selected) => this.remove_tasks(selected),
+      (taskIds, expectedBoardId) =>
+        invoke<void>("delete_tasks", { taskIds, expectedBoardId }),
+      (count) => {
+        this.search_tasks(this.search_query);
+        this.show_success_with_undo(m.task_deleted_count({ count }));
+      },
+      "task.delete_batch.failed",
+    );
+  }
+
+  archive_tasks(task_ids: string[]): Promise<boolean> {
+    return this.run_task_batch(
+      task_ids,
+      (selected) => this.remove_tasks(selected),
+      (taskIds, expectedBoardId) =>
+        invoke<void>("archive_tasks", { taskIds, expectedBoardId }),
+      (count) => {
+        this.get_columns();
+        this.refresh_archives_if_loaded();
+        this.show_success_with_undo(m.task_archived_count({ count }));
+      },
+      "task.archive_batch.failed",
+    );
+  }
+
+  // `task_ids` order is kept, so callers pass the order shown on the board.
+  move_tasks(
+    task_ids: string[],
+    to_column_id: string,
+    before_task_id: string | null = null,
+  ): Promise<boolean> {
+    if (!this.columns.some((column) => column.id === to_column_id)) {
+      return Promise.resolve(false);
+    }
+    const before_task_resolution =
+      before_task_id === null ? null : this.capture_task_id(before_task_id);
+    return this.run_task_batch(
+      task_ids,
+      (selected) => {
+        const moved = this.remove_tasks(selected);
+        const to_column = this.columns.find(
+          (column) => column.id === to_column_id,
+        );
+        if (!to_column) {
+          return;
+        }
+        const before_idx = to_column.tasks.findIndex(
+          (task) =>
+            before_task_id !== null &&
+            task.id === this.resolve_task_alias(before_task_id),
+        );
+        to_column.tasks.splice(
+          before_idx === -1 ? to_column.tasks.length : before_idx,
+          0,
+          ...moved,
+        );
+        this.sort_column_tasks(to_column);
+      },
+      async (taskIds, expectedBoardId) =>
+        invoke<void>("move_tasks", {
+          taskIds,
+          toColumnId: get_column_id(to_column_id),
+          beforeTaskId:
+            before_task_resolution === null
+              ? null
+              : await before_task_resolution.id,
+          expectedBoardId,
+        }),
+      (count) => this.show_success_with_undo(m.task_moved_count({ count })),
+      "task.move_batch.failed",
+    );
+  }
+
+  set_tasks_pinned(task_ids: string[], pinned: boolean): Promise<boolean> {
+    return this.run_task_batch(
+      task_ids,
+      (selected) => {
+        for (const column of this.columns) {
+          if (column.tasks.some((task) => selected.has(task.id))) {
+            column.tasks = column.tasks.map((task) =>
+              selected.has(task.id) ? { ...task, pinned } : task,
+            );
+            this.sort_column_tasks(column);
+          }
+        }
+      },
+      (taskIds, expectedBoardId) =>
+        invoke<void>("set_tasks_pinned", { taskIds, pinned, expectedBoardId }),
+      (count) =>
+        this.show_success_with_undo(
+          pinned
+            ? m.task_pinned_count({ count })
+            : m.task_unpinned_count({ count }),
+        ),
+      "task.pin_batch.failed",
+    );
+  }
+
+  async move_tasks_to_board(
+    task_ids: string[],
+    target_board_id: number,
+    target_column_id: number,
+  ): Promise<boolean> {
+    const expectedBoardId = this.active_board_id;
+    const generation = this.board_generation;
+    const resolutions = task_ids.map((task_id) => {
+      this.cancel_task_move_timer(this.resolve_task_alias(task_id));
+      return this.capture_task_id(task_id);
+    });
+    try {
+      await addMission(async () => {
+        await invoke("move_tasks_to_board", {
+          expectedBoardId,
+          taskIds: await Promise.all(
+            resolutions.map((resolution) => resolution.id),
+          ),
+          targetBoardId: target_board_id,
+          targetColumnId: target_column_id,
+        });
+        // Clear undo before the next queued edit can create new history.
+        if (generation === this.board_generation) {
+          this.can_undo = false;
+        }
+      });
+      await this.get_boards();
+      if (this.all_task_list_filter) {
+        void this.fetch_all_task_page(true);
+      }
+      if (generation === this.board_generation) {
+        this.get_columns();
+        this.update_labels();
+        this.search_tasks(this.search_query);
+      }
+      toast.success(m.task_moved_board_count({ count: task_ids.length }));
+      return true;
+    } catch (e) {
+      logger.error("task.move_batch_to_board.failed", e);
+      if (generation === this.board_generation) {
+        this.get_columns();
+      }
+      toast.error(translateCommandError(e));
+      return false;
+    }
+  }
+
+  // Removes tasks and returns them in the order they were requested.
+  private remove_tasks(task_ids: ReadonlySet<string>): Task[] {
+    const removed = new Map<string, Task>();
+    for (const column of this.columns) {
+      for (const task of column.tasks) {
+        if (task_ids.has(task.id)) {
+          removed.set(task.id, task);
+        }
+      }
+      column.tasks = column.tasks.filter((task) => !task_ids.has(task.id));
+    }
+    return [...task_ids].flatMap((task_id) => removed.get(task_id) ?? []);
+  }
+
+  // Applies one optimistic edit for the whole selection and persists it as a
+  // single backend change, so one Undo restores every selected task.
+  private run_task_batch(
+    task_ids: string[],
+    apply: (selected: ReadonlySet<string>) => void,
+    persist: (task_ids: number[], expected_board_id: number) => Promise<void>,
+    on_success: (count: number) => void,
+    log_event: string,
+  ): Promise<boolean> {
+    const expectedBoardId = this.active_board_id;
+    const generation = this.board_generation;
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
+    const selected = new Set(
+      task_ids
+        .map((task_id) => this.resolve_task_alias(task_id))
+        .filter((task_id) => this.find_task_position(task_id)),
+    );
+    if (selected.size === 0) {
+      return Promise.resolve(false);
+    }
+    const resolutions = [...selected].map((task_id) => {
+      this.cancel_task_move_timer(task_id);
+      return this.capture_task_id(task_id);
+    });
+    apply(selected);
+    this.columns = [...this.columns];
+    this.refresh_labels_from_columns();
+
+    return addMission(async () => {
+      // Tasks whose queued creation failed are already gone from the board.
+      const persisted_ids = (
+        await Promise.all(
+          resolutions.map((resolution) => resolution.id.catch(() => null)),
+        )
+      ).filter((task_id) => task_id !== null);
+      if (persisted_ids.length > 0) {
+        await persist(persisted_ids, expectedBoardId);
+      }
+      return persisted_ids.length;
+    })
+      .then((count) => {
+        if (generation !== this.board_generation || count === 0) {
+          return false;
+        }
+        on_success(count);
+        return true;
+      })
+      .catch((e: unknown) => {
+        logger.error(log_event, e);
+        if (generation !== this.board_generation) {
+          return false;
+        }
+        toast.error(translateCommandError(e));
+        this.get_columns();
+        return false;
+      });
+  }
+
   unarchive_task(column_id: string, task_id: string) {
     const board = this;
     const expectedBoardId = this.active_board_id;
@@ -937,12 +1160,18 @@ export abstract class TaskBoardStore extends IrohBoardStore {
     }
   }
 
-  async add_task_to_flow(task_id: string, tab: FlowTab) {
+  add_task_to_flow(task_id: string, tab: FlowTab) {
+    return this.add_tasks_to_flow([task_id], tab);
+  }
+
+  async add_tasks_to_flow(task_ids: string[], tab: FlowTab) {
     const boardId = this.active_board_id;
-    if (boardId === null) {
+    if (boardId === null || task_ids.length === 0) {
       return;
     }
-    const resolution = this.capture_task_id(task_id);
+    const resolutions = task_ids.map((task_id) =>
+      this.capture_task_id(task_id),
+    );
     try {
       // Queue behind earlier edits so a newly created task is persisted first.
       const added = await addMission(async () => {
@@ -953,7 +1182,10 @@ export abstract class TaskBoardStore extends IrohBoardStore {
         if (data.tab_id !== tab.id) {
           throw { code: "FLOW_TAB_NOT_FOUND" };
         }
-        const layout = appended_layout(data.layout, await resolution.id);
+        const layout = appended_layout(
+          data.layout,
+          await Promise.all(resolutions.map((resolution) => resolution.id)),
+        );
         if (layout) {
           await invoke("save_flow_layout", {
             expectedBoardId: boardId,
@@ -964,10 +1196,19 @@ export abstract class TaskBoardStore extends IrohBoardStore {
         return layout !== null;
       });
       const name = tab_label(tab);
+      const count = task_ids.length;
       if (added) {
-        toast.success(m.task_add_to_flow_done({ name }));
+        toast.success(
+          count === 1
+            ? m.task_add_to_flow_done({ name })
+            : m.task_add_to_flow_done_count({ name, count }),
+        );
       } else {
-        toast.info(m.task_add_to_flow_exists({ name }));
+        toast.info(
+          count === 1
+            ? m.task_add_to_flow_exists({ name })
+            : m.task_add_to_flow_exists_all({ name }),
+        );
       }
     } catch (error) {
       toast.error(translateCommandError(error));

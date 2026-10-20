@@ -159,18 +159,40 @@ pub fn archive_task(
 ) -> Result<(), CommandError> {
     let time = current_time_millis()?;
     update_stored_with_archives_for_board(&state, expected_board_id, |data| {
-        let (column, task_index) = task_position(data, task_id)?;
-        let task = data.columns[column].tasks.remove(task_index);
-        if task.recurrence.is_some() && task.due_time.is_some() {
-            let next_id = data.allocate_task_id()?;
-            if let Some(next) = next_recurring_task(&task, time, next_id)? {
-                data.columns[column].tasks.insert(task_index, next);
-            }
+        archive_task_in(data, task_id, time)
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn archive_tasks(
+    state: State<'_, SharedAppData>,
+    task_ids: Vec<i64>,
+    expected_board_id: i64,
+) -> Result<(), CommandError> {
+    let task_ids = crate::board_mutations::unique_task_ids(task_ids)?;
+    let time = current_time_millis()?;
+    update_stored_with_archives_for_board(&state, expected_board_id, |data| {
+        for task_id in task_ids {
+            archive_task_in(data, task_id, time)?;
         }
-        data.archives.push(Archive { time, task });
         Ok(())
     })
     .map_err(CommandError::from)
+}
+
+/// Recurring tasks are replaced in place by their next occurrence.
+fn archive_task_in(data: &mut StoredData, task_id: i64, time: u128) -> Result<(), DomainError> {
+    let (column, task_index) = task_position(data, task_id)?;
+    let task = data.columns[column].tasks.remove(task_index);
+    if task.recurrence.is_some() && task.due_time.is_some() {
+        let next_id = data.allocate_task_id()?;
+        if let Some(next) = next_recurring_task(&task, time, next_id)? {
+            data.columns[column].tasks.insert(task_index, next);
+        }
+    }
+    data.archives.push(Archive { time, task });
+    Ok(())
 }
 
 #[tauri::command]

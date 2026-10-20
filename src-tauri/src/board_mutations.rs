@@ -2,6 +2,7 @@ use crate::{
     errors::DomainError,
     models::{Column, ColumnSort, StoredData, Task},
 };
+use std::collections::HashSet;
 
 pub(crate) fn column_index(data: &StoredData, column_id: i64) -> Result<usize, DomainError> {
     data.columns
@@ -99,6 +100,71 @@ pub(crate) fn move_task(
     Ok(())
 }
 
+/// Batch operations act on a bounded set of distinct tasks and fail as a whole
+/// when any task is missing, so a partial selection never commits.
+pub(crate) const MAX_BATCH_TASKS: usize = 10_000;
+
+pub(crate) fn unique_task_ids(task_ids: Vec<i64>) -> Result<Vec<i64>, DomainError> {
+    if task_ids.is_empty() || task_ids.len() > MAX_BATCH_TASKS {
+        return Err(DomainError::InvalidArgument);
+    }
+    let mut seen = HashSet::with_capacity(task_ids.len());
+    Ok(task_ids.into_iter().filter(|id| seen.insert(*id)).collect())
+}
+
+pub(crate) fn delete_tasks(data: &mut StoredData, task_ids: &[i64]) -> Result<(), DomainError> {
+    for &task_id in task_ids {
+        let (column, task) = task_position(data, task_id)?;
+        data.columns[column].tasks.remove(task);
+    }
+    Ok(())
+}
+
+/// Inserts the tasks in the given order before an unselected task in the
+/// destination column, or at its end. The caller supplies the order because
+/// a drag may already show tasks in positions that were never persisted.
+pub(crate) fn move_tasks(
+    data: &mut StoredData,
+    task_ids: &[i64],
+    to_column_id: i64,
+    before_task_id: Option<i64>,
+) -> Result<(), DomainError> {
+    let to_column = column_index(data, to_column_id)?;
+    if before_task_id.is_some_and(|id| task_ids.contains(&id)) {
+        return Err(DomainError::InvalidArgument);
+    }
+    for &task_id in task_ids {
+        task_position(data, task_id)?;
+    }
+    let mut moved = Vec::with_capacity(task_ids.len());
+    for &task_id in task_ids {
+        let (column, task) = task_position(data, task_id)?;
+        moved.push(data.columns[column].tasks.remove(task));
+    }
+    let tasks = &mut data.columns[to_column].tasks;
+    let destination = match before_task_id {
+        Some(id) => tasks
+            .iter()
+            .position(|task| task.id == id)
+            .ok_or(DomainError::TaskNotFound)?,
+        None => tasks.len(),
+    };
+    tasks.splice(destination..destination, moved);
+    Ok(())
+}
+
+pub(crate) fn set_tasks_pinned(
+    data: &mut StoredData,
+    task_ids: &[i64],
+    pinned: bool,
+) -> Result<(), DomainError> {
+    for &task_id in task_ids {
+        let (column, task) = task_position(data, task_id)?;
+        data.columns[column].tasks[task].pinned = pinned;
+    }
+    Ok(())
+}
+
 pub(crate) fn add_task(
     data: &mut StoredData,
     column_id: i64,
@@ -166,6 +232,86 @@ mod tests {
             tasks: vec![Task { id: 2, ..task }],
         });
         data
+    }
+
+    fn two_columns() -> StoredData {
+        let task = |id| Task {
+            id,
+            ..Task::default()
+        };
+        let column = |id, tasks| Column {
+            id,
+            name: String::new(),
+            color: String::new(),
+            sort_order: ColumnSort::Custom,
+            tasks,
+        };
+        StoredData {
+            columns: vec![
+                column(1, vec![task(10), task(11), task(12)]),
+                column(2, vec![task(20), task(21)]),
+            ],
+            ..StoredData::default()
+        }
+    }
+
+    fn ids(data: &StoredData) -> Vec<Vec<i64>> {
+        data.columns
+            .iter()
+            .map(|column| column.tasks.iter().map(|task| task.id).collect())
+            .collect()
+    }
+
+    #[test]
+    fn batch_ids_are_deduplicated_and_bounded() {
+        assert_eq!(unique_task_ids(vec![3, 1, 3, 2]).unwrap(), vec![3, 1, 2]);
+        assert!(matches!(
+            unique_task_ids(vec![]),
+            Err(DomainError::InvalidArgument)
+        ));
+        assert!(matches!(
+            unique_task_ids(vec![1; MAX_BATCH_TASKS + 1]),
+            Err(DomainError::InvalidArgument)
+        ));
+    }
+
+    #[test]
+    fn delete_tasks_removes_tasks_across_columns_or_nothing() {
+        let mut data = two_columns();
+        delete_tasks(&mut data, &[11, 20]).unwrap();
+        assert_eq!(ids(&data), vec![vec![10, 12], vec![21]]);
+
+        let mut data = two_columns();
+        assert!(matches!(
+            delete_tasks(&mut data, &[10, 99]),
+            Err(DomainError::TaskNotFound)
+        ));
+    }
+
+    #[test]
+    fn move_tasks_inserts_in_requested_order() {
+        let mut data = two_columns();
+        move_tasks(&mut data, &[20, 12, 10], 2, None).unwrap();
+        assert_eq!(ids(&data), vec![vec![11], vec![21, 20, 12, 10]]);
+
+        let mut data = two_columns();
+        move_tasks(&mut data, &[12, 10], 2, Some(21)).unwrap();
+        assert_eq!(ids(&data), vec![vec![11], vec![20, 12, 10, 21]]);
+        assert!(matches!(
+            move_tasks(&mut data, &[10], 2, Some(10)),
+            Err(DomainError::InvalidArgument)
+        ));
+
+        let mut data = two_columns();
+        assert!(matches!(
+            move_tasks(&mut data, &[10, 99], 2, None),
+            Err(DomainError::TaskNotFound)
+        ));
+        assert!(matches!(
+            move_tasks(&mut data, &[10], 9, None),
+            Err(DomainError::ColumnNotFound)
+        ));
+        assert_eq!(ids(&data), ids(&two_columns()));
     }
 
     #[test]

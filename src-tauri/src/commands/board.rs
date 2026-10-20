@@ -195,15 +195,49 @@ pub fn move_task_to_board(
     target_board_id: i64,
     target_column_id: i64,
 ) -> Result<(), CommandError> {
-    let mut guard = lock_app(&state)?;
+    move_tasks_between_boards(
+        &state,
+        expected_board_id,
+        &[task_id],
+        target_board_id,
+        target_column_id,
+    )
+}
+
+#[tauri::command]
+pub fn move_tasks_to_board(
+    state: State<'_, SharedAppData>,
+    expected_board_id: i64,
+    task_ids: Vec<i64>,
+    target_board_id: i64,
+    target_column_id: i64,
+) -> Result<(), CommandError> {
+    let task_ids = crate::board_mutations::unique_task_ids(task_ids)?;
+    move_tasks_between_boards(
+        &state,
+        expected_board_id,
+        &task_ids,
+        target_board_id,
+        target_column_id,
+    )
+}
+
+fn move_tasks_between_boards(
+    state: &State<'_, SharedAppData>,
+    expected_board_id: i64,
+    task_ids: &[i64],
+    target_board_id: i64,
+    target_column_id: i64,
+) -> Result<(), CommandError> {
+    let mut guard = lock_app(state)?;
     if guard.active_board_id != expected_board_id {
         return Err(CommandError::StaleBoardRequest);
     }
     let mut source = guard
         .database
-        .move_task_to_board(
+        .move_tasks_to_board(
             expected_board_id,
-            task_id,
+            task_ids,
             target_board_id,
             target_column_id,
         )
@@ -211,7 +245,7 @@ pub fn move_task_to_board(
     if !guard.archives_loaded {
         source.archives.clear();
     }
-    // A single-board undo would duplicate the task left in the destination.
+    // A single-board undo would duplicate the tasks left in the destination.
     guard.replace_board_contents(source);
     guard.boards = guard.database.boards().map_err(CommandError::repository)?;
     Ok(())
@@ -287,6 +321,48 @@ pub fn delete_task(
         let (column, task) = task_position(data, task_id)?;
         data.columns[column].tasks.remove(task);
         Ok(())
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn delete_tasks(
+    state: State<'_, SharedAppData>,
+    task_ids: Vec<i64>,
+    expected_board_id: i64,
+) -> Result<(), CommandError> {
+    let task_ids = crate::board_mutations::unique_task_ids(task_ids)?;
+    update_stored_for_board(&state, expected_board_id, |data| {
+        crate::board_mutations::delete_tasks(data, &task_ids)
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn move_tasks(
+    state: State<'_, SharedAppData>,
+    task_ids: Vec<i64>,
+    to_column_id: i64,
+    before_task_id: Option<i64>,
+    expected_board_id: i64,
+) -> Result<(), CommandError> {
+    let task_ids = crate::board_mutations::unique_task_ids(task_ids)?;
+    update_stored_for_board(&state, expected_board_id, |data| {
+        crate::board_mutations::move_tasks(data, &task_ids, to_column_id, before_task_id)
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn set_tasks_pinned(
+    state: State<'_, SharedAppData>,
+    task_ids: Vec<i64>,
+    pinned: bool,
+    expected_board_id: i64,
+) -> Result<(), CommandError> {
+    let task_ids = crate::board_mutations::unique_task_ids(task_ids)?;
+    update_stored_for_board(&state, expected_board_id, |data| {
+        crate::board_mutations::set_tasks_pinned(data, &task_ids, pinned)
     })
     .map_err(CommandError::from)
 }

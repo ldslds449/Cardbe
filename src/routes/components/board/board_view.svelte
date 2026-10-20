@@ -15,6 +15,7 @@
   import type { Task } from "../../type/task.svelte";
   import CardColumn from "../task/card_column.svelte";
   import CardItem from "../task/card_item.svelte";
+  import TaskSelectionBar from "../task/task_selection_bar.svelte";
   import { task_matches_search } from "../calendar/calendar";
 
   type TaskPosition = { column_idx: number; task_idx: number };
@@ -49,6 +50,92 @@
 
   let dragged_task = $state<{ id: string; origin: TaskPosition } | null>(null);
   let dragged_column = $state<{ id: string; origin_idx: number } | null>(null);
+
+  let selected_ids = $state<ReadonlySet<string>>(new Set());
+  let selection_anchor: string | null = null;
+  // Hidden or removed tasks drop out, so actions only apply to visible cards.
+  const selected_tasks = $derived(
+    board.columns.flatMap((column) =>
+      column.tasks.filter(
+        (task) =>
+          selected_ids.has(task.id) &&
+          task_matches_search(task, search_text, search_task_ids),
+      ),
+    ),
+  );
+  const selected_task_ids = $derived(selected_tasks.map((task) => task.id));
+  const selecting = $derived(selected_task_ids.length > 0);
+
+  $effect(() => {
+    void board.active_board_id;
+    if (read_only) {
+      clear_selection();
+    }
+    return clear_selection;
+  });
+
+  function clear_selection() {
+    selected_ids = new Set();
+    selection_anchor = null;
+  }
+
+  function visible_column_task_ids(column_idx: number) {
+    return (board.columns[column_idx]?.tasks ?? [])
+      .filter((task) => task_matches_search(task, search_text, search_task_ids))
+      .map((task) => task.id);
+  }
+
+  function select_task(
+    column_idx: number,
+    task_id: string,
+    event: MouseEvent | null,
+  ) {
+    const next = new Set(selected_task_ids);
+    const column_task_ids = visible_column_task_ids(column_idx);
+    const anchor_idx =
+      event?.shiftKey && selection_anchor
+        ? column_task_ids.indexOf(selection_anchor)
+        : -1;
+    if (anchor_idx !== -1) {
+      const task_idx = column_task_ids.indexOf(task_id);
+      for (const id of column_task_ids.slice(
+        Math.min(anchor_idx, task_idx),
+        Math.max(anchor_idx, task_idx) + 1,
+      )) {
+        next.add(id);
+      }
+    } else if (!next.delete(task_id)) {
+      next.add(task_id);
+    }
+    selection_anchor = task_id;
+    selected_ids = next;
+  }
+
+  function select_column_tasks(column_idx: number) {
+    selected_ids = new Set([
+      ...selected_task_ids,
+      ...visible_column_task_ids(column_idx),
+    ]);
+  }
+
+  function run_selection_action(action: (task_ids: string[]) => unknown) {
+    const task_ids = selected_task_ids;
+    clear_selection();
+    void action(task_ids);
+  }
+
+  function handle_window_keydown(event: KeyboardEvent) {
+    if (
+      event.key === "Escape" &&
+      selecting &&
+      !event.defaultPrevented &&
+      !document.querySelector(
+        '[role="dialog"], [role="alertdialog"], [role="menu"]',
+      )
+    ) {
+      clear_selection();
+    }
+  }
 
   function find_task_position(task_id: string): TaskPosition | undefined {
     for (let column_idx = 0; column_idx < board.columns.length; column_idx++) {
@@ -112,6 +199,19 @@
 
       const final_position = find_task_position(dragged_task.id);
       if (
+        final_position &&
+        selected_task_ids.length > 1 &&
+        selected_task_ids.includes(dragged_task.id)
+      ) {
+        // Dropping one selected card brings the rest of the selection along,
+        // in board order, around the dragged card.
+        const column = board.columns[final_position.column_idx];
+        const before_task_id =
+          column.tasks
+            .slice(final_position.task_idx + 1)
+            .find((task) => !selected_ids.has(task.id))?.id ?? null;
+        void board.move_tasks(selected_task_ids, column.id, before_task_id);
+      } else if (
         final_position &&
         (final_position.column_idx !== dragged_task.origin.column_idx ||
           final_position.task_idx !== dragged_task.origin.task_idx)
@@ -213,6 +313,8 @@
   ];
 </script>
 
+<svelte:window onkeydown={handle_window_keydown} />
+
 {#if board.columns.length === 0}
   <Empty.Root>
     <Empty.Header>
@@ -255,6 +357,9 @@
           onAddTask={() => onAddTask(column_idx)}
           onImportTask={() => onImportTask(column.id)}
           onArchiveAllTasks={() => board.archive_all_tasks(column.id)}
+          onSelectAllTasks={read_only
+            ? undefined
+            : () => select_column_tasks(column_idx)}
           {read_only}
         >
           {#each column.tasks as task, task_idx (task.id)}
@@ -281,6 +386,11 @@
                 onFloatTask={() => void board.float_task(task.id)}
                 onLoadFlowTabs={() => board.get_flow_tabs()}
                 onAddToFlow={(tab) => void board.add_task_to_flow(task.id, tab)}
+                selected={selected_ids.has(task.id)}
+                {selecting}
+                onSelect={read_only
+                  ? undefined
+                  : (event) => select_task(column_idx, task.id, event)}
                 onTogglePin={() =>
                   void board.update_task(task.id, {
                     ...task,
@@ -294,4 +404,24 @@
       {/each}
     </div>
   </DragDropProvider>
+  {#if selecting && !read_only}
+    <TaskSelectionBar
+      task_ids={selected_task_ids}
+      all_pinned={selected_tasks.every((task) => task.pinned)}
+      columns={board.columns}
+      onPin={(pinned) => void board.set_tasks_pinned(selected_task_ids, pinned)}
+      onLoadFlowTabs={() => board.get_flow_tabs()}
+      onAddToFlow={(tab) =>
+        void board.add_tasks_to_flow(selected_task_ids, tab)}
+      onMove={(column_id) =>
+        run_selection_action((task_ids) =>
+          board.move_tasks(task_ids, column_id),
+        )}
+      onArchive={() =>
+        run_selection_action((task_ids) => board.archive_tasks(task_ids))}
+      onDelete={() =>
+        run_selection_action((task_ids) => board.delete_tasks(task_ids))}
+      onClear={clear_selection}
+    />
+  {/if}
 {/if}
