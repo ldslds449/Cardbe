@@ -201,6 +201,21 @@ describe("core messages", () => {
     expect(m.task_repeat_week_count({ count: 2 }, { locale: "zh-TW" })).toBe(
       "每 2 週",
     );
+    expect(
+      m.board_delete_description_with_archives({ count: 1 }, { locale: "en" }),
+    ).toContain("including 1 archived task.");
+    expect(
+      m.board_delete_description_with_archives(
+        { count: 1200 },
+        { locale: "en" },
+      ),
+    ).toContain("including 1,200 archived tasks.");
+    expect(
+      m.board_delete_description_with_archives(
+        { count: 1200 },
+        { locale: "zh-TW" },
+      ),
+    ).toBe("這會永久刪除看板及其所有內容，包含 1,200 個封存任務，且無法復原。");
   });
   it("preserves user content in complete messages", () => {
     expect(

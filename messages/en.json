@@ -28,6 +28,20 @@
   "board_rename_description": "Choose a new name for this board.",
   "board_name": "Board name",
   "board_delete_description": "This permanently deletes the board and all of its contents. This action cannot be undone.",
+  "board_delete_description_with_archives": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "This permanently deletes the board and all of its contents, including {countFormatted} archived task. This action cannot be undone.",
+        "countPlural=*": "This permanently deletes the board and all of its contents, including {countFormatted} archived tasks. This action cannot be undone."
+      }
+    }
+  ],
   "board_shared": "Shared with me",
   "board_read_only": "Read only",
   "board_can_edit": "Can edit",

@@ -1085,6 +1085,7 @@
       onSwitch={(id) => void switch_board(id)}
       onCreate={create_board}
       onRename={(id, name) => board.rename_board(id, name)}
+      onLoadArchivedCount={(id) => board.get_archived_count(id)}
       onDelete={delete_board}
     />
     <!-- `min-h-0` is essential here: without it this flex item grows to its

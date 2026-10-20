@@ -644,6 +644,15 @@ export abstract class BoardStoreBase {
     }
   }
 
+  async get_archived_count(id: number): Promise<number | null> {
+    try {
+      return await invoke<number>("get_board_archived_count", { boardId: id });
+    } catch (e) {
+      logger.error("board.archived_count.failed", e);
+      return null;
+    }
+  }
+
   async delete_board(id: number) {
     try {
       const next = await invoke<number>("delete_board", { boardId: id });

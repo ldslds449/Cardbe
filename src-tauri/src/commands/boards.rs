@@ -104,6 +104,21 @@ pub fn switch_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<()
 }
 
 #[tauri::command]
+pub fn get_board_archived_count(
+    state: State<'_, SharedAppData>,
+    board_id: i64,
+) -> Result<i64, CommandError> {
+    let guard = lock_app(&state)?;
+    if !guard.boards.iter().any(|board| board.id == board_id) {
+        return Err(DomainError::BoardNotFound.into());
+    }
+    guard
+        .database
+        .archived_task_count(board_id)
+        .map_err(CommandError::repository)
+}
+
+#[tauri::command]
 pub fn delete_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<i64, CommandError> {
     let mut guard = lock_app(&state)?;
     let next = next_board_after_delete(&guard.boards, board_id)?;

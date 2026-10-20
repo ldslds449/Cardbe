@@ -31,6 +31,7 @@
     onSwitch,
     onCreate,
     onRename,
+    onLoadArchivedCount,
     onDelete,
   }: {
     boards: BoardItem[];
@@ -39,6 +40,7 @@
     onSwitch: (id: number) => void;
     onCreate: (name: string) => Promise<boolean>;
     onRename: (id: number, name: string) => Promise<boolean>;
+    onLoadArchivedCount: (id: number) => Promise<number | null>;
     onDelete: (id: number) => Promise<boolean>;
   } = $props();
 
@@ -49,6 +51,7 @@
   let rename_name = $state("");
   let search = $state("");
   let selected_board = $state<BoardItem | null>(null);
+  let archived_count = $state<number | null>(null);
   let saving = $state(false);
   const filtered_boards = $derived(
     boards.filter((item) =>
@@ -66,7 +69,13 @@
   }
   function open_delete_dialog(item: BoardItem) {
     selected_board = item;
+    archived_count = null;
     delete_open = true;
+    void onLoadArchivedCount(item.id).then((count) => {
+      if (selected_board === item) {
+        archived_count = count;
+      }
+    });
   }
   function select_board(id: number) {
     onSwitch(id);
@@ -332,7 +341,11 @@
           name: selected_board?.name ?? m.board_title(),
         })}</AlertDialog.Title
       ><AlertDialog.Description
-        >{m.board_delete_description()}</AlertDialog.Description
+        >{archived_count
+          ? m.board_delete_description_with_archives({
+              count: archived_count,
+            })
+          : m.board_delete_description()}</AlertDialog.Description
       ></AlertDialog.Header
     ><AlertDialog.Footer
       ><AlertDialog.Cancel disabled={saving}

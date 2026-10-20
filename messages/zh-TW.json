@@ -28,6 +28,14 @@
   "board_rename_description": "為這個看板選擇新名稱。",
   "board_name": "看板名稱",
   "board_delete_description": "這會永久刪除看板及其所有內容，且無法復原。",
+  "board_delete_description_with_archives": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "這會永久刪除看板及其所有內容，包含 {countFormatted} 個封存任務，且無法復原。"
+      }
+    }
+  ],
   "board_shared": "與我分享",
   "board_read_only": "唯讀",
   "board_can_edit": "可編輯",

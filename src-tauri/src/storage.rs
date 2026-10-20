@@ -1701,15 +1701,25 @@ impl Database {
     }
 
     pub fn delete_board(&mut self, id: i64) -> StorageResult<()> {
-        if self
-            .connection
-            .execute("DELETE FROM cardbe_boards WHERE id = ?1", [id])?
-            == 0
-        {
+        let tx = self.connection.transaction()?;
+        if tx.execute("DELETE FROM cardbe_boards WHERE id = ?1", [id])? == 0 {
             return Err(DomainError::BoardNotFound.into());
         }
+        // Plugin source mappings have no foreign key and the table is created lazily.
+        if table_exists(&tx, "cardbe_plugin_sources")? {
+            tx.execute("DELETE FROM cardbe_plugin_sources WHERE board_id=?1", [id])?;
+        }
+        tx.commit()?;
         self.loro_peers.remove(&id);
         Ok(())
+    }
+
+    pub fn archived_task_count(&self, board_id: i64) -> StorageResult<i64> {
+        Ok(self.connection.query_row(
+            "SELECT COUNT(*) FROM cardbe_archives WHERE board_id=?1",
+            [board_id],
+            |row| row.get(0),
+        )?)
     }
 
     fn set_active_board_id(&mut self, id: i64) -> StorageResult<()> {
@@ -3674,6 +3684,7 @@ mod tests {
         let note = db
             .create_note_with_content(1, "Local note".into(), "Keep".into())
             .unwrap();
+        crate::plugins::storage::initialize(&db.connection).unwrap();
         let data: StoredData = serde_json::from_value(serde_json::json!({
             "columns": [{"id": 1, "name": "Shared column", "tasks": [{"id": 1, "title": "Shared task"}]}],
             "archives": [{"time": 1, "task": {"id": 2, "title": "Archived task"}}],
@@ -3705,7 +3716,26 @@ mod tests {
         db.replace_board_as_local_edit(received.id, &pending)
             .unwrap();
         assert!(db.iroh_loro_update(received.id).unwrap().is_some());
+        assert_eq!(db.archived_task_count(received.id).unwrap(), 1);
+        for board_id in [local_id, received.id] {
+            db.connection
+                .execute(
+                    "INSERT INTO cardbe_plugin_sources(instance_id,external_key,board_id,task_id,last_import) VALUES('instance','key',?1,1,'')",
+                    [board_id],
+                )
+                .unwrap();
+        }
         db.delete_board(received.id).unwrap();
+        assert_eq!(db.archived_task_count(received.id).unwrap(), 0);
+        let sources: Vec<i64> = db
+            .connection
+            .prepare("SELECT board_id FROM cardbe_plugin_sources")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(sources, vec![local_id]);
         assert!(db.board_exists(local_id).unwrap());
         assert!(!db.board_exists(received.id).unwrap());
         assert!(db.iroh_remote(received.id).unwrap().is_none());

@@ -441,6 +441,7 @@ pub fn run() {
             boards::create_board,
             boards::rename_board,
             boards::switch_board,
+            boards::get_board_archived_count,
             boards::delete_board,
             board::undo,
             board::add_column,

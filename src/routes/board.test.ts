@@ -267,6 +267,19 @@ describe("cross-board task moves", () => {
   });
 });
 
+describe("board deletion summary", () => {
+  it("loads the archived task count and treats failures as unknown", async () => {
+    const store = create_store();
+    invoke_mock.mockResolvedValueOnce(3);
+    expect(await store.get_archived_count(7)).toBe(3);
+    expect(invoke_mock).toHaveBeenLastCalledWith("get_board_archived_count", {
+      boardId: 7,
+    });
+    invoke_mock.mockRejectedValueOnce({ code: "BOARD_NOT_FOUND" });
+    expect(await store.get_archived_count(7)).toBeNull();
+  });
+});
+
 describe("language persistence", () => {
   beforeEach(() => {
     vi.mocked(emit).mockReset();
