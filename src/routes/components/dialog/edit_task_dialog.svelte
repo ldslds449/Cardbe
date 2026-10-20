@@ -264,6 +264,31 @@
     }
   });
 
+  const submit_disabled = $derived(
+    task.title.length == 0 ||
+      (show_template_name && !template_name.trim()) ||
+      (show_template_picker &&
+        template_mode_active &&
+        selected_template_id === "none") ||
+      submitting,
+  );
+
+  function handle_submit_shortcut(event: KeyboardEvent) {
+    if (
+      event.key !== "Enter" ||
+      !(event.ctrlKey || event.metaKey) ||
+      event.altKey ||
+      event.shiftKey ||
+      event.isComposing
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (!template_browser_open && !submit_disabled) {
+      void try_submit();
+    }
+  }
+
   async function try_submit() {
     label_input_ref?.commitPendingTag();
     if (show_template_name && template_name.trim().length === 0) {
@@ -306,6 +331,7 @@
     bind:ref={dialog_content_ref}
     class="pb-0 outline-none"
     interactOutsideBehavior="close"
+    onkeydown={handle_submit_shortcut}
     onEscapeKeydown={() => label_input_ref?.commitPendingTag()}
     onInteractOutside={() => label_input_ref?.commitPendingTag()}
     onOpenAutoFocus={(event) => {
@@ -870,12 +896,7 @@
           >
             <Button
               class="min-w-40"
-              disabled={task.title.length == 0 ||
-                (show_template_name && !template_name.trim()) ||
-                (show_template_picker &&
-                  template_mode_active &&
-                  selected_template_id === "none") ||
-                submitting}
+              disabled={submit_disabled}
               type="button"
               onclick={() => void try_submit()}
               >{show_saving ? m.common_saving() : submit_button_text}</Button
@@ -889,6 +910,7 @@
     <Dialog.Content
       class="flex h-[min(90vh,56rem)] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
       showCloseButton={false}
+      onkeydown={handle_submit_shortcut}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         void tick().then(() => expanded_description_ref?.focus());
