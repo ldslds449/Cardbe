@@ -1903,5 +1903,9 @@
   "share_disabled_invitation_approval_help": "此邀請已停用。核准結果仍會儲存，但必須啟用此邀請後，裝置才能同步。",
   "share_back_to_overview": "返回看板清單",
   "share_connection_path_pending": "Iroh 尚未回報目前的連線路徑。",
-  "share_connection_not_observed": "本次工作階段尚無連線紀錄。連線或同步後即可查看詳情。"
+  "share_connection_not_observed": "本次工作階段尚無連線紀錄。連線或同步後即可查看詳情。",
+  "layout_resize_hint": "拖曳可調整寬度，按兩下恢復預設",
+  "layout_resize_column": "調整欄位寬度",
+  "layout_resize_task_details": "調整任務資訊寬度",
+  "layout_resize_task_editor": "調整任務編輯寬度"
 }

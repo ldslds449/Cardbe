@@ -18,6 +18,11 @@
   import Markdown from "../markdown.svelte";
   import ChecklistDisplay from "../task/checklist_display.svelte";
   import LabelBadge from "../label_badge.svelte";
+  import ResizeHandle from "../resize_handle.svelte";
+  import {
+    layout_widths,
+    view_dialog_width_bounds,
+  } from "../../layout-widths.svelte";
 
   let {
     open = $bindable(false),
@@ -49,7 +54,23 @@
 </script>
 
 <Dialog.Root bind:open>
-  <Dialog.Content class="pb-0 outline-none sm:max-w-[500px]">
+  <Dialog.Content
+    class="pb-0 outline-none sm:max-w-[calc(100%-2rem)]"
+    style="width: {layout_widths.view_dialog_width}px"
+  >
+    {#each ["start", "end"] as const as edge (edge)}
+      <ResizeHandle
+        width={layout_widths.view_dialog_width}
+        bounds={view_dialog_width_bounds}
+        label={m.layout_resize_task_details()}
+        {edge}
+        scale={2}
+        fit_viewport
+        class={edge === "start" ? "-start-1.5" : "-end-1.5"}
+        onresize={(width, commit) =>
+          layout_widths.set_view_dialog_width(width, commit)}
+      />
+    {/each}
     <div class="flex max-h-[85vh] min-h-0 flex-col overflow-hidden">
       <Dialog.Header class="min-w-0 shrink-0">
         <Dialog.Title
@@ -63,7 +84,7 @@
         >
       </Dialog.Header>
       <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
-        <div class="w-full max-w-md space-y-4 py-4 ps-1 pe-4">
+        <div class="w-full space-y-4 py-4 ps-1 pe-4">
           {#if task}
             <div>
               <div class="flex items-center gap-2 text-sm font-medium mb-1">

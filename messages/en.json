@@ -2091,5 +2091,9 @@
   "share_disabled_invitation_approval_help": "This invitation is disabled. Approval will be saved, but sharing must be enabled before the device can sync.",
   "share_back_to_overview": "Back to board list",
   "share_connection_path_pending": "Iroh has not reported the active path yet.",
-  "share_connection_not_observed": "No connection observed this session. Connect or sync to collect details."
+  "share_connection_not_observed": "No connection observed this session. Connect or sync to collect details.",
+  "layout_resize_hint": "Drag to resize. Double-click to reset.",
+  "layout_resize_column": "Resize column width",
+  "layout_resize_task_details": "Resize task details width",
+  "layout_resize_task_editor": "Resize task editor width"
 }

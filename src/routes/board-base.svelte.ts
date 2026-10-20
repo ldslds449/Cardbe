@@ -23,6 +23,7 @@ import {
 import type { Archive } from "./type/archive.svelte";
 import { addMission } from "./utils/mission.svelte";
 import { TaskExpansionState } from "./task-expansion.svelte";
+import { layout_widths } from "./layout-widths.svelte";
 
 const COLUMN_FETCH_TIMEOUT_MS = 15_000;
 
@@ -563,6 +564,7 @@ export abstract class BoardStoreBase {
       }
       this.boards = state.boards;
       this.active_board_id = state.active_board_id;
+      layout_widths.prune_boards(state.boards.map((board) => board.id));
       if (!this.can_edit) {
         this.can_undo = false;
       }

@@ -20,6 +20,8 @@
 
   import EditableLabel from "../editable_label.svelte";
   import ColumnSortDialog from "../dialog/column_sort_dialog.svelte";
+  import ResizeHandle from "../resize_handle.svelte";
+  import { column_width_bounds } from "../../layout-widths.svelte";
 
   import { type Column, type SortRule } from "../../type/column.svelte";
   import {
@@ -43,6 +45,8 @@
     onArchiveAllTasks: () => void;
     onSelectAllTasks?: () => void;
     onUpdateSort: (sort_rules: SortRule[]) => void;
+    width?: number;
+    onResize?: (width: number, commit: boolean) => void;
     read_only?: boolean;
   }
 
@@ -58,6 +62,8 @@
     onArchiveAllTasks = () => {},
     onSelectAllTasks,
     onUpdateSort = () => {},
+    width = column_width_bounds.default,
+    onResize,
     read_only = false,
   }: CardColumnProps = $props();
 
@@ -114,9 +120,10 @@
     <ContextMenu.Trigger class="h-full">
       <Card.Root
         class={cn(
-          "column-card h-full w-xs gap-3 border-2 py-3 transition-[border-color,box-shadow] duration-150",
+          "column-card h-full gap-3 border-2 py-3 transition-[border-color,box-shadow] duration-150",
           column.color,
         )}
+        style="width: {width}px"
       >
         <Card.Header class="px-4">
           <Card.Title class="flex min-h-8 w-full min-w-0 flex-row items-center">
@@ -188,6 +195,15 @@
         </Card.Content>
       </Card.Root>
     </ContextMenu.Trigger>
+    {#if onResize}
+      <ResizeHandle
+        {width}
+        bounds={column_width_bounds}
+        label={m.layout_resize_column()}
+        class="-end-3.5"
+        onresize={onResize}
+      />
+    {/if}
     {#if !read_only}
       <ContextMenu.Content>
         <ContextMenu.Item onclick={onAddTask}>

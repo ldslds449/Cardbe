@@ -14,6 +14,7 @@
   import { distance_activation_constraint } from "../dnd/activation";
   import type { Task } from "../../type/task.svelte";
   import CardColumn from "../task/card_column.svelte";
+  import { layout_widths } from "../../layout-widths.svelte";
   import CardItem from "../task/card_item.svelte";
   import TaskSelectionBar from "../task/task_selection_bar.svelte";
   import { task_matches_search } from "../calendar/calendar";
@@ -365,6 +366,13 @@
           onSelectAllTasks={read_only
             ? undefined
             : () => select_column_tasks(column_idx)}
+          width={layout_widths.column_width(board.active_board_id)}
+          onResize={(width, commit) =>
+            layout_widths.set_column_width(
+              board.active_board_id,
+              width,
+              commit,
+            )}
           {read_only}
         >
           {#each sorted_column_tasks(column) as task, display_idx (task.id)}

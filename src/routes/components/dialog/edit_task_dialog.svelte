@@ -50,6 +50,11 @@
   import DateTimePicker from "../date_time_picker.svelte";
   import { is_valid_date_range } from "../../utils/task-date-range";
   import SortableChecklistItem from "../task/sortable_checklist_item.svelte";
+  import ResizeHandle from "../resize_handle.svelte";
+  import {
+    edit_dialog_width_bounds,
+    layout_widths,
+  } from "../../layout-widths.svelte";
 
   type CardReferenceOption = {
     task: Task;
@@ -329,7 +334,8 @@
 <Dialog.Root bind:open draft={{ task, template_name }} busy={submitting}>
   <Dialog.Content
     bind:ref={dialog_content_ref}
-    class="pb-0 outline-none"
+    class="pb-0 outline-none sm:max-w-[calc(100%-2rem)]"
+    style="width: {layout_widths.edit_dialog_width}px"
     interactOutsideBehavior="close"
     onkeydown={handle_submit_shortcut}
     onEscapeKeydown={() => label_input_ref?.commitPendingTag()}
@@ -343,6 +349,19 @@
       }
     }}
   >
+    {#each ["start", "end"] as const as edge (edge)}
+      <ResizeHandle
+        width={layout_widths.edit_dialog_width}
+        bounds={edit_dialog_width_bounds}
+        label={m.layout_resize_task_editor()}
+        {edge}
+        scale={2}
+        fit_viewport
+        class={edge === "start" ? "-start-1.5" : "-end-1.5"}
+        onresize={(width, commit) =>
+          layout_widths.set_edit_dialog_width(width, commit)}
+      />
+    {/each}
     <div class="flex max-h-[85vh] min-h-0 flex-col overflow-hidden">
       <Dialog.Header>
         <Dialog.Title>{dialog_title}</Dialog.Title>
@@ -356,7 +375,7 @@
         }}
       >
         <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
-          <div class="py-4 w-full max-w-md px-1">
+          <div class="w-full py-4 ps-1 pe-4">
             {#if show_template_picker && template_browser_open}
               <section class="space-y-4" aria-label={m.task_template_choose()}>
                 <Button
