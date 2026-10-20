@@ -1,0 +1,10 @@
+# Use the LLD linker bundled with the Rust toolchain on Windows; it links the
+# large debug binary much faster than MSVC link.exe.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+
+[env]
+# kache strips incremental flags by default; keep incremental compilation for
+# Cardbe's own crates so edit-rebuild cycles do not recompile them from scratch.
+# Ignored when kache is not the rustc wrapper.
+KACHE_INCREMENTAL_CRATES = "cardbe_lib,Cardbe"

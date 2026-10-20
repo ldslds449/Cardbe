@@ -13,7 +13,10 @@ edition = "2021"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "cardbe_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop builds link the rlib into the binary. Add "staticlib" (iOS) and
+# "cdylib" (Android) only when mobile targets are set up; building them for
+# every desktop build produces multi-GB artifacts and a second full link.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "~2.6.3", features = [] }
@@ -70,6 +73,10 @@ keyring = { version = "3", features = [
   "sync-secret-service",
 ] }
 
+[profile.dev.package."*"]
+# Skip dependency debug info to shrink PDBs and link time; Cardbe's own crate
+# keeps full debug info for debugging.
+debug = false
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
