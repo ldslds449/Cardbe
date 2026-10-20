@@ -10,18 +10,7 @@ const UPDATE_CONFIG: &str = include_str!("../../../src/config/update.json");
 struct UpdateConfig {
     github_owner: String,
     github_repository: String,
-    include_prereleases: bool,
     request_timeout_ms: u64,
-}
-
-#[derive(Deserialize, Clone)]
-struct GitHubRelease {
-    tag_name: Option<String>,
-    html_url: Option<String>,
-    #[serde(default)]
-    draft: bool,
-    #[serde(default)]
-    prerelease: bool,
 }
 
 #[derive(Serialize)]
@@ -35,6 +24,9 @@ struct ParsedVersion {
     prerelease: Vec<String>,
 }
 
+/// Resolves the latest release through the github.com redirect instead of the
+/// REST API, whose unauthenticated limit (60 requests per hour) is shared by
+/// every user behind the same public IP.
 #[tauri::command]
 pub async fn check_for_update(current_version: String) -> Result<Option<UpdateInfo>, CommandError> {
     let config: UpdateConfig =
@@ -48,64 +40,91 @@ pub async fn check_for_update(current_version: String) -> Result<Option<UpdateIn
     }
 
     let url = format!(
-        "https://api.github.com/repos/{}/{}/releases?per_page=20",
+        "https://github.com/{}/{}/releases/latest",
         config.github_owner, config.github_repository,
     );
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(config.request_timeout_ms))
-        .user_agent("Cardbe update checker")
+        .user_agent(concat!("Cardbe/", env!("CARGO_PKG_VERSION")))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(CommandError::internal)?;
-    let response = client
-        .get(url)
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|error| {
-            CommandError::internal(error);
-            CommandError::UpdateRequestFailed
-        })?;
+    let response = client.head(url).send().await.map_err(|error| {
+        let kind = if error.is_timeout() {
+            "timeout"
+        } else if error.is_connect() {
+            "connect"
+        } else {
+            "request"
+        };
+        log_failure(&format!("{kind} error: {error}"));
+        CommandError::UpdateRequestFailed
+    })?;
 
-    if !response.status().is_success() {
+    let status = response.status();
+    if !status.is_redirection() {
+        let header = |name: &str| {
+            response
+                .headers()
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("-")
+                .to_owned()
+        };
+        log_failure(&format!(
+            "unexpected status {status} (retry-after: {}, x-ratelimit-remaining: {}, x-ratelimit-reset: {})",
+            header("retry-after"),
+            header("x-ratelimit-remaining"),
+            header("x-ratelimit-reset"),
+        ));
         return Err(CommandError::UpdateRequestFailed);
     }
-    let releases: Vec<GitHubRelease> = response.json().await.map_err(|error| {
-        CommandError::internal(error);
-        CommandError::UpdateReleaseDataInvalid
-    })?;
-    Ok(find_update(
-        &current_version,
-        &releases,
-        config.include_prereleases,
-    ))
+
+    let location = response
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| response.url().join(value).ok());
+    let Some(location) = location else {
+        log_failure(&format!("redirect {status} without a valid location"));
+        return Err(CommandError::UpdateReleaseDataInvalid);
+    };
+    match release_tag(&location) {
+        Some(tag) => Ok(find_update(&current_version, tag, location.as_str())),
+        // Repositories without a published release redirect to the release list.
+        None if location.path().ends_with("/releases") => Ok(None),
+        None => {
+            log_failure(&format!("unexpected redirect location {location}"));
+            Err(CommandError::UpdateReleaseDataInvalid)
+        }
+    }
 }
 
-fn find_update(
-    current_version: &str,
-    releases: &[GitHubRelease],
-    include_prereleases: bool,
-) -> Option<UpdateInfo> {
-    let current = parse_version(current_version)?;
-    let release = releases
-        .iter()
-        .filter(|release| !release.draft && (include_prereleases || !release.prerelease))
-        .filter_map(|release| {
-            let tag_name = release.tag_name.as_deref()?;
-            let html_url = release.html_url.as_deref()?;
-            let version = parse_version(tag_name)?;
-            Some((release, version, html_url))
-        })
-        .max_by(|(_, left, _), (_, right, _)| compare_versions(left, right))?;
+fn log_failure(detail: &str) {
+    let detail = crate::commands::diagnostics::redact_diagnostic_logs(detail.to_owned());
+    log::warn!(target: "update", "update check failed: {detail}");
+}
 
-    (compare_versions(&release.1, &current) == Ordering::Greater).then(|| UpdateInfo {
-        version: release
-            .0
-            .tag_name
-            .as_ref()
-            .unwrap()
-            .trim_start_matches('v')
-            .to_string(),
-        url: release.2.to_string(),
+/// Extracts the tag from `https://github.com/{owner}/{repo}/releases/tag/{tag}`.
+fn release_tag(location: &reqwest::Url) -> Option<&str> {
+    if location.scheme() != "https" || location.host_str() != Some("github.com") {
+        return None;
+    }
+    match location.path_segments()?.collect::<Vec<_>>()[..] {
+        [_, _, "releases", "tag", tag] if !tag.is_empty() => Some(tag),
+        _ => None,
+    }
+}
+
+fn find_update(current_version: &str, tag: &str, url: &str) -> Option<UpdateInfo> {
+    let current = parse_version(current_version)?;
+    let Some(latest) = parse_version(tag) else {
+        log_failure(&format!("unrecognized release tag {tag}"));
+        return None;
+    };
+    (compare_versions(&latest, &current) == Ordering::Greater).then(|| UpdateInfo {
+        version: tag.trim_start_matches('v').to_string(),
+        url: url.to_string(),
     })
 }
 
@@ -170,7 +189,7 @@ fn is_valid_github_segment(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_update, is_valid_github_segment, GitHubRelease};
+    use super::{find_update, is_valid_github_segment, release_tag};
 
     #[test]
     fn accepts_github_owner_and_repository_names() {
@@ -186,51 +205,42 @@ mod tests {
     }
 
     #[test]
-    fn selects_the_newest_eligible_release() {
-        let releases = vec![
-            GitHubRelease {
-                tag_name: Some("v0.4.0-beta.1".into()),
-                html_url: Some("https://example.com/beta".into()),
-                draft: false,
-                prerelease: true,
-            },
-            GitHubRelease {
-                tag_name: Some("v0.3.0".into()),
-                html_url: Some("https://example.com/stable".into()),
-                draft: false,
-                prerelease: false,
-            },
-            GitHubRelease {
-                tag_name: Some("v9.0.0".into()),
-                html_url: Some("https://example.com/draft".into()),
-                draft: true,
-                prerelease: false,
-            },
-        ];
-
-        let update = find_update("0.2.2", &releases, true).unwrap();
-        assert_eq!(update.version, "0.4.0-beta.1");
-        assert_eq!(update.url, "https://example.com/beta");
+    fn extracts_the_tag_from_the_latest_release_redirect() {
+        let url = |value: &str| reqwest::Url::parse(value).unwrap();
+        assert_eq!(
+            release_tag(&url("https://github.com/owner/repo/releases/tag/v0.4.0")),
+            Some("v0.4.0")
+        );
+        assert_eq!(
+            release_tag(&url("https://github.com/owner/repo/releases")),
+            None
+        );
+        assert_eq!(
+            release_tag(&url("https://example.com/owner/repo/releases/tag/v0.4.0")),
+            None
+        );
+        assert_eq!(
+            release_tag(&url("http://github.com/owner/repo/releases/tag/v0.4.0")),
+            None
+        );
+        assert_eq!(
+            release_tag(&url("https://github.com/owner/repo/releases/tag/")),
+            None
+        );
     }
 
     #[test]
-    fn ignores_prereleases_when_disabled_and_older_releases() {
-        let releases = vec![
-            GitHubRelease {
-                tag_name: Some("v0.4.0-beta.1".into()),
-                html_url: Some("https://example.com/beta".into()),
-                draft: false,
-                prerelease: true,
-            },
-            GitHubRelease {
-                tag_name: Some("v0.3.0".into()),
-                html_url: Some("https://example.com/stable".into()),
-                draft: false,
-                prerelease: false,
-            },
-        ];
+    fn reports_only_newer_releases() {
+        let update = find_update("0.2.2", "v0.4.0-beta.1", "https://example.com/beta").unwrap();
+        assert_eq!(update.version, "0.4.0-beta.1");
+        assert_eq!(update.url, "https://example.com/beta");
 
-        assert!(find_update("0.3.0", &releases, false).is_none());
-        assert!(find_update("invalid", &releases, true).is_none());
+        let update = find_update("0.4.0-beta.1", "v0.4.0", "https://example.com/stable").unwrap();
+        assert_eq!(update.version, "0.4.0");
+
+        assert!(find_update("0.3.0", "v0.3.0", "https://example.com").is_none());
+        assert!(find_update("0.3.1", "v0.3.0", "https://example.com").is_none());
+        assert!(find_update("invalid", "v0.3.0", "https://example.com").is_none());
+        assert!(find_update("0.3.0", "nightly", "https://example.com").is_none());
     }
 }
