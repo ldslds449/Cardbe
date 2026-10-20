@@ -55,7 +55,10 @@
   import BoardSidebar from "./components/workspace/board_sidebar.svelte";
   import WorkspaceTabs from "./components/workspace/workspace_tabs.svelte";
   import type { WorkspaceView } from "./components/workspace/workspace";
-  import { UPDATE_STARTUP_DELAY_MS } from "./utils/update";
+  import {
+    UPDATE_POLL_INTERVAL_MS,
+    UPDATE_STARTUP_DELAY_MS,
+  } from "./utils/update";
   import {
     parse_portable_task,
     serialize_portable_task,
@@ -444,6 +447,9 @@
     const update_check_timeout = window.setTimeout(() => {
       void updates.check();
     }, UPDATE_STARTUP_DELAY_MS);
+    const update_check_interval = window.setInterval(() => {
+      void updates.check();
+    }, UPDATE_POLL_INTERVAL_MS);
 
     const handle_shortcut = (event: KeyboardEvent) => {
       const target = event.target;
@@ -604,6 +610,7 @@
         window.clearInterval(device_request_timer);
       }
       window.clearTimeout(update_check_timeout);
+      window.clearInterval(update_check_interval);
       void data_changed_listener.then((unlisten) => unlisten());
       void iroh_remote_push_listener.then((unlisten) => unlisten());
       void open_task_listener.then((unlisten) => unlisten());

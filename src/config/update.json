@@ -1,8 +1,8 @@
 {
   "githubOwner": "ldslds449",
   "githubRepository": "Cardbe",
-  "includePrereleases": true,
   "startupDelayMs": 3000,
   "checkIntervalHours": 24,
+  "pollIntervalMinutes": 60,
   "requestTimeoutMs": 8000
 }

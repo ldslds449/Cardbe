@@ -27,6 +27,14 @@ describe("update check interval", () => {
       true,
     );
   });
+
+  it("checks again when the last check is in the future", () => {
+    const storage = {
+      getItem: () => String(2_000_000),
+    };
+
+    expect(shouldCheckForUpdate(storage, 1_000_000)).toBe(true);
+  });
 });
 
 describe("update check errors", () => {
