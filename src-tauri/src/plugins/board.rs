@@ -16,7 +16,7 @@ pub fn version(db: &Database, board: i64) -> Result<String, DomainError> {
     let mut hash = Sha256::new();
     for sql in [
         "SELECT json_array(name) FROM cardbe_boards WHERE id=?1",
-        "SELECT json_array(id,name,color,sort_order,position) FROM cardbe_columns WHERE board_id=?1 ORDER BY id",
+        "SELECT json_array(id,name,color,sort_order,sort_rules,position) FROM cardbe_columns WHERE board_id=?1 ORDER BY id",
         "SELECT json_array(id,column_id,position,payload) FROM cardbe_tasks WHERE board_id=?1 ORDER BY id",
         "SELECT json_array(task_id,archived_at,position,payload) FROM cardbe_archives WHERE board_id=?1 ORDER BY task_id",
         "SELECT json_array(key,value) FROM cardbe_board_metadata WHERE board_id=?1 AND key='label_recency'",
@@ -410,13 +410,12 @@ pub fn prepare(
                 if name.trim().is_empty() || name.len() > 4096 || color.len() > 64 {
                     return Err(DomainError::InvalidArgument);
                 }
-                mutation::update_column(
-                    &mut after,
-                    resolve(column, &columns)?,
-                    name.clone(),
-                    color.clone(),
-                    sort_order.clone(),
-                )?;
+                let index = mutation::column_index(&after, resolve(column, &columns)?)?;
+                let target = &mut after.columns[index];
+                target.name = name.clone();
+                target.color = color.clone();
+                // Guests see only the legacy sort; keep rules that it presents.
+                target.set_legacy_sort_order(sort_order.clone());
             }
             Operation::MoveColumn { column, before } => {
                 let id = resolve(column, &columns)?;
@@ -465,7 +464,7 @@ pub fn prepare(
             }
         }
     }
-    after.sort_column_tasks();
+    after.keep_pinned_tasks_first();
     if serde_json::to_vec(&after.columns).map_err(internal)?.len() > 8 * 1024 * 1024 {
         return Err(DomainError::InvalidArgument);
     }

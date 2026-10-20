@@ -28,7 +28,7 @@ function make_task(overrides: Partial<Task> = {}): Task {
 }
 
 function make_column(id: string, tasks: Task[]): Column {
-  return { id, name: id, color: "", sort_order: "custom", tasks };
+  return { id, name: id, color: "", sort_rules: [], tasks };
 }
 
 const day = (year: number, month: number, date: number) =>

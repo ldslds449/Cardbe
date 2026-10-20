@@ -17,6 +17,10 @@
   import CardItem from "../task/card_item.svelte";
   import TaskSelectionBar from "../task/task_selection_bar.svelte";
   import { task_matches_search } from "../calendar/calendar";
+  import {
+    active_sort_rules,
+    sorted_column_tasks,
+  } from "../../utils/column-sort";
 
   type TaskPosition = { column_idx: number; task_idx: number };
 
@@ -275,7 +279,8 @@
         from_position &&
         to_position &&
         from_position.column_idx === to_position.column_idx &&
-        (board.columns[from_position.column_idx].sort_order !== "custom" ||
+        (active_sort_rules(board.columns[from_position.column_idx].sort_rules)
+          .length > 0 ||
           !!board.columns[from_position.column_idx].tasks[
             from_position.task_idx
           ].pinned !==
@@ -352,8 +357,8 @@
           numberTasks={column.tasks.length}
           onDeleteColumn={() => board.delete_column(column.id)}
           onUpdateColumnName={(name) => board.update_column(column.id, name)}
-          onUpdateSort={(sort) =>
-            board.update_column(column.id, column.name, sort)}
+          onUpdateSort={(sort_rules) =>
+            board.update_column(column.id, column.name, sort_rules)}
           onAddTask={() => onAddTask(column_idx)}
           onImportTask={() => onImportTask(column.id)}
           onArchiveAllTasks={() => board.archive_all_tasks(column.id)}
@@ -362,10 +367,12 @@
             : () => select_column_tasks(column_idx)}
           {read_only}
         >
-          {#each column.tasks as task, task_idx (task.id)}
+          {#each sorted_column_tasks(column) as task, display_idx (task.id)}
+            <!-- Callbacks use the stored (manual) position. -->
+            {@const task_idx = column.tasks.indexOf(task)}
             {#if task_matches_search(task, search_text, search_task_ids)}
               <CardItem
-                index={task_idx}
+                index={display_idx}
                 {task}
                 group={column.id}
                 data={{ group: column.id }}

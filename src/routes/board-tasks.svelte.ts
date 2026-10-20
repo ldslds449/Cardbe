@@ -7,7 +7,7 @@ import {
   get_column_id,
   set_column_id,
   type Column,
-  type ColumnSort,
+  type SortRule,
 } from "./type/column.svelte";
 import {
   type Task,
@@ -154,7 +154,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
     const insertion_idx =
       after_task_idx === -1 ? column.tasks.length : after_task_idx + 1;
     column.tasks.splice(insertion_idx, 0, new_task);
-    this.sort_column_tasks(column);
+    this.keep_pinned_tasks_first(column);
     this.columns = [...this.columns];
     this.refresh_labels_from_columns();
 
@@ -464,7 +464,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
           0,
           ...moved,
         );
-        this.sort_column_tasks(to_column);
+        this.keep_pinned_tasks_first(to_column);
       },
       async (taskIds, expectedBoardId) =>
         invoke<void>("move_tasks", {
@@ -490,7 +490,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
             column.tasks = column.tasks.map((task) =>
               selected.has(task.id) ? { ...task, pinned } : task,
             );
-            this.sort_column_tasks(column);
+            this.keep_pinned_tasks_first(column);
           }
         }
       },
@@ -649,7 +649,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
       return;
     }
     column.tasks.push(restored_task);
-    board.sort_column_tasks(column);
+    board.keep_pinned_tasks_first(column);
     board.archives.splice(archive_index, 1);
     board.columns = [...board.columns];
     board.archives = [...board.archives];
@@ -746,7 +746,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
     }
     if (position) {
       this.columns[position.column_idx].tasks[position.task_idx] = updated_task;
-      this.sort_column_tasks(this.columns[position.column_idx]);
+      this.keep_pinned_tasks_first(this.columns[position.column_idx]);
       this.columns = [...this.columns];
       board.refresh_labels_from_columns();
     }
@@ -789,7 +789,9 @@ export abstract class TaskBoardStore extends IrohBoardStore {
           this.columns[current_position.column_idx].tasks[
             current_position.task_idx
           ] = previous_task;
-          this.sort_column_tasks(this.columns[current_position.column_idx]);
+          this.keep_pinned_tasks_first(
+            this.columns[current_position.column_idx],
+          );
           this.columns = [...this.columns];
           board.refresh_labels_from_columns();
         }
@@ -832,9 +834,9 @@ export abstract class TaskBoardStore extends IrohBoardStore {
     } else {
       to_column.tasks.splice(to_task_idx, 0, data);
     }
-    this.sort_column_tasks(from_column);
+    this.keep_pinned_tasks_first(from_column);
     if (to_column !== from_column) {
-      this.sort_column_tasks(to_column);
+      this.keep_pinned_tasks_first(to_column);
     }
     // Trigger reactivity for Svelte 5
     this.columns = [...this.columns];
@@ -974,7 +976,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
             id: "",
             name: name,
             color: "",
-            sort_order: "custom",
+            sort_rules: [],
             tasks: [],
           };
           set_column_id(column, new_id);
@@ -992,7 +994,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
     });
   }
 
-  update_column(column_id: string, name: string, sort_order?: ColumnSort) {
+  update_column(column_id: string, name: string, sort_rules?: SortRule[]) {
     const board = this;
     const expectedBoardId = this.active_board_id;
     const generation = this.board_generation;
@@ -1002,13 +1004,13 @@ export abstract class TaskBoardStore extends IrohBoardStore {
     const column = board.columns.find(
       (candidate) => candidate.id === column_id,
     );
-    const next_sort_order = sort_order ?? column?.sort_order ?? "custom";
+    const next_sort_rules = sort_rules ?? column?.sort_rules ?? [];
     addMission(async () => {
       return invoke<void>("update_column", {
         columnId: get_column_id(column_id),
         name: name,
         color: "",
-        sortOrder: next_sort_order,
+        sortRules: next_sort_rules,
         expectedBoardId,
       })
         .then(() => {
@@ -1021,8 +1023,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
           );
           if (updated_column) {
             updated_column.name = name;
-            updated_column.sort_order = next_sort_order;
-            board.sort_column_tasks(updated_column);
+            updated_column.sort_rules = next_sort_rules;
             board.columns = [...board.columns];
           }
         })

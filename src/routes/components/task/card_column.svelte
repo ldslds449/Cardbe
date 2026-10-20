@@ -19,8 +19,14 @@
   import SquareCheckIcon from "@lucide/svelte/icons/square-check";
 
   import EditableLabel from "../editable_label.svelte";
+  import ColumnSortDialog from "../dialog/column_sort_dialog.svelte";
 
-  import type { Column, ColumnSort } from "../../type/column.svelte";
+  import { type Column, type SortRule } from "../../type/column.svelte";
+  import {
+    active_sort_rules,
+    sort_field_label,
+    sort_rules_hint,
+  } from "../../utils/column-sort";
   import type { Snippet } from "svelte";
 
   import { cn } from "$lib/utils";
@@ -36,7 +42,7 @@
     onImportTask: () => void;
     onArchiveAllTasks: () => void;
     onSelectAllTasks?: () => void;
-    onUpdateSort: (sort: ColumnSort) => void;
+    onUpdateSort: (sort_rules: SortRule[]) => void;
     read_only?: boolean;
   }
 
@@ -71,6 +77,11 @@
   });
 
   let delete_confirm_open = $state(false);
+  let sort_dialog_open = $state(false);
+
+  const sort_rules = $derived(active_sort_rules(column.sort_rules));
+  const primary_sort = $derived(sort_rules[0]);
+  const sort_hint = $derived(sort_rules_hint(column.sort_rules));
 
   function handle_column_double_click(event: MouseEvent) {
     if (read_only) {
@@ -126,22 +137,30 @@
             >
               {formatNumber(numberTasks)}
             </Badge>
-            {#if column.sort_order !== "custom"}
+            {#if primary_sort}
               <button
                 type="button"
-                class="mr-1 inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-normal text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
-                title={column.sort_order === "due_date_asc"
-                  ? m.column_due_asc_hint()
-                  : m.column_due_desc_hint()}
-                aria-label={column.sort_order === "due_date_asc"
-                  ? m.column_due_asc_accessible()
-                  : m.column_due_desc_accessible()}
+                class="mr-1 inline-flex min-w-0 shrink items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-normal text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none"
+                title={sort_hint}
+                aria-label={sort_hint}
+                disabled={read_only}
                 onpointerdown={(event) => event.stopPropagation()}
-                onclick={() => onUpdateSort("custom")}
+                onclick={() => (sort_dialog_open = true)}
               >
-                <ArrowUpDownIcon class="size-3" />
-                {m.task_due_date()}
-                {column.sort_order === "due_date_asc" ? "↑" : "↓"}
+                <ArrowUpDownIcon class="size-3 shrink-0" />
+                <span class="truncate"
+                  >{sort_field_label(primary_sort.field)}</span
+                >
+                <span aria-hidden="true"
+                  >{primary_sort.direction === "asc" ? "↑" : "↓"}</span
+                >
+                {#if sort_rules.length > 1}
+                  <span aria-hidden="true" class="tabular-nums"
+                    >{m.column_sort_more({
+                      count: formatNumber(sort_rules.length - 1),
+                    })}</span
+                  >
+                {/if}
               </button>
             {/if}
             {#if !read_only}
@@ -191,28 +210,10 @@
             {m.column_archive_tasks()}
           </ContextMenu.Item>
         {/if}
-        <ContextMenu.Sub>
-          <ContextMenu.SubTrigger>
-            <ArrowUpDownIcon />
-            {m.common_sort()}
-          </ContextMenu.SubTrigger>
-          <ContextMenu.SubContent>
-            <ContextMenu.RadioGroup
-              value={column.sort_order}
-              onValueChange={(value) => onUpdateSort(value as ColumnSort)}
-            >
-              <ContextMenu.RadioItem value="custom"
-                >{m.common_custom()}</ContextMenu.RadioItem
-              >
-              <ContextMenu.RadioItem value="due_date_asc"
-                >{m.column_due_asc()}</ContextMenu.RadioItem
-              >
-              <ContextMenu.RadioItem value="due_date_desc"
-                >{m.column_due_desc()}</ContextMenu.RadioItem
-              >
-            </ContextMenu.RadioGroup>
-          </ContextMenu.SubContent>
-        </ContextMenu.Sub>
+        <ContextMenu.Item onclick={() => (sort_dialog_open = true)}>
+          <ArrowUpDownIcon />
+          {m.column_sort_open()}
+        </ContextMenu.Item>
         <ContextMenu.Separator />
         <ContextMenu.Item
           variant="destructive"
@@ -230,6 +231,13 @@
       </ContextMenu.Content>
     {/if}
   </ContextMenu.Root>
+
+  <ColumnSortDialog
+    bind:open={sort_dialog_open}
+    column_name={column.name}
+    rules={column.sort_rules}
+    onApply={onUpdateSort}
+  />
 
   <AlertDialog.Root bind:open={delete_confirm_open}>
     <AlertDialog.Content>

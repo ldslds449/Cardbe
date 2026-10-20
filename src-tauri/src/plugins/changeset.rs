@@ -241,6 +241,7 @@ mod tests {
                     name: "Todo".into(),
                     color: String::new(),
                     sort_order: ColumnSort::Custom,
+                    sort_rules: Vec::new(),
                     tasks: vec![],
                 },
                 Column {
@@ -248,6 +249,7 @@ mod tests {
                     name: "Done".into(),
                     color: String::new(),
                     sort_order: ColumnSort::Custom,
+                    sort_rules: Vec::new(),
                     tasks: vec![],
                 },
             ],
@@ -325,6 +327,7 @@ mod persistence_tests {
                 name: "Todo".into(),
                 color: String::new(),
                 sort_order: Default::default(),
+                sort_rules: Vec::new(),
                 tasks: vec![],
             }],
             ..Default::default()

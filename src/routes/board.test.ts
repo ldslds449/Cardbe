@@ -332,7 +332,7 @@ function create_store(column_count = 1) {
     id: `column_${index + 1}`,
     name: `Column ${index + 1}`,
     color: "",
-    sort_order: "custom",
+    sort_rules: [],
     tasks: [],
   }));
   return store;
@@ -1679,7 +1679,7 @@ describe("pending task operations", () => {
 });
 
 describe("column sorting", () => {
-  it("keeps pinned cards first for custom and date sorting", () => {
+  it("keeps pinned cards first without applying sort rules to storage", () => {
     const store = create_store();
     const first = create_task("task_1", "First");
     const pinned = create_task("task_2", "Pinned");
@@ -1693,62 +1693,19 @@ describe("column sorting", () => {
       new Date(100),
     );
     store.columns[0].tasks = [first, pinned, dated];
-    store.sort_column_tasks(store.columns[0]);
+    store.columns[0].sort_rules = [{ field: "due_time", direction: "asc" }];
+    store.keep_pinned_tasks_first(store.columns[0]);
     expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
       "task_2",
       "task_1",
       "task_3",
-    ]);
-    store.columns[0].sort_order = "due_date_asc";
-    store.sort_column_tasks(store.columns[0]);
-    expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
-      "task_2",
-      "task_3",
-      "task_1",
     ]);
     pinned.pinned = false;
-    store.sort_column_tasks(store.columns[0]);
-    expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
-      "task_3",
-      "task_2",
-      "task_1",
-    ]);
-  });
-  it("sorts due dates in either direction and leaves undated tasks last", () => {
-    const store = create_store();
-    const undated = create_task("task_1", "Undated");
-    const later = create_task(
-      "task_2",
-      "Later",
-      "",
-      "",
-      undefined,
-      new Date(2026, 7, 20),
-    );
-    const earlier = create_task(
-      "task_3",
-      "Earlier",
-      "",
-      "",
-      undefined,
-      new Date(2026, 7, 10),
-    );
-    store.columns[0].tasks = [undated, later, earlier];
-
-    store.columns[0].sort_order = "due_date_asc";
-    store.sort_column_tasks(store.columns[0]);
-    expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
-      "task_3",
-      "task_2",
-      "task_1",
-    ]);
-
-    store.columns[0].sort_order = "due_date_desc";
-    store.sort_column_tasks(store.columns[0]);
+    store.keep_pinned_tasks_first(store.columns[0]);
     expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
       "task_2",
-      "task_3",
       "task_1",
+      "task_3",
     ]);
   });
 });

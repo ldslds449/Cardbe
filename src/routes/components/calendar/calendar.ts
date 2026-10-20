@@ -267,7 +267,7 @@ function collect_calendar_entries(
       id: "__archive__",
       name: "Archived",
       color: "",
-      sort_order: "custom",
+      sort_rules: [],
       tasks: [],
     };
     for (const { task } of archives) {

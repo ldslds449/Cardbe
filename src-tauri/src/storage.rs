@@ -224,6 +224,22 @@ impl_text_enum!(IrohPermission {
     "editor" => IrohPermission::Editor,
 });
 
+/// Reads `id, name, color, sort_order, sort_rules`.
+fn column_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Column> {
+    let sort_rules: String = row.get(4)?;
+    let mut column = Column {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        color: row.get(2)?,
+        sort_order: row.get(3)?,
+        // Unreadable rules fall back to the legacy sort order.
+        sort_rules: serde_json::from_str(&sort_rules).unwrap_or_default(),
+        tasks: Vec::new(),
+    };
+    column.reconcile_sort();
+    Ok(column)
+}
+
 impl FromSql for ColumnSort {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         Ok(match value.as_str()? {
@@ -402,6 +418,10 @@ impl Database {
                 [],
             )?;
         }
+        let _ = connection.execute(
+            "ALTER TABLE columns ADD COLUMN sort_rules TEXT NOT NULL DEFAULT '[]'",
+            [],
+        );
         let positions = DatabasePositions::default();
         Ok(Self {
             connection,
@@ -1525,7 +1545,7 @@ impl Database {
             }
             target.columns[column].tasks.push(task);
         }
-        target.sort_column_tasks();
+        target.keep_pinned_tasks_first();
         let tx = self.connection.transaction()?;
         for (id, before, after) in [
             (source_id, &before_source, &source),
@@ -1908,19 +1928,11 @@ impl Database {
     fn load_internal(&self, include_archives: bool) -> StorageResult<StoredData> {
         let mut stored = StoredData::default();
 
-        let mut columns = self
-            .connection
-            .prepare("SELECT id, name, color, sort_order FROM columns ORDER BY position, id")?;
+        let mut columns = self.connection.prepare(
+            "SELECT id, name, color, sort_order, sort_rules FROM columns ORDER BY position, id",
+        )?;
         stored.columns = columns
-            .query_map([], |row| {
-                Ok(Column {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    color: row.get(2)?,
-                    sort_order: row.get(3)?,
-                    tasks: Vec::new(),
-                })
-            })?
+            .query_map([], column_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
 
         let column_indices = stored
@@ -2026,7 +2038,7 @@ impl Database {
         tx.execute_batch(
             "CREATE TABLE IF NOT EXISTS cardbe_global_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS cardbe_boards(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,shared_role TEXT NOT NULL DEFAULT 'owner',sync_status TEXT NOT NULL DEFAULT 'local',sync_revision INTEGER NOT NULL DEFAULT 0);
-             CREATE TABLE IF NOT EXISTS cardbe_columns(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,id INTEGER NOT NULL,name TEXT NOT NULL,color TEXT NOT NULL,sort_order TEXT NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(board_id,id));
+             CREATE TABLE IF NOT EXISTS cardbe_columns(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,id INTEGER NOT NULL,name TEXT NOT NULL,color TEXT NOT NULL,sort_order TEXT NOT NULL,position INTEGER NOT NULL,sort_rules TEXT NOT NULL DEFAULT '[]',PRIMARY KEY(board_id,id));
              CREATE TABLE IF NOT EXISTS cardbe_tasks(board_id INTEGER NOT NULL,id INTEGER NOT NULL,column_id INTEGER NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,id),FOREIGN KEY(board_id,column_id) REFERENCES cardbe_columns(board_id,id) ON DELETE CASCADE);
              CREATE INDEX IF NOT EXISTS cardbe_tasks_by_board_column_position ON cardbe_tasks(board_id,column_id,position);
              CREATE TABLE IF NOT EXISTS cardbe_archives(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,task_id INTEGER NOT NULL,archived_at TEXT NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,task_id));
@@ -2051,6 +2063,7 @@ impl Database {
             "ALTER TABLE cardbe_iroh_invites ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE cardbe_iroh_invites ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE cardbe_iroh_conflicts ADD COLUMN loro_update BLOB",
+            "ALTER TABLE cardbe_columns ADD COLUMN sort_rules TEXT NOT NULL DEFAULT '[]'",
         ] {
             let _ = tx.execute(sql, []);
         }
@@ -2139,17 +2152,9 @@ impl Database {
 
     fn load_board_data(&self, board_id: i64, include_archives: bool) -> StorageResult<StoredData> {
         let mut stored = StoredData::default();
-        let mut stmt=self.connection.prepare("SELECT id,name,color,sort_order FROM cardbe_columns WHERE board_id=?1 ORDER BY position,id")?;
+        let mut stmt=self.connection.prepare("SELECT id,name,color,sort_order,sort_rules FROM cardbe_columns WHERE board_id=?1 ORDER BY position,id")?;
         stored.columns = stmt
-            .query_map([board_id], |r| {
-                Ok(Column {
-                    id: r.get(0)?,
-                    name: r.get(1)?,
-                    color: r.get(2)?,
-                    sort_order: r.get(3)?,
-                    tasks: vec![],
-                })
-            })?
+            .query_map([board_id], column_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
         let indexes = stored
             .columns
@@ -2527,14 +2532,22 @@ fn persist_diff_transaction(
                 || old.name != column.name
                 || old.color != column.color
                 || old.sort_order != column.sort_order
+                || old.sort_rules != column.sort_rules
         });
         if changed {
             transaction.execute(
-                "INSERT INTO columns(id, name, color, sort_order, position) VALUES (?1, ?2, ?3, ?4, ?5)
+                "INSERT INTO columns(id, name, color, sort_order, sort_rules, position) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT(id) DO UPDATE SET
-                   name = excluded.name, color = excluded.color,
-                   sort_order = excluded.sort_order, position = excluded.position",
-                params![id, column.name, column.color, column.sort_order, position],
+                   name = excluded.name, color = excluded.color, sort_order = excluded.sort_order,
+                   sort_rules = excluded.sort_rules, position = excluded.position",
+                params![
+                    id,
+                    column.name,
+                    column.color,
+                    column.sort_order,
+                    serde_json::to_string(&column.sort_rules)?,
+                    position
+                ],
             )?;
             stats.columns_changed += 1;
         }
@@ -2667,8 +2680,9 @@ pub(crate) fn persist_board_diff_transaction(
                 || o.name != c.name
                 || o.color != c.color
                 || o.sort_order != c.sort_order
+                || o.sort_rules != c.sort_rules
         }) {
-            tx.execute("INSERT INTO cardbe_columns(board_id,id,name,color,sort_order,position) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(board_id,id) DO UPDATE SET name=excluded.name,color=excluded.color,sort_order=excluded.sort_order,position=excluded.position",params![board_id,id,c.name,c.color,c.sort_order,pos])?;
+            tx.execute("INSERT INTO cardbe_columns(board_id,id,name,color,sort_order,sort_rules,position) VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(board_id,id) DO UPDATE SET name=excluded.name,color=excluded.color,sort_order=excluded.sort_order,sort_rules=excluded.sort_rules,position=excluded.position",params![board_id,id,c.name,c.color,c.sort_order,serde_json::to_string(&c.sort_rules)?,pos])?;
             stats.columns_changed += 1;
         }
     }
@@ -3897,6 +3911,7 @@ mod tests {
                 name: "Todo".into(),
                 color: String::new(),
                 sort_order: Default::default(),
+                sort_rules: Vec::new(),
                 tasks: [
                     (1, at(13, 0), false),
                     (2, at(14, 0), false),
@@ -3948,6 +3963,7 @@ mod tests {
                     name: name.into(),
                     color: String::new(),
                     sort_order: Default::default(),
+                    sort_rules: Vec::new(),
                     tasks: (1..=60)
                         .map(|id| Task {
                             id,
@@ -4112,6 +4128,7 @@ mod tests {
                 name: "Todo".into(),
                 color: String::new(),
                 sort_order: Default::default(),
+                sort_rules: Vec::new(),
                 tasks: vec![Task {
                     id: 2,
                     title: "Write release notes".into(),
@@ -4182,6 +4199,7 @@ mod tests {
                 name: "Todo".into(),
                 color: String::new(),
                 sort_order: Default::default(),
+                sort_rules: Vec::new(),
                 tasks: vec![
                     task(1, "Alpha", ""),
                     task(2, "Alpha beta", ""),
@@ -4425,6 +4443,7 @@ mod tests {
                     name: "Todo".into(),
                     color: String::new(),
                     sort_order: Default::default(),
+                    sort_rules: Vec::new(),
                     tasks: vec![],
                 }],
                 ..Default::default()
@@ -4501,6 +4520,7 @@ mod tests {
             name: "Before".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![],
         });
         owner
@@ -4655,6 +4675,7 @@ mod tests {
             name: "Todo".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 2,
                 title: "Before".into(),
@@ -4752,6 +4773,7 @@ mod tests {
                     name: format!("Column {id}"),
                     color: String::new(),
                     sort_order: Default::default(),
+                    sort_rules: Vec::new(),
                     tasks: Vec::new(),
                 })
                 .collect(),
@@ -4808,6 +4830,7 @@ mod tests {
                 name: "x".repeat(REMOTE_MAX_CONTENT_BYTES),
                 color: String::new(),
                 sort_order: Default::default(),
+                sort_rules: Vec::new(),
                 tasks: Vec::new(),
             }],
             ..StoredData::default()
@@ -5084,6 +5107,7 @@ mod tests {
             name: "Todo".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![
                 Task {
                     id: 2,
@@ -5264,6 +5288,7 @@ mod tests {
             name: "Old".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 1,
                 title: "Remove me".into(),
@@ -5305,6 +5330,7 @@ mod tests {
             name: "Shared column".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 500,
                 title: "Shared task".into(),
@@ -5400,6 +5426,7 @@ mod tests {
             name: "Added".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![],
         });
         after.next_column_id = 2;
@@ -5438,6 +5465,7 @@ mod tests {
             name: "Local".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![],
         });
         let mut remote = StoredData::default();
@@ -5446,6 +5474,7 @@ mod tests {
             name: "Owner".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![],
         });
         let local_doc =
@@ -5615,6 +5644,7 @@ mod tests {
             name: "Local".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![],
         });
         let local_doc =
@@ -5637,6 +5667,7 @@ mod tests {
             name: "Owner-only".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![],
         });
         let remote_doc =
@@ -5771,6 +5802,7 @@ mod tests {
             name: "Todo".into(),
             color: String::new(),
             sort_order: ColumnSort::DueDateDesc,
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 0,
                 title: "Migrated".into(),
@@ -5780,6 +5812,9 @@ mod tests {
         stored.next_column_id = 1;
         stored.next_task_id = 1;
         write_document(&dir.join("data.json"), &stored).unwrap();
+        // Data written before sort rules existed keeps its legacy sort.
+        stored.columns[0].reconcile_sort();
+        assert_eq!(stored.columns[0].sort_rules.len(), 1);
 
         let loaded = load(&dir).unwrap();
         assert_eq!(loaded.stored, stored);
@@ -5807,6 +5842,7 @@ mod tests {
                 name: "Legacy".into(),
                 color: String::new(),
                 sort_order: Default::default(),
+                sort_rules: Vec::new(),
                 tasks: Vec::new(),
             }],
             next_column_id: 1,
@@ -5835,6 +5871,7 @@ mod tests {
             name: "Still here".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: Vec::new(),
         });
         stored.next_column_id = 1;
@@ -5862,6 +5899,7 @@ mod tests {
             name: "Must survive".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: Vec::new(),
         });
         stored.next_column_id = 1;
@@ -5918,6 +5956,7 @@ mod tests {
             name: "Todo".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![
                 Task {
                     id: 0,
@@ -5957,6 +5996,7 @@ mod tests {
             name: "Todo".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: (0..5)
                 .map(|id| Task {
                     id,
@@ -6057,6 +6097,7 @@ mod tests {
             name: "Edited".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: Vec::new(),
         });
         second
@@ -6107,6 +6148,7 @@ mod tests {
             name: "Todo".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 0,
                 title: "Safe".into(),
@@ -6146,6 +6188,7 @@ mod tests {
             name: "Recovered".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: Vec::new(),
         });
         write_document(&backup_path(&dir.join("data.json")), &stored).unwrap();
@@ -6190,6 +6233,7 @@ mod tests {
             name: "First".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 0,
                 title: "Only first".into(),
@@ -6210,6 +6254,7 @@ mod tests {
             name: "Second".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 0,
                 title: "Only second".into(),
@@ -6383,6 +6428,7 @@ mod tests {
             name: "Tasks".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks,
         };
         let data = StoredData {
@@ -6453,6 +6499,7 @@ mod tests {
             name: "Tasks".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![task.clone()],
         });
         data.next_column_id = 1;
@@ -6531,6 +6578,7 @@ mod tests {
             name: "First column".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 0,
                 title: "First task".into(),

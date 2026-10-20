@@ -5,13 +5,32 @@ import {
   deserialize_task,
 } from "./task.svelte";
 
-export type ColumnSort = "custom" | "due_date_asc" | "due_date_desc";
+/** Keep aligned with `SORT_FIELDS` in `src-tauri/src/models.rs`. */
+export const SORT_FIELDS = [
+  "due_time",
+  "start_time",
+  "created_time",
+  "title",
+  "checklist_progress",
+] as const;
+export const MAX_SORT_RULES = 3;
+
+export type SortField = (typeof SORT_FIELDS)[number];
+export type SortDirection = "asc" | "desc";
+export const SORT_DIRECTIONS: readonly SortDirection[] = ["asc", "desc"];
+
+export interface SortRule {
+  /** A field from a newer version is kept but ignored. */
+  field: SortField | (string & {});
+  direction: SortDirection;
+}
 
 export interface Column {
   id: string;
   name: string;
   color: string;
-  sort_order: ColumnSort;
+  /** Display order only; `tasks` keeps the manual order. */
+  sort_rules: SortRule[];
   tasks: Task[];
 }
 
@@ -19,7 +38,7 @@ export interface ColumnSerialized {
   id: number;
   name: string;
   color: string;
-  sort_order?: ColumnSort;
+  sort_rules?: SortRule[];
   tasks: TaskSerialized[];
 }
 
@@ -28,13 +47,13 @@ export function create_column(
   name: string = "",
   color: string = "",
   tasks: Task[] = [],
-  sort_order: ColumnSort = "custom",
+  sort_rules: SortRule[] = [],
 ): Column {
   return {
     id: id,
     name: name,
     color: color,
-    sort_order,
+    sort_rules,
     tasks: tasks,
   };
 }
@@ -57,7 +76,7 @@ export function deserialize_column(data: ColumnSerialized): Column {
     id: "",
     name: data.name,
     color: data.color,
-    sort_order: data.sort_order ?? "custom",
+    sort_rules: data.sort_rules ?? [],
     tasks: data.tasks.map((t) => {
       return deserialize_task(t);
     }),

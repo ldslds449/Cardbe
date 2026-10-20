@@ -30,14 +30,14 @@ function columns(): Column[] {
       id: "column_1",
       name: "Work",
       color: "",
-      sort_order: "custom",
+      sort_rules: [],
       tasks: [later, create_task()],
     },
     {
       id: "column_2",
       name: "Finance",
       color: "",
-      sort_order: "custom",
+      sort_rules: [],
       tasks: [sooner],
     },
   ];

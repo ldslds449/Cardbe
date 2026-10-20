@@ -92,9 +92,7 @@
       return;
     }
     response = body;
-    columns = body.snapshot.columns.map((column) =>
-      deserialize_column({ ...column, sort_order: "custom" }),
-    );
+    columns = body.snapshot.columns.map((column) => deserialize_column(column));
     if (selected_task) {
       selected_task =
         columns

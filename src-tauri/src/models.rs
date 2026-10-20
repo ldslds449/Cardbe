@@ -215,6 +215,7 @@ pub struct TaskTemplate {
     pub task: Task,
 }
 
+/// The sort understood by older peers and plugins; see `Column::sort_rules`.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
@@ -225,6 +226,64 @@ pub enum ColumnSort {
     DueDateDesc,
 }
 
+pub const MAX_SORT_RULES: usize = 3;
+pub const SORT_FIELD_DUE_TIME: &str = "due_time";
+/// Fields this version can sort by. Rules are stored by name so that fields
+/// added by newer versions survive a round trip through this one.
+pub const SORT_FIELDS: [&str; 5] = [
+    SORT_FIELD_DUE_TIME,
+    "start_time",
+    "created_time",
+    "title",
+    "checklist_progress",
+];
+
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct SortRule {
+    pub field: String,
+    pub direction: SortDirection,
+}
+
+/// Whether rules can be saved: at most three known, distinct fields.
+pub fn valid_sort_rules(rules: &[SortRule]) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    rules.len() <= MAX_SORT_RULES
+        && rules.iter().all(|rule| {
+            SORT_FIELDS.contains(&rule.field.as_str()) && seen.insert(rule.field.as_str())
+        })
+}
+
+impl ColumnSort {
+    fn from_rules(rules: &[SortRule]) -> Self {
+        match rules {
+            [rule] if rule.field == SORT_FIELD_DUE_TIME => match rule.direction {
+                SortDirection::Asc => Self::DueDateAsc,
+                SortDirection::Desc => Self::DueDateDesc,
+            },
+            _ => Self::Custom,
+        }
+    }
+
+    fn rules(&self) -> Vec<SortRule> {
+        let direction = match self {
+            Self::Custom => return Vec::new(),
+            Self::DueDateAsc => SortDirection::Asc,
+            Self::DueDateDesc => SortDirection::Desc,
+        };
+        vec![SortRule {
+            field: SORT_FIELD_DUE_TIME.into(),
+            direction,
+        }]
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Column {
     #[serde(default = "default_id")]
@@ -233,10 +292,36 @@ pub struct Column {
     pub name: String,
     #[serde(default)]
     pub color: String,
+    /// Derived from `sort_rules` for older peers and plugins.
     #[serde(default)]
     pub sort_order: ColumnSort,
+    /// Display order only: tasks keep their manual order in storage.
+    #[serde(default)]
+    pub sort_rules: Vec<SortRule>,
     #[serde(default)]
     pub tasks: Vec<Task>,
+}
+
+impl Column {
+    pub fn set_sort_rules(&mut self, rules: Vec<SortRule>) {
+        self.sort_order = ColumnSort::from_rules(&rules);
+        self.sort_rules = rules;
+    }
+
+    /// Applies a legacy sort chosen by a plugin. Rules that already present
+    /// this legacy sort are kept.
+    pub fn set_legacy_sort_order(&mut self, sort_order: ColumnSort) {
+        if ColumnSort::from_rules(&self.sort_rules) != sort_order {
+            self.set_sort_rules(sort_order.rules());
+        }
+    }
+
+    /// Older apps and peers write only `sort_order`. When it disagrees with
+    /// the rules, it is the newer choice and replaces them.
+    pub fn reconcile_sort(&mut self) {
+        let sort_order = self.sort_order.clone();
+        self.set_legacy_sort_order(sort_order);
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
@@ -435,33 +520,13 @@ impl Default for StoredData {
 }
 
 impl StoredData {
-    pub fn sort_column_tasks(&mut self) {
+    /// Stored task order is the manual order. Sort rules only change how a
+    /// column is displayed, so storage just keeps pinned tasks first.
+    pub fn keep_pinned_tasks_first(&mut self) {
         for column in &mut self.columns {
-            let direction = match column.sort_order {
-                ColumnSort::Custom => std::cmp::Ordering::Equal,
-                ColumnSort::DueDateAsc => std::cmp::Ordering::Less,
-                ColumnSort::DueDateDesc => std::cmp::Ordering::Greater,
-            };
-            column.tasks.sort_by(|left, right| {
-                let pinned_order = right.pinned.cmp(&left.pinned);
-                if pinned_order != std::cmp::Ordering::Equal
-                    || direction == std::cmp::Ordering::Equal
-                {
-                    return pinned_order;
-                }
-                match (left.due_time, right.due_time) {
-                    (Some(left), Some(right)) => {
-                        if direction == std::cmp::Ordering::Less {
-                            left.cmp(&right)
-                        } else {
-                            right.cmp(&left)
-                        }
-                    }
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => std::cmp::Ordering::Equal,
-                }
-            });
+            column
+                .tasks
+                .sort_by_key(|task| std::cmp::Reverse(task.pinned));
         }
     }
 
@@ -474,6 +539,9 @@ impl StoredData {
         }
 
         let version_changed = self.schema_version != CURRENT_SCHEMA_VERSION;
+        for column in &mut self.columns {
+            column.reconcile_sort();
+        }
         let column_ids_changed = self.repair_column_ids();
         let task_ids_changed = self.repair_task_ids();
         let template_ids_changed = self.repair_template_ids();
@@ -705,69 +773,120 @@ mod tests {
     }
 
     #[test]
-    fn due_date_sort_keeps_undated_tasks_last_in_both_directions() {
-        let tasks = vec![
-            Task {
-                id: 1,
-                title: "Undated".into(),
-                ..Task::default()
-            },
-            Task {
-                id: 2,
-                title: "Later".into(),
-                due_time: Some(20),
-                ..Task::default()
-            },
-            Task {
-                id: 3,
-                title: "Earlier".into(),
-                due_time: Some(10),
-                ..Task::default()
-            },
-        ];
+    fn sorted_columns_keep_manual_order_with_pinned_tasks_first() {
         let mut stored = StoredData::default();
-        stored.columns.push(Column {
+        let mut column = Column {
             id: 1,
             name: "Todo".into(),
             color: String::new(),
-            sort_order: ColumnSort::DueDateAsc,
-            tasks,
-        });
+            sort_order: ColumnSort::Custom,
+            sort_rules: Vec::new(),
+            tasks: (1..=3)
+                .map(|id| Task {
+                    id,
+                    due_time: Some(40 - id as u128),
+                    ..Task::default()
+                })
+                .collect(),
+        };
+        column.set_sort_rules(vec![rule("due_time", SortDirection::Asc)]);
+        column.tasks[2].pinned = true;
+        stored.columns.push(column);
 
-        stored.sort_column_tasks();
+        stored.keep_pinned_tasks_first();
         assert_eq!(
             stored.columns[0]
                 .tasks
                 .iter()
                 .map(|task| task.id)
                 .collect::<Vec<_>>(),
-            vec![3, 2, 1]
+            vec![3, 1, 2]
+        );
+    }
+
+    fn rule(field: &str, direction: SortDirection) -> SortRule {
+        SortRule {
+            field: field.into(),
+            direction,
+        }
+    }
+
+    fn empty_column(sort_rules: Vec<SortRule>) -> Column {
+        Column {
+            id: 1,
+            name: String::new(),
+            color: String::new(),
+            sort_order: ColumnSort::Custom,
+            sort_rules,
+            tasks: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn sort_rules_derive_the_legacy_sort_order() {
+        let mut column = empty_column(Vec::new());
+        column.set_sort_rules(vec![rule("due_time", SortDirection::Desc)]);
+        assert_eq!(column.sort_order, ColumnSort::DueDateDesc);
+        column.set_sort_rules(vec![
+            rule("due_time", SortDirection::Asc),
+            rule("title", SortDirection::Asc),
+        ]);
+        assert_eq!(column.sort_order, ColumnSort::Custom);
+        column.set_sort_rules(vec![rule("start_time", SortDirection::Asc)]);
+        assert_eq!(column.sort_order, ColumnSort::Custom);
+    }
+
+    #[test]
+    fn legacy_sort_order_replaces_only_disagreeing_rules() {
+        let rules = vec![rule("start_time", SortDirection::Asc)];
+        let mut column = empty_column(rules.clone());
+        column.reconcile_sort();
+        assert_eq!(column.sort_rules, rules);
+
+        // An older peer chose a due date sort.
+        column.sort_order = ColumnSort::DueDateAsc;
+        column.reconcile_sort();
+        assert_eq!(
+            column.sort_rules,
+            vec![rule("due_time", SortDirection::Asc)]
         );
 
-        stored.columns[0].sort_order = ColumnSort::DueDateDesc;
-        stored.sort_column_tasks();
+        // Data written before sort rules existed.
+        column.sort_rules = Vec::new();
+        column.sort_order = ColumnSort::DueDateDesc;
+        column.reconcile_sort();
         assert_eq!(
-            stored.columns[0]
-                .tasks
-                .iter()
-                .map(|task| task.id)
-                .collect::<Vec<_>>(),
-            vec![2, 3, 1]
+            column.sort_rules,
+            vec![rule("due_time", SortDirection::Desc)]
         );
-        stored.columns[0].tasks[2].pinned = true;
-        stored.sort_column_tasks();
-        assert_eq!(stored.columns[0].tasks[0].id, 1);
-        stored.columns[0].sort_order = ColumnSort::Custom;
-        stored.columns[0].tasks.rotate_left(1);
-        stored.sort_column_tasks();
-        assert_eq!(
-            stored.columns[0]
-                .tasks
-                .iter()
-                .map(|task| task.id)
-                .collect::<Vec<_>>(),
-            vec![1, 2, 3]
-        );
+
+        column.set_legacy_sort_order(ColumnSort::Custom);
+        assert!(column.sort_rules.is_empty());
+    }
+
+    #[test]
+    fn sort_rules_are_validated_and_unknown_fields_round_trip() {
+        assert!(valid_sort_rules(&[]));
+        assert!(valid_sort_rules(&[
+            rule("due_time", SortDirection::Asc),
+            rule("title", SortDirection::Desc),
+            rule("checklist_progress", SortDirection::Asc),
+        ]));
+        assert!(!valid_sort_rules(&[
+            rule("due_time", SortDirection::Asc),
+            rule("due_time", SortDirection::Desc),
+        ]));
+        assert!(!valid_sort_rules(&[rule("priority", SortDirection::Asc)]));
+        assert!(!valid_sort_rules(&[
+            rule("due_time", SortDirection::Asc),
+            rule("start_time", SortDirection::Asc),
+            rule("created_time", SortDirection::Asc),
+            rule("title", SortDirection::Asc),
+        ]));
+
+        let json = r#"[{"field":"priority","direction":"desc"}]"#;
+        let newer: Vec<SortRule> = serde_json::from_str(json).unwrap();
+        assert_eq!(serde_json::to_string(&newer).unwrap(), json);
     }
 }
 

@@ -260,7 +260,7 @@ export abstract class BoardStoreBase {
         }
         board.columns = data.map(deserialize_column);
         for (const column of board.columns) {
-          board.sort_column_tasks(column);
+          board.keep_pinned_tasks_first(column);
         }
         board.sync_active_board_task_count();
         board.task_expansion.prune(
@@ -660,22 +660,14 @@ export abstract class BoardStoreBase {
     }
   }
 
-  sort_column_tasks(column: Column) {
-    const direction = column.sort_order === "due_date_asc" ? 1 : -1;
-    column.tasks.sort((a, b) => {
-      const pinned_order =
-        Number(b.pinned ?? false) - Number(a.pinned ?? false);
-      if (pinned_order || column.sort_order === "custom") {
-        return pinned_order;
-      }
-      if (!a.due_time) {
-        return b.due_time ? 1 : 0;
-      }
-      if (!b.due_time) {
-        return -1;
-      }
-      return (a.due_time.getTime() - b.due_time.getTime()) * direction;
-    });
+  /**
+   * `column.tasks` is the manual order; sort rules apply only when displayed
+   * (see `sorted_column_tasks`). Matches `keep_pinned_tasks_first` in Rust.
+   */
+  keep_pinned_tasks_first(column: Column) {
+    column.tasks.sort(
+      (a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false),
+    );
   }
 
   get_task_templates() {

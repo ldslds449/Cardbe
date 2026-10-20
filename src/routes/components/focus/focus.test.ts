@@ -9,7 +9,7 @@ function make_column(): Column {
     id: "column_1",
     name: "Todo",
     color: "",
-    sort_order: "custom",
+    sort_rules: [],
     tasks: [],
   };
 }

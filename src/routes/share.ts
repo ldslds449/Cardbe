@@ -4,6 +4,7 @@ import { get_column_id, type Column } from "./type/column.svelte";
 import { serialize_task, type TaskSerialized } from "./type/task.svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { managed_share_state } from "./share-state.svelte";
+import { sorted_column_tasks } from "./utils/column-sort";
 
 export const SHARE_SCHEMA_VERSION = 1;
 export const MAX_SHARE_TITLE_LENGTH = 120;
@@ -117,7 +118,8 @@ export function build_share_snapshot(
       id: get_column_id(column.id),
       name: column.name,
       color: column.color,
-      tasks: column.tasks
+      // Viewers see the published display order.
+      tasks: sorted_column_tasks(column)
         .filter((task) => selected_tasks.has(task.id))
         .map(serialize_task),
     }));

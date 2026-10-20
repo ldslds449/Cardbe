@@ -1,7 +1,7 @@
 use crate::board_mutations::{column_index, task_position};
 use crate::errors::CommandError;
 use crate::{
-    models::{Column, ColumnSort, Task},
+    models::{Column, ColumnSort, SortRule, Task},
     state::{lock_app, undo_last_change_for_board, update_stored_for_board, SharedAppData},
 };
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -122,11 +122,11 @@ pub fn update_column(
     column_id: i64,
     name: String,
     color: String,
-    sort_order: ColumnSort,
+    sort_rules: Vec<SortRule>,
     expected_board_id: i64,
 ) -> Result<(), CommandError> {
     update_stored_for_board(&state, expected_board_id, |data| {
-        crate::board_mutations::update_column(data, column_id, name, color, sort_order)
+        crate::board_mutations::update_column(data, column_id, name, color, sort_rules)
     })
     .map_err(CommandError::from)
 }
@@ -414,6 +414,7 @@ pub(crate) fn add_column_to_board_locked(
         name: name.trim().to_owned(),
         color: String::new(),
         sort_order: ColumnSort::Custom,
+        sort_rules: Vec::new(),
         tasks: Vec::new(),
     });
     let (revision, status) = guard

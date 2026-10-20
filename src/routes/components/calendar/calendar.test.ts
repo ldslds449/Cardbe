@@ -47,7 +47,7 @@ function make_column(tasks: Task[]): Column {
     id: "column_1",
     name: "In Progress",
     color: "",
-    sort_order: "custom",
+    sort_rules: [],
     tasks,
   };
 }

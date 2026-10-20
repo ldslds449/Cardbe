@@ -234,7 +234,7 @@ fn update_locked_typed<R, E: From<String>>(
 ) -> Result<R, E> {
     let mut candidate = guard.stored.clone();
     let result = change(&mut candidate)?;
-    candidate.sort_column_tasks();
+    candidate.keep_pinned_tasks_first();
     let board_changed = candidate.columns != guard.stored.columns
         || candidate.archives != guard.stored.archives
         || candidate.templates != guard.stored.templates;
@@ -396,6 +396,7 @@ mod tests {
                 name: "Must not commit".into(),
                 color: String::new(),
                 sort_order: Default::default(),
+                sort_rules: Vec::new(),
                 tasks: Vec::new(),
             });
             Err("Rejected change".to_string())
@@ -425,6 +426,7 @@ mod tests {
             name: "Before import".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: Vec::new(),
         });
         let mut app = app_data(&dir, stored);
@@ -502,6 +504,7 @@ mod tests {
                 name: "Added".into(),
                 color: String::new(),
                 sort_order: Default::default(),
+                sort_rules: Vec::new(),
                 tasks: Vec::new(),
             });
             Ok(())
@@ -572,6 +575,7 @@ mod tests {
                 name: "Added before opening archives".into(),
                 color: String::new(),
                 sort_order: Default::default(),
+                sort_rules: Vec::new(),
                 tasks: Vec::new(),
             });
             Ok(())
@@ -602,6 +606,7 @@ mod tests {
             name: "Persisted".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 1,
                 title: "Labelled".into(),

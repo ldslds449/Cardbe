@@ -961,6 +961,7 @@ mod tests {
             name: "Imported".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 1,
                 title: "Committed task".into(),

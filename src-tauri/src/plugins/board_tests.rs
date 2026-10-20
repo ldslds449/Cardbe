@@ -24,6 +24,7 @@ impl Fixture {
                 name: "待辦 😀".into(),
                 color: String::new(),
                 sort_order: ColumnSort::Custom,
+                sort_rules: Vec::new(),
                 tasks: (10..261)
                     .map(|id| Task {
                         id,
@@ -258,6 +259,7 @@ fn scoped_queries_page_full_unicode_tasks_and_reject_foreign_filters() {
             name: "Foreign".into(),
             color: String::new(),
             sort_order: ColumnSort::Custom,
+            sort_rules: Vec::new(),
             tasks: vec![Task {
                 id: 10,
                 title: "Foreign".into(),
@@ -662,6 +664,41 @@ fn persistence_failure_rolls_back_board_crdt_and_run_and_allows_retry() {
     assert_eq!(
         crate::loro_board::project(&update).unwrap().columns,
         committed.columns
+    );
+    cleanup(f);
+}
+
+#[test]
+fn guest_column_updates_keep_sort_rules_that_match_the_legacy_sort() {
+    let mut f = Fixture::new();
+    let mut data = f.db.read_board_complete(f.instance.board_id).unwrap();
+    let rules = vec![SortRule {
+        field: "title".into(),
+        direction: SortDirection::Desc,
+    }];
+    data.columns[0].set_sort_rules(rules.clone());
+    f.db.replace_board_as_local_edit(f.instance.board_id, &data)
+        .unwrap();
+
+    // The guest sees `custom` and renames the column without changing it.
+    let p = f
+        .prepare(json!([{"kind":"update_column","column":1,"name":"Renamed","color":"","sort_order":"custom"}]))
+        .unwrap();
+    let committed = f.db.commit_changeset(&p).unwrap();
+    assert_eq!(committed.columns[0].name, "Renamed");
+    assert_eq!(committed.columns[0].sort_rules, rules);
+
+    let p = f
+        .prepare(json!([{"kind":"update_column","column":1,"name":"Renamed","color":"","sort_order":"due_date_desc"}]))
+        .unwrap();
+    let committed = f.db.commit_changeset(&p).unwrap();
+    assert_eq!(committed.columns[0].sort_order, ColumnSort::DueDateDesc);
+    assert_eq!(
+        committed.columns[0].sort_rules,
+        vec![SortRule {
+            field: "due_time".into(),
+            direction: SortDirection::Desc,
+        }]
     );
     cleanup(f);
 }

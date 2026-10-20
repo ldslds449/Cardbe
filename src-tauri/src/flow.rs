@@ -888,6 +888,7 @@ mod tests {
             name: "Tasks".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: (1..=3)
                 .map(|id| Task {
                     id,
@@ -1109,6 +1110,7 @@ mod tests {
             name: "Tasks".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: (1..=3)
                 .map(|id| Task {
                     id,
@@ -1312,6 +1314,7 @@ mod tests {
             name: "Tasks".into(),
             color: String::new(),
             sort_order: Default::default(),
+            sort_rules: Vec::new(),
             tasks: (1..=3)
                 .map(|id| Task {
                     id,

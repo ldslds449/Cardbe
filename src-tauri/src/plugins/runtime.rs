@@ -717,7 +717,7 @@ mod tests {
                 ..Default::default()
             };
             loaded.database.replace_board_as_local_edit(board_id, &crate::models::StoredData {
-                columns: vec![crate::models::Column { id: 1, name: "Existing".into(), color: String::new(), sort_order: Default::default(), tasks: vec![task.clone()] }],
+                columns: vec![crate::models::Column { id: 1, name: "Existing".into(), color: String::new(), sort_order: Default::default(), sort_rules: Vec::new(), tasks: vec![task.clone()] }],
                 ..Default::default()
             }).unwrap();
             let bytes = std::fs::read(

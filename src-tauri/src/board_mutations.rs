@@ -1,6 +1,6 @@
 use crate::{
     errors::DomainError,
-    models::{Column, ColumnSort, StoredData, Task},
+    models::{valid_sort_rules, Column, ColumnSort, SortRule, StoredData, Task},
 };
 use std::collections::HashSet;
 
@@ -39,6 +39,7 @@ pub(crate) fn add_column(
         name,
         color,
         sort_order: ColumnSort::Custom,
+        sort_rules: Vec::new(),
         tasks: Vec::new(),
     });
     Ok(id)
@@ -49,12 +50,16 @@ pub(crate) fn update_column(
     column_id: i64,
     name: String,
     color: String,
-    sort_order: ColumnSort,
+    sort_rules: Vec<SortRule>,
 ) -> Result<(), DomainError> {
+    if !valid_sort_rules(&sort_rules) {
+        return Err(DomainError::InvalidArgument);
+    }
     let index = column_index(data, column_id)?;
-    data.columns[index].name = name;
-    data.columns[index].color = color;
-    data.columns[index].sort_order = sort_order;
+    let column = &mut data.columns[index];
+    column.name = name;
+    column.color = color;
+    column.set_sort_rules(sort_rules);
     Ok(())
 }
 
@@ -229,6 +234,7 @@ mod tests {
             name: "Todo".into(),
             color: String::new(),
             sort_order: ColumnSort::Custom,
+            sort_rules: Vec::new(),
             tasks: vec![Task { id: 2, ..task }],
         });
         data
@@ -244,6 +250,7 @@ mod tests {
             name: String::new(),
             color: String::new(),
             sort_order: ColumnSort::Custom,
+            sort_rules: Vec::new(),
             tasks,
         };
         StoredData {
@@ -348,5 +355,35 @@ mod tests {
             (task.start_time, task.created_time),
             (1_800_000_000_000, 1_600_000_000_000)
         );
+    }
+
+    #[test]
+    fn update_column_saves_valid_sort_rules_and_rejects_invalid_ones() {
+        let mut data = board(Task::default());
+        let rule = |field: &str| SortRule {
+            field: field.into(),
+            direction: crate::models::SortDirection::Asc,
+        };
+        let rules = vec![rule("due_time"), rule("title")];
+        update_column(&mut data, 1, "Todo".into(), String::new(), rules.clone()).unwrap();
+        assert_eq!(data.columns[0].sort_rules, rules);
+        assert_eq!(data.columns[0].sort_order, ColumnSort::Custom);
+
+        for invalid in [
+            vec![rule("priority")],
+            vec![rule("title"), rule("title")],
+            vec![
+                rule("due_time"),
+                rule("start_time"),
+                rule("created_time"),
+                rule("title"),
+            ],
+        ] {
+            assert!(matches!(
+                update_column(&mut data, 1, "Todo".into(), String::new(), invalid),
+                Err(DomainError::InvalidArgument)
+            ));
+        }
+        assert_eq!(data.columns[0].sort_rules, rules);
     }
 }
