@@ -20,6 +20,12 @@ import {
 import { addMission } from "./utils/mission.svelte";
 import { IrohBoardStore } from "./board-iroh.svelte";
 import { open_floating_task } from "$lib/floating-tasks";
+import {
+  appended_layout,
+  tab_label,
+  type FlowData,
+  type FlowTab,
+} from "./components/flow/flow";
 
 // Keep drag-and-drop responsive by waiting until the user has finished a
 // short sequence of moves before persisting it to disk.
@@ -911,6 +917,61 @@ export abstract class TaskBoardStore extends IrohBoardStore {
           toast.error(translateCommandError(e));
         });
     });
+  }
+
+  // The backend always returns at least one tab; null means the tabs are unavailable.
+  async get_flow_tabs(): Promise<FlowTab[] | null> {
+    const boardId = this.active_board_id;
+    if (boardId === null) {
+      return null;
+    }
+    try {
+      const data = await invoke<FlowData>("get_flow", {
+        expectedBoardId: boardId,
+        tabId: null,
+      });
+      return data.tabs;
+    } catch (error) {
+      toast.error(translateCommandError(error));
+      return null;
+    }
+  }
+
+  async add_task_to_flow(task_id: string, tab: FlowTab) {
+    const boardId = this.active_board_id;
+    if (boardId === null) {
+      return;
+    }
+    const resolution = this.capture_task_id(task_id);
+    try {
+      // Queue behind earlier edits so a newly created task is persisted first.
+      const added = await addMission(async () => {
+        const data = await invoke<FlowData>("get_flow", {
+          expectedBoardId: boardId,
+          tabId: tab.id,
+        });
+        if (data.tab_id !== tab.id) {
+          throw { code: "FLOW_TAB_NOT_FOUND" };
+        }
+        const layout = appended_layout(data.layout, await resolution.id);
+        if (layout) {
+          await invoke("save_flow_layout", {
+            expectedBoardId: boardId,
+            tabId: tab.id,
+            layout,
+          });
+        }
+        return layout !== null;
+      });
+      const name = tab_label(tab);
+      if (added) {
+        toast.success(m.task_add_to_flow_done({ name }));
+      } else {
+        toast.info(m.task_add_to_flow_exists({ name }));
+      }
+    } catch (error) {
+      toast.error(translateCommandError(error));
+    }
   }
 
   async float_task(task_id: string) {

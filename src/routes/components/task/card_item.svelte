@@ -21,9 +21,11 @@
   import PinIcon from "@lucide/svelte/icons/pin";
   import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
+  import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import MoveTaskDialog from "../dialog/move_task_dialog.svelte";
 
   import { recurrence_label, type Task } from "../../type/task.svelte";
+  import { tab_label, type FlowTab } from "../flow/flow";
   import { display_task_color } from "../../utils/task-color";
   import Markdown from "../markdown.svelte";
   import LabelBadge from "../label_badge.svelte";
@@ -49,6 +51,8 @@
     onArchiveTask: () => void;
     onTogglePin?: () => void;
     onFloatTask?: () => void;
+    onLoadFlowTabs?: () => Promise<FlowTab[] | null>;
+    onAddToFlow?: (tab: FlowTab) => void;
   }
 
   let {
@@ -69,6 +73,8 @@
     onArchiveTask = () => {},
     onTogglePin,
     onFloatTask,
+    onLoadFlowTabs,
+    onAddToFlow,
   }: CardItemProps = $props();
 
   const { ref, isDragging, isDropTarget } = useSortable({
@@ -94,6 +100,14 @@
   );
   let delete_confirm_open = $state(false);
   let move_dialog_open = $state(false);
+  // Loaded when the menu opens; a single tab is added without a submenu.
+  let flow_tabs = $state.raw<FlowTab[] | null>(null);
+  async function load_flow_tabs(open: boolean) {
+    if (open && !read_only && onLoadFlowTabs) {
+      flow_tabs = null;
+      flow_tabs = await onLoadFlowTabs();
+    }
+  }
   let due_metadata = $derived(
     task.due_time
       ? due_label(task.due_time, new Date(), task.due_at_midnight)
@@ -101,7 +115,7 @@
   );
 </script>
 
-<ContextMenu.Root>
+<ContextMenu.Root onOpenChange={load_flow_tabs}>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <ContextMenu.Trigger
     data-task-card
@@ -194,7 +208,7 @@
             </Button>
           {/if}
           <div class="flex flex-row-reverse items-center gap-1">
-            <DropdownMenu.Root>
+            <DropdownMenu.Root onOpenChange={load_flow_tabs}>
               <DropdownMenu.Trigger>
                 {#snippet child({ props })}
                   <Button
@@ -289,6 +303,13 @@
 
 {#snippet menu_items(context: boolean)}
   {@const Item = context ? ContextMenu.Item : DropdownMenu.Item}
+  {@const Sub = context ? ContextMenu.Sub : DropdownMenu.Sub}
+  {@const SubTrigger = context
+    ? ContextMenu.SubTrigger
+    : DropdownMenu.SubTrigger}
+  {@const SubContent = context
+    ? ContextMenu.SubContent
+    : DropdownMenu.SubContent}
   <TaskActionItems
     {context}
     onView={onViewTask}
@@ -322,6 +343,27 @@
           <MoveRightIcon />
           {m.task_move_board()}
         </Item>
+        {#if onAddToFlow && flow_tabs?.length === 1}
+          {@const tab = flow_tabs[0]}
+          <Item onclick={() => onAddToFlow(tab)}>
+            <WorkflowIcon />
+            {m.task_add_to_flow()}
+          </Item>
+        {:else if onAddToFlow && flow_tabs && flow_tabs.length > 1}
+          <Sub>
+            <SubTrigger>
+              <WorkflowIcon />
+              {m.task_add_to_flow()}
+            </SubTrigger>
+            <SubContent class="max-w-64">
+              {#each flow_tabs as tab (tab.id)}
+                <Item onclick={() => onAddToFlow(tab)}>
+                  <span class="truncate">{tab_label(tab)}</span>
+                </Item>
+              {/each}
+            </SubContent>
+          </Sub>
+        {/if}
         {#if onSaveAsTemplate}
           <Item onclick={onSaveAsTemplate}>
             <LayoutTemplateIcon />

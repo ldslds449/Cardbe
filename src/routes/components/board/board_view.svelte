@@ -279,6 +279,8 @@
                 onDeleteTask={() => board.delete_task(task.id)}
                 onArchiveTask={() => board.archive_task(task.id)}
                 onFloatTask={() => void board.float_task(task.id)}
+                onLoadFlowTabs={() => board.get_flow_tabs()}
+                onAddToFlow={(tab) => void board.add_task_to_flow(task.id, tab)}
                 onTogglePin={() =>
                   void board.update_task(task.id, {
                     ...task,

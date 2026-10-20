@@ -3,6 +3,7 @@ import { MarkerType, Position } from "@xyflow/svelte";
 import type { Column } from "../../type/column.svelte";
 import type { Task } from "../../type/task.svelte";
 import type { Archive } from "../../type/archive.svelte";
+import * as m from "$lib/paraglide/messages";
 
 // Arrows are only visual; each pair of tasks has at most one line.
 export interface Relationship {
@@ -90,6 +91,11 @@ export function build_annotations(
 export interface FlowTab {
   id: string;
   name: string;
+}
+
+// The default tab is stored without a name.
+export function tab_label(tab: FlowTab): string {
+  return tab.name.trim() || m.flow_tab_default();
 }
 export interface FlowData {
   tab_id: string;
@@ -263,6 +269,31 @@ export function added_layout(
       })),
     ],
   };
+}
+
+// Adds one task near the saved viewport's top-left, below any item already placed there.
+export function appended_layout(
+  layout: FlowLayout,
+  task_id: number,
+): FlowLayout | null {
+  if (layout.nodes.some((node) => node.task_id === task_id)) {
+    return null;
+  }
+  const viewport = layout.viewport ?? { x: 0, y: 0, zoom: 1 };
+  const position = {
+    x: (40 - viewport.x) / viewport.zoom,
+    y: (40 - viewport.y) / viewport.zoom,
+  };
+  const taken = [...layout.nodes, ...(layout.annotations ?? [])];
+  while (
+    taken.some(
+      (item) =>
+        Math.abs(item.x - position.x) < 1 && Math.abs(item.y - position.y) < 1,
+    )
+  ) {
+    position.y += 160;
+  }
+  return added_layout(layout, [`task_${task_id}`], viewport, position);
 }
 
 export function relationship_id(edge: Relationship): string {

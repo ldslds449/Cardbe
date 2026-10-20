@@ -11,7 +11,7 @@
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import * as m from "$lib/paraglide/messages";
-  import { dragged_tab_ids, type FlowTab } from "./flow";
+  import { dragged_tab_ids, tab_label, type FlowTab } from "./flow";
 
   let {
     tabs,
@@ -81,7 +81,6 @@
       onReorder(order);
     }
   }
-  const label = (tab: FlowTab) => tab.name.trim() || m.flow_tab_default();
   const tab_element_id = (id: string) => `flow-tab-${id}`;
 
   $effect(() => {
@@ -209,7 +208,7 @@
                 aria-keyshortcuts={read_only
                   ? undefined
                   : "Alt+ArrowLeft Alt+ArrowRight"}
-                title={label(tab)}
+                title={tab_label(tab)}
                 class={`h-full max-w-48 rounded-md px-2.5 text-sm font-normal hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 ${active && !read_only ? "pr-0.5 font-medium" : active ? "font-medium" : ""}`}
                 onclick={() => select(tab.id)}
                 ondblclick={() => start_rename(tab.id)}
@@ -221,14 +220,14 @@
                   }
                 }}
                 onkeydown={(event) => tab_keydown(event, index)}
-                ><span class="truncate">{label(tab)}</span></Button
+                ><span class="truncate">{tab_label(tab)}</span></Button
               >
               {#if active && !read_only}
                 <DropdownMenu.Root bind:open={menu_open}>
                   <DropdownMenu.Trigger
                     class={`${buttonVariants({ size: "icon-sm", variant: "ghost" })} mr-0.5 size-6 text-muted-foreground hover:bg-muted focus-visible:border-transparent focus-visible:bg-muted focus-visible:ring-0`}
-                    aria-label={m.flow_tab_options({ name: label(tab) })}
-                    title={m.flow_tab_options({ name: label(tab) })}
+                    aria-label={m.flow_tab_options({ name: tab_label(tab) })}
+                    title={m.flow_tab_options({ name: tab_label(tab) })}
                     disabled={busy}><ChevronDownIcon /></DropdownMenu.Trigger
                   >
                   <DropdownMenu.Content

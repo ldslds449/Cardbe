@@ -7,6 +7,7 @@ import {
   build_edges,
   moved_layout,
   added_layout,
+  appended_layout,
   connected_layout,
   available_task_columns,
   missing_archive_task_ids,
@@ -435,5 +436,35 @@ describe("Flow task projection", () => {
     expect(view).toContain("translateCommandError(error)");
     expect(view).toContain("var(--background)");
     expect(view).toContain("var(--primary)");
+  });
+});
+
+describe("appended_layout", () => {
+  it("places a task at the saved viewport and stacks repeated additions", () => {
+    const base: FlowLayout = {
+      nodes: [],
+      viewport: { x: -60, y: 20, zoom: 2 },
+    };
+    const first = appended_layout(base, 7)!;
+    expect(first.nodes).toEqual([{ task_id: 7, x: 50, y: 10 }]);
+    expect(first.viewport).toEqual(base.viewport);
+    const second = appended_layout(first, 8)!;
+    expect(second.nodes[1]).toEqual({ task_id: 8, x: 50, y: 170 });
+  });
+
+  it("avoids annotations, defaults without a viewport, and skips existing tasks", () => {
+    const base: FlowLayout = {
+      nodes: [{ task_id: 1, x: 0, y: 0 }],
+      viewport: null,
+      annotations: [
+        { id: "a", kind: "text", text: "", x: 40, y: 40, width: 280 },
+      ],
+    };
+    expect(appended_layout(base, 2)!.nodes[1]).toEqual({
+      task_id: 2,
+      x: 40,
+      y: 200,
+    });
+    expect(appended_layout(base, 1)).toBeNull();
   });
 });
