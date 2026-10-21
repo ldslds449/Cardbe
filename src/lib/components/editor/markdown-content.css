@@ -163,6 +163,7 @@
 }
 .markdown-content .code-scroll {
   margin: 0.75rem 0;
+  white-space: normal;
 }
 .markdown-content .code-scroll [data-slot="scroll-area-viewport"] > div {
   display: block !important;
