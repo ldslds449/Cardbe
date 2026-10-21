@@ -50,6 +50,7 @@ function mountPage(
     refresh_device_requests: vi.fn(),
     listen: vi.fn(async () => vi.fn()),
     UPDATE_STARTUP_DELAY_MS: 10_000,
+    UPDATE_POLL_INTERVAL_MS: 3_600_000,
     startup_check_finished: false,
     startup_error: null,
     managed_share_state: { storage_error: null },
