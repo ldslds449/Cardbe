@@ -1345,7 +1345,7 @@
   "share_conflict_error": "請先處理已儲存的同步衝突，再重新同步。",
   "update_current": "{name} 已是最新版本",
   "update_available": "{name} {version} 新版已推出",
-  "statistics_description": "目前看板的封存活動，不含已還原或刪除的任務。",
+  "statistics_description": "目前看板的任務生命週期與封存活動。封存視為完成，不含已還原或刪除的任務。",
   "statistics_loading": "正在載入統計資料…",
   "statistics_load_error": "無法載入統計資料。",
   "statistics_total_archived": "累計封存任務",
@@ -1359,6 +1359,92 @@
   "statistics_intensity": "封存數量：0、1、2、3、4 個以上任務",
   "statistics_less": "較少",
   "statistics_more": "較多",
+  "statistics_yearly": "年度概覽",
+  "statistics_lifecycle": "任務生命週期",
+  "statistics_lifecycle_description": "這個看板上的任務從建立到封存的狀況。",
+  "statistics_range": "時間範圍",
+  "statistics_range_days": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "近 {countFormatted} 天"
+      }
+    }
+  ],
+  "statistics_label_filter": "標籤",
+  "statistics_all_labels": "全部標籤",
+  "statistics_no_label": "無標籤",
+  "statistics_completed": "完成",
+  "statistics_created": "建立",
+  "statistics_no_data": "尚無資料",
+  "statistics_previous_period": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "前一段期間：{countFormatted} 個"
+      }
+    }
+  ],
+  "statistics_lead_time_median": "完成所需時間中位數",
+  "statistics_lead_time_p85": "85% 在 {duration}內完成",
+  "statistics_lead_time_hint": "從建立到封存",
+  "statistics_on_time_rate": "準時完成率",
+  "statistics_on_time_detail": [
+    {
+      "declarations": [
+        "input count",
+        "input on_time",
+        "local countFormatted = count: number",
+        "local onTimeFormatted = on_time: number"
+      ],
+      "match": {
+        "count=*": "有截止時間的 {countFormatted} 個任務中，{onTimeFormatted} 個準時完成"
+      }
+    }
+  ],
+  "statistics_overdue_now": "目前逾期",
+  "statistics_overdue_detail": "尚未完成且已超過截止時間",
+  "statistics_unknown_created": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "有 {countFormatted} 個已完成任務缺少建立時間，未納入時間計算。"
+      }
+    }
+  ],
+  "statistics_weekly_flow": "每週建立與完成",
+  "statistics_flow_growing": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "圖中這幾週，建立比完成多 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "statistics_flow_shrinking": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "圖中這幾週，完成比建立多 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "statistics_flow_balanced": "圖中這幾週，建立與完成的任務一樣多",
+  "statistics_week_summary": "{date} 當週：建立 {created}、完成 {completed}",
+  "statistics_lead_time_distribution": "完成所需時間",
+  "statistics_bucket_under_1_day": "不到 1 天",
+  "statistics_bucket_1_3_days": "1–3 天",
+  "statistics_bucket_3_7_days": "3–7 天",
+  "statistics_bucket_1_2_weeks": "1–2 週",
+  "statistics_bucket_2_weeks_1_month": "2 週至 1 個月",
+  "statistics_bucket_over_1_month": "超過 1 個月",
+  "statistics_completed_empty": "這段期間沒有完成的任務。",
+  "statistics_aging": "放最久的任務",
+  "statistics_aging_description": "依建立至今的時間排序的未完成任務",
+  "statistics_aging_age": "已放 {duration}",
+  "statistics_aging_overdue": "逾期 {duration}",
+  "statistics_aging_empty": "目前沒有未完成的任務。",
+  "statistics_by_label": "依標籤",
   "export_document_title": "行事曆匯出",
   "export_month_label": "第 {month} 個月",
   "task_move_board": "移至其他看板",

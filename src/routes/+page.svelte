@@ -1394,9 +1394,11 @@
             {#if active_view === "statistics"}
               <StatisticsView
                 archives={board.archives}
+                columns={board.columns}
                 loaded={board.archives_loaded}
                 loading={board.archives_loading}
                 onRetry={() => void board.get_archives()}
+                onViewTask={(task) => view_task_by_id(task)}
               />
             {:else if search_text.trim() && board.search_pending}
               <div

@@ -8,18 +8,25 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Spinner } from "$lib/components/ui/spinner/index.js";
   import type { Archive } from "../../type/archive.svelte";
+  import type { Column } from "../../type/column.svelte";
+  import type { Task } from "../../type/task.svelte";
   import { archive_activity } from "./activity";
+  import LifecycleSection from "./lifecycle_section.svelte";
 
   let {
     archives,
+    columns,
     loaded,
     loading,
     onRetry,
+    onViewTask,
   }: {
     archives: Archive[];
+    columns: Column[];
     loaded: boolean;
     loading: boolean;
     onRetry: () => void;
+    onViewTask: (task: Task) => void;
   } = $props();
   let now = $state(new Date());
   let year = $state(new Date().getFullYear());
@@ -88,6 +95,8 @@
       <Button variant="outline" onclick={onRetry}>{m.common_retry()}</Button>
     </div>
   {:else}
+    <LifecycleSection {archives} {columns} {now} {onViewTask} />
+    <h2 class="mt-2 text-lg font-semibold">{m.statistics_yearly()}</h2>
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {#each [{ label: m.statistics_total_archived(), value: archives.length, detail: m.statistics_all_time() }, { label: m.statistics_archived_year(), value: activity.total, detail: year_label }, { label: m.statistics_active_days(), value: activity.active_days, detail: m.statistics_in_year( { year: year_label } ) }, { label: m.statistics_longest_streak(), value: activity.longest_streak, detail: m.statistics_streak_year( { year: year_label } ) }] as metric}
         <Card.Root class="gap-3">

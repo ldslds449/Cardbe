@@ -1521,7 +1521,7 @@
   "share_conflict_error": "Resolve the saved sync conflict before syncing again.",
   "update_current": "{name} is up to date",
   "update_available": "{name} {version} is available",
-  "statistics_description": "Archive activity for the current board. Restored or deleted tasks are excluded.",
+  "statistics_description": "Task lifecycle and archive activity for the current board. Archived tasks count as completed; restored or deleted tasks are excluded.",
   "statistics_loading": "Loading statistics...",
   "statistics_load_error": "Couldn't load statistics.",
   "statistics_total_archived": "Total archived",
@@ -1535,6 +1535,119 @@
   "statistics_intensity": "Activity intensity: 0, 1, 2, 3, 4 or more tasks",
   "statistics_less": "Less",
   "statistics_more": "More",
+  "statistics_yearly": "Yearly overview",
+  "statistics_lifecycle": "Task lifecycle",
+  "statistics_lifecycle_description": "From creation to archive, for tasks on this board.",
+  "statistics_range": "Time range",
+  "statistics_range_days": [
+    {
+      "declarations": [
+        "input count",
+        "local countFormatted = count: number",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Last {countFormatted} day",
+        "countPlural=*": "Last {countFormatted} days"
+      }
+    }
+  ],
+  "statistics_label_filter": "Label",
+  "statistics_all_labels": "All labels",
+  "statistics_no_label": "No label",
+  "statistics_completed": "Completed",
+  "statistics_created": "Created",
+  "statistics_no_data": "No data",
+  "statistics_previous_period": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "Previous period: {countFormatted}"
+      }
+    }
+  ],
+  "statistics_lead_time_median": "Median time to complete",
+  "statistics_lead_time_p85": "85% completed within {duration}",
+  "statistics_lead_time_hint": "From creation to archive",
+  "statistics_on_time_rate": "On-time rate",
+  "statistics_on_time_detail": [
+    {
+      "declarations": [
+        "input count",
+        "input on_time",
+        "local countFormatted = count: number",
+        "local onTimeFormatted = on_time: number",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{onTimeFormatted} of {countFormatted} task with a due date",
+        "countPlural=*": "{onTimeFormatted} of {countFormatted} tasks with due dates"
+      }
+    }
+  ],
+  "statistics_overdue_now": "Overdue now",
+  "statistics_overdue_detail": "Active tasks past their due time",
+  "statistics_unknown_created": [
+    {
+      "declarations": [
+        "input count",
+        "local countFormatted = count: number",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} completed task has no creation time and is excluded from time calculations.",
+        "countPlural=*": "{countFormatted} completed tasks have no creation time and are excluded from time calculations."
+      }
+    }
+  ],
+  "statistics_weekly_flow": "Created and completed per week",
+  "statistics_flow_growing": [
+    {
+      "declarations": [
+        "input count",
+        "local countFormatted = count: number",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} more task created than completed in the weeks shown",
+        "countPlural=*": "{countFormatted} more tasks created than completed in the weeks shown"
+      }
+    }
+  ],
+  "statistics_flow_shrinking": [
+    {
+      "declarations": [
+        "input count",
+        "local countFormatted = count: number",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} more task completed than created in the weeks shown",
+        "countPlural=*": "{countFormatted} more tasks completed than created in the weeks shown"
+      }
+    }
+  ],
+  "statistics_flow_balanced": "As many tasks completed as created in the weeks shown",
+  "statistics_week_summary": "Week of {date}: created {created}, completed {completed}",
+  "statistics_lead_time_distribution": "Time to complete",
+  "statistics_bucket_under_1_day": "Under 1 day",
+  "statistics_bucket_1_3_days": "1–3 days",
+  "statistics_bucket_3_7_days": "3–7 days",
+  "statistics_bucket_1_2_weeks": "1–2 weeks",
+  "statistics_bucket_2_weeks_1_month": "2 weeks–1 month",
+  "statistics_bucket_over_1_month": "Over 1 month",
+  "statistics_completed_empty": "No tasks were completed in this period.",
+  "statistics_aging": "Waiting longest",
+  "statistics_aging_description": "Active tasks by time since creation",
+  "statistics_aging_age": "Open for {duration}",
+  "statistics_aging_overdue": "Overdue by {duration}",
+  "statistics_aging_empty": "No active tasks.",
+  "statistics_by_label": "By label",
   "export_document_title": "Calendar export",
   "export_month_label": "Month {month}",
   "task_move_board": "Move to Board",
