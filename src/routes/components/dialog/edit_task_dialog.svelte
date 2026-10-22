@@ -27,6 +27,9 @@
   import FilePlus2Icon from "@lucide/svelte/icons/file-plus-2";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import CardReferencePicker from "$lib/components/editor/card-reference-picker.svelte";
+  import type { EditorSelection } from "$lib/components/editor/rich-text-surface.svelte";
+  import { editorMode } from "$lib/components/editor/mode";
+  import { SplitScrollSync } from "$lib/components/editor/split-scroll-sync";
 
   import { tick } from "svelte";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
@@ -51,9 +54,17 @@
   import { is_valid_date_range } from "../../utils/task-date-range";
   import SortableChecklistItem from "../task/sortable_checklist_item.svelte";
   import ResizeHandle from "../resize_handle.svelte";
+  import Markdown from "../markdown.svelte";
+  import MarkdownOutlineMenu from "../markdown_outline_menu.svelte";
+  import {
+    markdown_outline,
+    markdown_stats,
+  } from "../../utils/markdown-outline";
+  import { take_description_reveal } from "./description-reveal";
   import {
     edit_dialog_width_bounds,
     layout_widths,
+    task_dialog_is_split,
   } from "../../layout-widths.svelte";
 
   type CardReferenceOption = {
@@ -101,6 +112,10 @@
   let show_saving = $state(false);
   let previewing_description = $state(false);
   let description_expanded = $state(false);
+  let viewport_width = $state(globalThis.innerWidth ?? Infinity);
+  const split_layout = $derived(
+    task_dialog_is_split(layout_widths.edit_dialog_width, viewport_width),
+  );
   let template_mode_active = $state(false);
   let template_browser_open = $state(false);
   let card_reference_picker_open = $state(false);
@@ -110,6 +125,52 @@
   let description_ref = $state<RichTextEditorHandle | null>(null);
   let expanded_description_ref = $state<RichTextEditorHandle | null>(null);
   let reference_trigger_start = $state<number | undefined>(undefined);
+  // Kept across openings; plain text shows the preview beside the editor.
+  let split_preview = $state(true);
+  let split_editor_pane = $state<HTMLDivElement | null>(null);
+  let split_preview_viewport = $state<HTMLDivElement | null>(null);
+  let split_preview_height = $state(0);
+  const split_scroll = new SplitScrollSync(
+    () => split_editor_pane,
+    () => split_preview_viewport,
+    () => description_outline.map((heading) => heading.start),
+  );
+  // Text edits, rendering, and resizing all move headings; realign after them.
+  $effect(() => {
+    void task.description;
+    void live_preview;
+    void split_preview_height;
+    void split_preview_viewport;
+    split_scroll.invalidate();
+    void tick().then(() => split_scroll.sync());
+  });
+  // Carries the caret between the inline and expanded editors, which share
+  // the editor mode and therefore the same position space.
+  let transferred_selection: EditorSelection | undefined;
+  const description_stats = $derived(markdown_stats(task.description));
+  const description_outline = $derived(markdown_outline(task.description));
+  // Rendering long Markdown on every keystroke would slow typing down.
+  let live_preview = $state("");
+  $effect(() => {
+    const description = task.description;
+    if (!description_expanded) {
+      return;
+    }
+    const timeout = window.setTimeout(() => (live_preview = description), 150);
+    return () => window.clearTimeout(timeout);
+  });
+
+  function expand_description() {
+    transferred_selection = description_ref?.getSelection();
+    live_preview = task.description;
+    description_expanded = true;
+  }
+
+  function collapse_description() {
+    transferred_selection = expanded_description_ref?.getSelection();
+    description_expanded = false;
+  }
+
   const selected_template = $derived(
     templates.find(
       (template) => template.id.toString() === selected_template_id,
@@ -248,6 +309,7 @@
       invalid_template_name = false;
       previewing_description = false;
       description_expanded = false;
+      transferred_selection = undefined;
       template_mode_active = false;
       template_browser_open = false;
       card_reference_picker_open = false;
@@ -331,6 +393,8 @@
   />
 {/snippet}
 
+<svelte:window bind:innerWidth={viewport_width} />
+
 <Dialog.Root bind:open draft={{ task, template_name }} busy={submitting}>
   <Dialog.Content
     bind:ref={dialog_content_ref}
@@ -342,7 +406,10 @@
     onInteractOutside={() => label_input_ref?.commitPendingTag()}
     onOpenAutoFocus={(event) => {
       event.preventDefault();
-      if (auto_focus_title) {
+      const reveal = take_description_reveal(task.id);
+      if (reveal) {
+        void tick().then(() => description_ref?.reveal?.(reveal));
+      } else if (auto_focus_title) {
         title_ref?.focus();
       } else {
         dialog_content_ref?.focus();
@@ -362,7 +429,12 @@
           layout_widths.set_edit_dialog_width(width, commit)}
       />
     {/each}
-    <div class="flex max-h-[85vh] min-h-0 flex-col overflow-hidden">
+    <div
+      class={[
+        "flex max-h-[85vh] min-h-0 flex-col overflow-hidden",
+        split_layout && !template_browser_open && "h-[min(85vh,56rem)]",
+      ]}
+    >
       <Dialog.Header>
         <Dialog.Title>{dialog_title}</Dialog.Title>
         <Dialog.Description></Dialog.Description>
@@ -374,541 +446,109 @@
           event.preventDefault();
         }}
       >
-        <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
-          <div class="w-full py-4 ps-1 pe-4">
-            {#if show_template_picker && template_browser_open}
-              <section class="space-y-4" aria-label={m.task_template_choose()}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  class="-ml-2"
-                  onclick={close_template_browser}
-                >
-                  <ArrowLeftIcon />
-                  {m.task_template_back()}
-                </Button>
-                <div>
-                  <div class="text-base font-semibold">
-                    {m.task_template_choose_title()}
-                  </div>
-                  <div class="text-sm text-muted-foreground">
-                    {m.task_template_search_description()}
-                  </div>
-                </div>
-                <Command.Root class="rounded-lg border">
-                  <Command.Input
-                    placeholder={m.task_template_search_placeholder()}
-                    aria-label={m.task_template_search()}
-                  />
-                  <Command.List class="max-h-[50vh]">
-                    <Command.Empty>{m.task_template_empty()}</Command.Empty>
-                    <Command.Group value="templates">
-                      {#each templates as template (template.id)}
-                        <Command.Item
-                          value={template.id.toString()}
-                          keywords={[
-                            template.name,
-                            template.task.title,
-                            ...template.task.labels,
-                          ]}
-                          class="py-3"
-                          onSelect={() => choose_template(template.id)}
-                        >
-                          <CheckIcon
-                            class={selected_template_id ===
-                            template.id.toString()
-                              ? ""
-                              : "text-transparent"}
-                          />
-                          <div class="min-w-0 flex-1">
-                            <div class="truncate text-sm font-medium">
-                              {template.name}
-                            </div>
-                            <div class="truncate text-xs text-muted-foreground">
-                              {template.task.title ||
-                                m.task_template_untitled()}
-                              ·
-                              {m.task_checklist_count({
-                                count: template.task.items.length,
-                              })}
-                            </div>
-                          </div>
-                        </Command.Item>
-                      {/each}
-                    </Command.Group>
-                  </Command.List>
-                </Command.Root>
-              </section>
-            {:else}
-              {#if show_template_picker && templates.length > 0}
-                <section
-                  class="mb-5 space-y-3 border-b pb-5"
-                  aria-label={m.task_template_method()}
-                >
-                  <div
-                    class="grid grid-cols-2 gap-2 rounded-lg bg-muted/60 p-1"
-                  >
-                    <Button
-                      type="button"
-                      variant={!template_mode_active ? "default" : "ghost"}
-                      class="justify-start"
-                      onclick={choose_blank_card}
-                    >
-                      <FilePlus2Icon />
-                      {m.task_template_blank_title()}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={template_mode_active ? "default" : "ghost"}
-                      class="justify-start"
-                      onclick={() => {
-                        template_mode_active = true;
-                        template_browser_open = true;
-                      }}
-                    >
-                      <LayoutTemplateIcon />
-                      {m.task_template_from()}
-                    </Button>
-                  </div>
-                  {#if template_mode_active}
-                    {#if selected_template}
-                      <div
-                        class="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3"
-                      >
-                        <div
-                          class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
-                        >
-                          <LayoutTemplateIcon class="size-4" />
-                        </div>
-                        <div class="min-w-0 flex-1">
-                          <div class="truncate text-sm font-medium">
-                            {selected_template.name}
-                          </div>
-                          <div class="truncate text-xs text-muted-foreground">
-                            {selected_template.task.title ||
-                              m.task_template_untitled()}
-                            ·
-                            {m.task_checklist_count({
-                              count: selected_template.task.items.length,
-                            })}
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onclick={() => {
-                            template_browser_open = true;
-                          }}
-                        >
-                          {m.common_change()}
-                        </Button>
-                      </div>
-                    {/if}
-                  {/if}
-                </section>
-              {/if}
-              <Field.Set>
+        {#if split_layout && !template_browser_open}
+          <div class="flex min-h-0 flex-1 gap-6">
+            <ScrollArea
+              orientation="vertical"
+              class="min-h-0 w-80 shrink-0 border-e"
+            >
+              <div class="py-4 ps-1 pe-6">
+                {@render template_method()}
                 <Field.Group>
-                  {#if show_template_name}
-                    <Field.Field data-invalid={invalid_template_name}>
-                      <Field.FieldLabel for="template-edit-name"
-                        >{m.task_template_name()}</Field.FieldLabel
-                      >
-                      <Input
-                        id="template-edit-name"
-                        placeholder={m.task_template_name()}
-                        bind:value={template_name}
-                        required
-                        onfocusout={() => {
-                          invalid_template_name =
-                            template_name.trim().length === 0;
-                        }}
-                        onfocusin={() => {
-                          invalid_template_name = false;
-                        }}
-                      />
-                      {#if invalid_template_name}
-                        <Field.Error
-                          >{m.task_template_name_required()}</Field.Error
-                        >
-                      {/if}
-                    </Field.Field>
-                  {/if}
-                  <Field.Field data-invalid={invalid_title}>
-                    <Field.FieldLabel for="title"
-                      >{m.task_title()}</Field.FieldLabel
-                    >
-                    <Input
-                      id="title"
-                      bind:ref={title_ref}
-                      placeholder={m.task_title()}
-                      class="col-span-5"
-                      bind:value={task.title}
-                      required
-                      onfocusout={() => {
-                        invalid_title = task.title.length == 0;
-                      }}
-                      onfocusin={() => {
-                        invalid_title = false;
-                      }}
-                    />
-                    {#if invalid_title}
-                      <Field.Error>{m.task_title_required()}</Field.Error>
-                    {/if}
-                  </Field.Field>
-                  <Field.Field>
-                    <Popover.Root>
-                      <Popover.Trigger>
-                        {#snippet child({ props })}
-                          <div class="flex items-center gap-4">
-                            <div
-                              class="size-8 rounded-full border-2"
-                              style="background-color: {task.color.length == 0
-                                ? 'var(--foreground)'
-                                : display_task_color(task.color)};"
-                            ></div>
-                            <Button {...props} variant="outline" class="flex-1">
-                              <PaletteIcon></PaletteIcon>
-                              {task.color.length == 0
-                                ? m.ui_default()
-                                : display_task_color(task.color)}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              aria-label={m.task_color_reset()}
-                              title={m.task_color_reset()}
-                              onclick={() => {
-                                task.color = "";
-                              }}
-                            >
-                              <ResetIcon></ResetIcon>
-                            </Button>
-                          </div>
-                        {/snippet}
-                      </Popover.Trigger>
-                      <Popover.Content class="w-auto p-0">
-                        <div class="border-b p-3">
-                          <p
-                            class="mb-2 text-xs font-medium text-muted-foreground"
-                          >
-                            {m.task_quick_colors()}
-                          </p>
-                          <div class="grid grid-cols-9 gap-2">
-                            {#each task_color_presets as preset}
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon-xs"
-                                class="size-7 rounded-full border-2 border-background shadow-sm ring-offset-2 ring-offset-background aria-pressed:ring-2 aria-pressed:ring-ring"
-                                style={`background-color: ${preset_display_color(preset)}`}
-                                aria-label={m.task_color_use({
-                                  name: {
-                                    Slate: m.color_slate,
-                                    Red: m.color_red,
-                                    Orange: m.color_orange,
-                                    Amber: m.color_amber,
-                                    Green: m.color_green,
-                                    Cyan: m.color_cyan,
-                                    Blue: m.color_blue,
-                                    Violet: m.color_violet,
-                                    Pink: m.color_pink,
-                                  }[preset.name](),
-                                  color: preset_display_color(preset),
-                                })}
-                                aria-pressed={is_preset_color(
-                                  task.color,
-                                  preset,
-                                )}
-                                title={preset.name}
-                                onclick={() => {
-                                  task.color = preset.light;
-                                }}
-                              ></Button>
-                            {/each}
-                          </div>
-                        </div>
-                        <div class="p-3">
-                          <ColorPicker.Root bind:value={task.color} />
-                        </div>
-                      </Popover.Content>
-                    </Popover.Root>
-                  </Field.Field>
-                  <div class="grid gap-4 sm:grid-cols-2">
-                    <Field.Field data-invalid={invalid_time_range}>
-                      <Field.FieldLabel id="task-start-label"
-                        >{m.task_start_time()}</Field.FieldLabel
-                      >
-                      <DateTimePicker
-                        bind:value={task.start_time}
-                        bind:at_midnight={task.start_at_midnight}
-                        labelledby="task-start-label"
-                        emptyLabel={m.task_start_none()}
-                        clearLabel={m.task_start_clear()}
-                        invalid={invalid_time_range}
-                      />
-                    </Field.Field>
-                    <Field.Field data-invalid={invalid_time_range}>
-                      <Field.FieldLabel id="task-due-label"
-                        >{m.task_due_time()}</Field.FieldLabel
-                      >
-                      <DateTimePicker
-                        bind:value={task.due_time}
-                        bind:at_midnight={task.due_at_midnight}
-                        labelledby="task-due-label"
-                        invalid={invalid_time_range}
-                      />
-                    </Field.Field>
-                  </div>
-                  {#if invalid_time_range}
-                    <Field.Error>{m.task_start_after_due()}</Field.Error>
-                  {/if}
-                  {#if task.due_time}
-                    <Field.Field>
-                      <Field.FieldLabel>{m.task_repeat()}</Field.FieldLabel>
-                      <div class="flex items-center gap-2">
-                        {#if task.recurrence}
-                          <span class="text-sm text-muted-foreground"
-                            >{m.task_repeat_every()}</span
-                          >
-                          <Input
-                            class="w-20"
-                            type="number"
-                            min="1"
-                            max="999"
-                            aria-label={m.task_repeat_interval()}
-                            bind:value={task.recurrence.interval}
-                            onfocusout={() => {
-                              if (task.recurrence) {
-                                task.recurrence.interval = Math.min(
-                                  999,
-                                  Math.max(
-                                    1,
-                                    Number(task.recurrence.interval) || 1,
-                                  ),
-                                );
-                              }
-                            }}
-                          />
-                        {/if}
-                        <Select.Root
-                          type="single"
-                          value={task.recurrence?.frequency ?? "none"}
-                          onValueChange={(value) =>
-                            set_recurrence(value ?? "none")}
-                        >
-                          <Select.Trigger class="min-w-40 flex-1">
-                            {task.recurrence?.frequency === "daily"
-                              ? m.task_repeat_days_label()
-                              : task.recurrence?.frequency === "weekly"
-                                ? m.task_repeat_weeks_label()
-                                : task.recurrence?.frequency === "monthly"
-                                  ? m.task_repeat_months_label()
-                                  : m.task_repeat_none()}
-                          </Select.Trigger>
-                          <Select.Content>
-                            <Select.Item value="none"
-                              >{m.task_repeat_none()}</Select.Item
-                            >
-                            <Select.Item value="daily"
-                              >{m.task_repeat_days()}</Select.Item
-                            >
-                            <Select.Item value="weekly"
-                              >{m.task_repeat_weeks()}</Select.Item
-                            >
-                            <Select.Item value="monthly"
-                              >{m.task_repeat_months()}</Select.Item
-                            >
-                          </Select.Content>
-                        </Select.Root>
-                      </div>
-                      {#if task.recurrence}
-                        <Field.Description>
-                          {m.task_repeat_description()}
-                        </Field.Description>
-                      {/if}
-                    </Field.Field>
-                  {/if}
-                  <Field.Field>
-                    <div class="flex items-center gap-1.5">
-                      <Field.FieldLabel for="label"
-                        >{m.task_label()}</Field.FieldLabel
-                      >
-                      <div class="group/label-help relative inline-flex">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          class="text-muted-foreground"
-                          aria-label={m.task_label_help()}
-                          aria-describedby="label-format-help"
-                        >
-                          <CircleHelpIcon class="size-3.5" />
-                        </Button>
-                        <div
-                          id="label-format-help"
-                          role="tooltip"
-                          class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-max max-w-64 rounded-md bg-popover px-3 py-2 text-xs leading-relaxed text-popover-foreground opacity-0 shadow-md ring-1 ring-foreground/10 transition-opacity group-hover/label-help:opacity-100 group-focus-within/label-help:opacity-100"
-                        >
-                          {m.task_label_owner_help({
-                            example: "owner:Name",
-                          })}<br />
-                          {m.task_label_type_help({
-                            example: "type:Category",
-                          })}<br />
-                          {m.task_label_priority_help({
-                            example: "priority:Level",
-                          })}<br />
-                          {m.task_label_status_help({
-                            example: "status:State",
-                          })}<br />
-                          {m.task_label_effort_help({ example: "effort:Size" })}
-                        </div>
-                      </div>
-                    </div>
-                    <TagInput
-                      bind:this={label_input_ref}
-                      bind:tags={task.labels}
-                      suggestions={label_suggestions}
-                      placeholder={m.task_label_add()}
-                    />
-                  </Field.Field>
-                  <Field.Field>
-                    <Field.FieldLabel>{m.task_checklist()}</Field.FieldLabel>
-                    <div class="space-y-2">
-                      <DragDropProvider onDragOver={handle_item_drag_over}>
-                        <div role="list" class="space-y-2">
-                          {#each task.items as item, item_index (item.id)}
-                            <SortableChecklistItem
-                              item_id={item.id}
-                              index={item_index}
-                            >
-                              <Checkbox
-                                bind:checked={item.completed}
-                                aria-label={item.completed
-                                  ? m.task_item_mark_incomplete({
-                                      name: item.text || m.task_item(),
-                                    })
-                                  : m.task_item_mark_complete({
-                                      name: item.text || m.task_item(),
-                                    })}
-                              />
-                              <Input
-                                class={`h-7 min-w-0 flex-1 border-0 px-1.5 py-1 text-sm shadow-none focus-visible:ring-0 ${item.completed ? "text-muted-foreground line-through" : ""}`}
-                                placeholder={m.task_item()}
-                                data-task-item-input={item.id}
-                                bind:value={item.text}
-                                onfocusout={() =>
-                                  void remove_blank_item(item.id)}
-                                onkeydown={(event) => {
-                                  if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    void add_item(item_index);
-                                  } else if (
-                                    event.key === "Escape" &&
-                                    item.text.trim().length === 0
-                                  ) {
-                                    event.preventDefault();
-                                    void remove_blank_item(
-                                      item.id,
-                                      item_index - 1,
-                                    );
-                                  }
-                                }}
-                              />
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                class="size-7 text-muted-foreground hover:text-destructive"
-                                aria-label={m.task_item_delete()}
-                                title={m.task_item_delete()}
-                                onpointerdown={(event) =>
-                                  event.preventDefault()}
-                                onclick={() => void delete_item(item.id)}
-                              >
-                                <TrashIcon />
-                              </Button>
-                            </SortableChecklistItem>
-                          {/each}
-                        </div>
-                      </DragDropProvider>
-                      <Button
-                        data-add-task-item
-                        variant="outline"
-                        size="sm"
-                        class="h-8 w-full"
-                        onclick={() => void add_item()}
-                      >
-                        <PlusIcon />
-                        {m.task_item_add()}
-                      </Button>
-                    </div>
-                  </Field.Field>
-                  <Field.Field>
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="flex items-center gap-1.5">
-                        <Field.FieldLabel for="description"
-                          >{m.task_description()}</Field.FieldLabel
-                        >
-                        <div class="group/reference-help relative inline-flex">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            class="text-muted-foreground"
-                            aria-label={m.task_reference_help()}
-                            aria-describedby="card-reference-help"
-                          >
-                            <CircleHelpIcon class="size-3.5" />
-                          </Button>
-                          <div
-                            id="card-reference-help"
-                            role="tooltip"
-                            class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-max max-w-64 rounded-md bg-popover px-3 py-2 text-xs leading-relaxed text-popover-foreground opacity-0 shadow-md ring-1 ring-foreground/10 transition-opacity group-hover/reference-help:opacity-100 group-focus-within/reference-help:opacity-100"
-                          >
-                            {m.task_reference_hint()}
-                          </div>
-                        </div>
-                      </div>
-                      <div class="flex items-center gap-1">
-                        {#if !description_expanded && !previewing_description && card_reference_options.length > 0}
-                          {@render card_reference_picker()}
-                        {/if}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          class="h-7 gap-1.5 px-2 text-xs"
-                          aria-label={m.task_expand_description()}
-                          title={m.task_expand_description()}
-                          onclick={() => (description_expanded = true)}
-                        >
-                          <Maximize2Icon class="size-3.5" />
-                          <span class="hidden sm:inline"
-                            >{m.editor_expand()}</span
-                          >
-                        </Button>
-                      </div>
-                    </div>
-                    <div class="grid w-full gap-4">
-                      <RichTextEditor
-                        bind:previewing={previewing_description}
-                        bind:ref={description_ref}
-                        containerClass="rounded-md border bg-background"
-                        class="h-80 overflow-y-auto px-3 py-2"
-                        placeholder={m.task_description_placeholder()}
-                        id="description"
-                        bind:value={task.description}
-                        onvaluechange={handle_description_change}
-                      />
-                    </div>
-                  </Field.Field>
+                  {@render property_fields()}
                 </Field.Group>
-              </Field.Set>
-            {/if}
+              </div>
+            </ScrollArea>
+            <Field.Group class="min-h-0 min-w-0 flex-1 px-1 py-4">
+              {@render title_fields()}
+              {@render description_field(true)}
+            </Field.Group>
           </div>
-        </ScrollArea>
+        {:else}
+          <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
+            <div class="w-full py-4 ps-1 pe-4">
+              {#if show_template_picker && template_browser_open}
+                <section
+                  class="space-y-4"
+                  aria-label={m.task_template_choose()}
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    class="-ml-2"
+                    onclick={close_template_browser}
+                  >
+                    <ArrowLeftIcon />
+                    {m.task_template_back()}
+                  </Button>
+                  <div>
+                    <div class="text-base font-semibold">
+                      {m.task_template_choose_title()}
+                    </div>
+                    <div class="text-sm text-muted-foreground">
+                      {m.task_template_search_description()}
+                    </div>
+                  </div>
+                  <Command.Root class="rounded-lg border">
+                    <Command.Input
+                      placeholder={m.task_template_search_placeholder()}
+                      aria-label={m.task_template_search()}
+                    />
+                    <Command.List class="max-h-[50vh]">
+                      <Command.Empty>{m.task_template_empty()}</Command.Empty>
+                      <Command.Group value="templates">
+                        {#each templates as template (template.id)}
+                          <Command.Item
+                            value={template.id.toString()}
+                            keywords={[
+                              template.name,
+                              template.task.title,
+                              ...template.task.labels,
+                            ]}
+                            class="py-3"
+                            onSelect={() => choose_template(template.id)}
+                          >
+                            <CheckIcon
+                              class={selected_template_id ===
+                              template.id.toString()
+                                ? ""
+                                : "text-transparent"}
+                            />
+                            <div class="min-w-0 flex-1">
+                              <div class="truncate text-sm font-medium">
+                                {template.name}
+                              </div>
+                              <div
+                                class="truncate text-xs text-muted-foreground"
+                              >
+                                {template.task.title ||
+                                  m.task_template_untitled()}
+                                ·
+                                {m.task_checklist_count({
+                                  count: template.task.items.length,
+                                })}
+                              </div>
+                            </div>
+                          </Command.Item>
+                        {/each}
+                      </Command.Group>
+                    </Command.List>
+                  </Command.Root>
+                </section>
+              {:else}
+                {@render template_method()}
+                <Field.Set>
+                  <Field.Group>
+                    {@render title_fields()}
+                    {@render property_fields()}
+                    {@render description_field(false)}
+                  </Field.Group>
+                </Field.Set>
+              {/if}
+            </div>
+          </ScrollArea>
+        {/if}
         {#if !template_browser_open}
           <Dialog.Footer
             class="mt-auto shrink-0 justify-center border-t bg-background/95 px-1 py-3 shadow-[0_-8px_16px_-16px_rgb(0_0_0_/_0.45)] backdrop-blur-sm sm:justify-center"
@@ -925,14 +565,33 @@
       </form>
     </div>
   </Dialog.Content>
-  <Dialog.Root bind:open={description_expanded}>
+  <Dialog.Root
+    bind:open={description_expanded}
+    onOpenChange={(expanded) => {
+      if (!expanded) {
+        transferred_selection = expanded_description_ref?.getSelection();
+      }
+    }}
+  >
     <Dialog.Content
       class="flex h-[min(90vh,56rem)] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
       showCloseButton={false}
       onkeydown={handle_submit_shortcut}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
-        void tick().then(() => expanded_description_ref?.focus());
+        const selection = transferred_selection;
+        void tick().then(() =>
+          selection && expanded_description_ref?.setSelection
+            ? expanded_description_ref.setSelection(selection)
+            : expanded_description_ref?.focus(),
+        );
+      }}
+      onCloseAutoFocus={(event) => {
+        const selection = transferred_selection;
+        if (open && selection && description_ref?.setSelection) {
+          event.preventDefault();
+          description_ref.setSelection(selection);
+        }
       }}
     >
       <Dialog.Header class="shrink-0 border-b px-4 py-3 text-start sm:px-6">
@@ -940,6 +599,18 @@
           <Dialog.Title class="min-w-0 flex-1"
             >{m.task_description()}</Dialog.Title
           >
+          {#if description_outline.length > 0}
+            <MarkdownOutlineMenu
+              outline={description_outline}
+              onselect={(heading) => {
+                expanded_description_ref?.reveal?.({
+                  offset: heading.start,
+                  text: heading.text,
+                });
+                return true;
+              }}
+            />
+          {/if}
           {#if !previewing_description && card_reference_options.length > 0}
             {@render card_reference_picker()}
           {/if}
@@ -947,9 +618,9 @@
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label="Collapse description editor"
-            title="Collapse description editor"
-            onclick={() => (description_expanded = false)}
+            aria-label={m.task_collapse_description()}
+            title={m.task_collapse_description()}
+            onclick={collapse_description}
           >
             <Minimize2Icon />
           </Button>
@@ -958,20 +629,530 @@
           >{m.editor_expanded_description()}</Dialog.Description
         >
       </Dialog.Header>
-      <div class="min-h-0 flex-1 p-3 sm:p-5">
-        <RichTextEditor
-          bind:ref={expanded_description_ref}
-          containerClass="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background"
-          class="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
-          placeholder={m.task_description_placeholder()}
-          showToolbar
-          value={task.description}
-          onvaluechange={(content) => {
-            task.description = content;
-            handle_description_change();
-          }}
-        />
+      <div
+        class="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-5 lg:flex-row lg:gap-4"
+      >
+        <!-- These handlers only track which pane drives scroll sync. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          bind:this={split_editor_pane}
+          class="flex min-h-0 min-w-0 flex-1 flex-col"
+          onpointerenter={() => split_scroll.drive("editor")}
+          onfocusin={() => split_scroll.drive("editor")}
+          onkeydown={() => split_scroll.drive("editor")}
+          onscrollcapture={(event) => split_scroll.scrolled("editor", event)}
+        >
+          <RichTextEditor
+            bind:ref={expanded_description_ref}
+            bind:splitPreview={split_preview}
+            containerClass="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-background"
+            class="min-h-0 flex-1 px-3 py-4 sm:px-6"
+            placeholder={m.task_description_placeholder()}
+            showToolbar
+            value={task.description}
+            onvaluechange={(content) => {
+              task.description = content;
+              handle_description_change();
+            }}
+          />
+        </div>
+        {#if $editorMode === "plain" && split_preview}
+          <section
+            class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-background"
+            aria-label={m.editor_live_preview()}
+            onpointerenter={() => split_scroll.drive("preview")}
+            onfocusin={() => split_scroll.drive("preview")}
+            onscrollcapture={(event) => split_scroll.scrolled("preview", event)}
+          >
+            <p
+              class="flex h-10 shrink-0 items-center border-b px-3 text-xs font-medium text-muted-foreground"
+            >
+              {m.editor_live_preview()}
+            </p>
+            <ScrollArea
+              type="auto"
+              class="min-h-0 flex-1"
+              bind:viewport={split_preview_viewport}
+            >
+              <div
+                class="px-3 py-4 sm:px-6"
+                bind:clientHeight={split_preview_height}
+              >
+                {#if live_preview.trim()}
+                  <Markdown md={live_preview} />
+                {:else}
+                  <p class="text-sm text-muted-foreground">
+                    {m.editor_preview_empty()}
+                  </p>
+                {/if}
+              </div>
+            </ScrollArea>
+          </section>
+        {/if}
       </div>
+      <p
+        class="shrink-0 border-t px-4 py-2 text-end text-xs text-muted-foreground sm:px-6"
+      >
+        {m.editor_stats(description_stats)}
+      </p>
     </Dialog.Content>
   </Dialog.Root>
 </Dialog.Root>
+
+{#snippet template_method()}
+  {#if show_template_picker && templates.length > 0}
+    <section
+      class="mb-5 space-y-3 border-b pb-5"
+      aria-label={m.task_template_method()}
+    >
+      <div class="grid grid-cols-2 gap-2 rounded-lg bg-muted/60 p-1">
+        <Button
+          type="button"
+          variant={!template_mode_active ? "default" : "ghost"}
+          class="justify-start"
+          onclick={choose_blank_card}
+        >
+          <FilePlus2Icon />
+          {m.task_template_blank_title()}
+        </Button>
+        <Button
+          type="button"
+          variant={template_mode_active ? "default" : "ghost"}
+          class="justify-start"
+          onclick={() => {
+            template_mode_active = true;
+            template_browser_open = true;
+          }}
+        >
+          <LayoutTemplateIcon />
+          {m.task_template_from()}
+        </Button>
+      </div>
+      {#if template_mode_active}
+        {#if selected_template}
+          <div
+            class="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3"
+          >
+            <div
+              class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
+            >
+              <LayoutTemplateIcon class="size-4" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="truncate text-sm font-medium">
+                {selected_template.name}
+              </div>
+              <div class="truncate text-xs text-muted-foreground">
+                {selected_template.task.title || m.task_template_untitled()}
+                ·
+                {m.task_checklist_count({
+                  count: selected_template.task.items.length,
+                })}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onclick={() => {
+                template_browser_open = true;
+              }}
+            >
+              {m.common_change()}
+            </Button>
+          </div>
+        {/if}
+      {/if}
+    </section>
+  {/if}
+{/snippet}
+
+{#snippet title_fields()}
+  {#if show_template_name}
+    <Field.Field data-invalid={invalid_template_name}>
+      <Field.FieldLabel for="template-edit-name"
+        >{m.task_template_name()}</Field.FieldLabel
+      >
+      <Input
+        id="template-edit-name"
+        placeholder={m.task_template_name()}
+        bind:value={template_name}
+        required
+        onfocusout={() => {
+          invalid_template_name = template_name.trim().length === 0;
+        }}
+        onfocusin={() => {
+          invalid_template_name = false;
+        }}
+      />
+      {#if invalid_template_name}
+        <Field.Error>{m.task_template_name_required()}</Field.Error>
+      {/if}
+    </Field.Field>
+  {/if}
+  <Field.Field data-invalid={invalid_title}>
+    <Field.FieldLabel for="title">{m.task_title()}</Field.FieldLabel>
+    <Input
+      id="title"
+      bind:ref={title_ref}
+      placeholder={m.task_title()}
+      class="col-span-5"
+      bind:value={task.title}
+      required
+      onfocusout={() => {
+        invalid_title = task.title.length == 0;
+      }}
+      onfocusin={() => {
+        invalid_title = false;
+      }}
+    />
+    {#if invalid_title}
+      <Field.Error>{m.task_title_required()}</Field.Error>
+    {/if}
+  </Field.Field>
+{/snippet}
+
+{#snippet property_fields()}
+  <Field.Field>
+    <Popover.Root>
+      <Popover.Trigger>
+        {#snippet child({ props })}
+          <div class="flex items-center gap-4">
+            <div
+              class="size-8 rounded-full border-2"
+              style="background-color: {task.color.length == 0
+                ? 'var(--foreground)'
+                : display_task_color(task.color)};"
+            ></div>
+            <Button {...props} variant="outline" class="flex-1">
+              <PaletteIcon></PaletteIcon>
+              {task.color.length == 0
+                ? m.ui_default()
+                : display_task_color(task.color)}
+            </Button>
+            <Button
+              variant="outline"
+              aria-label={m.task_color_reset()}
+              title={m.task_color_reset()}
+              onclick={() => {
+                task.color = "";
+              }}
+            >
+              <ResetIcon></ResetIcon>
+            </Button>
+          </div>
+        {/snippet}
+      </Popover.Trigger>
+      <Popover.Content class="w-auto p-0">
+        <div class="border-b p-3">
+          <p class="mb-2 text-xs font-medium text-muted-foreground">
+            {m.task_quick_colors()}
+          </p>
+          <div class="grid grid-cols-9 gap-2">
+            {#each task_color_presets as preset}
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-xs"
+                class="size-7 rounded-full border-2 border-background shadow-sm ring-offset-2 ring-offset-background aria-pressed:ring-2 aria-pressed:ring-ring"
+                style={`background-color: ${preset_display_color(preset)}`}
+                aria-label={m.task_color_use({
+                  name: {
+                    Slate: m.color_slate,
+                    Red: m.color_red,
+                    Orange: m.color_orange,
+                    Amber: m.color_amber,
+                    Green: m.color_green,
+                    Cyan: m.color_cyan,
+                    Blue: m.color_blue,
+                    Violet: m.color_violet,
+                    Pink: m.color_pink,
+                  }[preset.name](),
+                  color: preset_display_color(preset),
+                })}
+                aria-pressed={is_preset_color(task.color, preset)}
+                title={preset.name}
+                onclick={() => {
+                  task.color = preset.light;
+                }}
+              ></Button>
+            {/each}
+          </div>
+        </div>
+        <div class="p-3">
+          <ColorPicker.Root bind:value={task.color} />
+        </div>
+      </Popover.Content>
+    </Popover.Root>
+  </Field.Field>
+  <div class="grid gap-4 @sm/field-group:grid-cols-2">
+    <Field.Field data-invalid={invalid_time_range}>
+      <Field.FieldLabel id="task-start-label"
+        >{m.task_start_time()}</Field.FieldLabel
+      >
+      <DateTimePicker
+        bind:value={task.start_time}
+        bind:at_midnight={task.start_at_midnight}
+        labelledby="task-start-label"
+        emptyLabel={m.task_start_none()}
+        clearLabel={m.task_start_clear()}
+        invalid={invalid_time_range}
+      />
+    </Field.Field>
+    <Field.Field data-invalid={invalid_time_range}>
+      <Field.FieldLabel id="task-due-label"
+        >{m.task_due_time()}</Field.FieldLabel
+      >
+      <DateTimePicker
+        bind:value={task.due_time}
+        bind:at_midnight={task.due_at_midnight}
+        labelledby="task-due-label"
+        invalid={invalid_time_range}
+      />
+    </Field.Field>
+  </div>
+  {#if invalid_time_range}
+    <Field.Error>{m.task_start_after_due()}</Field.Error>
+  {/if}
+  {#if task.due_time}
+    <Field.Field>
+      <Field.FieldLabel>{m.task_repeat()}</Field.FieldLabel>
+      <div class="flex items-center gap-2">
+        {#if task.recurrence}
+          <span class="text-sm text-muted-foreground"
+            >{m.task_repeat_every()}</span
+          >
+          <Input
+            class="w-20"
+            type="number"
+            min="1"
+            max="999"
+            aria-label={m.task_repeat_interval()}
+            bind:value={task.recurrence.interval}
+            onfocusout={() => {
+              if (task.recurrence) {
+                task.recurrence.interval = Math.min(
+                  999,
+                  Math.max(1, Number(task.recurrence.interval) || 1),
+                );
+              }
+            }}
+          />
+        {/if}
+        <Select.Root
+          type="single"
+          value={task.recurrence?.frequency ?? "none"}
+          onValueChange={(value) => set_recurrence(value ?? "none")}
+        >
+          <Select.Trigger class="min-w-40 flex-1">
+            {task.recurrence?.frequency === "daily"
+              ? m.task_repeat_days_label()
+              : task.recurrence?.frequency === "weekly"
+                ? m.task_repeat_weeks_label()
+                : task.recurrence?.frequency === "monthly"
+                  ? m.task_repeat_months_label()
+                  : m.task_repeat_none()}
+          </Select.Trigger>
+          <Select.Content>
+            <Select.Item value="none">{m.task_repeat_none()}</Select.Item>
+            <Select.Item value="daily">{m.task_repeat_days()}</Select.Item>
+            <Select.Item value="weekly">{m.task_repeat_weeks()}</Select.Item>
+            <Select.Item value="monthly">{m.task_repeat_months()}</Select.Item>
+          </Select.Content>
+        </Select.Root>
+      </div>
+      {#if task.recurrence}
+        <Field.Description>
+          {m.task_repeat_description()}
+        </Field.Description>
+      {/if}
+    </Field.Field>
+  {/if}
+  <Field.Field>
+    <div class="flex items-center gap-1.5">
+      <Field.FieldLabel for="label">{m.task_label()}</Field.FieldLabel>
+      <div class="group/label-help relative inline-flex">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          class="text-muted-foreground"
+          aria-label={m.task_label_help()}
+          aria-describedby="label-format-help"
+        >
+          <CircleHelpIcon class="size-3.5" />
+        </Button>
+        <div
+          id="label-format-help"
+          role="tooltip"
+          class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-max max-w-64 rounded-md bg-popover px-3 py-2 text-xs leading-relaxed text-popover-foreground opacity-0 shadow-md ring-1 ring-foreground/10 transition-opacity group-hover/label-help:opacity-100 group-focus-within/label-help:opacity-100"
+        >
+          {m.task_label_owner_help({
+            example: "owner:Name",
+          })}<br />
+          {m.task_label_type_help({
+            example: "type:Category",
+          })}<br />
+          {m.task_label_priority_help({
+            example: "priority:Level",
+          })}<br />
+          {m.task_label_status_help({
+            example: "status:State",
+          })}<br />
+          {m.task_label_effort_help({ example: "effort:Size" })}
+        </div>
+      </div>
+    </div>
+    <TagInput
+      bind:this={label_input_ref}
+      bind:tags={task.labels}
+      suggestions={label_suggestions}
+      placeholder={m.task_label_add()}
+    />
+  </Field.Field>
+  <Field.Field>
+    <Field.FieldLabel>{m.task_checklist()}</Field.FieldLabel>
+    <div class="space-y-2">
+      <DragDropProvider onDragOver={handle_item_drag_over}>
+        <div role="list" class="space-y-2">
+          {#each task.items as item, item_index (item.id)}
+            <SortableChecklistItem item_id={item.id} index={item_index}>
+              <Checkbox
+                bind:checked={item.completed}
+                aria-label={item.completed
+                  ? m.task_item_mark_incomplete({
+                      name: item.text || m.task_item(),
+                    })
+                  : m.task_item_mark_complete({
+                      name: item.text || m.task_item(),
+                    })}
+              />
+              <Input
+                class={`h-7 min-w-0 flex-1 border-0 px-1.5 py-1 text-sm shadow-none focus-visible:ring-0 ${item.completed ? "text-muted-foreground line-through" : ""}`}
+                placeholder={m.task_item()}
+                data-task-item-input={item.id}
+                bind:value={item.text}
+                onfocusout={() => void remove_blank_item(item.id)}
+                onkeydown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void add_item(item_index);
+                  } else if (
+                    event.key === "Escape" &&
+                    item.text.trim().length === 0
+                  ) {
+                    event.preventDefault();
+                    void remove_blank_item(item.id, item_index - 1);
+                  }
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class="size-7 text-muted-foreground hover:text-destructive"
+                aria-label={m.task_item_delete()}
+                title={m.task_item_delete()}
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => void delete_item(item.id)}
+              >
+                <TrashIcon />
+              </Button>
+            </SortableChecklistItem>
+          {/each}
+        </div>
+      </DragDropProvider>
+      <Button
+        data-add-task-item
+        variant="outline"
+        size="sm"
+        class="h-8 w-full"
+        onclick={() => void add_item()}
+      >
+        <PlusIcon />
+        {m.task_item_add()}
+      </Button>
+    </div>
+  </Field.Field>
+{/snippet}
+
+{#snippet description_field(wide: boolean)}
+  <Field.Field class={wide ? "min-h-40 flex-1" : undefined}>
+    <div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-1.5">
+        <Field.FieldLabel for="description"
+          >{m.task_description()}</Field.FieldLabel
+        >
+        <div class="group/reference-help relative inline-flex">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            class="text-muted-foreground"
+            aria-label={m.task_reference_help()}
+            aria-describedby="card-reference-help"
+          >
+            <CircleHelpIcon class="size-3.5" />
+          </Button>
+          <div
+            id="card-reference-help"
+            role="tooltip"
+            class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-max max-w-64 rounded-md bg-popover px-3 py-2 text-xs leading-relaxed text-popover-foreground opacity-0 shadow-md ring-1 ring-foreground/10 transition-opacity group-hover/reference-help:opacity-100 group-focus-within/reference-help:opacity-100"
+          >
+            {m.task_reference_hint()}
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-1">
+        {#if !description_expanded && !previewing_description && description_outline.length > 0}
+          <MarkdownOutlineMenu
+            outline={description_outline}
+            onselect={(heading) => {
+              description_ref?.reveal?.({
+                offset: heading.start,
+                text: heading.text,
+              });
+              return true;
+            }}
+          />
+        {/if}
+        {#if !description_expanded && !previewing_description && card_reference_options.length > 0}
+          {@render card_reference_picker()}
+        {/if}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          class="h-7 gap-1.5 px-2 text-xs"
+          aria-label={m.task_expand_description()}
+          title={m.task_expand_description()}
+          onclick={expand_description}
+        >
+          <Maximize2Icon class="size-3.5" />
+          <span class="hidden sm:inline">{m.editor_expand()}</span>
+        </Button>
+      </div>
+    </div>
+    <!-- Beside the property sidebar, the editor fills the remaining height. -->
+    <div class={wide ? "flex min-h-0 flex-1 flex-col" : "grid w-full gap-4"}>
+      <RichTextEditor
+        bind:previewing={previewing_description}
+        bind:ref={description_ref}
+        containerClass={wide
+          ? "flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-background"
+          : "rounded-md border bg-background"}
+        class={wide
+          ? "min-h-0 flex-1 px-3 py-2"
+          : "editor-auto-height min-h-40 max-h-[min(60vh,36rem)] px-3 py-2"}
+        placeholder={m.task_description_placeholder()}
+        id="description"
+        bind:value={task.description}
+        onvaluechange={handle_description_change}
+      />
+    </div>
+    {#if task.description.length > 0}
+      <p class="text-end text-xs text-muted-foreground">
+        {m.editor_stats(description_stats)}
+      </p>
+    {/if}
+  </Field.Field>
+{/snippet}

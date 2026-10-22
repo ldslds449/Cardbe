@@ -4,6 +4,13 @@
   import "./markdown-content.css";
   import type { Editor } from "@tiptap/core";
   import { Editor as TiptapEditor } from "@tiptap/core";
+  import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+  import { Selection, TextSelection } from "@tiptap/pm/state";
+  import {
+    count_occurrences,
+    text_target_prefixes,
+    type TextTarget,
+  } from "../../../routes/utils/markdown-outline";
   import { cn } from "$lib/utils.js";
   import { filterSlashCommands } from "./commands/slashCommands";
   import { createEditorExtensions } from "./extensions";
@@ -23,6 +30,10 @@
     getTextBeforeCursor: (length: number) => string;
     replaceMarkdown: (markdown: string, range?: EditorSelection) => void;
     setCodeLanguage?: (language: string | null) => void;
+    /** Restores a selection from another editor in the same mode. */
+    setSelection?: (selection: EditorSelection) => void;
+    /** Focuses and scrolls to text located at a Markdown source offset. */
+    reveal?: (target: TextTarget) => void;
   };
 
   type MenuPosition = { left: number; top: number };
@@ -38,7 +49,7 @@
     containerClass,
     showToolbar = false,
     language = $bindable<string | null>(null),
-    placeholder = "Start writing…",
+    placeholder = m.editor_placeholder(),
     id,
     style,
     disabled = false,
@@ -194,8 +205,88 @@
     return false;
   }
 
+  // Finds the nth occurrence of text inside a single text block.
+  function textPosition(
+    doc: ProseMirrorNode,
+    text: string,
+    occurrence: number,
+  ): number | null {
+    let seen = 0;
+    let found: number | null = null;
+    doc.descendants((node, position) => {
+      if (found !== null) {
+        return false;
+      }
+      if (!node.isTextblock) {
+        return true;
+      }
+      const content = node.textContent;
+      for (
+        let index = content.indexOf(text);
+        index !== -1;
+        index = content.indexOf(text, index + 1)
+      ) {
+        if (seen === occurrence) {
+          found = position + 1 + index;
+          return false;
+        }
+        seen += 1;
+      }
+      return false;
+    });
+    return found;
+  }
+
+  function revealPosition(instance: Editor, target: TextTarget): number {
+    for (const prefix of text_target_prefixes(target.text)) {
+      const position = textPosition(
+        instance.state.doc,
+        prefix,
+        count_occurrences(value, prefix, target.offset),
+      );
+      if (position !== null) {
+        return position;
+      }
+    }
+    // Markdown offsets do not map to document positions; approximate.
+    const ratio = target.offset / Math.max(1, value.length);
+    return Math.round(ratio * instance.state.doc.content.size);
+  }
+
   function createHandle(instance: Editor): RichTextEditorHandle {
     return {
+      setSelection: ({ from, to }) => {
+        const size = instance.state.doc.content.size;
+        instance
+          .chain()
+          .focus(undefined, { scrollIntoView: false })
+          .command(({ tr }) => {
+            tr.setSelection(
+              TextSelection.between(
+                tr.doc.resolve(Math.min(from, size)),
+                tr.doc.resolve(Math.min(to, size)),
+              ),
+            );
+            return true;
+          })
+          .scrollIntoView()
+          .run();
+      },
+      reveal: (target) => {
+        const position = Math.min(
+          revealPosition(instance, target),
+          instance.state.doc.content.size,
+        );
+        instance
+          .chain()
+          .focus(undefined, { scrollIntoView: false })
+          .command(({ tr }) => {
+            tr.setSelection(Selection.near(tr.doc.resolve(position)));
+            return true;
+          })
+          .scrollIntoView()
+          .run();
+      },
       focus: () =>
         instance.commands.focus(undefined, { scrollIntoView: false }),
       getSelection: () => editorSelection(instance),
@@ -226,7 +317,8 @@
   }
 
   // Wait for the host instead of using onMount: another editor's code block
-  // view can flush this component's mount before `bind:this` is assigned.
+  // view, or creating the first of two editors mounted during a mode switch,
+  // can flush this component's mount before `bind:this` is assigned.
   $effect(() => {
     const host = editor_host;
     if (host) {
@@ -345,32 +437,39 @@
   </ScrollArea>
 
   {#if slash && visibleSlashCommands.length > 0}
-    <div
-      role="listbox"
-      aria-label={m.editor_slash_commands()}
-      class="fixed z-50 max-h-[min(20rem,calc(100vh-1rem))] w-[min(17.5rem,calc(100vw-1rem))] overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-      style:left={`${slash.position.left}px`}
-      style:top={`${slash.position.top}px`}
+    <ScrollArea
+      class="fixed z-50 max-h-[min(20rem,calc(100vh-1rem))] w-[min(17.5rem,calc(100vw-1rem))] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md [&>[data-slot=scroll-area-viewport]]:max-h-[inherit]"
+      style="left: {slash.position.left}px; top: {slash.position.top}px;"
     >
-      {#each visibleSlashCommands as command, index (command.id)}
-        <Button
-          type="button"
-          variant={index === slashIndex ? "secondary" : "ghost"}
-          role="option"
-          aria-selected={index === slashIndex}
-          class="h-auto w-full items-start justify-start whitespace-normal px-2 py-1.5 text-left"
-          onpointerdown={(event) => event.preventDefault()}
-          onclick={() => runSlashCommand(index)}
-        >
-          <span class="min-w-0">
-            <span class="block font-medium">{command.label}</span>
-            <span class="block truncate text-xs text-muted-foreground"
-              >{command.description}</span
-            >
-          </span>
-        </Button>
-      {/each}
-    </div>
+      <div
+        role="listbox"
+        aria-label={m.editor_slash_commands()}
+        class="p-1"
+        {@attach (listbox) => {
+          // Keep the keyboard-selected command visible.
+          listbox.children[slashIndex]?.scrollIntoView({ block: "nearest" });
+        }}
+      >
+        {#each visibleSlashCommands as command, index (command.id)}
+          <Button
+            type="button"
+            variant={index === slashIndex ? "secondary" : "ghost"}
+            role="option"
+            aria-selected={index === slashIndex}
+            class="h-auto w-full items-start justify-start whitespace-normal px-2 py-1.5 text-left"
+            onpointerdown={(event) => event.preventDefault()}
+            onclick={() => runSlashCommand(index)}
+          >
+            <span class="min-w-0">
+              <span class="block font-medium">{command.label}</span>
+              <span class="block truncate text-xs text-muted-foreground"
+                >{command.description}</span
+              >
+            </span>
+          </Button>
+        {/each}
+      </div>
+    </ScrollArea>
   {/if}
 </div>
 

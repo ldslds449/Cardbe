@@ -23,6 +23,7 @@
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import SquareCheckIcon from "@lucide/svelte/icons/square-check";
+  import FileTextIcon from "@lucide/svelte/icons/file-text";
   import MoveTaskDialog from "../dialog/move_task_dialog.svelte";
   import { cn } from "$lib/utils";
 
@@ -30,10 +31,16 @@
   import { tab_label, type FlowTab } from "../flow/flow";
   import { display_task_color } from "../../utils/task-color";
   import Markdown from "../markdown.svelte";
+  import CollapsibleBlock from "../collapsible_block.svelte";
+  import { markdown_stats } from "../../utils/markdown-outline";
   import LabelBadge from "../label_badge.svelte";
   import ChecklistDisplay from "./checklist_display.svelte";
   import DeleteTaskDialog from "./delete_task_dialog.svelte";
   import { due_label, due_label_class } from "./due-label";
+  import {
+    claim_context_menu,
+    release_context_menu,
+  } from "./exclusive-context-menu";
 
   interface CardItemProps {
     task: Task;
@@ -96,6 +103,19 @@
   });
 
   let prevent_menu_focus_restore = false;
+  let context_menu_open = $state(false);
+  const close_context_menu = () => (context_menu_open = false);
+
+  function handle_context_menu_open(open: boolean) {
+    if (open) {
+      claim_context_menu(close_context_menu);
+    } else {
+      release_context_menu(close_context_menu);
+    }
+    void load_flow_tabs(open);
+  }
+
+  $effect(() => () => release_context_menu(close_context_menu));
 
   function restore_menu_focus(event: Event) {
     if (prevent_menu_focus_restore) {
@@ -105,6 +125,20 @@
   }
   let has_expandable_content = $derived(
     task.items.length > 0 || task.description.trim().length > 0,
+  );
+  // Buttons in the top-right corner: content toggle, menu, and pin. Each is
+  // 1.5rem wide with 0.25rem gaps; the group sits 0.25rem past the title.
+  let header_button_count = $derived(
+    read_only
+      ? 0
+      : 1 +
+          (onTogglePin ? 1 : 0) +
+          (onToggleContent && has_expandable_content && !expand_content
+            ? 1
+            : 0),
+  );
+  let description_length = $derived(
+    markdown_stats(task.description.trim()).characters,
   );
   let delete_confirm_open = $state(false);
   let move_dialog_open = $state(false);
@@ -150,7 +184,10 @@
   }
 </script>
 
-<ContextMenu.Root onOpenChange={load_flow_tabs}>
+<ContextMenu.Root
+  bind:open={context_menu_open}
+  onOpenChange={handle_context_menu_open}
+>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <ContextMenu.Trigger
     data-task-card
@@ -181,18 +218,23 @@
     >
       <Card.Header class="w-full px-4">
         <Card.Title
-          class="break-normal [overflow-wrap:anywhere] {onTogglePin &&
-          !read_only
-            ? 'pr-24'
-            : 'pr-16'}"
+          class="break-normal [overflow-wrap:anywhere]"
           style="color: {display_task_color(task.color)};"
         >
+          {#if header_button_count > 0}
+            <!-- Only the first line, beside the hover buttons, leaves room for them. -->
+            <span
+              aria-hidden="true"
+              class="float-right h-[1em]"
+              style:width="{header_button_count * 1.75 - 0.25}rem"
+            ></span>
+          {/if}
           {task.title}
         </Card.Title>
-        <Card.Description>
+        <Card.Description class="flex flex-wrap items-center gap-x-3 gap-y-1">
           {#if read_only && task.pinned}
             <span
-              class="mr-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+              class="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
             >
               <PinIcon class="size-3.5 fill-current" />
             </span>
@@ -213,18 +255,29 @@
           {/if}
           {#if task.recurrence}
             <span
-              class="ml-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+              class="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
             >
               <Repeat2Icon class="size-3.5 shrink-0" />
               <span>{recurrence_label(task.recurrence)}</span>
+            </span>
+          {/if}
+          {#if description_length > 0 && !(expand_content || content_open)}
+            <span
+              class="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <FileTextIcon class="size-3.5 shrink-0" />
+              <span
+                >{m.task_description_length({
+                  count: description_length,
+                })}</span
+              >
             </span>
           {/if}
         </Card.Description>
       </Card.Header>
       {#if !read_only}
         <div
-          class="absolute top-3 right-3 z-20 flex items-start gap-1"
-          onpointerdown={(event) => event.stopPropagation()}
+          class="absolute top-2 right-3 z-20 flex items-start gap-1"
           ondblclick={(event) => event.stopPropagation()}
         >
           {#if onToggleContent && has_expandable_content && !expand_content}
@@ -309,7 +362,13 @@
                     ? "mt-3 rounded-md bg-muted/40 px-3 py-2"
                     : "rounded-md bg-muted/40 px-3 py-2"}
                 >
-                  <Markdown md={task.description} compact />
+                  <CollapsibleBlock
+                    max_height={160}
+                    expand_label={m.markdown_show_all()}
+                    collapse_label={m.markdown_show_less()}
+                  >
+                    <Markdown md={task.description} compact />
+                  </CollapsibleBlock>
                 </div>
               </Collapsible.Content>
             </Collapsible.Root>

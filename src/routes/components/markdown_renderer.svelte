@@ -9,6 +9,7 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import Link2Icon from "@lucide/svelte/icons/link-2";
   import LinkPreview from "$lib/components/link-preview.svelte";
+  import CollapsibleBlock from "./collapsible_block.svelte";
 
   import Markdown from "svelte-exmarkdown";
   import type { HastNode, Plugin } from "svelte-exmarkdown";
@@ -129,25 +130,6 @@
     window.dispatchEvent(new CustomEvent("cardbe:hide-card-preview"));
   }
 
-  function prevent_task_drag(node: HTMLElement) {
-    const stop_pointerdown = (event: PointerEvent) => {
-      if (
-        event.target instanceof Element &&
-        event.target.closest('[data-slot="scroll-area-scrollbar"]')
-      ) {
-        return;
-      }
-      event.stopPropagation();
-    };
-    node.addEventListener("pointerdown", stop_pointerdown);
-
-    return {
-      destroy() {
-        node.removeEventListener("pointerdown", stop_pointerdown);
-      },
-    };
-  }
-
   async function open_external_link(event: MouseEvent, href: unknown) {
     event.stopPropagation();
     const safe_href = safe_external_href(href);
@@ -215,21 +197,37 @@
   >
     {#snippet pre(props)}
       {@const { children, class: className, ...rest } = props}
-      <div use:prevent_task_drag>
-        <ScrollArea
-          type="auto"
-          orientation="horizontal"
-          class="code-scroll min-w-0 w-full max-w-full overflow-hidden rounded-md border"
+      <!-- Board drags skip this region so its text can be selected. -->
+      <div data-no-drag>
+        <CollapsibleBlock
+          max_height={320}
+          expand_label={m.markdown_expand_code()}
+          collapse_label={m.markdown_collapse_code()}
         >
-          <pre class={className ?? ""} {...rest}>{@render children?.()}</pre>
-        </ScrollArea>
+          <ScrollArea
+            type="auto"
+            orientation="horizontal"
+            class="code-scroll min-w-0 w-full max-w-full overflow-hidden rounded-md border"
+          >
+            <pre class={className ?? ""} {...rest}>{@render children?.()}</pre>
+          </ScrollArea>
+        </CollapsibleBlock>
       </div>
     {/snippet}
     {#snippet table(props)}
       {@const { children, style, class: className, ...rest } = props}
-      <table class={className} {...rest}>
-        {@render children?.()}
-      </table>
+      <!-- Board drags skip this region so its text can be selected. -->
+      <div data-no-drag>
+        <ScrollArea
+          type="auto"
+          orientation="horizontal"
+          class="table-scroll min-w-0 w-full max-w-full overflow-hidden"
+        >
+          <table class={className} {...rest}>
+            {@render children?.()}
+          </table>
+        </ScrollArea>
+      </div>
     {/snippet}
     {#snippet tr(props)}
       {@const { children, style, class: className, ...rest } = props}
@@ -239,13 +237,13 @@
     {/snippet}
     {#snippet th(props)}
       {@const { children, style, class: className, ...rest } = props}
-      <th class={className} {...rest}>
+      <th class="{className} min-w-24" {...rest}>
         {@render children?.()}
       </th>
     {/snippet}
     {#snippet td(props)}
       {@const { children, style, class: className, ...rest } = props}
-      <td class={className} {...rest}>
+      <td class="{className} min-w-24" {...rest}>
         {@render children?.()}
       </td>
     {/snippet}
@@ -267,7 +265,6 @@
           onmouseleave={hide_card_reference_preview}
           onfocus={(event) => show_card_reference_preview(event, task_id)}
           onblur={hide_card_reference_preview}
-          onpointerdown={(event) => event.stopPropagation()}
           onclick={(event) => void open_external_link(event, href)}
         >
           <Link2Icon class="size-[1em] shrink-0 self-center" />
@@ -280,7 +277,6 @@
           class="{className} font-medium text-primary underline underline-offset-4 hover:opacity-80"
           target="_blank"
           rel="noreferrer noopener"
-          onpointerdown={(event) => event.stopPropagation()}
           onclick={(event) => void open_external_link(event, href)}
         >
           {@render children?.()}

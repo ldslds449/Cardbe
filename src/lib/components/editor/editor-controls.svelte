@@ -5,18 +5,22 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import Settings2Icon from "@lucide/svelte/icons/settings-2";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import Columns2Icon from "@lucide/svelte/icons/columns-2";
   import Combobox from "../../../routes/components/combobox.svelte";
   import { editorMode } from "./mode";
   import { codeLanguages } from "./extensions/code-highlight";
 
   let {
     previewing = $bindable(false),
+    splitPreview = $bindable(),
     language = null,
     disabled = false,
     compact = false,
     onlanguagechange,
   }: {
     previewing?: boolean;
+    /** When set, plain text offers a side-by-side preview toggle instead. */
+    splitPreview?: boolean;
     language?: string | null;
     disabled?: boolean;
     compact?: boolean;
@@ -102,7 +106,25 @@
       {/if}
     </DropdownMenu.Content>
   </DropdownMenu.Root>
-  {#if !compact && $editorMode === "plain"}
+  {#if !compact && $editorMode === "plain" && splitPreview !== undefined}
+    <Button
+      type="button"
+      size="sm"
+      class="h-7 px-2 text-xs"
+      variant={splitPreview ? "secondary" : "ghost"}
+      aria-pressed={splitPreview}
+      onclick={() => {
+        splitPreview = !splitPreview;
+        if (splitPreview) {
+          previewing = false;
+        }
+      }}
+    >
+      <Columns2Icon />
+      {m.editor_split_preview()}
+    </Button>
+  {/if}
+  {#if !compact && $editorMode === "plain" && !splitPreview}
     <div
       class="flex items-center gap-1"
       role="group"

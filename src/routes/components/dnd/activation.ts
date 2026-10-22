@@ -30,3 +30,32 @@ export function distance_activation_constraint(value: number) {
     },
   };
 }
+
+// dnd-kit's default interactive targets, plus regions marked `data-no-drag`
+// (rendered code blocks and tables) whose text can be selected. Unlike
+// stopping propagation, this still lets open menus see the outside click.
+const NO_DRAG_SELECTOR = [
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "button:not([disabled])",
+  "a[href]",
+  '[contenteditable]:not([contenteditable="false"])',
+  "[data-no-drag]",
+].join(", ");
+
+export function prevent_drag_activation(
+  event: Event,
+  source: { element?: Element; handle?: Element },
+): boolean {
+  const target = event.target;
+  if (
+    !(target instanceof Element) ||
+    target === source.element ||
+    target === source.handle ||
+    source.handle?.contains(target)
+  ) {
+    return false;
+  }
+  return target.closest(NO_DRAG_SELECTOR) !== null;
+}

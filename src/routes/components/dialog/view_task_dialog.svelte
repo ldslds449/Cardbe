@@ -6,21 +6,26 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import * as Empty from "$lib/components/ui/empty/index.js";
 
   import CalendarIcon from "@lucide/svelte/icons/calendar";
   import ClockIcon from "@lucide/svelte/icons/clock";
   import TagIcon from "@lucide/svelte/icons/tag";
+  import FileTextIcon from "@lucide/svelte/icons/file-text";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
 
   import { recurrence_label, type Task } from "../../type/task.svelte";
   import { display_task_color } from "../../utils/task-color";
   import { is_date_only } from "../../utils/task-date-range";
-  import Markdown from "../markdown.svelte";
+  import MarkdownDocument from "../markdown_document.svelte";
+  import type { TextTarget } from "../../utils/markdown-outline";
+  import { request_description_reveal } from "./description-reveal";
   import ChecklistDisplay from "../task/checklist_display.svelte";
   import LabelBadge from "../label_badge.svelte";
   import ResizeHandle from "../resize_handle.svelte";
   import {
     layout_widths,
+    task_dialog_is_split,
     view_dialog_width_bounds,
   } from "../../layout-widths.svelte";
 
@@ -34,11 +39,24 @@
     onEdit?: () => void;
   } = $props();
 
+  let viewport_width = $state(globalThis.innerWidth ?? Infinity);
+  const split_layout = $derived(
+    task_dialog_is_split(layout_widths.view_dialog_width, viewport_width),
+  );
+
   function formatDate(date: Date | undefined): string {
     if (!date) {
       return m.common_not_set();
     }
     return formatDateTime(date);
+  }
+
+  function edit_at(target: TextTarget) {
+    if (task) {
+      request_description_reveal(task.id, target);
+    }
+    open = false;
+    onEdit?.();
   }
 
   // Date-only start and due values have no meaningful time to show.
@@ -52,6 +70,8 @@
     return formatDate(date);
   }
 </script>
+
+<svelte:window bind:innerWidth={viewport_width} />
 
 <Dialog.Root bind:open>
   <Dialog.Content
@@ -71,8 +91,14 @@
           layout_widths.set_view_dialog_width(width, commit)}
       />
     {/each}
-    <div class="flex max-h-[85vh] min-h-0 flex-col overflow-hidden">
-      <Dialog.Header class="min-w-0 shrink-0">
+    <!-- Split dialogs match the task editor height so switching keeps the frame. -->
+    <div
+      class={[
+        "flex max-h-[85vh] min-h-0 flex-col overflow-hidden",
+        task && split_layout && "h-[min(85vh,56rem)]",
+      ]}
+    >
+      <Dialog.Header class="min-w-0 shrink-0 border-b pb-4">
         <Dialog.Title
           class="max-w-full break-normal [overflow-wrap:anywhere] pe-8"
           style="color: {task ? display_task_color(task.color) : ''};"
@@ -83,90 +109,45 @@
           >{m.task_details_label()}</Dialog.Description
         >
       </Dialog.Header>
-      <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
-        <div class="w-full space-y-4 py-4 ps-1 pe-4">
-          {#if task}
-            <div>
-              <div class="flex items-center gap-2 text-sm font-medium mb-1">
-                <CalendarIcon class="size-4" />
-                <span>{m.task_start_time()}</span>
-              </div>
-              <p class="text-sm text-muted-foreground">
-                {formatTaskDate(task.start_time, task.start_at_midnight)}
-              </p>
+      {#if task && split_layout}
+        <div class="flex min-h-0 flex-1 gap-6">
+          <ScrollArea
+            orientation="vertical"
+            class="min-h-0 w-72 shrink-0 border-e"
+          >
+            <div class="space-y-4 py-4 ps-1 pe-6">
+              {@render task_details(task)}
             </div>
-
-            {#if task.recurrence}
-              <div>
-                <div class="flex items-center gap-2 text-sm font-medium mb-1">
-                  <Repeat2Icon class="size-4" />
-                  <span>{m.task_repeat()}</span>
-                </div>
-                <p class="text-sm text-muted-foreground">
-                  {recurrence_label(task.recurrence)}
-                </p>
-              </div>
-            {/if}
-
-            <div>
-              <div class="flex items-center gap-2 text-sm font-medium mb-1">
-                <CalendarIcon class="size-4" />
-                <span>{m.task_due_time()}</span>
-              </div>
-              <p class="text-sm text-muted-foreground">
-                {formatTaskDate(task.due_time, task.due_at_midnight)}
-              </p>
+          </ScrollArea>
+          {#if task.description.length > 0}
+            <div class="flex min-h-0 min-w-0 flex-1 flex-col pt-3">
+              {@render task_description(task, true)}
             </div>
-
-            {#if task.created_time}
-              <div>
-                <div class="flex items-center gap-2 text-sm font-medium mb-1">
-                  <ClockIcon class="size-4" />
-                  <span>{m.task_created_time()}</span>
-                </div>
-                <p class="text-sm text-muted-foreground">
-                  {formatDate(task.created_time)}
-                </p>
-              </div>
-            {/if}
-
-            {#if task.labels && task.labels.length > 0}
-              <div>
-                <div class="flex items-center gap-2 text-sm font-medium mb-2">
-                  <TagIcon class="size-4" />
-                  <span>{m.task_labels()}</span>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  {#each task.labels as label}
-                    <LabelBadge {label} />
-                  {/each}
-                </div>
-              </div>
-            {/if}
-
-            {#if task.items.length > 0}
-              <Separator />
-              <div>
-                <p class="text-sm font-medium mb-2">{m.task_checklist()}</p>
-                <ChecklistDisplay items={task.items} />
-              </div>
-            {/if}
-
-            <Separator />
-
-            <div>
-              <p class="text-sm font-medium mb-1">{m.task_description()}</p>
-              {#if task.description.length == 0}
-                <p class="text-sm text-muted-foreground">
-                  {m.task_description_empty()}
-                </p>
-              {:else}
-                <Markdown md={task.description} />
-              {/if}
-            </div>
+          {:else}
+            <Empty.Root class="my-4 min-w-0 flex-1 border border-dashed">
+              <Empty.Header>
+                <Empty.Media variant="icon">
+                  <FileTextIcon />
+                </Empty.Media>
+                <Empty.Title>{m.task_description_empty()}</Empty.Title>
+                <Empty.Description>
+                  {m.task_description_empty_hint()}
+                </Empty.Description>
+              </Empty.Header>
+            </Empty.Root>
           {/if}
         </div>
-      </ScrollArea>
+      {:else}
+        <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
+          <div class="w-full space-y-4 py-4 ps-1 pe-4">
+            {#if task}
+              {@render task_details(task)}
+              <Separator />
+              {@render task_description(task)}
+            {/if}
+          </div>
+        </ScrollArea>
+      {/if}
       {#if onEdit}
         <Dialog.Footer
           class="mt-auto shrink-0 justify-center border-t bg-background/95 px-1 py-3 shadow-[0_-8px_16px_-16px_rgb(0_0_0_/_0.45)] backdrop-blur-sm sm:justify-center"
@@ -185,3 +166,89 @@
     </div>
   </Dialog.Content>
 </Dialog.Root>
+
+{#snippet task_details(task: Task)}
+  <div>
+    <div class="flex items-center gap-2 text-sm font-medium mb-1">
+      <CalendarIcon class="size-4" />
+      <span>{m.task_start_time()}</span>
+    </div>
+    <p class="text-sm text-muted-foreground">
+      {formatTaskDate(task.start_time, task.start_at_midnight)}
+    </p>
+  </div>
+
+  {#if task.recurrence}
+    <div>
+      <div class="flex items-center gap-2 text-sm font-medium mb-1">
+        <Repeat2Icon class="size-4" />
+        <span>{m.task_repeat()}</span>
+      </div>
+      <p class="text-sm text-muted-foreground">
+        {recurrence_label(task.recurrence)}
+      </p>
+    </div>
+  {/if}
+
+  <div>
+    <div class="flex items-center gap-2 text-sm font-medium mb-1">
+      <CalendarIcon class="size-4" />
+      <span>{m.task_due_time()}</span>
+    </div>
+    <p class="text-sm text-muted-foreground">
+      {formatTaskDate(task.due_time, task.due_at_midnight)}
+    </p>
+  </div>
+
+  {#if task.created_time}
+    <div>
+      <div class="flex items-center gap-2 text-sm font-medium mb-1">
+        <ClockIcon class="size-4" />
+        <span>{m.task_created_time()}</span>
+      </div>
+      <p class="text-sm text-muted-foreground">
+        {formatDate(task.created_time)}
+      </p>
+    </div>
+  {/if}
+
+  {#if task.labels && task.labels.length > 0}
+    <div>
+      <div class="flex items-center gap-2 text-sm font-medium mb-2">
+        <TagIcon class="size-4" />
+        <span>{m.task_labels()}</span>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        {#each task.labels as label}
+          <LabelBadge {label} />
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if task.items.length > 0}
+    <Separator />
+    <div>
+      <p class="text-sm font-medium mb-2">{m.task_checklist()}</p>
+      <ChecklistDisplay items={task.items} />
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet task_description(task: Task, fill = false)}
+  <div class={fill ? "flex min-h-0 min-w-0 flex-1 flex-col" : undefined}>
+    {#if task.description.length == 0}
+      <p class="text-sm font-medium mb-1">{m.task_description()}</p>
+      <p class="text-sm text-muted-foreground">
+        {m.task_description_empty()}
+      </p>
+    {:else}
+      <MarkdownDocument
+        md={task.description}
+        label={m.task_description()}
+        onedit={onEdit ? edit_at : undefined}
+        {fill}
+      />
+    {/if}
+  </div>
+{/snippet}

@@ -256,6 +256,7 @@
   "task_created_time": "Created",
   "task_labels": "Labels",
   "task_description_empty": "No description",
+  "task_description_empty_hint": "Add a description to record details, steps, or references.",
   "task_template_back": "Back to card",
   "task_template_choose_title": "Choose a Template",
   "task_template_search_description": "Search by template name, card title, or label.",
@@ -1736,6 +1737,54 @@
   "share_boards_need_access": "{count} shared boards need access",
   "task_expand_description": "Expand description editor",
   "editor_expanded_description": "Expanded rich text editor",
+  "task_collapse_description": "Collapse description editor",
+  "markdown_show_all": "Show all",
+  "markdown_show_less": "Show less",
+  "markdown_expand_code": "Show full code",
+  "markdown_collapse_code": "Collapse code",
+  "markdown_outline": "Outline",
+  "markdown_expand_section": "Expand section: {title}",
+  "markdown_collapse_section": "Collapse section: {title}",
+  "markdown_edit_hint": "Double-click a paragraph to edit it",
+  "editor_live_preview": "Live preview",
+  "editor_split_preview": "Side-by-side preview",
+  "editor_preview_empty": "Nothing to preview yet.",
+  "editor_named_preview": "{name} preview",
+  "editor_markdown_content": "Markdown content",
+  "editor_placeholder": "Start writing…",
+  "task_description_length": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} character",
+        "countPlural=*": "{countFormatted} characters"
+      }
+    }
+  ],
+  "editor_stats": [
+    {
+      "declarations": [
+        "input characters",
+        "input lines",
+        "local charactersPlural = characters: plural",
+        "local linesPlural = lines: plural",
+        "local charactersFormatted = characters: number",
+        "local linesFormatted = lines: number"
+      ],
+      "selectors": ["charactersPlural", "linesPlural"],
+      "match": {
+        "charactersPlural=one, linesPlural=one": "{charactersFormatted} character · {linesFormatted} line",
+        "charactersPlural=one, linesPlural=*": "{charactersFormatted} character · {linesFormatted} lines",
+        "charactersPlural=*, linesPlural=one": "{charactersFormatted} characters · {linesFormatted} line",
+        "charactersPlural=*, linesPlural=*": "{charactersFormatted} characters · {linesFormatted} lines"
+      }
+    }
+  ],
   "diagnostics_zip_archive": "ZIP archive",
   "share_access_request_error": "Couldn't request access",
   "share_service_unavailable": "Sharing service is unavailable. Try again later.",

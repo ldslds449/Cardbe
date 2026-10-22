@@ -11,7 +11,10 @@
   import * as Empty from "$lib/components/ui/empty/index.js";
 
   import { board } from "../../board.svelte";
-  import { distance_activation_constraint } from "../dnd/activation";
+  import {
+    distance_activation_constraint,
+    prevent_drag_activation,
+  } from "../dnd/activation";
   import type { Task } from "../../type/task.svelte";
   import CardColumn from "../task/card_column.svelte";
   import { layout_widths } from "../../layout-widths.svelte";
@@ -314,6 +317,7 @@
   const dnd_sensors = [
     PointerSensor.configure({
       activationConstraints: () => [distance_activation_constraint(8)] as never,
+      preventActivation: prevent_drag_activation,
     }),
     KeyboardSensor,
   ];

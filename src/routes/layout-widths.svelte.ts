@@ -12,13 +12,22 @@ export const column_width_bounds: WidthBounds = {
 export const view_dialog_width_bounds: WidthBounds = {
   min: 400,
   max: 1600,
-  default: 500,
+  default: 960,
 };
 export const edit_dialog_width_bounds: WidthBounds = {
   min: 400,
   max: 1600,
-  default: 512,
+  default: 960,
 };
+
+// Task dialogs at least this wide show task details beside the description
+// instead of above it, so long descriptions use the horizontal space.
+export const task_dialog_split_width = 800;
+
+// Dialogs are capped at the viewport width minus their 1rem margins.
+export function task_dialog_is_split(width: number, viewport_width: number) {
+  return Math.min(width, viewport_width - 32) >= task_dialog_split_width;
+}
 
 type StoredWidths = {
   columns: Record<string, number>;

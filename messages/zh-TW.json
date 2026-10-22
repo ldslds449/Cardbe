@@ -232,6 +232,7 @@
   "task_created_time": "建立時間",
   "task_labels": "標籤",
   "task_description_empty": "無描述",
+  "task_description_empty_hint": "可以在描述裡記下細節、步驟或參考資料。",
   "task_template_back": "返回卡片",
   "task_template_choose_title": "選擇範本",
   "task_template_search_description": "依範本名稱、卡片標題或標籤搜尋。",
@@ -1551,6 +1552,42 @@
   "share_boards_need_access": "{count} 個共享看板需要存取權限",
   "task_expand_description": "展開描述編輯器",
   "editor_expanded_description": "已展開的文字編輯器",
+  "task_collapse_description": "收合描述編輯器",
+  "markdown_show_all": "顯示全部",
+  "markdown_show_less": "收合",
+  "markdown_expand_code": "顯示完整程式碼",
+  "markdown_collapse_code": "收合程式碼",
+  "markdown_outline": "大綱",
+  "markdown_expand_section": "展開段落：{title}",
+  "markdown_collapse_section": "收合段落：{title}",
+  "markdown_edit_hint": "雙擊段落即可直接編輯",
+  "editor_live_preview": "即時預覽",
+  "editor_split_preview": "並排預覽",
+  "editor_preview_empty": "尚無可預覽的內容。",
+  "editor_named_preview": "{name}預覽",
+  "editor_markdown_content": "Markdown 內容",
+  "editor_placeholder": "開始輸入…",
+  "task_description_length": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 字"
+      }
+    }
+  ],
+  "editor_stats": [
+    {
+      "declarations": [
+        "input characters",
+        "input lines",
+        "local charactersFormatted = characters: number",
+        "local linesFormatted = lines: number"
+      ],
+      "match": {
+        "characters=*, lines=*": "{charactersFormatted} 字 · {linesFormatted} 行"
+      }
+    }
+  ],
   "diagnostics_zip_archive": "ZIP 壓縮檔",
   "share_access_request_error": "無法申請存取權限",
   "share_service_unavailable": "分享服務目前無法使用，請稍後再試。",

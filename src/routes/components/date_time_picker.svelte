@@ -120,14 +120,14 @@
           class={`min-w-0 flex-1 justify-start font-normal ${
             value
               ? "border-primary/30 bg-primary/5 text-foreground"
-              : "border-dashed text-muted-foreground"
+              : "border-dashed border-border/60 bg-transparent text-muted-foreground/70 shadow-none hover:text-foreground dark:bg-transparent"
           }`}
         >
           {#if has_time}
             <ClockIcon class="size-4 shrink-0 text-primary" />
           {:else}
             <CalendarIcon
-              class={`size-4 shrink-0 ${value ? "text-primary" : "text-muted-foreground"}`}
+              class={`size-4 shrink-0 ${value ? "text-primary" : ""}`}
             />
           {/if}
           <span class="truncate">{label()}</span>

@@ -1,4 +1,5 @@
 ﻿<script lang="ts">
+  import { m } from "$lib/paraglide/messages";
   import { tick, untrack, type ComponentProps } from "svelte";
   import EditorControls from "./editor-controls.svelte";
   import { Textarea } from "$lib/components/ui/textarea/index.js";
@@ -6,6 +7,7 @@
   import { cn } from "$lib/utils.js";
   import RichTextSurface from "./rich-text-surface.svelte";
   import { editorMode } from "./mode";
+  import { caretTop } from "./textarea-caret";
   import Markdown from "../../../routes/components/markdown.svelte";
   import type { RichTextEditorHandle } from "./rich-text-surface.svelte";
 
@@ -15,11 +17,14 @@
     containerClass,
     onvaluechange,
     previewing = $bindable(false),
+    splitPreview = $bindable(),
     language = $bindable<string | null>(null),
     showControls = true,
     ...props
   }: ComponentProps<typeof RichTextSurface> & {
     previewing?: boolean;
+    /** Plain-text side-by-side preview, rendered by the caller. */
+    splitPreview?: boolean;
     showControls?: boolean;
   } = $props();
   let textarea = $state<HTMLTextAreaElement | null>(null);
@@ -76,12 +81,41 @@
     });
   });
 
+  // Scrolls every enclosing ScrollArea viewport until the caret is visible.
+  function scrollCaretIntoView(input: HTMLTextAreaElement, offset: number) {
+    const top = caretTop(input, offset);
+    const lineHeight = parseFloat(getComputedStyle(input).lineHeight) || 20;
+    for (
+      let viewport = input.closest<HTMLElement>(
+        "[data-slot='scroll-area-viewport']",
+      );
+      viewport;
+      viewport =
+        viewport.parentElement?.closest<HTMLElement>(
+          "[data-slot='scroll-area-viewport']",
+        ) ?? null
+    ) {
+      const caret = input.getBoundingClientRect().top + top;
+      const bounds = viewport.getBoundingClientRect();
+      if (caret < bounds.top || caret + lineHeight > bounds.bottom) {
+        viewport.scrollTop += caret - (bounds.top + bounds.height / 3);
+      }
+    }
+  }
+
   $effect(() => {
     if ($editorMode !== "plain" || previewing || !textarea) {
       return;
     }
     const input = textarea;
+    const select = (from: number, to = from) => {
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(from, to);
+      scrollCaretIntoView(input, from);
+    };
     const handle: RichTextEditorHandle = {
+      setSelection: ({ from, to }) => select(from, to),
+      reveal: ({ offset }) => select(Math.min(offset, input.value.length)),
       focus: () => input.focus({ preventScroll: true }),
       getSelection: () => ({
         from: input.selectionStart,
@@ -124,6 +158,7 @@
     <div class="shrink-0 border-b px-2 py-1">
       <EditorControls
         bind:previewing
+        bind:splitPreview
         {language}
         disabled={props.disabled || props.readonly}
         onlanguagechange={(language) => ref?.setCodeLanguage?.(language)}
@@ -149,12 +184,14 @@
       )}
       role="region"
       data-editor-body
-      aria-label={`${props["aria-label"] ?? "Content"} preview`}
+      aria-label={props["aria-label"]
+        ? m.editor_named_preview({ name: props["aria-label"] })
+        : m.editor_preview()}
     >
       {#if value.trim()}
         <Markdown md={value} />
       {:else}
-        <p class="text-sm text-muted-foreground">Nothing to preview yet.</p>
+        <p class="text-sm text-muted-foreground">{m.editor_preview_empty()}</p>
       {/if}
     </ScrollArea>
   {:else}
@@ -172,13 +209,13 @@
         bind:value
         class={cn(
           props.class,
-          "h-auto min-h-full flex-none resize-none overflow-hidden border-0 shadow-none focus-visible:ring-0",
+          "h-auto min-h-full max-h-none flex-none resize-none overflow-hidden border-0 shadow-none focus-visible:ring-0",
         )}
         id={props.id}
         placeholder={props.placeholder}
         disabled={props.disabled}
         readonly={props.readonly}
-        aria-label={props["aria-label"] ?? "Markdown content"}
+        aria-label={props["aria-label"] ?? m.editor_markdown_content()}
         aria-describedby={props["aria-describedby"]}
         oninput={(event) => {
           value = event.currentTarget.value;
