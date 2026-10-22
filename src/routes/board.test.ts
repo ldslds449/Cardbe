@@ -1443,6 +1443,39 @@ describe("pending task operations", () => {
     });
   });
 
+  it("sets and clears the priority of selected tasks with one command", async () => {
+    invoke_mock.mockResolvedValue(undefined);
+    const store = create_store();
+    store.columns[0].tasks = [
+      create_task("task_1", "One"),
+      create_task("task_2", "Two"),
+    ];
+
+    await expect(
+      store.set_tasks_priority(["task_2", "task_1"], "high"),
+    ).resolves.toBe(true);
+    expect(store.columns[0].tasks.map((task) => task.priority)).toEqual([
+      "high",
+      "high",
+    ]);
+    expect(invoke_mock).toHaveBeenCalledWith("set_tasks_priority", {
+      taskIds: [2, 1],
+      priority: "high",
+      expectedBoardId: 7,
+    });
+
+    await expect(store.set_tasks_priority(["task_1"], undefined)).resolves.toBe(
+      true,
+    );
+    expect("priority" in store.columns[0].tasks[0]).toBe(false);
+    expect(store.columns[0].tasks[1].priority).toBe("high");
+    expect(invoke_mock).toHaveBeenLastCalledWith("set_tasks_priority", {
+      taskIds: [1],
+      priority: null,
+      expectedBoardId: 7,
+    });
+  });
+
   it("moves selected tasks to another board with one command", async () => {
     invoke_mock.mockResolvedValue([]);
     const store = create_store();

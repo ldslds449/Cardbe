@@ -23,12 +23,19 @@
   import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
+  import GaugeIcon from "@lucide/svelte/icons/gauge";
   import SquareCheckIcon from "@lucide/svelte/icons/square-check";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import MoveTaskDialog from "../dialog/move_task_dialog.svelte";
   import { cn } from "$lib/utils";
 
-  import { recurrence_label, type Task } from "../../type/task.svelte";
+  import {
+    is_task_priority,
+    recurrence_label,
+    TASK_PRIORITIES,
+    type Task,
+    type TaskPriority,
+  } from "../../type/task.svelte";
   import { tab_label, type FlowTab } from "../flow/flow";
   import { display_task_color } from "../../utils/task-color";
   import Markdown from "../markdown.svelte";
@@ -64,6 +71,7 @@
     onFloatTask?: () => void;
     onLoadFlowTabs?: () => Promise<FlowTab[] | null>;
     onAddToFlow?: (tab: FlowTab) => void;
+    onSetPriority?: (priority: TaskPriority | undefined) => void;
     selected?: boolean;
     selecting?: boolean;
     onSelect?: (event: MouseEvent | null) => void;
@@ -91,6 +99,7 @@
     onFloatTask,
     onLoadFlowTabs,
     onAddToFlow,
+    onSetPriority,
     selected = false,
     selecting = false,
     onSelect,
@@ -431,6 +440,10 @@
   {@const SubContent = context
     ? ContextMenu.SubContent
     : DropdownMenu.SubContent}
+  {@const RadioGroup = context
+    ? ContextMenu.RadioGroup
+    : DropdownMenu.RadioGroup}
+  {@const RadioItem = context ? ContextMenu.RadioItem : DropdownMenu.RadioItem}
   <TaskActionItems
     {context}
     onView={onViewTask}
@@ -457,6 +470,28 @@
             <PictureInPicture2Icon />
             {m.task_float_on_desktop()}
           </Item>
+        {/if}
+        {#if onSetPriority}
+          <Sub>
+            <SubTrigger>
+              <GaugeIcon />
+              {m.task_priority()}
+            </SubTrigger>
+            <SubContent class="min-w-36">
+              <RadioGroup
+                value={task.priority ?? "none"}
+                onValueChange={(value) =>
+                  onSetPriority(is_task_priority(value) ? value : undefined)}
+              >
+                {#each [...TASK_PRIORITIES].reverse() as priority (priority)}
+                  <RadioItem value={priority}>
+                    <PriorityIndicator {priority} />
+                  </RadioItem>
+                {/each}
+                <RadioItem value="none">{m.task_priority_none()}</RadioItem>
+              </RadioGroup>
+            </SubContent>
+          </Sub>
         {/if}
         <Item onclick={onDuplicateTask}>
           <CopyIcon />

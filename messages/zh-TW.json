@@ -67,6 +67,8 @@
   "column_sort_title_desc": "遞減",
   "column_sort_checklist_progress_asc": "完成度低的優先",
   "column_sort_checklist_progress_desc": "完成度高的優先",
+  "column_sort_priority_asc": "低的優先",
+  "column_sort_priority_desc": "高的優先",
   "column_sort_rule": "{field}：{direction}",
   "column_sort_hint_one": "依「{first}」排序。點一下即可修改。",
   "column_sort_hint_two": "依「{first}」排序，再依「{second}」排序。點一下即可修改。",
@@ -286,6 +288,26 @@
   "task_selection_clear": "取消選取",
   "task_selection_pin": "釘選",
   "task_selection_unpin": "取消釘選",
+  "task_priority_set_count": [
+    {
+      "declarations": [
+        "input count",
+        "input level",
+        "local countFormatted = count: number"
+      ],
+      "match": {
+        "count=*": "已將 {countFormatted} 個任務的優先度設為「{level}」"
+      }
+    }
+  ],
+  "task_priority_cleared_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已清除 {countFormatted} 個任務的優先度"
+      }
+    }
+  ],
   "task_pinned_count": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],

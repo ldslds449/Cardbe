@@ -7,7 +7,7 @@ import {
   type SortField,
   type SortRule,
 } from "../type/column.svelte";
-import type { Task } from "../type/task.svelte";
+import { TASK_PRIORITIES, type Task } from "../type/task.svelte";
 import { due_limit } from "./task-date-range";
 
 // Sort rules only change how a column is displayed. `column.tasks` keeps the
@@ -32,6 +32,10 @@ function sort_key(task: Task, field: SortField): SortKey | undefined {
     case "checklist_progress":
       return task.items.length > 0
         ? task.items.filter((item) => item.completed).length / task.items.length
+        : undefined;
+    case "priority":
+      return task.priority
+        ? TASK_PRIORITIES.indexOf(task.priority) + 1
         : undefined;
   }
 }
@@ -114,6 +118,7 @@ export const DEFAULT_SORT_DIRECTION: Record<SortField, SortDirection> = {
   created_time: "desc",
   title: "asc",
   checklist_progress: "asc",
+  priority: "desc",
 };
 
 export function sort_field_label(field: SortField): string {
@@ -128,6 +133,8 @@ export function sort_field_label(field: SortField): string {
       return m.column_sort_field_title();
     case "checklist_progress":
       return m.column_sort_field_checklist_progress();
+    case "priority":
+      return m.task_priority();
   }
 }
 
@@ -153,6 +160,8 @@ export function sort_direction_label(
       return asc
         ? m.column_sort_checklist_progress_asc()
         : m.column_sort_checklist_progress_desc();
+    case "priority":
+      return asc ? m.column_sort_priority_asc() : m.column_sort_priority_desc();
   }
 }
 

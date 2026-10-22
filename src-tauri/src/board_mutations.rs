@@ -170,6 +170,18 @@ pub(crate) fn set_tasks_pinned(
     Ok(())
 }
 
+pub(crate) fn set_tasks_priority(
+    data: &mut StoredData,
+    task_ids: &[i64],
+    priority: Option<crate::models::TaskPriority>,
+) -> Result<(), DomainError> {
+    for &task_id in task_ids {
+        let (column, task) = task_position(data, task_id)?;
+        data.columns[column].tasks[task].priority = priority;
+    }
+    Ok(())
+}
+
 pub(crate) fn add_task(
     data: &mut StoredData,
     column_id: i64,
@@ -283,6 +295,26 @@ mod tests {
     }
 
     #[test]
+    fn set_tasks_priority_sets_and_clears_across_columns() {
+        use crate::models::TaskPriority;
+        let mut data = two_columns();
+        set_tasks_priority(&mut data, &[10, 21], Some(TaskPriority::Urgent)).unwrap();
+        let priority = |data: &StoredData, column: usize, task: usize| {
+            data.columns[column].tasks[task].priority
+        };
+        assert_eq!(priority(&data, 0, 0), Some(TaskPriority::Urgent));
+        assert_eq!(priority(&data, 1, 1), Some(TaskPriority::Urgent));
+        assert_eq!(priority(&data, 0, 1), None);
+
+        set_tasks_priority(&mut data, &[10], None).unwrap();
+        assert_eq!(priority(&data, 0, 0), None);
+        assert!(matches!(
+            set_tasks_priority(&mut data, &[99], None),
+            Err(DomainError::TaskNotFound)
+        ));
+    }
+
+    #[test]
     fn delete_tasks_removes_tasks_across_columns_or_nothing() {
         let mut data = two_columns();
         delete_tasks(&mut data, &[11, 20]).unwrap();
@@ -370,7 +402,7 @@ mod tests {
         assert_eq!(data.columns[0].sort_order, ColumnSort::Custom);
 
         for invalid in [
-            vec![rule("priority")],
+            vec![rule("effort")],
             vec![rule("title"), rule("title")],
             vec![
                 rule("due_time"),

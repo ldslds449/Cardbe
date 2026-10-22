@@ -494,6 +494,8 @@
                 onFloatTask={() => void board.float_task(task.id)}
                 onLoadFlowTabs={() => board.get_flow_tabs()}
                 onAddToFlow={(tab) => void board.add_task_to_flow(task.id, tab)}
+                onSetPriority={(priority) =>
+                  void board.set_tasks_priority([task.id], priority)}
                 selected={selected_ids.has(task.id)}
                 {selecting}
                 onSelect={read_only
@@ -519,6 +521,8 @@
       all_pinned={selected_tasks.every((task) => task.pinned)}
       columns={board.columns}
       onPin={(pinned) => void board.set_tasks_pinned(selected_task_ids, pinned)}
+      onSetPriority={(priority) =>
+        void board.set_tasks_priority(selected_task_ids, priority)}
       onLoadFlowTabs={() => board.get_flow_tabs()}
       onAddToFlow={(tab) =>
         void board.add_tasks_to_flow(selected_task_ids, tab)}

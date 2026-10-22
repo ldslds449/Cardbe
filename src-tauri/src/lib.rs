@@ -519,6 +519,7 @@ pub fn run() {
             board::move_task_to_board,
             board::move_tasks_to_board,
             board::set_tasks_pinned,
+            board::set_tasks_priority,
             board::add_task,
             board::add_task_to_board,
             board::delete_task,

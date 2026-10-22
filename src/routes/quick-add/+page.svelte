@@ -28,6 +28,11 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import {
+    priority_label,
+    TASK_PRIORITIES,
+    type TaskPriority,
+  } from "../type/task.svelte";
 
   interface ColumnSummary {
     id: number;
@@ -71,6 +76,7 @@
   let column_id = $state("");
   let title = $state("");
   let details = $state("");
+  let priority = $state<TaskPriority | "">("");
   let database_ready = $state(false);
   let loading = $state(mode === "task");
   let saving = $state(false);
@@ -295,6 +301,7 @@
       await quick_window.hide();
       title = "";
       details = "";
+      priority = "";
     } catch (caught) {
       logger.warn("quick_add.window_hide.failed", caught);
     }
@@ -322,6 +329,7 @@
             labels: [],
             items: [],
             recurrence: null,
+            ...(priority ? { priority } : {}),
           },
         });
         window.localStorage.setItem(
@@ -341,6 +349,7 @@
       });
       title = "";
       details = "";
+      priority = "";
       await close_quick_window();
     } catch (caught) {
       logger.error(
@@ -441,27 +450,47 @@
           {/each}
         </select>
       </div>
-      <div class="grid gap-1.5">
-        <label
-          for="quick-add-column"
-          class="text-xs font-medium text-muted-foreground"
-          >{m.ui_add_to_column()}</label
-        >
-        <select
-          id="quick-add-column"
-          bind:value={column_id}
-          disabled={loading || columns.length === 0}
-          aria-label={m.ui_task_column()}
-          class="border-input bg-background h-10 w-full rounded-md border px-3 text-sm outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
-        >
-          {#if columns.length === 0}
-            <option value="">{m.ui_no_columns_yet()}</option>
-          {:else}
-            {#each columns as column (column.id)}
-              <option value={String(column.id)}>{column.name}</option>
+      <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,9rem)] gap-3">
+        <div class="grid gap-1.5">
+          <label
+            for="quick-add-column"
+            class="text-xs font-medium text-muted-foreground"
+            >{m.ui_add_to_column()}</label
+          >
+          <select
+            id="quick-add-column"
+            bind:value={column_id}
+            disabled={loading || columns.length === 0}
+            aria-label={m.ui_task_column()}
+            class="border-input bg-background h-10 w-full rounded-md border px-3 text-sm outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
+          >
+            {#if columns.length === 0}
+              <option value="">{m.ui_no_columns_yet()}</option>
+            {:else}
+              {#each columns as column (column.id)}
+                <option value={String(column.id)}>{column.name}</option>
+              {/each}
+            {/if}
+          </select>
+        </div>
+        <div class="grid gap-1.5">
+          <label
+            for="quick-add-priority"
+            class="text-xs font-medium text-muted-foreground"
+            >{m.task_priority()}</label
+          >
+          <select
+            id="quick-add-priority"
+            bind:value={priority}
+            disabled={saving}
+            class="border-input bg-background h-10 w-full rounded-md border px-3 text-sm outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
+          >
+            <option value="">{m.task_priority_none()}</option>
+            {#each [...TASK_PRIORITIES].reverse() as level (level)}
+              <option value={level}>{priority_label(level)}</option>
             {/each}
-          {/if}
-        </select>
+          </select>
+        </div>
       </div>
     {/if}
 

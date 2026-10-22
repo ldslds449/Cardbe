@@ -11,7 +11,9 @@ import {
 } from "./type/column.svelte";
 import {
   type Task,
+  type TaskPriority,
   clone_task,
+  priority_label,
   duplicate_task as create_task_duplicate,
   get_task_id,
   set_task_id,
@@ -511,6 +513,45 @@ export abstract class TaskBoardStore extends IrohBoardStore {
             : m.task_unpinned_count({ count }),
         ),
       "task.pin_batch.failed",
+    );
+  }
+
+  /** Sets or clears (`undefined`) the priority of several tasks at once. */
+  set_tasks_priority(
+    task_ids: string[],
+    priority: TaskPriority | undefined,
+  ): Promise<boolean> {
+    return this.run_task_batch(
+      task_ids,
+      (selected) => {
+        for (const column of this.columns) {
+          if (column.tasks.some((task) => selected.has(task.id))) {
+            column.tasks = column.tasks.map((task) => {
+              if (!selected.has(task.id)) {
+                return task;
+              }
+              const { priority: _previous, ...rest } = task;
+              return priority ? { ...rest, priority } : rest;
+            });
+          }
+        }
+      },
+      (taskIds, expectedBoardId) =>
+        invoke<void>("set_tasks_priority", {
+          taskIds,
+          priority: priority ?? null,
+          expectedBoardId,
+        }),
+      (count) =>
+        this.show_success_with_undo(
+          priority
+            ? m.task_priority_set_count({
+                count,
+                level: priority_label(priority),
+              })
+            : m.task_priority_cleared_count({ count }),
+        ),
+      "task.priority_batch.failed",
     );
   }
 

@@ -368,6 +368,20 @@ pub fn set_tasks_pinned(
 }
 
 #[tauri::command]
+pub fn set_tasks_priority(
+    state: State<'_, SharedAppData>,
+    task_ids: Vec<i64>,
+    priority: Option<crate::models::TaskPriority>,
+    expected_board_id: i64,
+) -> Result<(), CommandError> {
+    let task_ids = crate::board_mutations::unique_task_ids(task_ids)?;
+    update_stored_for_board(&state, expected_board_id, |data| {
+        crate::board_mutations::set_tasks_priority(data, &task_ids, priority)
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
 pub fn update_task(
     state: State<'_, SharedAppData>,
     task_id: i64,

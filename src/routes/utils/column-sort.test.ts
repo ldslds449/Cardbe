@@ -19,9 +19,11 @@ describe("column sorting", () => {
     const tasks = [task(3), task(1), task(2)];
     const column = create_column("column_1", "Todo", "", tasks);
     expect(sorted_column_tasks(column)).toBe(tasks);
-    expect(
-      sorted_ids(tasks, [{ field: "priority", direction: "asc" }]),
-    ).toEqual(["task_3", "task_1", "task_2"]);
+    expect(sorted_ids(tasks, [{ field: "effort", direction: "asc" }])).toEqual([
+      "task_3",
+      "task_1",
+      "task_2",
+    ]);
   });
 
   it("sorts dates either way with empty values last and pinned tasks first", () => {
@@ -84,6 +86,22 @@ describe("column sorting", () => {
     expect(by("title")).toEqual(["task_2", "task_1", "task_3"]);
     expect(by("title", "desc")).toEqual(["task_1", "task_2", "task_3"]);
     expect(by("checklist_progress")).toEqual(["task_1", "task_2", "task_3"]);
+  });
+
+  it("sorts by priority either way with unset priorities last", () => {
+    const tasks = [
+      task(1),
+      task(2, { priority: "low" }),
+      task(3, { priority: "urgent" }),
+      task(4, { priority: "medium" }),
+      task(5, { priority: "high" }),
+    ];
+    expect(
+      sorted_ids(tasks, [{ field: "priority", direction: "desc" }]),
+    ).toEqual(["task_3", "task_5", "task_4", "task_2", "task_1"]);
+    expect(
+      sorted_ids(tasks, [{ field: "priority", direction: "asc" }]),
+    ).toEqual(["task_2", "task_4", "task_5", "task_3", "task_1"]);
   });
 
   it("compares titles by Unicode code point", () => {

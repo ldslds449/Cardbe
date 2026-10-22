@@ -8,6 +8,7 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import ArchiveIcon from "@lucide/svelte/icons/archive";
   import ColumnsIcon from "@lucide/svelte/icons/columns-3";
+  import GaugeIcon from "@lucide/svelte/icons/gauge";
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
   import PinIcon from "@lucide/svelte/icons/pin";
   import TrashIcon from "@lucide/svelte/icons/trash-2";
@@ -16,6 +17,8 @@
   import MoveTaskDialog from "../dialog/move_task_dialog.svelte";
 
   import type { Column } from "../../type/column.svelte";
+  import { TASK_PRIORITIES, type TaskPriority } from "../../type/task.svelte";
+  import PriorityIndicator from "./priority_indicator.svelte";
   import { tab_label, type FlowTab } from "../flow/flow";
 
   interface TaskSelectionBarProps {
@@ -24,6 +27,7 @@
     columns: Column[];
     onMove: (column_id: string) => void;
     onPin: (pinned: boolean) => void;
+    onSetPriority: (priority: TaskPriority | undefined) => void;
     onLoadFlowTabs: () => Promise<FlowTab[] | null>;
     onAddToFlow: (tab: FlowTab) => void;
     onArchive: () => void;
@@ -37,6 +41,7 @@
     columns,
     onMove,
     onPin,
+    onSetPriority,
     onLoadFlowTabs,
     onAddToFlow,
     onArchive,
@@ -152,6 +157,34 @@
           </DropdownMenu.Item>
         {/each}
       {/if}
+    </DropdownMenu.Content>
+  </DropdownMenu.Root>
+
+  <DropdownMenu.Root>
+    <DropdownMenu.Trigger>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          variant="ghost"
+          size="icon-sm"
+          class="rounded-full"
+          aria-label={m.task_priority()}
+          title={m.task_priority()}
+        >
+          <GaugeIcon />
+        </Button>
+      {/snippet}
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Content side="top" class="min-w-36">
+      <DropdownMenu.Label>{m.task_priority()}</DropdownMenu.Label>
+      {#each [...TASK_PRIORITIES].reverse() as priority (priority)}
+        <DropdownMenu.Item onSelect={() => onSetPriority(priority)}>
+          <PriorityIndicator {priority} />
+        </DropdownMenu.Item>
+      {/each}
+      <DropdownMenu.Item onSelect={() => onSetPriority(undefined)}>
+        {m.task_priority_none()}
+      </DropdownMenu.Item>
     </DropdownMenu.Content>
   </DropdownMenu.Root>
 

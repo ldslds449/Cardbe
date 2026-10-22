@@ -247,12 +247,13 @@ pub const MAX_SORT_RULES: usize = 3;
 pub const SORT_FIELD_DUE_TIME: &str = "due_time";
 /// Fields this version can sort by. Rules are stored by name so that fields
 /// added by newer versions survive a round trip through this one.
-pub const SORT_FIELDS: [&str; 5] = [
+pub const SORT_FIELDS: [&str; 6] = [
     SORT_FIELD_DUE_TIME,
     "start_time",
     "created_time",
     "title",
     "checklist_progress",
+    "priority",
 ];
 
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -918,7 +919,8 @@ mod tests {
             rule("due_time", SortDirection::Asc),
             rule("due_time", SortDirection::Desc),
         ]));
-        assert!(!valid_sort_rules(&[rule("priority", SortDirection::Asc)]));
+        assert!(valid_sort_rules(&[rule("priority", SortDirection::Desc)]));
+        assert!(!valid_sort_rules(&[rule("effort", SortDirection::Asc)]));
         assert!(!valid_sort_rules(&[
             rule("due_time", SortDirection::Asc),
             rule("start_time", SortDirection::Asc),
@@ -926,7 +928,7 @@ mod tests {
             rule("title", SortDirection::Asc),
         ]));
 
-        let json = r#"[{"field":"priority","direction":"desc"}]"#;
+        let json = r#"[{"field":"effort","direction":"desc"}]"#;
         let newer: Vec<SortRule> = serde_json::from_str(json).unwrap();
         assert_eq!(serde_json::to_string(&newer).unwrap(), json);
     }

@@ -73,6 +73,8 @@
   "column_sort_title_desc": "Z to A",
   "column_sort_checklist_progress_asc": "Least complete first",
   "column_sort_checklist_progress_desc": "Most complete first",
+  "column_sort_priority_asc": "Lowest first",
+  "column_sort_priority_desc": "Highest first",
   "column_sort_rule": "{field}: {direction}",
   "column_sort_hint_one": "Sorted by {first}. Click to change.",
   "column_sort_hint_two": "Sorted by {first}, then {second}. Click to change.",
@@ -310,6 +312,35 @@
   "task_selection_clear": "Clear selection",
   "task_selection_pin": "Pin",
   "task_selection_unpin": "Unpin",
+  "task_priority_set_count": [
+    {
+      "declarations": [
+        "input count",
+        "input level",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Set {countFormatted} task to {level} priority",
+        "countPlural=*": "Set {countFormatted} tasks to {level} priority"
+      }
+    }
+  ],
+  "task_priority_cleared_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Cleared the priority of {countFormatted} task",
+        "countPlural=*": "Cleared the priority of {countFormatted} tasks"
+      }
+    }
+  ],
   "task_pinned_count": [
     {
       "declarations": [
