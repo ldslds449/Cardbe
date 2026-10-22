@@ -106,6 +106,47 @@ describe("BoardStore disposal", () => {
       "take_recovery_messages",
     ]);
   });
+
+  it("turns notifications off when permission was revoked while the app ran", async () => {
+    const dev_window = new EventTarget();
+    Object.assign(dev_window, { setInterval, clearInterval });
+    const dev_document = new EventTarget();
+    Object.assign(dev_document, { visibilityState: "visible" });
+    vi.stubGlobal("window", dev_window);
+    vi.stubGlobal("document", dev_document);
+    invoke_mock.mockReset();
+    invoke_mock.mockImplementation((command) => {
+      if (command === "get_settings") {
+        return Promise.resolve({ notify_enabled: true });
+      }
+      if (command === "take_recovery_messages") {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve();
+    });
+    vi.mocked(isPermissionGranted).mockResolvedValue(true);
+    vi.mocked(toast.warning).mockClear();
+    const store = new BoardStore();
+    vi.spyOn(store, "get_boards").mockResolvedValue(undefined);
+    vi.spyOn(store, "update_labels").mockImplementation(() => {});
+    vi.spyOn(store, "get_columns").mockImplementation(() => {});
+    vi.spyOn(store, "get_task_templates").mockImplementation(() => {});
+    await store.init();
+    expect(store.notify_enabled).toBe(true);
+
+    vi.mocked(isPermissionGranted).mockResolvedValue(false);
+    dev_window.dispatchEvent(new Event("focus"));
+    await vi.waitFor(() => expect(store.notify_enabled).toBe(false));
+    expect(invoke_mock).toHaveBeenCalledWith("set_notify_enabled", {
+      enabled: false,
+    });
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+
+    store.dispose();
+    invoke_mock.mockClear();
+    dev_window.dispatchEvent(new Event("focus"));
+    expect(invoke_mock).not.toHaveBeenCalled();
+  });
 });
 
 it("keeps the structured error reason and retry action for failed reads", async () => {

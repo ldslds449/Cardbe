@@ -5886,6 +5886,21 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![(board.id, "Work 工作", 5, 1)]
         );
+
+        // Tasks received from other members of a shared board notify too.
+        data.columns[0].tasks = vec![task(9, Some(150))];
+        data.archives.clear();
+        loaded
+            .database
+            .apply_iroh_snapshot(board.id, "Shared", IrohPermission::Viewer, 2, &data, None)
+            .unwrap();
+        let due = loaded.database.tasks_due_between(100, 200).unwrap();
+        assert_eq!(
+            due.iter()
+                .map(|due| (due.board_name.as_str(), due.task.id))
+                .collect::<Vec<_>>(),
+            vec![("Shared", 9)]
+        );
         drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }

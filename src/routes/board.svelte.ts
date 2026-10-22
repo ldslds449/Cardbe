@@ -62,6 +62,11 @@ export class BoardStore extends TaskBoardStore {
   }
   notify_reminder_minutes = $state(0);
   notification_setting_updating = $state(false);
+  private permission_listener_added = false;
+  // Permission can be revoked in system settings while the app runs.
+  private readonly handle_window_focus = () => {
+    void this.check_notification_permission();
+  };
 
   async init() {
     await this.get_boards();
@@ -73,6 +78,14 @@ export class BoardStore extends TaskBoardStore {
     await this.load_settings();
     await this.show_recovery_messages();
     this.start_iroh_background_sync();
+    if (
+      !this.disposed &&
+      !this.permission_listener_added &&
+      typeof window !== "undefined"
+    ) {
+      window.addEventListener("focus", this.handle_window_focus);
+      this.permission_listener_added = true;
+    }
 
     // The backend checks due tasks; it still needs notification permission.
     if (this.notify_enabled) {
@@ -87,6 +100,10 @@ export class BoardStore extends TaskBoardStore {
   dispose() {
     this.disposed = true;
     this.stop_iroh_background_sync();
+    if (this.permission_listener_added) {
+      window.removeEventListener("focus", this.handle_window_focus);
+      this.permission_listener_added = false;
+    }
     // Let pending user writes finish; only recurring background work is stopped.
   }
 
@@ -144,6 +161,26 @@ export class BoardStore extends TaskBoardStore {
       this.notify_enabled = enabled;
     } finally {
       this.notification_setting_updating = false;
+    }
+  }
+
+  private async check_notification_permission() {
+    if (this.disposed || !this.notify_enabled) {
+      return;
+    }
+    let granted: boolean;
+    try {
+      granted = await isPermissionGranted();
+    } catch (e: unknown) {
+      logger.warn("notifications.permission_check.failed", e);
+      return;
+    }
+    if (granted || this.disposed || !this.notify_enabled) {
+      return;
+    }
+    await this.set_notify_enabled(false);
+    if (!this.notify_enabled) {
+      toast.warning(m.settings_notify_permission_disabled());
     }
   }
 

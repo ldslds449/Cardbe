@@ -390,6 +390,41 @@ mod tests {
     }
 
     #[test]
+    fn the_next_recurring_occurrence_reminds_and_notifies_again() {
+        use crate::models::{Recurrence, RecurrenceFrequency};
+        const DAY: u128 = 24 * HOUR;
+        let due_time = 1_700_000_000_000;
+        let task = Task {
+            recurrence: Some(Recurrence {
+                frequency: RecurrenceFrequency::Daily,
+                interval: 1,
+            }),
+            ..task_with_due_time(due_time)
+        };
+        // Completed two hours after it became overdue.
+        let archived_at = due_time + 2 * HOUR;
+        assert_eq!(
+            due_notice(&task, due_time, archived_at, HOUR),
+            Some((due_time, DueNotice::Overdue))
+        );
+        let next = crate::commands::archive::next_recurring_task(&task, archived_at, 8)
+            .unwrap()
+            .unwrap();
+        let next_due = next.due_time.unwrap();
+        assert!(next_due > archived_at && next_due <= due_time + DAY + HOUR);
+
+        assert_eq!(due_notice(&next, archived_at, next_due - HOUR, HOUR), None);
+        assert_eq!(
+            due_notice(&next, archived_at, next_due - HOUR + 1, HOUR),
+            Some((next_due - HOUR, DueNotice::Reminder))
+        );
+        assert_eq!(
+            due_notice(&next, next_due - HOUR + 1, next_due + 1, HOUR),
+            Some((next_due, DueNotice::Overdue))
+        );
+    }
+
+    #[test]
     fn muted_columns_do_not_notify_on_their_board_only() {
         let task = task_with_due_time(100);
         let other = Task {

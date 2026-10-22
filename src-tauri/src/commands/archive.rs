@@ -70,7 +70,11 @@ fn shift_start_time(start_time: u128, original_due_time: u128, next_due_time: u1
         .unwrap_or_else(|| start_time.saturating_add(next_due_time - original_due_time))
 }
 
-fn next_recurring_task(task: &Task, now: u128, id: i64) -> Result<Option<Task>, DomainError> {
+pub(crate) fn next_recurring_task(
+    task: &Task,
+    now: u128,
+    id: i64,
+) -> Result<Option<Task>, DomainError> {
     let Some(recurrence) = &task.recurrence else {
         return Ok(None);
     };
