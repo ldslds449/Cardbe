@@ -1,10 +1,10 @@
 <script lang="ts">
   import ChecklistSummary from "../task/checklist_summary.svelte";
   import TaskActionItems from "../task/task_action_items.svelte";
-  import { formatNumber } from "$lib/i18n";
+  import { formatDate, formatNumber } from "$lib/i18n";
   import { getLocale } from "$lib/i18n";
   import * as m from "$lib/paraglide/messages.js";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
@@ -25,6 +25,7 @@
   import type { Task } from "../../type/task.svelte";
   import { display_task_color } from "../../utils/task-color";
   import { is_date_only } from "../../utils/task-date-range";
+  import { LazyMount } from "../../utils/lazy-mount.svelte";
   import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
   import LabelBadge from "../label_badge.svelte";
   import {
@@ -73,6 +74,22 @@
   let total_count = $derived(focus_task_count(groups));
   let attention_count = $derived(groups.overdue.length + groups.today.length);
 
+  // Each row mounts two menus; rows beyond the first few per section are
+  // windowed to the ones near the viewport.
+  const EAGER_ROWS_PER_SECTION = 15;
+  const lazy_rows = new LazyMount();
+
+  // Remember the eagerly mounted rows so moving them down a section keeps them.
+  $effect(() => {
+    for (const entries of Object.values(groups)) {
+      for (const entry of entries.slice(0, EAGER_ROWS_PER_SECTION)) {
+        lazy_rows.mount(entry.task.id);
+      }
+    }
+  });
+
+  onDestroy(() => lazy_rows.destroy());
+
   onMount(() => {
     const refresh = () => {
       now = new Date();
@@ -90,13 +107,13 @@
       return m.task_due_none();
     }
     const include_year = task.due_time.getFullYear() !== now.getFullYear();
-    const date = task.due_time.toLocaleDateString(getLocale(), {
+    const date = formatDate(task.due_time, {
       month: "short",
       day: "numeric",
       year: include_year ? "numeric" : undefined,
     });
     return !is_date_only(task.due_time, task.due_at_midnight)
-      ? `${date}, ${task.due_time.toLocaleTimeString(getLocale(), {
+      ? `${date}, ${formatDate(task.due_time, {
           hour: "2-digit",
           minute: "2-digit",
           hour12: false,
@@ -130,6 +147,7 @@
       {#snippet child({ props })}
         <article
           {...props}
+          {@attach lazy_rows.item(entry.task.id)}
           class="group relative overflow-hidden rounded-lg border bg-card shadow-xs transition-[border-color,box-shadow] hover:border-muted-foreground/40 hover:shadow-sm"
         >
           <button
@@ -288,8 +306,23 @@
     </header>
     {#if entries.length > 0}
       <div class="space-y-2">
-        {#each entries as entry (entry.task.id)}
-          {@render task_row(entry, tone)}
+        {#each entries as entry, index (entry.task.id)}
+          {#if index < EAGER_ROWS_PER_SECTION || lazy_rows.is_mounted(entry.task.id)}
+            {@render task_row(entry, tone)}
+          {:else}
+            <div
+              class="rounded-lg border bg-card shadow-xs"
+              style={`height: ${lazy_rows.height(entry.task.id) ?? 66}px;`}
+              role="button"
+              tabindex="0"
+              aria-label={entry.task.title}
+              {@attach lazy_rows.placeholder(entry.task.id)}
+              onfocus={(event) =>
+                void lazy_rows.mount_focused(event, entry.task.id, (row) =>
+                  row.querySelector("button"),
+                )}
+            ></div>
+          {/if}
         {/each}
       </div>
     {:else}

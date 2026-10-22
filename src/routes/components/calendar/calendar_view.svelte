@@ -37,6 +37,7 @@
   import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
   import UnarchiveTaskDialog from "../archive/unarchive_task_dialog.svelte";
   import CalendarDayDropZone from "./calendar_day_drop_zone.svelte";
+  import { drag_plugins } from "../dnd/plugins";
   import CalendarTaskDraggable from "./calendar_task_draggable.svelte";
   import CalendarExportDialog from "../dialog/calendar_export_dialog.svelte";
   import {
@@ -667,8 +668,10 @@
   }
 
   let visible_lanes = $derived.by(() => {
+    // Until the grid is measured, lay out one lane instead of every entry:
+    // mounting all of a large board's entries first takes minutes.
     if (weeks_height <= 0) {
-      return Number.POSITIVE_INFINITY;
+      return 1;
     }
     const week_count = view_mode === "month" ? 6 : 1;
     const week_height = (weeks_height - (week_count - 1)) / week_count;
@@ -885,6 +888,7 @@
   </header>
 
   <DragDropProvider
+    plugins={drag_plugins}
     onDragStart={handle_drag_start}
     onDragOver={handle_drag_over}
     onDragEnd={handle_drag_end}

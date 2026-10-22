@@ -8,6 +8,7 @@ import {
   gantt_header_cells,
   unit_end,
   unit_start,
+  visible_cells,
   visible_row_range,
 } from "./gantt";
 import { date_from_day_number, day_number } from "../../utils/task-date-range";
@@ -218,6 +219,34 @@ describe("gantt_header_cells", () => {
         date_from_day_number(cell.day).getDate(),
       ),
     ).toEqual([7, 8, 9, 10]);
+  });
+});
+
+describe("visible_cells", () => {
+  const cells = Array.from({ length: 100 }, (_, index) => ({
+    key: `day:${index}`,
+    day: index,
+    x: index * 10,
+    width: 10,
+  }));
+
+  it("keeps the cells within a screen of the viewport", () => {
+    const keys = (left: number) =>
+      visible_cells(cells, left, 100).map((cell) => cell.day);
+    expect(keys(0)).toEqual(Array.from({ length: 30 }, (_, i) => i));
+    expect(keys(450)).toEqual(Array.from({ length: 40 }, (_, i) => 30 + i));
+    // The window only moves once the scroll crosses a viewport width.
+    expect(keys(499)).toEqual(keys(450));
+    expect(keys(950).at(-1)).toBe(99);
+  });
+
+  it("keeps a wide cell that spans the window", () => {
+    const wide = [{ key: "month:0", day: 0, x: 0, width: 5000 }];
+    expect(visible_cells(wide, 2000, 100)).toEqual(wide);
+  });
+
+  it("keeps every cell before the viewport is measured", () => {
+    expect(visible_cells(cells, 0, 0)).toBe(cells);
   });
 });
 

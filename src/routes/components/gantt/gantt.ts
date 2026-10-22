@@ -225,6 +225,24 @@ export function gantt_header_cells(
   return cells;
 }
 
+/**
+ * The cells intersecting a horizontal window of the timeline. The window is
+ * snapped to whole viewport widths with one width of overscan on each side,
+ * so the result only changes after scrolling about a screen.
+ */
+export function visible_cells(
+  cells: GanttHeaderCell[],
+  scroll_left: number,
+  viewport_width: number,
+): GanttHeaderCell[] {
+  if (viewport_width <= 0) {
+    return cells;
+  }
+  const start = (Math.floor(scroll_left / viewport_width) - 1) * viewport_width;
+  const end = start + viewport_width * 4;
+  return cells.filter((cell) => cell.x < end && cell.x + cell.width > start);
+}
+
 /** Indices of the rows intersecting the viewport, with overscan. */
 export function visible_row_range(
   scroll_top: number,

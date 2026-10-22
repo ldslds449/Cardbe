@@ -22,7 +22,10 @@
   } = $props();
 
   let expanded = $state(false);
-  let content_height = $state(0);
+  // Measured by a ResizeObserver: `bind:offsetHeight` also reads the height
+  // when it mounts, forcing a layout for each card in a long board.
+  let content_size = $state<readonly ResizeObserverSize[]>();
+  const content_height = $derived(content_size?.[0]?.blockSize ?? 0);
   const overflowing = $derived(content_height > max_height + 1);
   const clipped = $derived(!expanded && overflowing);
 </script>
@@ -36,7 +39,7 @@
     )}
     style:max-height={clipped ? `${max_height}px` : undefined}
   >
-    <div bind:offsetHeight={content_height}>
+    <div bind:borderBoxSize={content_size}>
       {@render children()}
     </div>
   </div>

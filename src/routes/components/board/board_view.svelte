@@ -7,6 +7,7 @@
     PointerSensor,
   } from "@dnd-kit-svelte/svelte";
   import SquirrelIcon from "@lucide/svelte/icons/squirrel";
+  import { onDestroy } from "svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
 
@@ -15,10 +16,12 @@
     distance_activation_constraint,
     prevent_drag_activation,
   } from "../dnd/activation";
+  import { drag_plugins } from "../dnd/plugins";
   import type { Task } from "../../type/task.svelte";
   import CardColumn from "../task/card_column.svelte";
   import { layout_widths } from "../../layout-widths.svelte";
   import CardItem from "../task/card_item.svelte";
+  import { LazyMount } from "../../utils/lazy-mount.svelte";
   import TaskSelectionBar from "../task/task_selection_bar.svelte";
   import { task_matches_search } from "../calendar/calendar";
   import {
@@ -55,6 +58,63 @@
     onExportTask = () => {},
     read_only = false,
   }: BoardViewProps = $props();
+
+  // Every card registers with dnd-kit, whose accessibility pass rescans all
+  // draggables on each registration, and mounts its own menus. Cards beyond the
+  // first few per column are therefore windowed: placeholders until they come
+  // near the viewport, and placeholders again once they are far from it.
+  const EAGER_CARDS_PER_COLUMN = 6;
+  const lazy_cards = new LazyMount();
+
+  function card_is_mounted(task_id: string, display_idx: number): boolean {
+    return (
+      display_idx < EAGER_CARDS_PER_COLUMN || lazy_cards.is_mounted(task_id)
+    );
+  }
+
+  // Remember the eagerly mounted cards so moving them down a column keeps them.
+  $effect(() => {
+    for (const column of board.columns) {
+      for (const task of sorted_column_tasks(column).slice(
+        0,
+        EAGER_CARDS_PER_COLUMN,
+      )) {
+        lazy_cards.mount(task.id);
+      }
+    }
+  });
+
+  /** The card's last measured height, or an estimate including its margin. */
+  function placeholder_height(task: Task): number {
+    const measured = lazy_cards.height(task.id);
+    if (measured !== undefined) {
+      return measured;
+    }
+    let height = 92;
+    if (task.labels.length > 0) {
+      height += 32;
+    }
+    if (task.items.length > 0) {
+      height += task_expand_mode ? 24 + 24 * task.items.length : 28;
+    }
+    if (task_expand_mode && task.description.trim()) {
+      height += 72;
+    }
+    return height;
+  }
+
+  function card_focus_target(card: Element): HTMLElement | null {
+    if (!(card instanceof HTMLElement) || !card.matches("[data-task-card]")) {
+      return null;
+    }
+    // dnd-kit makes the card focusable, but only after a scheduled pass.
+    if (!card.hasAttribute("tabindex")) {
+      card.tabIndex = 0;
+    }
+    return card;
+  }
+
+  onDestroy(() => lazy_cards.destroy());
 
   let dragged_task = $state<{ id: string; origin: TaskPosition } | null>(null);
   let dragged_column = $state<{ id: string; origin_idx: number } | null>(null);
@@ -345,6 +405,7 @@
 {:else}
   <DragDropProvider
     sensors={dnd_sensors}
+    plugins={drag_plugins}
     onDragStart={handle_drag_start}
     onDragEnd={handle_drag_end}
     onDragOver={handle_drag_over}
@@ -379,10 +440,30 @@
             )}
           {read_only}
         >
+          <!-- Callbacks use the stored (manual) position. -->
+          {@const task_positions = new Map(
+            column.tasks.map((task, task_idx) => [task.id, task_idx]),
+          )}
           {#each sorted_column_tasks(column) as task, display_idx (task.id)}
-            <!-- Callbacks use the stored (manual) position. -->
-            {@const task_idx = column.tasks.indexOf(task)}
-            {#if task_matches_search(task, search_text, search_task_ids)}
+            {@const task_idx = task_positions.get(task.id) ?? display_idx}
+            {#if !task_matches_search(task, search_text, search_task_ids)}
+              <!-- Hidden by the current search. -->
+            {:else if !card_is_mounted(task.id, display_idx)}
+              <div
+                class="shrink-0"
+                style={`height: ${placeholder_height(task)}px;`}
+                role="button"
+                tabindex="0"
+                aria-label={task.title}
+                {@attach lazy_cards.placeholder(task.id)}
+                onfocus={(event) =>
+                  void lazy_cards.mount_focused(
+                    event,
+                    task.id,
+                    card_focus_target,
+                  )}
+              ></div>
+            {:else}
               <CardItem
                 index={display_idx}
                 {task}
@@ -416,6 +497,7 @@
                     pinned: !task.pinned,
                   })}
                 {read_only}
+                attach={lazy_cards.item(task.id)}
               />
             {/if}
           {/each}

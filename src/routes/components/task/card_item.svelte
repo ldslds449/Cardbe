@@ -3,11 +3,11 @@
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
   import * as Card from "$lib/components/ui/card/index.js";
-  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { useSortable } from "@dnd-kit-svelte/svelte/sortable";
+  import type { Attachment } from "svelte/attachments";
 
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ChevronUpIcon from "@lucide/svelte/icons/chevron-up";
@@ -65,6 +65,8 @@
     selected?: boolean;
     selecting?: boolean;
     onSelect?: (event: MouseEvent | null) => void;
+    /** Attached to the card element, e.g. to window a long column. */
+    attach?: Attachment<HTMLElement>;
   }
 
   let {
@@ -90,6 +92,7 @@
     selected = false,
     selecting = false,
     onSelect,
+    attach,
   }: CardItemProps = $props();
 
   const { ref, isDragging, isDropTarget } = useSortable({
@@ -193,6 +196,7 @@
     data-task-card
     class="group relative max-w-full select-none overflow-hidden"
     {@attach ref}
+    {@attach attach}
     ondblclick={read_only || selecting ? undefined : onViewTask}
   >
     <Card.Root
@@ -354,24 +358,21 @@
               show_items={expand_content || content_open}
             />
           {/if}
-          {#if task.description.trim().length > 0}
-            <Collapsible.Root open={expand_content || content_open}>
-              <Collapsible.Content>
-                <div
-                  class={task.items.length > 0
-                    ? "mt-3 rounded-md bg-muted/40 px-3 py-2"
-                    : "rounded-md bg-muted/40 px-3 py-2"}
-                >
-                  <CollapsibleBlock
-                    max_height={160}
-                    expand_label={m.markdown_show_all()}
-                    collapse_label={m.markdown_show_less()}
-                  >
-                    <Markdown md={task.description} compact />
-                  </CollapsibleBlock>
-                </div>
-              </Collapsible.Content>
-            </Collapsible.Root>
+          <!-- Not a Collapsible: it measures each card on mount, with no animation to size. -->
+          {#if task.description.trim().length > 0 && (expand_content || content_open)}
+            <div
+              class={task.items.length > 0
+                ? "mt-3 rounded-md bg-muted/40 px-3 py-2"
+                : "rounded-md bg-muted/40 px-3 py-2"}
+            >
+              <CollapsibleBlock
+                max_height={160}
+                expand_label={m.markdown_show_all()}
+                collapse_label={m.markdown_show_less()}
+              >
+                <Markdown md={task.description} compact />
+              </CollapsibleBlock>
+            </div>
           {/if}
         </Card.Content>
       {/if}

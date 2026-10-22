@@ -44,6 +44,7 @@
     build_gantt_rows,
     build_gantt_timeline,
     gantt_header_cells,
+    visible_cells,
     visible_row_range,
     type GanttHeaderCell,
     type GanttRow,
@@ -117,6 +118,7 @@
 
   let scroller = $state<HTMLDivElement | null>(null);
   let scroll_top = $state(0);
+  let scroll_left = $state(0);
   let viewport_height = $state(0);
   let viewport_client_width = $state(0);
   // Days added beyond the padding as the timeline scrolls toward either end.
@@ -151,6 +153,17 @@
       scale === "day" ? "day" : scale === "week" ? "week" : "month",
     ),
   );
+  // A day-scale timeline spanning years has thousands of cells; render the
+  // header and grid lines only around the visible dates.
+  let timeline_viewport_width = $derived(
+    Math.max(0, viewport_client_width - LIST_WIDTH),
+  );
+  let visible_upper_cells = $derived(
+    visible_cells(upper_cells, scroll_left, timeline_viewport_width),
+  );
+  let visible_lower_cells = $derived(
+    visible_cells(lower_cells, scroll_left, timeline_viewport_width),
+  );
   let window_range = $derived(
     visible_row_range(
       Math.max(0, scroll_top - HEADER_ROW_HEIGHT * 2),
@@ -159,10 +172,9 @@
       gantt.rows.length,
     ),
   );
+  // The row objects themselves, so scrolling does not re-render kept rows.
   let visible_rows = $derived(
-    gantt.rows
-      .slice(window_range.start, window_range.end)
-      .map((row, offset) => ({ row, index: window_range.start + offset })),
+    gantt.rows.slice(window_range.start, window_range.end),
   );
   let total_width = $derived(LIST_WIDTH + timeline.width);
   let body_height = $derived(gantt.rows.length * ROW_HEIGHT);
@@ -256,6 +268,7 @@
     };
     const update_scroll = () => {
       scroll_top = viewport.scrollTop;
+      scroll_left = viewport.scrollLeft;
       extend_timeline();
     };
     // Measuring reads the timeline, which must not resubscribe this effect.
@@ -307,6 +320,8 @@
     ) {
       const shift = (anchor_first_day - first_day) * day_width;
       viewport.scrollLeft += shift;
+      // The cell window must follow before the scroll event arrives.
+      scroll_left = viewport.scrollLeft;
       if (active_drag) {
         active_drag.origin_scroll += shift;
       }
@@ -828,7 +843,7 @@
             {m.gantt_task_header()}
           </div>
           <div class="relative shrink-0" style={`width: ${timeline.width}px;`}>
-            {#each upper_cells as cell (cell.key)}
+            {#each visible_upper_cells as cell (cell.key)}
               <div
                 class="absolute top-0 border-l border-border/70 text-xs font-medium"
                 style={`left: ${cell.x}px; width: ${cell.width}px; height: ${HEADER_ROW_HEIGHT}px;`}
@@ -840,7 +855,7 @@
                 >
               </div>
             {/each}
-            {#each lower_cells as cell (cell.key)}
+            {#each visible_lower_cells as cell (cell.key)}
               {@const is_today = cell_contains_today(cell)}
               <div
                 class={`absolute flex items-center justify-center overflow-hidden border-l border-t border-border/70 text-[11px] tabular-nums ${
@@ -865,7 +880,7 @@
             style={`left: ${LIST_WIDTH}px; width: ${timeline.width}px;`}
             aria-hidden="true"
           >
-            {#each lower_cells as cell (cell.key)}
+            {#each visible_lower_cells as cell (cell.key)}
               <div
                 class={`absolute inset-y-0 border-l border-border/50 ${
                   scale === "day" && is_weekend(cell.day) ? "bg-muted/40" : ""
@@ -879,7 +894,8 @@
             ></div>
           </div>
 
-          {#each visible_rows as { row, index } (row.key)}
+          {#each visible_rows as row, offset (row.key)}
+            {@const index = window_range.start + offset}
             {@const row_style = `top: ${index * ROW_HEIGHT}px; height: ${ROW_HEIGHT}px; width: ${total_width}px;`}
             {#if row.kind === "task"}
               {@render task_row(row.entry, row_style)}
