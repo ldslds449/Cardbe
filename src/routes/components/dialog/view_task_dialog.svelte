@@ -13,8 +13,13 @@
   import TagIcon from "@lucide/svelte/icons/tag";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
+  import GaugeIcon from "@lucide/svelte/icons/gauge";
 
-  import { recurrence_label, type Task } from "../../type/task.svelte";
+  import {
+    priority_label,
+    recurrence_label,
+    type Task,
+  } from "../../type/task.svelte";
   import type { Column } from "../../type/column.svelte";
   import TaskHistory from "../task/task_history.svelte";
   import { display_task_color } from "../../utils/task-color";
@@ -212,6 +217,18 @@
       {formatTaskDate(task.due_time, task.due_at_midnight)}
     </p>
   </div>
+
+  {#if task.priority}
+    <div>
+      <div class="flex items-center gap-2 text-sm font-medium mb-1">
+        <GaugeIcon class="size-4" />
+        <span>{m.task_priority()}</span>
+      </div>
+      <p class="text-sm text-muted-foreground">
+        {priority_label(task.priority)}
+      </p>
+    </div>
+  {/if}
 
   {#if task.created_time}
     <div>

@@ -2,6 +2,7 @@ import * as m from "$lib/paraglide/messages.js";
 import {
   create_task,
   create_task_item,
+  TASK_PRIORITIES,
   type Recurrence,
   type Task,
 } from "../type/task.svelte";
@@ -10,10 +11,13 @@ const BINARY_PREFIX = "cardbe-task:v1:";
 const BINARY_VERSION = 2;
 // Version 1 stored the creation time where version 2 stores the start time.
 const LEGACY_BINARY_VERSION = 1;
-// Version 2 may end with a byte of chosen-midnight flags, written only when one
-// is set.
+// Version 2 may end with a flags byte, written only when a flag is set: bits 0-1
+// mark chosen midnights and bits 2-4 hold the priority (1 = low ... 4 = urgent).
+// Readers that predate a flag ignore its bits.
 const START_AT_MIDNIGHT = 1;
 const DUE_AT_MIDNIGHT = 2;
+const PRIORITY_SHIFT = 2;
+const PRIORITY_MASK = 0b111;
 const MAX_SHARED_TEXT_LENGTH = 2_000_000;
 const MAX_DECOMPRESSED_BYTES = 8_000_000;
 const MAX_COLLECTION_ITEMS = 100_000;
@@ -97,9 +101,13 @@ class BinaryReader {
 
 function encode_task(task: Task): Uint8Array {
   const writer = new BinaryWriter();
-  const midnight_flags =
+  const priority_code = task.priority
+    ? TASK_PRIORITIES.indexOf(task.priority) + 1
+    : 0;
+  const flags =
     (task.start_time && task.start_at_midnight ? START_AT_MIDNIGHT : 0) |
-    (task.due_time && task.due_at_midnight ? DUE_AT_MIDNIGHT : 0);
+    (task.due_time && task.due_at_midnight ? DUE_AT_MIDNIGHT : 0) |
+    (priority_code << PRIORITY_SHIFT);
   writer.byte(BINARY_VERSION);
   writer.string(task.title);
   writer.string(task.description);
@@ -125,8 +133,8 @@ function encode_task(task: Task): Uint8Array {
   if (task.recurrence) {
     writer.uint32(task.recurrence.interval);
   }
-  if (midnight_flags) {
-    writer.byte(midnight_flags);
+  if (flags) {
+    writer.byte(flags);
   }
   return writer.finish();
 }
@@ -176,7 +184,7 @@ function decode_task(bytes: Uint8Array): Task {
     }
     recurrence = { frequency, interval };
   }
-  const midnight_flags =
+  const flags =
     version === BINARY_VERSION && !reader.done() ? reader.byte() : 0;
   if (!reader.done()) {
     throw new Error(m.task_transfer_unexpected());
@@ -195,11 +203,17 @@ function decode_task(bytes: Uint8Array): Task {
     items,
     recurrence,
   );
-  if (task.start_time && midnight_flags & START_AT_MIDNIGHT) {
+  if (task.start_time && flags & START_AT_MIDNIGHT) {
     task.start_at_midnight = true;
   }
-  if (task.due_time && midnight_flags & DUE_AT_MIDNIGHT) {
+  if (task.due_time && flags & DUE_AT_MIDNIGHT) {
     task.due_at_midnight = true;
+  }
+  // Unknown priority codes come from newer versions; keep the task without one.
+  const priority =
+    TASK_PRIORITIES[((flags >> PRIORITY_SHIFT) & PRIORITY_MASK) - 1];
+  if (priority) {
+    task.priority = priority;
   }
   return task;
 }

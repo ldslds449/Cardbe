@@ -12,10 +12,6 @@ describe("parse_label", () => {
       kind: "category",
       value: "Bug",
     });
-    expect(parse_label("PRIORITY: High")).toEqual({
-      kind: "priority",
-      value: "High",
-    });
     expect(parse_label("status:blocked")).toEqual({
       kind: "status",
       value: "blocked",
@@ -32,6 +28,11 @@ describe("parse_label", () => {
       kind: "general",
       value: "severity:high",
     });
+    // Priority is a task field; an old priority label stays as written.
+    expect(parse_label("priority:High")).toEqual({
+      kind: "general",
+      value: "priority:High",
+    });
   });
 
   it("does not hide an incomplete reserved label", () => {
@@ -39,10 +40,6 @@ describe("parse_label", () => {
     expect(parse_label("type:   ")).toEqual({
       kind: "general",
       value: "type:   ",
-    });
-    expect(parse_label("priority:   ")).toEqual({
-      kind: "general",
-      value: "priority:   ",
     });
   });
 });

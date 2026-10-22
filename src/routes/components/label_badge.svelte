@@ -2,7 +2,6 @@
   import ShapesIcon from "@lucide/svelte/icons/shapes";
   import UserRoundIcon from "@lucide/svelte/icons/user-round";
   import CircleDotDashedIcon from "@lucide/svelte/icons/circle-dot-dashed";
-  import GaugeIcon from "@lucide/svelte/icons/gauge";
   import WeightIcon from "@lucide/svelte/icons/weight";
 
   import { Badge } from "$lib/components/ui/badge/index.js";
@@ -40,8 +39,6 @@
     <UserRoundIcon />
   {:else if parsed.kind === "category"}
     <ShapesIcon />
-  {:else if parsed.kind === "priority"}
-    <GaugeIcon />
   {:else if parsed.kind === "status"}
     <CircleDotDashedIcon />
   {:else if parsed.kind === "effort"}

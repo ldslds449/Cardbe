@@ -2,6 +2,7 @@
   import TaskActionItems from "../task/task_action_items.svelte";
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
+  import { formatNumber } from "$lib/i18n";
   import * as Card from "$lib/components/ui/card/index.js";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -34,6 +35,7 @@
   import CollapsibleBlock from "../collapsible_block.svelte";
   import { markdown_stats } from "../../utils/markdown-outline";
   import LabelBadge from "../label_badge.svelte";
+  import PriorityIndicator from "./priority_indicator.svelte";
   import ChecklistDisplay from "./checklist_display.svelte";
   import DeleteTaskDialog from "./delete_task_dialog.svelte";
   import { due_label, due_label_class } from "./due-label";
@@ -237,13 +239,18 @@
           {/if}
           {task.title}
         </Card.Title>
-        <Card.Description class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <!-- Priority leads, the due date (with its repeat) follows, and the
+             description size comes last as secondary information. -->
+        <Card.Description class="flex flex-wrap items-center gap-x-2 gap-y-1">
           {#if read_only && task.pinned}
             <span
               class="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
             >
               <PinIcon class="size-3.5 fill-current" />
             </span>
+          {/if}
+          {#if task.priority}
+            <PriorityIndicator priority={task.priority} />
           {/if}
           {#if due_metadata != undefined}
             <span
@@ -257,9 +264,19 @@
                 <ClockIcon class="size-3.5 shrink-0" />
               {/if}
               <span>{due_metadata.text}</span>
+              {#if task.recurrence}
+                <span
+                  class="inline-flex text-muted-foreground"
+                  title={recurrence_label(task.recurrence)}
+                >
+                  <Repeat2Icon class="size-3.5 shrink-0" />
+                  <span class="sr-only"
+                    >{recurrence_label(task.recurrence)}</span
+                  >
+                </span>
+              {/if}
             </span>
-          {/if}
-          {#if task.recurrence}
+          {:else if task.recurrence}
             <span
               class="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
             >
@@ -269,14 +286,16 @@
           {/if}
           {#if description_length > 0 && !(expand_content || content_open)}
             <span
-              class="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+              class="inline-flex items-center gap-1 text-xs text-muted-foreground"
+              title={m.task_description_length({ count: description_length })}
             >
               <FileTextIcon class="size-3.5 shrink-0" />
-              <span
+              <span class="sr-only"
                 >{m.task_description_length({
                   count: description_length,
                 })}</span
               >
+              <span aria-hidden="true">{formatNumber(description_length)}</span>
             </span>
           {/if}
         </Card.Description>

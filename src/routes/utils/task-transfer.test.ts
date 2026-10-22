@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { create_task, create_task_item } from "../type/task.svelte";
+import {
+  create_task,
+  create_task_item,
+  TASK_PRIORITIES,
+} from "../type/task.svelte";
 import { parse_portable_task, serialize_portable_task } from "./task-transfer";
 
 async function transform(
@@ -97,6 +101,40 @@ describe("task transfer", () => {
     expect(imported.start_at_midnight).toBeUndefined();
     expect(imported.due_at_midnight).toBe(true);
     expect(imported.due_time).toEqual(new Date(2026, 9, 14));
+  });
+
+  it("keeps the priority alongside chosen midnights", async () => {
+    for (const priority of TASK_PRIORITIES) {
+      const task = create_task("", "Ranked", "", "", undefined, new Date(0));
+      task.priority = priority;
+      task.due_at_midnight = priority === "high";
+      const imported = await parse_portable_task(
+        await serialize_portable_task(task),
+      );
+      expect(imported.priority).toBe(priority);
+      expect(imported.due_at_midnight).toBe(
+        priority === "high" ? true : undefined,
+      );
+    }
+  });
+
+  it("ignores priority codes from newer versions", async () => {
+    const task = create_task("", "Future");
+    task.priority = "urgent";
+    const shared = await serialize_portable_task(task);
+    const prefix = "cardbe-task:v1:";
+    const bytes = await transform(
+      decode_base64url(shared.slice(prefix.length)),
+      new DecompressionStream("gzip"),
+    );
+    bytes[bytes.length - 1] = 0b111 << 2;
+    const future =
+      prefix +
+      encode_base64url(await transform(bytes, new CompressionStream("gzip")));
+
+    const imported = await parse_portable_task(future);
+    expect(imported.title).toBe("Future");
+    expect(imported.priority).toBeUndefined();
   });
 
   it("rejects a board export", async () => {

@@ -39,8 +39,14 @@ pub async fn list_all_tasks(
         return Err(CommandError::InvalidArgument);
     }
     if !["all", "active", "overdue", "recurring", "archived"].contains(&filter.status.as_str())
-        || !["due", "title", "column", "archived"].contains(&filter.sort.as_str())
+        || !["due", "title", "column", "archived", "priority"].contains(&filter.sort.as_str())
         || !["all", "due", "none"].contains(&filter.due.as_str())
+        || filter.priorities.as_ref().is_some_and(|priorities| {
+            priorities.len() > 5
+                || priorities.iter().any(|priority| {
+                    !["none", "low", "medium", "high", "urgent"].contains(&priority.as_str())
+                })
+        })
     {
         return Err(CommandError::InvalidArgument);
     }

@@ -133,6 +133,8 @@ impl From<wit::Task> for model::Task {
                 frequency: r.frequency.into(),
                 interval: r.interval,
             }),
+            // The plugin API has no priority; updates keep the stored one.
+            priority: None,
         }
     }
 }
@@ -284,6 +286,8 @@ mod tests {
                 frequency: model::RecurrenceFrequency::Monthly,
                 interval: 3,
             }),
+            // Not part of the plugin API; see `plugins::board` for updates.
+            priority: None,
         };
         let guest = wit::Task::try_from(task.clone()).unwrap();
         assert_eq!(

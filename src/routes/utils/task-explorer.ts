@@ -1,4 +1,7 @@
 import { due_limit } from "./task-date-range";
+import type { TaskPriority } from "../type/task.svelte";
+
+export type PriorityFilter = TaskPriority | "none";
 
 export interface SearchOptions {
   candidate_limit?: number;
@@ -11,13 +14,15 @@ export interface TaskExplorerQuery {
   board_ids: number[] | null;
   column_id: number | null;
   status: "all" | "active" | "overdue" | "recurring" | "archived";
-  sort: "due" | "title" | "column" | "archived";
+  sort: "due" | "title" | "column" | "archived" | "priority";
   due: "all" | "due" | "none";
   due_start: number | null;
   due_end: number | null;
   archive_start: number | null;
   archive_end: number | null;
   now: number;
+  /** Priorities to keep, with `none` for tasks without one; null keeps all. */
+  priorities?: PriorityFilter[] | null;
   search_options?: SearchOptions;
 }
 

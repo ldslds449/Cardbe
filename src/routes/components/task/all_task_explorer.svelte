@@ -32,10 +32,16 @@
 
   import type { AllTaskItem, BoardSummary } from "../../board.svelte";
   import type { Column } from "../../type/column.svelte";
-  import type { Task, TaskSummary } from "../../type/task.svelte";
+  import {
+    priority_label,
+    TASK_PRIORITIES,
+    type Task,
+    type TaskSummary,
+  } from "../../type/task.svelte";
   import {
     is_overdue,
     date_range_bounds,
+    type PriorityFilter,
     type TaskExplorerQuery,
   } from "../../utils/task-explorer";
   import { get_column_id } from "../../type/column.svelte";
@@ -43,10 +49,16 @@
   import { is_date_only } from "../../utils/task-date-range";
   import UnarchiveTaskDialog from "../archive/unarchive_task_dialog.svelte";
   import VirtualList from "../virtual_list.svelte";
+  import PriorityIndicator from "./priority_indicator.svelte";
 
   type SmartView = "all" | "active" | "overdue" | "recurring" | "archived";
   type DueFilter = "all" | "due" | "none" | "today" | "custom";
-  type SortMode = "due" | "title" | "column" | "archived";
+  type SortMode = "due" | "title" | "column" | "archived" | "priority";
+  // Most important first, matching the task dialog.
+  const priority_filters: PriorityFilter[] = [
+    ...[...TASK_PRIORITIES].reverse(),
+    "none",
+  ];
   type ArchiveTimeFilter = "all" | "today" | "7d" | "30d" | "year" | "custom";
   type ExplorerEntry = AllTaskItem;
 
@@ -111,6 +123,19 @@
   let search_text = $state("");
   let column_filter = $state("all");
   let due_filter = $state<DueFilter>("all");
+  // Empty keeps every priority.
+  let priority_filter = $state<PriorityFilter[]>([]);
+  const priority_filter_label = $derived(
+    new Intl.ListFormat(getLocale(), { type: "unit" }).format(
+      priority_filters
+        .filter((priority) => priority_filter.includes(priority))
+        .map((priority) =>
+          priority === "none"
+            ? m.task_priority_none()
+            : priority_label(priority),
+        ),
+    ),
+  );
   let sort_mode = $state<SortMode>("due");
   let archive_time_filter = $state<ArchiveTimeFilter>("all");
   let archive_start = $state("");
@@ -126,6 +151,7 @@
   const active_filter_count = $derived(
     Number(column_filter !== "all") +
       Number(due_filter !== "all") +
+      Number(priority_filter.length > 0) +
       Number(archive_time_filter !== "all"),
   );
   let now = $state(new Date());
@@ -160,9 +186,11 @@
         ? [
             { id: "title" as const, label: m.task_title() },
             { id: "column" as const, label: m.explorer_column() },
+            { id: "priority" as const, label: m.task_priority() },
           ]
         : [
             { id: "due" as const, label: m.explorer_due_label() },
+            { id: "priority" as const, label: m.task_priority() },
             { id: "title" as const, label: m.task_title() },
             { id: "column" as const, label: m.explorer_column() },
           ],
@@ -218,6 +246,7 @@
       archive_start: archive_from,
       archive_end: archive_until,
       now: now.getTime(),
+      priorities: priority_filter.length > 0 ? priority_filter : null,
     };
   });
   const query_key = $derived(JSON.stringify(query));
@@ -351,6 +380,7 @@
     due_filter = "all";
     due_start = "";
     due_end = "";
+    priority_filter = [];
     archive_time_filter = "all";
     archive_start = "";
     archive_end = "";
@@ -662,6 +692,17 @@
               <XIcon class="size-3" />
             </Button>
           {/if}
+          {#if priority_filter.length > 0}
+            <Button
+              variant="secondary"
+              size="xs"
+              title={m.explorer_clear_priority()}
+              onclick={() => (priority_filter = [])}
+            >
+              {m.task_priority_value({ level: priority_filter_label })}
+              <XIcon class="size-3" />
+            </Button>
+          {/if}
           {#if archive_time_filter !== "all"}
             <Button
               variant="secondary"
@@ -771,6 +812,55 @@
                   </Select.Content>
                 </Select.Root>
               </label>
+              <div
+                class="grid min-w-[8rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
+              >
+                <span id="task-explorer-priority-label"
+                  >{m.task_priority()}</span
+                >
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger>
+                    {#snippet child({ props })}
+                      <Button
+                        {...props}
+                        variant="outline"
+                        class="h-9 w-full min-w-0 justify-between font-normal"
+                        aria-labelledby="task-explorer-priority-label task-explorer-priority-selection"
+                      >
+                        <span
+                          id="task-explorer-priority-selection"
+                          class="truncate"
+                          >{priority_filter.length > 0
+                            ? priority_filter_label
+                            : m.explorer_any_priority()}</span
+                        >
+                        <ChevronDownIcon class="size-4" />
+                      </Button>
+                    {/snippet}
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content align="start">
+                    {#each priority_filters as priority (priority)}
+                      <DropdownMenu.CheckboxItem
+                        checked={priority_filter.includes(priority)}
+                        closeOnSelect={false}
+                        onCheckedChange={(checked) => {
+                          priority_filter = checked
+                            ? [...priority_filter, priority]
+                            : priority_filter.filter(
+                                (item) => item !== priority,
+                              );
+                        }}
+                      >
+                        {#if priority === "none"}
+                          {m.task_priority_none()}
+                        {:else}
+                          <PriorityIndicator {priority} />
+                        {/if}
+                      </DropdownMenu.CheckboxItem>
+                    {/each}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              </div>
             </div>
             {#if due_filter === "custom"}
               <div class="grid grid-cols-2 gap-3">
@@ -1019,6 +1109,12 @@
                               <Repeat2Icon />
                               {m.explorer_recurring()}
                             </Badge>
+                          {/if}
+                          {#if entry.task.priority}
+                            <PriorityIndicator
+                              priority={entry.task.priority}
+                              class="shrink-0"
+                            />
                           {/if}
                         </span>
                       </span>

@@ -10,7 +10,9 @@ import {
   serialize_task,
   set_task_id,
   task_from_template,
+  priority_label,
   recurrence_label,
+  type TaskSerialized,
 } from "./task.svelte";
 
 describe("task serialization", () => {
@@ -22,6 +24,24 @@ describe("task serialization", () => {
     delete legacy.pinned;
     expect(deserialize_task(legacy).pinned).toBe(false);
     expect(task_from_template(task).pinned).toBe(false);
+  });
+  it("keeps a known priority and omits unset or unknown ones", () => {
+    const task = create_task("task_7", "Ranked");
+    task.priority = "high";
+    expect(serialize_task(task).priority).toBe("high");
+    expect(deserialize_task(serialize_task(task)).priority).toBe("high");
+    expect(duplicate_task(task).priority).toBe("high");
+    expect(task_from_template(task).priority).toBe("high");
+
+    task.priority = undefined;
+    expect("priority" in serialize_task(task)).toBe(false);
+    const unknown = {
+      ...serialize_task(task),
+      priority: "critical",
+    } as unknown as TaskSerialized;
+    expect("priority" in deserialize_task(unknown)).toBe(false);
+    expect(priority_label(undefined)).toBe("No priority");
+    expect(priority_label("urgent")).toBe("Urgent");
   });
   it("round-trips dates, labels, and generated ids", () => {
     const checklist_item = create_task_item("Publish release notes");

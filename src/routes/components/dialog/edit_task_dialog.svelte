@@ -43,6 +43,9 @@
     type RecurrenceFrequency,
     create_task,
     create_task_item,
+    is_task_priority,
+    priority_label,
+    TASK_PRIORITIES,
   } from "../../type/task.svelte";
   import {
     display_task_color,
@@ -969,6 +972,28 @@
     </Field.Field>
   {/if}
   <Field.Field>
+    <Field.FieldLabel id="task-priority-label"
+      >{m.task_priority()}</Field.FieldLabel
+    >
+    <Select.Root
+      type="single"
+      value={task.priority ?? "none"}
+      onValueChange={(value) => {
+        task.priority = is_task_priority(value) ? value : undefined;
+      }}
+    >
+      <Select.Trigger class="w-full" aria-labelledby="task-priority-label">
+        {priority_label(task.priority)}
+      </Select.Trigger>
+      <Select.Content>
+        <Select.Item value="none">{m.task_priority_none()}</Select.Item>
+        {#each [...TASK_PRIORITIES].reverse() as priority (priority)}
+          <Select.Item value={priority}>{priority_label(priority)}</Select.Item>
+        {/each}
+      </Select.Content>
+    </Select.Root>
+  </Field.Field>
+  <Field.Field>
     <div class="flex items-center gap-1.5">
       <Field.FieldLabel for="label">{m.task_label()}</Field.FieldLabel>
       <div class="group/label-help relative inline-flex">
@@ -992,9 +1017,6 @@
           })}<br />
           {m.task_label_type_help({
             example: "type:Category",
-          })}<br />
-          {m.task_label_priority_help({
-            example: "priority:Level",
           })}<br />
           {m.task_label_status_help({
             example: "status:State",

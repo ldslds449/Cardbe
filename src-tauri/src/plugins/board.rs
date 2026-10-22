@@ -384,7 +384,14 @@ pub fn prepare(
                 ids.insert(key.clone(), id);
             }
             Operation::UpdateTask { task_id, task } => {
-                tasks::update_task(&mut after, *task_id, task.clone())?;
+                let (column, index) = crate::board_mutations::task_position(&after, *task_id)?;
+                let previous = &after.columns[column].tasks[index];
+                // Guests cannot see or set fields outside the plugin API.
+                let task = Task {
+                    priority: previous.priority,
+                    ..task.clone()
+                };
+                tasks::update_task(&mut after, *task_id, task)?;
             }
             Operation::MoveTask {
                 task_id,

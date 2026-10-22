@@ -1,10 +1,4 @@
-export type LabelKind =
-  | "owner"
-  | "category"
-  | "priority"
-  | "status"
-  | "effort"
-  | "general";
+export type LabelKind = "owner" | "category" | "status" | "effort" | "general";
 
 export interface ParsedLabel {
   kind: LabelKind;
@@ -33,9 +27,6 @@ export function parse_label(label: string): ParsedLabel {
   }
   if (prefix === "type") {
     return { kind: "category", value };
-  }
-  if (prefix === "priority") {
-    return { kind: "priority", value };
   }
   if (prefix === "status") {
     return { kind: "status", value };

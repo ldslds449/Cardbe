@@ -201,6 +201,7 @@ fn write_task(map: &LoroMap, task: &Task, archive_time: Option<u128>) -> Result<
     set_field(map, "labels", &task.labels)?;
     set_field(map, "items", &task.items)?;
     set_field(map, "recurrence", &task.recurrence)?;
+    set_field(map, "priority", &task.priority)?;
     set_field(map, "pinned", &task.pinned)?;
     set_field(map, "archive_time", &archive_time)
 }
@@ -451,6 +452,7 @@ fn task_from_map(id: i64, map: &serde_json::Value) -> Result<Task, String> {
         labels: field(map, "labels")?,
         items: field(map, "items")?,
         recurrence: field(map, "recurrence")?,
+        priority: optional_field(map, "priority")?,
         pinned: if map.get("pinned").is_some() {
             field(map, "pinned")?
         } else {
@@ -780,11 +782,16 @@ mod tests {
                 id: 2,
                 start_time: 1_800_000_000_000,
                 created_time: 1_700_000_000_000,
+                priority: Some(crate::models::TaskPriority::Urgent),
                 ..Task::default()
             }],
         });
         let update = apply_local_delta(None, &StoredData::default(), &data).unwrap();
         assert_eq!(project(&update).unwrap().columns, data.columns);
+        let mut cleared = data.clone();
+        cleared.columns[0].tasks[0].priority = None;
+        let update = apply_local_delta(Some(&update), &data, &cleared).unwrap();
+        assert_eq!(project(&update).unwrap().columns, cleared.columns);
 
         let legacy = serde_json::json!({
             "title": "\"Legacy\"",
@@ -799,6 +806,7 @@ mod tests {
         let task = task_from_map(3, &legacy).unwrap();
         assert_eq!(task.start_time, 1_600_000_000_000);
         assert_eq!(task.created_time, 0);
+        assert_eq!(task.priority, None);
     }
 
     #[test]

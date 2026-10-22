@@ -34,6 +34,7 @@
   import { recurrence_label, type Task } from "../type/task.svelte";
   import { display_task_color } from "../utils/task-color";
   import LabelBadge from "../components/label_badge.svelte";
+  import PriorityIndicator from "../components/task/priority_indicator.svelte";
   import Markdown from "../components/markdown.svelte";
   import ChecklistDisplay from "../components/task/checklist_display.svelte";
   import { due_label, due_label_class } from "../components/task/due-label";
@@ -481,7 +482,7 @@
               {m.floating_task_missing_description()}
             </p>
           {:else if task}
-            {#if due || task.recurrence}
+            {#if due || task.recurrence || task.priority}
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                 {#if due}
                   <span
@@ -504,6 +505,9 @@
                     <Repeat2Icon class="size-3.5 shrink-0" />
                     <span>{recurrence_label(task.recurrence)}</span>
                   </span>
+                {/if}
+                {#if task.priority}
+                  <PriorityIndicator priority={task.priority} />
                 {/if}
               </div>
             {/if}

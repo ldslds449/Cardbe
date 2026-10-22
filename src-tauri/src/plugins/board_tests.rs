@@ -30,6 +30,7 @@ impl Fixture {
                         id,
                         title: format!("任務 {id:03}"),
                         description: "內容".into(),
+                        priority: (id == 12).then_some(TaskPriority::High),
                         ..Task::default()
                     })
                     .collect(),
@@ -407,6 +408,27 @@ fn dependent_changeset_is_private_until_commit_and_writes_one_crdt_delta() {
         f.db.commit_changeset(&p),
         Err(DomainError::StaleBoardRequest)
     ));
+    cleanup(f);
+}
+
+#[test]
+fn task_updates_keep_the_priority_outside_the_plugin_api() {
+    let mut f = Fixture::new();
+    let p = f
+        .prepare(json!([
+            {"kind":"update_task","task_id":12,"task":{"title":"更新","priority":"low"}},
+            {"kind":"update_task","task_id":13,"task":{"title":"更新","priority":"urgent"}}
+        ]))
+        .unwrap();
+    f.db.commit_changeset(&p).unwrap();
+    let priority = |id| {
+        f.db.load_task(f.instance.board_id, id)
+            .unwrap()
+            .unwrap()
+            .priority
+    };
+    assert_eq!(priority(12), Some(TaskPriority::High));
+    assert_eq!(priority(13), None);
     cleanup(f);
 }
 

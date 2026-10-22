@@ -52,6 +52,8 @@ pub struct TaskExplorerQuery {
     pub archive_start: Option<i64>,
     pub archive_end: Option<i64>,
     pub now: i64,
+    /// Priorities to keep, with `none` for tasks without one; `None` keeps all.
+    pub priorities: Option<Vec<String>>,
     pub search_options: Option<crate::search::SearchOptions>,
 }
 
@@ -73,7 +75,8 @@ const TASK_SEARCH_CTE: &str = "WITH tasks AS (
                SELECT *, json_extract(payload, '$.due_time') AS due_time,
                       json_extract(payload, '$.title') AS title,
                       json_extract(payload, '$.recurrence') AS recurrence,
-                      COALESCE(json_extract(payload, '$.due_at_midnight'), 0) AS due_at_midnight
+                      COALESCE(json_extract(payload, '$.due_at_midnight'), 0) AS due_at_midnight,
+                      COALESCE(json_extract(payload, '$.priority'), 'none') AS priority
                FROM tasks
              )
              , eligible AS (SELECT * FROM summaries
@@ -90,6 +93,7 @@ const TASK_SEARCH_CTE: &str = "WITH tasks AS (
                AND (?8 IS NULL OR due_time<?8)
                AND (archived=0 OR ((?9 IS NULL OR CAST(archived_at AS INTEGER)>=?9)
                                  AND (?10 IS NULL OR CAST(archived_at AS INTEGER)<?10)))
+               AND (?12 IS NULL OR priority IN (SELECT value FROM json_each(?12)))
 )";
 
 fn search_params(filter: &TaskExplorerQuery) -> StorageResult<Vec<rusqlite::types::Value>> {
@@ -116,6 +120,13 @@ fn search_params(filter: &TaskExplorerQuery) -> StorageResult<Vec<rusqlite::type
         // overdue until the day ends; earlier midnights already are. A chosen
         // 00:00 (`due_at_midnight`) is overdue as soon as it passes.
         Value::Integer(crate::task_dates::local_day_start(filter.now)),
+        filter
+            .priorities
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?
+            .map(Value::Text)
+            .unwrap_or(Value::Null),
     ])
 }
 
@@ -147,13 +158,13 @@ fn hybrid_search(
         format!(
             "{TASK_SEARCH_CTE} SELECT e.search_id,e.title FROM eligible e
             JOIN cardbe_task_search s ON s.rowid=e.search_id
-            WHERE instr(lower(s.body),lower(?12))>0 ORDER BY e.search_id LIMIT ?13"
+            WHERE instr(lower(s.body),lower(?13))>0 ORDER BY e.search_id LIMIT ?14"
         )
     } else {
         format!(
             "{TASK_SEARCH_CTE} SELECT e.search_id,e.title FROM cardbe_task_fts
             JOIN eligible e ON e.search_id=cardbe_task_fts.rowid
-            WHERE cardbe_task_fts MATCH ?12 ORDER BY bm25(cardbe_task_fts),e.search_id LIMIT ?13"
+            WHERE cardbe_task_fts MATCH ?13 ORDER BY bm25(cardbe_task_fts),e.search_id LIMIT ?14"
         )
     };
     let mut statement = connection.prepare(&sql)?;
@@ -2437,12 +2448,15 @@ impl Database {
              FROM eligible
              WHERE (?1 IS NULL OR search_id IN (SELECT value FROM json_each(?1)))
              ORDER BY
-               CASE WHEN ?12='due' THEN due_time IS NULL END,
-               CASE WHEN ?12='due' THEN due_time END,
-               CASE WHEN ?12='archived' THEN CAST(archived_at AS INTEGER) END DESC,
-               CASE WHEN ?12='column' THEN column_name END COLLATE NOCASE,
+               CASE WHEN ?13='priority' THEN CASE priority
+                 WHEN 'urgent' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2
+                 WHEN 'low' THEN 1 ELSE 0 END END DESC,
+               CASE WHEN ?13 IN ('due','priority') THEN due_time IS NULL END,
+               CASE WHEN ?13 IN ('due','priority') THEN due_time END,
+               CASE WHEN ?13='archived' THEN CAST(archived_at AS INTEGER) END DESC,
+               CASE WHEN ?13='column' THEN column_name END COLLATE NOCASE,
                title COLLATE NOCASE, board_id, archived, task_id
-             LIMIT ?13 OFFSET ?14",
+             LIMIT ?14 OFFSET ?15",
         );
         let mut statement = self.connection.prepare(&sql)?;
         let rows = statement
@@ -2463,6 +2477,11 @@ impl Database {
                     filter.archive_start,
                     filter.archive_end,
                     crate::task_dates::local_day_start(filter.now),
+                    filter
+                        .priorities
+                        .as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()?,
                     filter.sort,
                     i64::try_from(limit)?,
                     offset,
@@ -4161,6 +4180,80 @@ mod tests {
             rows.iter().map(|row| row.task.id).collect::<Vec<_>>(),
             vec![1, 5, 3]
         );
+    }
+
+    #[test]
+    fn task_explorer_filters_and_sorts_by_priority() {
+        use crate::models::TaskPriority::{High, Low, Urgent};
+        let dir = test_dir("task-explorer-priority");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let data = StoredData {
+            columns: vec![Column {
+                id: 1,
+                name: "Todo".into(),
+                color: String::new(),
+                sort_order: Default::default(),
+                sort_rules: Vec::new(),
+                tasks: [
+                    (1, None, Some(5)),
+                    (2, Some(Low), None),
+                    (3, Some(Urgent), Some(9)),
+                    (4, Some(Urgent), Some(2)),
+                    (5, Some(High), None),
+                    (6, Some(Urgent), None),
+                ]
+                .into_iter()
+                .map(|(id, priority, due_time)| Task {
+                    id,
+                    title: format!("Task {id}"),
+                    priority,
+                    due_time,
+                    ..Task::default()
+                })
+                .collect(),
+            }],
+            ..StoredData::default()
+        };
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &data)
+            .unwrap();
+        let ids = |filter: &TaskExplorerQuery| {
+            loaded
+                .database
+                .list_all_task_page(filter, 0, 10)
+                .unwrap()
+                .iter()
+                .map(|row| row.task.id)
+                .collect::<Vec<_>>()
+        };
+
+        // Most important first, then by due date with undated tasks last.
+        let sorted = TaskExplorerQuery {
+            status: "all".into(),
+            sort: "priority".into(),
+            ..Default::default()
+        };
+        assert_eq!(ids(&sorted), vec![4, 3, 6, 5, 2, 1]);
+
+        let filtered = TaskExplorerQuery {
+            priorities: Some(vec!["urgent".into(), "none".into()]),
+            sort: "due".into(),
+            ..sorted
+        };
+        assert_eq!(ids(&filtered), vec![4, 1, 3, 6]);
+
+        // Searches filter by priority before ranking.
+        let searched = TaskExplorerQuery {
+            query: "Task".into(),
+            priorities: Some(vec!["high".into(), "low".into()]),
+            ..filtered
+        };
+        assert_eq!(ids(&searched), vec![2, 5]);
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

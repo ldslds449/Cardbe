@@ -26,6 +26,27 @@ export function recurrence_label(recurrence: Recurrence | undefined): string {
       : m.task_repeat_month_count(inputs);
 }
 
+/** Ordered from least to most important; unset means no priority. */
+export const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+export function is_task_priority(value: unknown): value is TaskPriority {
+  return TASK_PRIORITIES.includes(value as TaskPriority);
+}
+
+export function priority_label(priority: TaskPriority | undefined): string {
+  return priority === "low"
+    ? m.task_priority_low()
+    : priority === "medium"
+      ? m.task_priority_medium()
+      : priority === "high"
+        ? m.task_priority_high()
+        : priority === "urgent"
+          ? m.task_priority_urgent()
+          : m.task_priority_none();
+}
+
 export interface Task {
   pinned?: boolean;
   id: string;
@@ -44,6 +65,7 @@ export interface Task {
   labels: string[];
   items: TaskItem[];
   recurrence: Recurrence | undefined;
+  priority?: TaskPriority;
 }
 
 export interface TaskSerialized {
@@ -60,6 +82,7 @@ export interface TaskSerialized {
   labels: string[];
   items?: TaskItem[];
   recurrence?: Recurrence;
+  priority?: TaskPriority;
 }
 
 export interface TaskSummary {
@@ -73,6 +96,7 @@ export interface TaskSummary {
   created_time?: Date;
   labels: string[];
   recurrence: Recurrence | undefined;
+  priority?: TaskPriority;
 }
 
 export interface TaskSummarySerialized {
@@ -86,6 +110,7 @@ export interface TaskSummarySerialized {
   created_time?: number;
   labels: string[];
   recurrence?: Recurrence;
+  priority?: TaskPriority;
 }
 
 export interface TaskTemplate {
@@ -146,6 +171,7 @@ export function reset_task(task: Task): void {
   task.labels = [];
   task.items = [];
   task.recurrence = undefined;
+  task.priority = undefined;
   task.pinned = false;
 }
 
@@ -214,6 +240,7 @@ export function serialize_task(task: Task): TaskSerialized {
     labels: task.labels,
     items: task.items,
     recurrence: task.recurrence,
+    ...priority_field(task),
     pinned: task.pinned ?? false,
   };
 }
@@ -226,6 +253,11 @@ function midnight_flags(
     ...(task.start_at_midnight ? { start_at_midnight: true } : {}),
     ...(task.due_at_midnight ? { due_at_midnight: true } : {}),
   };
+}
+
+/** Only a known priority, so unset and unknown values are omitted. */
+function priority_field(task: Pick<Task, "priority">): Pick<Task, "priority"> {
+  return is_task_priority(task.priority) ? { priority: task.priority } : {};
 }
 
 function deserialize_task_times(
@@ -258,6 +290,7 @@ export function deserialize_task(data: TaskSerialized): Task {
     labels: data.labels,
     items: (data.items ?? []).map((item) => ({ ...item })),
     recurrence: data.recurrence ? { ...data.recurrence } : undefined,
+    ...priority_field(data),
     pinned: data.pinned ?? false,
   };
   set_task_id(t, data.id);
@@ -276,5 +309,6 @@ export function deserialize_task_summary(
     ...midnight_flags(data),
     labels: data.labels,
     recurrence: data.recurrence ? { ...data.recurrence } : undefined,
+    ...priority_field(data),
   };
 }

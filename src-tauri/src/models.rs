@@ -114,6 +114,16 @@ pub struct Recurrence {
     pub interval: u32,
 }
 
+/// Ordered from least to most important.
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskPriority {
+    Low,
+    Medium,
+    High,
+    Urgent,
+}
+
 fn is_false(value: &bool) -> bool {
     !*value
 }
@@ -150,6 +160,9 @@ pub struct Task {
     pub items: Vec<TaskItem>,
     #[serde(default)]
     pub recurrence: Option<Recurrence>,
+    /// Omitted when unset so tasks without a priority keep their stored shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<TaskPriority>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -166,6 +179,8 @@ pub struct TaskSummary {
     pub created_time: u128,
     pub labels: Vec<String>,
     pub recurrence: Option<Recurrence>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<TaskPriority>,
 }
 
 impl From<&Task> for TaskSummary {
@@ -181,6 +196,7 @@ impl From<&Task> for TaskSummary {
             created_time: task.created_time,
             labels: task.labels.clone(),
             recurrence: task.recurrence.clone(),
+            priority: task.priority,
         }
     }
 }
@@ -201,6 +217,7 @@ impl Default for Task {
             labels: Vec::new(),
             items: Vec::new(),
             recurrence: None,
+            priority: None,
         }
     }
 }
@@ -968,5 +985,26 @@ mod language_tests {
             assert_eq!(serde_json::to_string(&preference).unwrap(), json);
         }
         assert!(serde_json::from_str::<LanguagePreference>(r#""ja""#).is_err());
+    }
+}
+
+#[cfg(test)]
+mod task_priority_tests {
+    use super::{Task, TaskPriority};
+
+    #[test]
+    fn priority_is_optional_ordered_and_omitted_when_unset() {
+        let task: Task = serde_json::from_str(r#"{"title":"Old"}"#).unwrap();
+        assert_eq!(task.priority, None);
+        assert!(!serde_json::to_string(&task).unwrap().contains("priority"));
+
+        let task: Task = serde_json::from_str(r#"{"title":"New","priority":"urgent"}"#).unwrap();
+        assert_eq!(task.priority, Some(TaskPriority::Urgent));
+        assert!(serde_json::to_string(&task)
+            .unwrap()
+            .contains(r#""priority":"urgent""#));
+        assert!(serde_json::from_str::<Task>(r#"{"priority":"critical"}"#).is_err());
+        assert!(TaskPriority::Low < TaskPriority::Medium);
+        assert!(TaskPriority::High < TaskPriority::Urgent);
     }
 }
