@@ -14,6 +14,7 @@ mod search;
 mod state;
 mod storage;
 mod task_dates;
+mod task_events;
 
 use commands::{
     archive, board, boards, calendar_export, diagnostics, external, floating_task, import_export,
@@ -534,6 +535,7 @@ pub fn run() {
             iroh_share::delete_iroh_invite,
             notifications::set_notification_texts,
             notifications::get_task_detail,
+            commands::task_events::get_task_events,
             task_explorer::list_all_tasks,
             notes::get_notes,
             notes::create_note,

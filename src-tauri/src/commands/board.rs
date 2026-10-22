@@ -289,9 +289,9 @@ pub(crate) fn add_task_to_board_locked(
         data.touch_label(label.clone());
     }
     data.columns[column].tasks.push(task);
-    let (revision, status) = guard
+    let ((revision, status), event_op) = guard
         .database
-        .replace_board_as_local_edit(board_id, &data)
+        .replace_board_as_local_edit_recorded(board_id, &data)
         .map_err(CommandError::repository)?;
     if board_id == guard.active_board_id {
         // Preserve the lazily-loaded archive contract for the active in-memory
@@ -300,7 +300,7 @@ pub(crate) fn add_task_to_board_locked(
             data.archives.clear();
         }
         let previous = std::mem::replace(&mut guard.stored, data);
-        guard.record_board_undo(previous);
+        guard.record_board_undo(previous, event_op);
         guard.refresh_labels();
     }
     if let Some(board) = guard.boards.iter_mut().find(|board| board.id == board_id) {
@@ -417,9 +417,9 @@ pub(crate) fn add_column_to_board_locked(
         sort_rules: Vec::new(),
         tasks: Vec::new(),
     });
-    let (revision, status) = guard
+    let ((revision, status), event_op) = guard
         .database
-        .replace_board_as_local_edit(board_id, &data)
+        .replace_board_as_local_edit_recorded(board_id, &data)
         .map_err(CommandError::repository)?;
     if board_id == guard.active_board_id {
         // Preserve the lazily-loaded archive contract for the active in-memory
@@ -428,7 +428,7 @@ pub(crate) fn add_column_to_board_locked(
             data.archives.clear();
         }
         let previous = std::mem::replace(&mut guard.stored, data);
-        guard.record_board_undo(previous);
+        guard.record_board_undo(previous, event_op);
         guard.refresh_labels();
     }
     if let Some(board) = guard.boards.iter_mut().find(|board| board.id == board_id) {

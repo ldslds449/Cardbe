@@ -561,6 +561,14 @@ impl Database {
                     self.loro_peers.entry(board_id).or_default(),
                 )
                 .map_err(DomainError::repository)?;
+                crate::task_events::record(
+                    &tx,
+                    board_id,
+                    &before,
+                    &after,
+                    &crate::task_events::EventSource::plugin(&prepared.instance.id),
+                )
+                .map_err(DomainError::repository)?;
             }
             committed_positions = Some(positions);
             committed = Some(after);

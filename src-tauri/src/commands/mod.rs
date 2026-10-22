@@ -14,6 +14,7 @@ pub mod notifications;
 pub mod plugins;
 pub mod settings;
 pub mod share;
+pub mod task_events;
 pub mod task_explorer;
 pub mod templates;
 pub mod update;

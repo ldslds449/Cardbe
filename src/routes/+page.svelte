@@ -1323,6 +1323,9 @@
         bind:open={view_task_dialog_open}
         task={view_task}
         onEdit={active_board_read_only ? undefined : view_task_edit_callback}
+        history={board.active_board_id === null
+          ? undefined
+          : { board_id: board.active_board_id, columns: board.columns }}
       />
 
       <ViewTaskDialog

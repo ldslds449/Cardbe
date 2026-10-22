@@ -954,7 +954,7 @@ mod tests {
         database.initialize_boards(&initial).unwrap();
         database.initialize_plugins().unwrap();
         let mut app = AppData::new(initial.clone(), database, vec![], false).unwrap();
-        app.undo_history.push(initial.clone());
+        app.undo_history.push(initial.clone().into());
         let mut committed = initial.clone();
         committed.columns.push(Column {
             id: 1,
@@ -980,7 +980,7 @@ mod tests {
         .is_err());
         assert_eq!(app.stored.columns[0].tasks[0].title, "Committed task");
         assert!(app.undo_history.is_empty());
-        app.undo_history.push(app.stored.clone());
+        app.undo_history.push(app.stored.clone().into());
         install_committed(&mut app, board_id, initial, false);
         assert_eq!(app.undo_history.len(), 1);
         assert_eq!(app.stored.columns[0].tasks[0].title, "Committed task");

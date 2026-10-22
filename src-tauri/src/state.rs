@@ -1,7 +1,8 @@
 use crate::errors::{CommandError, DomainError, ShareError};
 use crate::{
     models::{Board, BoardRole, StoredData},
-    storage::{self, Database},
+    storage::{self, Database, EventWrite},
+    task_events::EventSource,
 };
 use std::{
     collections::{BTreeSet, HashSet},
@@ -15,11 +16,28 @@ pub struct AppData {
     pub stored: StoredData,
     pub boards: Vec<Board>,
     pub active_board_id: i64,
-    pub undo_history: Vec<StoredData>,
+    pub undo_history: Vec<UndoEntry>,
     pub labels: BTreeSet<String>,
     pub database: Database,
     pub recovery_messages: Vec<String>,
     pub archives_loaded: bool,
+}
+
+/// Board contents before a local change, with the task event operation the
+/// change recorded so undoing it can name that operation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UndoEntry {
+    pub data: StoredData,
+    pub event_op: Option<i64>,
+}
+
+impl From<StoredData> for UndoEntry {
+    fn from(data: StoredData) -> Self {
+        Self {
+            data,
+            event_op: None,
+        }
+    }
 }
 
 pub type SharedAppData = Mutex<AppData>;
@@ -240,7 +258,9 @@ pub fn update_stored_with_pre_import_snapshot_for_board<R>(
     ensure_board_can_edit(&guard)?;
     ensure_archives_loaded_locked(&mut guard)?;
     let snapshot_path = write_pre_import_snapshot(&guard)?;
-    let result = update_locked_typed(&mut guard, change)?;
+    // Imported tasks receive new ids, so earlier events no longer apply.
+    let result =
+        update_locked_with_events(&mut guard, EventWrite::Reset(EventSource::local()), change)?;
     Ok((result, snapshot_path))
 }
 
@@ -262,6 +282,14 @@ fn update_locked_typed<R, E: From<String>>(
     guard: &mut AppData,
     change: impl FnOnce(&mut StoredData) -> Result<R, E>,
 ) -> Result<R, E> {
+    update_locked_with_events(guard, EventWrite::Record(EventSource::local()), change)
+}
+
+fn update_locked_with_events<R, E: From<String>>(
+    guard: &mut AppData,
+    events: EventWrite,
+    change: impl FnOnce(&mut StoredData) -> Result<R, E>,
+) -> Result<R, E> {
     let mut candidate = guard.stored.clone();
     let result = change(&mut candidate)?;
     candidate.keep_pinned_tasks_first();
@@ -269,30 +297,27 @@ fn update_locked_typed<R, E: From<String>>(
         || candidate.archives != guard.stored.archives
         || candidate.templates != guard.stored.templates;
 
-    if guard.archives_loaded {
-        guard
-            .database
-            .persist_diff(&guard.stored, &candidate)
-            .map_err(|error| error.to_string())?;
-    } else {
-        guard
-            .database
-            .persist_diff_without_archives(&guard.stored, &candidate)
-            .map_err(|error| error.to_string())?;
-    }
+    let archives_loaded = guard.archives_loaded;
+    let stats = guard
+        .database
+        .persist_diff_with_events(&guard.stored, &candidate, archives_loaded, events)
+        .map_err(|error| error.to_string())?;
 
     let previous = std::mem::replace(&mut guard.stored, candidate);
     refresh_active_board_summary(guard)?;
     if board_changed {
-        guard.record_board_undo(previous);
+        guard.record_board_undo(previous, stats.event_op);
     }
     guard.refresh_labels();
     Ok(result)
 }
 
 impl AppData {
-    pub(crate) fn record_board_undo(&mut self, previous: StoredData) {
-        self.undo_history.push(previous);
+    pub(crate) fn record_board_undo(&mut self, previous: StoredData, event_op: Option<i64>) {
+        self.undo_history.push(UndoEntry {
+            data: previous,
+            event_op,
+        });
         if self.undo_history.len() > 50 {
             self.undo_history.remove(0);
         }
@@ -345,8 +370,8 @@ fn ensure_archives_loaded_locked(guard: &mut AppData) -> Result<(), String> {
         .load_archives()
         .map_err(|error| error.to_string())?;
     guard.stored.archives = archives.clone();
-    for snapshot in &mut guard.undo_history {
-        snapshot.archives = archives.clone();
+    for entry in &mut guard.undo_history {
+        entry.data.archives = archives.clone();
     }
     guard.archives_loaded = true;
     Ok(())
@@ -365,7 +390,10 @@ fn undo_locked(guard: &mut AppData, expected_board_id: i64) -> Result<bool, Doma
         return Err(DomainError::StaleBoardRequest);
     }
     ensure_board_can_edit(guard)?;
-    let mut previous = guard
+    let UndoEntry {
+        data: mut previous,
+        event_op,
+    } = guard
         .undo_history
         .last()
         .cloned()
@@ -376,15 +404,14 @@ fn undo_locked(guard: &mut AppData, expected_board_id: i64) -> Result<bool, Doma
     let AppData {
         database, stored, ..
     } = &mut *guard;
-    if archives_loaded {
-        database
-            .persist_diff(stored, &previous)
-            .map_err(|error| error.to_string())?;
-    } else {
-        database
-            .persist_diff_without_archives(stored, &previous)
-            .map_err(|error| error.to_string())?;
-    }
+    database
+        .persist_diff_with_events(
+            stored,
+            &previous,
+            archives_loaded,
+            EventWrite::Record(EventSource::undo(event_op)),
+        )
+        .map_err(|error| error.to_string())?;
     guard.undo_history.pop();
     guard.stored = previous;
     refresh_active_board_summary(guard)?;
@@ -594,7 +621,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(app.undo_history.len(), 1);
-        assert!(app.undo_history[0].columns.is_empty());
+        assert!(app.undo_history[0].data.columns.is_empty());
         update_locked(&mut app, |data| {
             data.settings.notify_enabled = !data.settings.notify_enabled;
             data.settings.theme = Some("morandi-dark-blue".into());
@@ -619,6 +646,133 @@ mod tests {
             app.database.read_board_complete(board_id).unwrap().settings,
             settings
         );
+        drop(app);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn local_changes_and_undo_append_task_events() {
+        use crate::task_events::{EventKind::*, EventOrigin::*};
+        let dir = std::env::temp_dir().join(format!(
+            "cardbe-task-events-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let mut app = app_data(&dir, StoredData::default());
+        let board_id = app.active_board_id;
+        let column = |id: i64| Column {
+            id,
+            name: String::new(),
+            color: String::new(),
+            sort_order: Default::default(),
+            sort_rules: Vec::new(),
+            tasks: Vec::new(),
+        };
+        let events = |app: &AppData| {
+            app.database
+                .task_events(board_id, None)
+                .unwrap()
+                .into_iter()
+                .map(|e| {
+                    (
+                        e.origin,
+                        e.kind,
+                        e.task_id,
+                        e.from_column_id,
+                        e.to_column_id,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+
+        update_locked(&mut app, |data| {
+            data.columns.extend([column(1), column(2)]);
+            Ok(())
+        })
+        .unwrap();
+        assert!(events(&app).is_empty());
+        update_locked(&mut app, |data| {
+            data.columns[0].tasks.push(Task {
+                id: 10,
+                ..Task::default()
+            });
+            Ok(())
+        })
+        .unwrap();
+        update_locked(&mut app, |data| {
+            let task = data.columns[0].tasks.remove(0);
+            data.columns[1].tasks.push(task);
+            Ok(())
+        })
+        .unwrap();
+        // Content edits are not lifecycle events.
+        update_locked(&mut app, |data| {
+            data.columns[1].tasks[0].title = "Renamed".into();
+            Ok(())
+        })
+        .unwrap();
+        assert!(undo_locked(&mut app, board_id).unwrap());
+        assert!(undo_locked(&mut app, board_id).unwrap());
+        update_locked(&mut app, |data| {
+            let task = data.columns[0].tasks.remove(0);
+            data.archives.push(Archive { time: 1, task });
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            events(&app),
+            vec![
+                (Local, Created, 10, None, Some(1)),
+                (Local, Moved, 10, Some(1), Some(2)),
+                (Undo, Moved, 10, Some(2), Some(1)),
+                (Local, Archived, 10, Some(1), None),
+            ]
+        );
+        let logged = app.database.task_events(board_id, None).unwrap();
+        assert_eq!(logged[2].reverts_op_id, Some(logged[1].op_id));
+
+        let task_id = crate::commands::board::add_task_to_board_locked(
+            &mut app,
+            board_id,
+            1,
+            Task::default(),
+        )
+        .unwrap();
+        undo_locked(&mut app, board_id).unwrap();
+        update_locked_with_events(
+            &mut app,
+            EventWrite::Reset(EventSource::local()),
+            |data: &mut StoredData| -> Result<(), String> {
+                data.archives.clear();
+                Ok(())
+            },
+        )
+        .unwrap();
+        let logged = app.database.task_events(board_id, None).unwrap();
+        assert_eq!(
+            events(&app)[4..],
+            [
+                (Local, Created, task_id, None, Some(1)),
+                (Undo, Deleted, task_id, Some(1), None),
+                (Local, BoardReset, 0, None, None),
+            ]
+        );
+        assert_eq!(logged[5].reverts_op_id, Some(logged[4].op_id));
+        // A task's history keeps board resets, which end older ids.
+        assert_eq!(
+            app.database
+                .task_events(board_id, Some(task_id))
+                .unwrap()
+                .iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            [logged[4].id, logged[5].id, logged[6].id]
+        );
+        assert!(logged.windows(2).all(|pair| pair[0].id < pair[1].id));
         drop(app);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -666,7 +820,7 @@ mod tests {
 
         ensure_archives_loaded_locked(&mut app).unwrap();
         assert_eq!(app.stored.archives, vec![archive.clone()]);
-        assert_eq!(app.undo_history[0].archives, vec![archive]);
+        assert_eq!(app.undo_history[0].data.archives, vec![archive]);
         drop(app);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -709,7 +863,7 @@ mod tests {
         database.initialize_boards(&persisted).unwrap();
         let board_id = database.active_board_id();
         let mut app = AppData::new(StoredData::default(), database, Vec::new(), false).unwrap();
-        app.undo_history.push(StoredData::default());
+        app.undo_history.push(StoredData::default().into());
 
         app.load_active_board(board_id).unwrap();
 

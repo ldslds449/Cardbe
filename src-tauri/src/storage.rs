@@ -3,6 +3,7 @@ use crate::models::{
     Archive, Board, BoardRole, Column, ColumnSort, IrohDeviceStatus, IrohPermission, Note,
     StoredData, SyncStatus, Task, TaskSummary, TaskTemplate, CURRENT_SCHEMA_VERSION,
 };
+use crate::task_events::{self, EventSource};
 use base64::Engine;
 use rusqlite::{
     params,
@@ -322,6 +323,17 @@ pub struct PersistStats {
     pub archives_changed: usize,
     pub templates_changed: usize,
     pub metadata_changed: usize,
+    /// The task event operation recorded for this write, if any.
+    pub event_op: Option<i64>,
+}
+
+/// How a board write appears in the task event log.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EventWrite {
+    /// Record task placement changes.
+    Record(EventSource),
+    /// The write replaces task ids, as an import does.
+    Reset(EventSource),
 }
 
 impl Database {
@@ -1050,11 +1062,12 @@ impl Database {
             tx.commit()?;
             return Ok(Some((false, revision, previous)));
         };
-        let mut data = previous;
+        let mut data = previous.clone();
         data.columns = projected.columns;
         data.archives = projected.archives;
         data.templates = projected.templates;
         write_board_transaction(&tx, board_id, &data)?;
+        task_events::record(&tx, board_id, &previous, &data, &EventSource::remote())?;
         tx.execute("INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2) ON CONFLICT(board_id) DO UPDATE SET payload=excluded.payload", params![board_id, merged])?;
         tx.execute(
             "UPDATE cardbe_boards SET sync_revision=sync_revision+1,sync_status=?2 WHERE id=?1",
@@ -1088,13 +1101,14 @@ impl Database {
             || previous.archives != projected.archives
             || previous.templates != projected.templates
             || self.board_role(board_id)? != BoardRole::from(role);
-        let mut data = previous;
+        let mut data = previous.clone();
         data.columns = projected.columns;
         data.archives = projected.archives;
         data.templates = projected.templates;
         let tx = self.connection.transaction()?;
         if content_changed {
             write_board_transaction(&tx, board_id, &data)?;
+            task_events::record(&tx, board_id, &previous, &data, &EventSource::remote())?;
         }
         if !crate::loro_board::same_state_vector(&current, &merged)? {
             tx.execute("INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2) ON CONFLICT(board_id) DO UPDATE SET payload=excluded.payload", params![board_id, merged])?;
@@ -1462,6 +1476,7 @@ impl Database {
         loro_update: Option<&[u8]>,
     ) -> StorageResult<()> {
         validate_iroh_snapshot(data, role, loro_update)?;
+        let previous = self.read_board_complete(board_id)?;
         let tx = self.connection.transaction()?;
         if tx
             .query_row("SELECT 1 FROM cardbe_boards WHERE id=?1", [board_id], |r| {
@@ -1473,6 +1488,7 @@ impl Database {
             return Err(DomainError::BoardNotFound.into());
         }
         write_board_transaction(&tx, board_id, data)?;
+        task_events::record(&tx, board_id, &previous, data, &EventSource::remote())?;
         if let Some(update) = loro_update.filter(|bytes| !bytes.is_empty()) {
             tx.execute("INSERT INTO cardbe_loro_docs(board_id,payload) VALUES(?1,?2) ON CONFLICT(board_id) DO UPDATE SET payload=excluded.payload", params![board_id, update])?;
         } else {
@@ -1505,12 +1521,20 @@ impl Database {
             conflict.permission,
             conflict.loro_update.as_deref(),
         )?;
+        let previous = self.read_board_complete(board_id)?;
         let tx = self.connection.transaction()?;
         let copy_name = format!("{local_name} (conflict copy)");
         tx.execute("INSERT INTO cardbe_boards(name) VALUES(?1)", [&copy_name])?;
         let copy_id = tx.last_insert_rowid();
         write_board_transaction(&tx, copy_id, local)?;
         write_board_transaction(&tx, board_id, &conflict.data)?;
+        task_events::record(
+            &tx,
+            board_id,
+            &previous,
+            &conflict.data,
+            &EventSource::remote(),
+        )?;
         if let Some(update) = conflict
             .loro_update
             .as_deref()
@@ -1635,6 +1659,7 @@ impl Database {
                 after,
                 self.loro_peers.entry(id).or_default(),
             )?;
+            task_events::record_transfer(&tx, id, before, after)?;
         }
         tx.commit()?;
         self.positions = self.load_board_positions(self.active_board_id)?;
@@ -1646,6 +1671,16 @@ impl Database {
         board_id: i64,
         data: &StoredData,
     ) -> StorageResult<(i64, SyncStatus)> {
+        Ok(self.replace_board_as_local_edit_recorded(board_id, data)?.0)
+    }
+
+    /// Like [`Self::replace_board_as_local_edit`], also returning the task
+    /// event operation it recorded.
+    pub fn replace_board_as_local_edit_recorded(
+        &mut self,
+        board_id: i64,
+        data: &StoredData,
+    ) -> StorageResult<((i64, SyncStatus), Option<i64>)> {
         // The Loro delta must compare with the persisted board, not an empty
         // value: otherwise removals are absent from the CRDT and reappear on
         // the next editor sync.
@@ -1668,11 +1703,12 @@ impl Database {
             data,
             self.loro_peers.entry(board_id).or_default(),
         )?;
+        let event_op = task_events::record(&tx, board_id, &before, data, &EventSource::local())?;
         tx.commit()?;
         if self.active_board_id == board_id {
             self.positions = self.load_board_positions(board_id)?;
         }
-        self.board_sync_state(board_id)
+        Ok((self.board_sync_state(board_id)?, event_op))
     }
 
     /// Create and populate a board atomically.
@@ -1853,22 +1889,36 @@ impl Database {
         before: &StoredData,
         after: &StoredData,
     ) -> StorageResult<PersistStats> {
-        self.persist_diff_internal(before, after, true)
+        self.persist_diff_with_events(
+            before,
+            after,
+            true,
+            EventWrite::Record(EventSource::local()),
+        )
     }
 
+    #[cfg(test)]
     pub fn persist_diff_without_archives(
         &mut self,
         before: &StoredData,
         after: &StoredData,
     ) -> StorageResult<PersistStats> {
-        self.persist_diff_internal(before, after, false)
+        self.persist_diff_with_events(
+            before,
+            after,
+            false,
+            EventWrite::Record(EventSource::local()),
+        )
     }
 
-    fn persist_diff_internal(
+    /// Persists the active board. Without loaded archives, `before` and
+    /// `after` hold none, so archiving and restoring cannot occur.
+    pub fn persist_diff_with_events(
         &mut self,
         before: &StoredData,
         after: &StoredData,
         include_archives: bool,
+        events: EventWrite,
     ) -> StorageResult<PersistStats> {
         let mut positions = self.positions.clone();
         let board_changed = before.columns != after.columns
@@ -1904,7 +1954,7 @@ impl Database {
         if board_changed && role == BoardRole::Viewer {
             return Err(DomainError::PermissionDenied.into());
         }
-        let stats = persist_board_diff_transaction(
+        let mut stats = persist_board_diff_transaction(
             &transaction,
             self.active_board_id,
             before,
@@ -1912,6 +1962,16 @@ impl Database {
             &mut positions,
             include_archives,
         )?;
+        if board_changed {
+            stats.event_op = match &events {
+                EventWrite::Record(source) => {
+                    task_events::record(&transaction, self.active_board_id, before, after, source)?
+                }
+                EventWrite::Reset(source) => {
+                    task_events::record_reset(&transaction, self.active_board_id, source)?
+                }
+            };
+        }
         // Settings are global application preferences, not board content.
         transaction.execute(
             "INSERT INTO cardbe_global_metadata(key,value) VALUES ('settings',?1)
@@ -2145,6 +2205,7 @@ impl Database {
             let _ = tx.execute(sql, []);
         }
         crate::flow::initialize(&tx)?;
+        task_events::initialize(&tx)?;
         validate_cardbe_schema(&tx)?;
         let migrated: Option<String> = tx
             .query_row(
@@ -2440,6 +2501,14 @@ impl Database {
             )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    pub fn task_events(
+        &self,
+        board_id: i64,
+        task_id: Option<i64>,
+    ) -> StorageResult<Vec<task_events::TaskEvent>> {
+        task_events::list(&self.connection, board_id, task_id)
     }
 
     pub fn load_task(&self, board_id: i64, task_id: i64) -> StorageResult<Option<Task>> {
@@ -5374,6 +5443,154 @@ mod tests {
     }
 
     #[test]
+    fn received_loro_changes_are_logged_as_remote_events() {
+        use crate::task_events::{EventKind::*, EventOrigin::*};
+        let owner_dir = test_dir("loro-events-owner");
+        let editor_dir = test_dir("loro-events-editor");
+        fs::create_dir_all(&owner_dir).unwrap();
+        fs::create_dir_all(&editor_dir).unwrap();
+        let mut owner = load(&owner_dir).unwrap();
+        let mut editor = load(&editor_dir).unwrap();
+        let owner_id = owner.database.active_board_id();
+        let column = |id, tasks| Column {
+            id,
+            name: String::new(),
+            color: String::new(),
+            sort_order: Default::default(),
+            sort_rules: Vec::new(),
+            tasks,
+        };
+        let task = |id| Task {
+            id,
+            ..Task::default()
+        };
+        let base = StoredData {
+            columns: vec![column(1, vec![task(10), task(11)]), column(2, Vec::new())],
+            next_column_id: 3,
+            next_task_id: 12,
+            ..StoredData::default()
+        };
+        owner
+            .database
+            .replace_board_as_local_edit(owner_id, &base)
+            .unwrap();
+        owner
+            .database
+            .save_iroh_invite("invite", owner_id, "secret", IrohPermission::Editor)
+            .unwrap();
+        owner
+            .database
+            .iroh_device_access("invite", "secret", "device", true)
+            .unwrap();
+        owner
+            .database
+            .set_iroh_device_approved("invite", "device", true)
+            .unwrap();
+        let initial = owner.database.iroh_loro_update(owner_id).unwrap().unwrap();
+        let editor_id = editor
+            .database
+            .create_received_board(
+                "Shared",
+                &base,
+                IrohPermission::Editor,
+                1,
+                "ticket",
+                Some(&initial),
+            )
+            .unwrap()
+            .id;
+        assert!(editor
+            .database
+            .task_events(editor_id, None)
+            .unwrap()
+            .is_empty());
+
+        // The editor moves 10; the owner receives it.
+        let mut editor_edit = base.clone();
+        let moved = editor_edit.columns[0].tasks.remove(0);
+        editor_edit.columns[1].tasks.push(moved);
+        editor
+            .database
+            .replace_board_as_local_edit(editor_id, &editor_edit)
+            .unwrap();
+        let sent = editor
+            .database
+            .iroh_loro_update(editor_id)
+            .unwrap()
+            .unwrap();
+        owner
+            .database
+            .apply_iroh_loro_update(owner_id, "invite", "secret", "device", &sent)
+            .unwrap();
+        // The owner moves 11; the editor receives it.
+        let mut owner_edit = owner.database.read_board_complete(owner_id).unwrap();
+        let moved = owner_edit.columns[0].tasks.remove(0);
+        owner_edit.columns[1].tasks.push(moved);
+        owner
+            .database
+            .replace_board_as_local_edit(owner_id, &owner_edit)
+            .unwrap();
+        let owner_doc = owner.database.iroh_loro_update(owner_id).unwrap().unwrap();
+        let vector = crate::loro_board::state_vector(Some(&sent)).unwrap();
+        let diff = crate::loro_board::diff(Some(&owner_doc), &vector).unwrap();
+        let revision = owner.database.board_sync_state(owner_id).unwrap().0;
+        assert!(editor
+            .database
+            .merge_iroh_loro_diff(
+                editor_id,
+                &diff,
+                "Shared",
+                IrohPermission::Editor,
+                revision,
+                &sent,
+            )
+            .unwrap());
+
+        let events = |database: &Database, board| {
+            database
+                .task_events(board, None)
+                .unwrap()
+                .iter()
+                .map(|e| {
+                    (
+                        e.origin,
+                        e.kind,
+                        e.task_id,
+                        e.from_column_id,
+                        e.to_column_id,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let created = [
+            (Local, Created, 10, None, Some(1)),
+            (Local, Created, 11, None, Some(1)),
+        ];
+        assert_eq!(
+            events(&owner.database, owner_id),
+            [
+                &created[..],
+                &[
+                    (Remote, Moved, 10, Some(1), Some(2)),
+                    (Local, Moved, 11, Some(1), Some(2)),
+                ],
+            ]
+            .concat()
+        );
+        assert_eq!(
+            events(&editor.database, editor_id),
+            vec![
+                (Local, Moved, 10, Some(1), Some(2)),
+                (Remote, Moved, 11, Some(1), Some(2)),
+            ]
+        );
+        drop(editor);
+        drop(owner);
+        fs::remove_dir_all(editor_dir).unwrap();
+        fs::remove_dir_all(owner_dir).unwrap();
+    }
+
+    #[test]
     fn shared_snapshot_replaces_deleted_rows_and_preserves_global_settings() {
         let dir = test_dir("shared-snapshot-replace");
         fs::create_dir_all(&dir).unwrap();
@@ -5410,6 +5627,26 @@ mod tests {
             .columns
             .is_empty());
         assert_eq!(loaded.database.boards().unwrap()[0].task_count, 0);
+        use crate::task_events::{EventKind, EventOrigin};
+        assert_eq!(
+            loaded
+                .database
+                .task_events(board_id, None)
+                .unwrap()
+                .iter()
+                .map(|e| (
+                    e.origin,
+                    e.kind,
+                    e.task_id,
+                    e.from_column_id,
+                    e.to_column_id
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (EventOrigin::Remote, EventKind::Created, 1, None, Some(1)),
+                (EventOrigin::Remote, EventKind::Deleted, 1, Some(1), None),
+            ]
+        );
         drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -6657,6 +6894,42 @@ mod tests {
         );
         let new_ids = [moved.columns[1].tasks[1].id, moved.columns[1].tasks[2].id];
         assert!(new_ids[0] != new_ids[1] && new_ids.iter().all(|id| *id > 2));
+        use crate::task_events::EventKind::{TransferredIn, TransferredOut};
+        let events = |database: &Database, board| {
+            database
+                .task_events(board, None)
+                .unwrap()
+                .iter()
+                .map(|e| (e.kind, e.task_id, e.from_column_id, e.to_column_id))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            events(&loaded.database, source),
+            vec![
+                (TransferredOut, 0, Some(0), None),
+                (TransferredOut, 2, Some(1), None),
+            ]
+        );
+        assert_eq!(
+            events(&loaded.database, target),
+            vec![
+                (TransferredIn, new_ids[0], None, Some(1)),
+                (TransferredIn, new_ids[1], None, Some(1)),
+            ]
+        );
+        // The log belongs to its board and is removed with it.
+        loaded.database.delete_board(source).unwrap();
+        let remaining_ops: i64 = loaded
+            .database
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM cardbe_task_event_ops WHERE board_id=?1",
+                [source],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining_ops, 0);
+        assert_eq!(events(&loaded.database, target).len(), 2);
         drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }

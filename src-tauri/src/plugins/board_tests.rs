@@ -178,10 +178,25 @@ fn mixed_operations_sources_cursor_and_history_commit_or_rollback_together() {
             .unwrap()
             .is_empty()
     );
+    let plugin_events = |db: &Database| {
+        db.task_events(f.instance.board_id, None)
+            .unwrap()
+            .into_iter()
+            .filter(|e| e.origin == crate::task_events::EventOrigin::Plugin)
+            .collect::<Vec<_>>()
+    };
+    assert!(plugin_events(&f.db).is_empty());
     f.db.plugin_connection()
         .execute_batch("DROP TRIGGER fail_mixed")
         .unwrap();
     let after = f.db.commit_changeset(&prepared).unwrap();
+    let logged = plugin_events(&f.db);
+    assert_eq!(logged.len(), 2);
+    assert!(logged
+        .iter()
+        .all(|e| e.kind == crate::task_events::EventKind::Created
+            && e.plugin_instance_id.as_deref() == Some("fixture")
+            && e.op_id == logged[0].op_id));
     assert_eq!(after.columns[1].tasks[0].title, "Nested upsert");
     assert!(after.columns[0]
         .tasks

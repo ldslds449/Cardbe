@@ -15,6 +15,8 @@
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
 
   import { recurrence_label, type Task } from "../../type/task.svelte";
+  import type { Column } from "../../type/column.svelte";
+  import TaskHistory from "../task/task_history.svelte";
   import { display_task_color } from "../../utils/task-color";
   import { is_date_only } from "../../utils/task-date-range";
   import MarkdownDocument from "../markdown_document.svelte";
@@ -33,10 +35,13 @@
     open = $bindable(false),
     task,
     onEdit,
+    history,
   }: {
     open: boolean;
     task: Task | null;
     onEdit?: () => void;
+    /** The board holding `task`; omit for tasks without history, such as templates. */
+    history?: { board_id: number; columns: Column[] };
   } = $props();
 
   let viewport_width = $state(globalThis.innerWidth ?? Infinity);
@@ -232,6 +237,15 @@
       <p class="text-sm font-medium mb-2">{m.task_checklist()}</p>
       <ChecklistDisplay items={task.items} />
     </div>
+  {/if}
+
+  {#if history}
+    <Separator />
+    <TaskHistory
+      board_id={history.board_id}
+      task_id={task.id}
+      columns={history.columns}
+    />
   {/if}
 {/snippet}
 
