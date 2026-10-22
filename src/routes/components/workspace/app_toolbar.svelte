@@ -429,6 +429,7 @@
             {#each reminder_minutes as minutes (minutes)}
               <DropdownMenu.RadioItem
                 value={String(minutes)}
+                disabled={!board.notify_enabled}
                 closeOnSelect={false}
               >
                 {reminder_label(minutes)}

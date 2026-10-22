@@ -708,7 +708,7 @@
                       </button>
                     {/snippet}
                   </ContextMenu.Trigger>
-                  <ContextMenu.Content class="w-56 rounded-lg p-1.5 shadow-lg">
+                  <ContextMenu.Content class="w-56 rounded-lg shadow-lg">
                     <ContextMenu.Item
                       class="h-9 gap-2.5 rounded-md px-2.5"
                       disabled={publishing || revoking}

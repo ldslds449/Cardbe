@@ -520,10 +520,7 @@
                 </Button>
               {/snippet}
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-              class="max-h-80 overflow-y-auto"
-              align="start"
-            >
+            <DropdownMenu.Content class="max-h-80" align="start">
               <DropdownMenu.CheckboxItem
                 checked={board_scope === null ||
                   (boards.length > 0 && board_scope.length === boards.length)}

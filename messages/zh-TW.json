@@ -1420,9 +1420,9 @@
   "notification_more_title": "還有其他任務到期",
   "notification_more_body": "開啟 Cardbe 查看其他即將到期或已逾期的任務",
   "notification_settings": "通知設定",
-  "notification_due_enabled": "到期通知",
-  "notification_reminder_label": "到期前提醒",
-  "notification_reminder_off": "不提醒",
+  "notification_due_enabled": "任務到期時通知",
+  "notification_reminder_label": "提前提醒",
+  "notification_reminder_off": "僅在到期時",
   "notification_reminder_minutes": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],

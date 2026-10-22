@@ -2,7 +2,6 @@
   import { m } from "$lib/paraglide/messages.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import TableOfContentsIcon from "@lucide/svelte/icons/table-of-contents";
 
   import type { MarkdownHeading } from "../utils/markdown-outline";
@@ -40,7 +39,7 @@
   </DropdownMenu.Trigger>
   <DropdownMenu.Content
     align="end"
-    class="w-72 overflow-hidden p-0"
+    class="w-72 max-h-80"
     onCloseAutoFocus={(event) => {
       const heading = selected;
       selected = null;
@@ -49,20 +48,14 @@
       }
     }}
   >
-    <ScrollArea
-      class="max-h-80 [&>[data-slot=scroll-area-viewport]]:max-h-[inherit]"
-    >
-      <div class="p-1">
-        {#each outline as heading (heading.start)}
-          <DropdownMenu.Item
-            style="padding-inline-start: {0.5 +
-              (heading.level - top_level) * 0.75}rem"
-            onSelect={() => (selected = heading)}
-          >
-            <span class="truncate">{heading.text}</span>
-          </DropdownMenu.Item>
-        {/each}
-      </div>
-    </ScrollArea>
+    {#each outline as heading (heading.start)}
+      <DropdownMenu.Item
+        style="padding-inline-start: {0.5 +
+          (heading.level - top_level) * 0.75}rem"
+        onSelect={() => (selected = heading)}
+      >
+        <span class="truncate">{heading.text}</span>
+      </DropdownMenu.Item>
+    {/each}
   </DropdownMenu.Content>
 </DropdownMenu.Root>

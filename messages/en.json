@@ -1599,9 +1599,9 @@
   "notification_more_title": "More tasks are due",
   "notification_more_body": "Open Cardbe to see the other due and overdue tasks",
   "notification_settings": "Notification settings",
-  "notification_due_enabled": "Due notifications",
-  "notification_reminder_label": "Remind before due",
-  "notification_reminder_off": "No reminder",
+  "notification_due_enabled": "Notify when tasks are due",
+  "notification_reminder_label": "Remind in advance",
+  "notification_reminder_off": "Only when due",
   "notification_reminder_minutes": [
     {
       "declarations": [
