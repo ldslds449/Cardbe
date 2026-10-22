@@ -201,7 +201,7 @@
 </script>
 
 <div
-  class="markdown-content min-w-0 max-w-full [&_table]:table-fixed"
+  class="markdown-content min-w-0 max-w-full"
   class:markdown-content-compact={compact}
 >
   <Markdown
@@ -227,31 +227,25 @@
     {/snippet}
     {#snippet table(props)}
       {@const { children, style, class: className, ...rest } = props}
-      <table class="{className} w-full border-collapse text-sm" {...rest}>
+      <table class={className} {...rest}>
         {@render children?.()}
       </table>
     {/snippet}
     {#snippet tr(props)}
       {@const { children, style, class: className, ...rest } = props}
-      <tr class="{className} m-0 border-t p-0 even:bg-muted/40" {...rest}>
+      <tr class={className} {...rest}>
         {@render children?.()}
       </tr>
     {/snippet}
     {#snippet th(props)}
       {@const { children, style, class: className, ...rest } = props}
-      <th
-        class="{className} border bg-muted/60 px-3 py-2 text-left font-semibold [&[align=center]]:text-center [&[align=right]]:text-right"
-        {...rest}
-      >
+      <th class={className} {...rest}>
         {@render children?.()}
       </th>
     {/snippet}
     {#snippet td(props)}
       {@const { children, style, class: className, ...rest } = props}
-      <td
-        class="{className} border px-3 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right"
-        {...rest}
-      >
+      <td class={className} {...rest}>
         {@render children?.()}
       </td>
     {/snippet}

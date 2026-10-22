@@ -78,6 +78,18 @@ export function getSlashCommands(): SlashCommand[] {
       action: (editor) => editor.chain().focus().toggleCodeBlock().run(),
     },
     {
+      id: "table",
+      label: m.editor_table(),
+      description: m.editor_slash_table_description(),
+      keywords: ["table", "grid", "column", "row"],
+      action: (editor) =>
+        editor
+          .chain()
+          .focus()
+          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+          .run(),
+    },
+    {
       id: "horizontal-rule",
       label: m.editor_horizontal_rule(),
       description: m.editor_slash_horizontal_rule_description(),

@@ -16,9 +16,16 @@
   import QuoteIcon from "@lucide/svelte/icons/quote";
   import Redo2Icon from "@lucide/svelte/icons/redo-2";
   import StrikethroughIcon from "@lucide/svelte/icons/strikethrough";
+  import TableIcon from "@lucide/svelte/icons/table";
+  import TextAlignCenterIcon from "@lucide/svelte/icons/text-align-center";
+  import TextAlignEndIcon from "@lucide/svelte/icons/text-align-end";
+  import TextAlignStartIcon from "@lucide/svelte/icons/text-align-start";
   import Undo2Icon from "@lucide/svelte/icons/undo-2";
+  import type { ChainedCommands } from "@tiptap/core";
+  import type { ColumnAlign } from "../extensions";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import { FieldError } from "$lib/components/ui/field/index.js";
@@ -43,6 +50,86 @@
   function canRedo() {
     void revision;
     return editor?.isEditable && editor.can().redo();
+  }
+
+  const tableActions = [
+    {
+      label: m.editor_table_add_row_above,
+      run: (chain: ChainedCommands) => chain.addRowBefore(),
+    },
+    {
+      label: m.editor_table_add_row_below,
+      run: (chain: ChainedCommands) => chain.addRowAfter(),
+    },
+    {
+      label: m.editor_table_add_column_left,
+      run: (chain: ChainedCommands) => chain.addColumnBefore(),
+    },
+    {
+      label: m.editor_table_add_column_right,
+      run: (chain: ChainedCommands) => chain.addColumnAfter(),
+    },
+    {
+      label: m.editor_table_delete_row,
+      separated: true,
+      run: (chain: ChainedCommands) => chain.deleteRow(),
+    },
+    {
+      label: m.editor_table_delete_column,
+      run: (chain: ChainedCommands) => chain.deleteColumn(),
+    },
+    {
+      label: m.editor_table_delete,
+      run: (chain: ChainedCommands) => chain.deleteTable(),
+    },
+  ];
+
+  function canRunTable(run: (chain: ChainedCommands) => ChainedCommands) {
+    void revision;
+    return !!editor?.isEditable && run(editor.can().chain()).run();
+  }
+
+  const columnAligns = [
+    {
+      value: "",
+      label: m.editor_table_align_default,
+      icon: TextAlignStartIcon,
+    },
+    {
+      value: "left",
+      label: m.editor_table_align_left,
+      icon: TextAlignStartIcon,
+    },
+    {
+      value: "center",
+      label: m.editor_table_align_center,
+      icon: TextAlignCenterIcon,
+    },
+    {
+      value: "right",
+      label: m.editor_table_align_right,
+      icon: TextAlignEndIcon,
+    },
+  ];
+
+  function columnAlign(): string {
+    void revision;
+    if (!editor) {
+      return "";
+    }
+    const cell = editor.isActive("tableHeader") ? "tableHeader" : "tableCell";
+    return editor.getAttributes(cell).align ?? "";
+  }
+
+  const currentAlign = $derived(
+    columnAligns.find((align) => align.value === columnAlign()) ??
+      columnAligns[0],
+  );
+
+  function runTable(run: (chain: ChainedCommands) => ChainedCommands) {
+    if (editor?.isEditable) {
+      run(editor.chain().focus(undefined, { scrollIntoView: false })).run();
+    }
   }
 
   function toggleLink() {
@@ -254,6 +341,86 @@
     onclick={() => editor?.chain().focus().toggleCodeBlock().run()}
     ><Code2Icon /></Button
   >
+  <DropdownMenu.Root>
+    <DropdownMenu.Trigger>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={m.editor_table()}
+          title={m.editor_table()}
+          aria-pressed={isActive("table")}
+          disabled={!editor?.isEditable}><TableIcon /></Button
+        >
+      {/snippet}
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Content
+      align="start"
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        editor?.commands.focus(undefined, { scrollIntoView: false });
+      }}
+    >
+      <DropdownMenu.Item
+        disabled={isActive("table")}
+        onSelect={() =>
+          runTable((chain) =>
+            chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }),
+          )}>{m.editor_insert_table()}</DropdownMenu.Item
+      >
+      <DropdownMenu.Separator />
+      {#each tableActions as action (action.label)}
+        {#if action.separated}
+          <DropdownMenu.Separator />
+        {/if}
+        <DropdownMenu.Item
+          disabled={!canRunTable(action.run)}
+          onSelect={() => runTable(action.run)}
+          >{action.label()}</DropdownMenu.Item
+        >
+      {/each}
+    </DropdownMenu.Content>
+  </DropdownMenu.Root>
+  <DropdownMenu.Root>
+    <DropdownMenu.Trigger>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`${m.editor_table_align()}: ${currentAlign.label()}`}
+          title={m.editor_table_align()}
+          disabled={!editor?.isEditable || !isActive("table")}
+          ><currentAlign.icon /></Button
+        >
+      {/snippet}
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Content
+      align="start"
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        editor?.commands.focus(undefined, { scrollIntoView: false });
+      }}
+    >
+      <DropdownMenu.Label>{m.editor_table_align()}</DropdownMenu.Label>
+      <DropdownMenu.RadioGroup
+        value={currentAlign.value}
+        onValueChange={(value) =>
+          runTable((chain) =>
+            chain.setColumnAlign((value || null) as ColumnAlign),
+          )}
+      >
+        {#each columnAligns as align (align.value)}
+          <DropdownMenu.RadioItem value={align.value}
+            >{align.label()}</DropdownMenu.RadioItem
+          >
+        {/each}
+      </DropdownMenu.RadioGroup>
+    </DropdownMenu.Content>
+  </DropdownMenu.Root>
   <Button
     type="button"
     variant="ghost"

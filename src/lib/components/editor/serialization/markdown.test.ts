@@ -142,6 +142,179 @@ describe("Markdown editor serialization", () => {
     expect(output).toContain("---");
   });
 
+  it("round-trips GFM tables with alignment and inline formatting", () => {
+    const source = [
+      "| Name | Count | Note |",
+      "| :--- | ---: | :---: |",
+      "| **Alpha** | 1 | [link](https://example.com) |",
+      "| Beta | 22 | `code` |",
+    ].join("\n");
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    expect(editor.state.doc.firstChild?.type.name).toBe("table");
+    const output = serializeMarkdown(editor);
+    const reparsed = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: output,
+      contentType: "markdown",
+    });
+    editors.push(reparsed);
+    expect(reparsed.getJSON()).toEqual(editor.getJSON());
+    expect(output).toContain("**Alpha**");
+    expect(output).toContain("[link](https://example.com)");
+    expect(output).toMatch(/\| :-+ \| -+: \| :-+: \|/);
+  });
+
+  it("inserts and edits tables as GFM Markdown", () => {
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: "Intro",
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    editor.commands.setTextSelection(6);
+    expect(
+      editor
+        .chain()
+        .insertTable({ rows: 2, cols: 2, withHeaderRow: true })
+        .run(),
+    ).toBe(true);
+    editor.commands.insertContent({ type: "text", text: "Head" });
+    expect(editor.isActive("table")).toBe(true);
+    expect(editor.chain().addColumnAfter().addRowAfter().run()).toBe(true);
+    const lines = serializeMarkdown(editor)
+      .split("\n")
+      .filter((line) => line.startsWith("|"));
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toMatch(/^\| Head +\| +\| +\|$/);
+    expect(lines[1]).toMatch(/^\| -+ \| -+ \| -+ \|$/);
+    expect(editor.chain().deleteTable().run()).toBe(true);
+    expect(editor.isActive("table")).toBe(false);
+  });
+
+  it("aligns the whole column as GFM stores it", () => {
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: "| A | B |\n| --- | :---: |\n| 1 | 2 |\n| 3 | 4 |",
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    // Cursor in the body cell "3" of the first column.
+    let position = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === "3") {
+        position = pos;
+      }
+    });
+    editor.commands.setTextSelection(position);
+    expect(editor.chain().setColumnAlign("right").run()).toBe(true);
+    let lines = serializeMarkdown(editor).trim().split("\n");
+    expect(lines[1]).toMatch(/^\| -+: \| :-+: \|$/);
+    expect(editor.getAttributes("tableCell").align).toBe("right");
+
+    expect(editor.chain().setColumnAlign(null).run()).toBe(true);
+    lines = serializeMarkdown(editor).trim().split("\n");
+    expect(lines[1]).toMatch(/^\| -+ \| :-+: \|$/);
+
+    editor.commands.setTextSelection(editor.state.doc.content.size);
+    editor.commands.insertContentAt(editor.state.doc.content.size, {
+      type: "paragraph",
+      content: [{ type: "text", text: "After" }],
+    });
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    expect(editor.isActive("table")).toBe(false);
+    expect(editor.can().setColumnAlign("left")).toBe(false);
+  });
+
+  it.each([
+    ["block image", "![alt text](https://example.com/a.png)"],
+    [
+      "inline image with title",
+      'See ![icon](https://example.com/i.png "Icon") here',
+    ],
+    ["footnotes", "Text with note[^1].\n\n[^1]: The note."],
+    [
+      "multi-line footnote",
+      "Ref[^long]\n\n[^long]: First line\n  continued\n\n  Second paragraph",
+    ],
+    ["inline HTML", "before <b>bold</b> after<br/>"],
+    ["HTML comment", "text <!-- hidden --> text"],
+    ["HTML block", "<div>\nblock\n</div>"],
+    ["escaped ordered list marker", "1\\. not a list"],
+    ["escaped heading", "\\# not a heading"],
+    ["escaped bullets", "\\- not a list\n\n\\+ not a list"],
+    ["escaped marker after a line break", "first  \n2\\) not a list"],
+    ["escaped setext underline", "text  \n\\---"],
+  ])("preserves %s through an edit", (_, source) => {
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    expect(serializeMarkdown(editor).trim()).toBe(source);
+    // Editing elsewhere re-serializes the whole document.
+    editor.commands.insertContentAt(editor.state.doc.content.size, {
+      type: "paragraph",
+      content: [{ type: "text", text: "Edited" }],
+    });
+    expect(serializeMarkdown(editor).trim()).toBe(`${source}\n\nEdited`);
+  });
+
+  it("keeps ordinary text containing block characters unescaped", () => {
+    const source = "Price 1. 2 - 3 # tag + 4";
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    editor.commands.insertContentAt(editor.state.doc.content.size, {
+      type: "paragraph",
+    });
+    expect(serializeMarkdown(editor).trim()).toBe(source);
+  });
+
+  it("does not treat autolinks as raw HTML", () => {
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: "<https://example.com>",
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    expect(editor.isActive("rawHtmlInline")).toBe(false);
+    let hasLink = false;
+    editor.state.doc.descendants((node) => {
+      hasLink ||= node.marks.some((mark) => mark.type.name === "link");
+    });
+    expect(hasLink).toBe(true);
+  });
+
+  it("keeps table cells to one line", () => {
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: "| A |\n| --- |\n| B |",
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    editor.commands.setTextSelection(4);
+    expect(editor.isActive("tableHeader")).toBe(true);
+    editor.commands.splitBlock();
+    expect(serializeMarkdown(editor)).not.toContain("<br>");
+  });
+
   it("keeps an empty document editable", () => {
     const editor = new Editor({
       element: null,
