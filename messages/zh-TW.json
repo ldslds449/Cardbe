@@ -1415,6 +1415,38 @@
   "tray_quit": "結束 Cardbe",
   "notification_expired_title": "任務已逾期 — {board}",
   "notification_expired_body": "任務「{task}」已超過截止時間",
+  "notification_reminder_title": "任務即將到期 — {board}",
+  "notification_reminder_body": "任務「{task}」快到截止時間了",
+  "notification_more_title": "還有其他任務到期",
+  "notification_more_body": "開啟 Cardbe 查看其他即將到期或已逾期的任務",
+  "notification_settings": "通知設定",
+  "notification_due_enabled": "到期通知",
+  "notification_reminder_label": "到期前提醒",
+  "notification_reminder_off": "不提醒",
+  "notification_reminder_minutes": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 分鐘前"
+      }
+    }
+  ],
+  "notification_reminder_hours": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 小時前"
+      }
+    }
+  ],
+  "notification_reminder_days": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 天前"
+      }
+    }
+  ],
   "task_id_invalid": "任務識別碼無效：{value}",
   "column_id_invalid": "欄位識別碼無效：{value}",
   "share_join_error": "無法加入分享看板",

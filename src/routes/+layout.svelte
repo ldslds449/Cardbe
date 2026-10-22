@@ -41,6 +41,21 @@
     }
   });
 
+  $effect(() => {
+    if (isTauri() && window.location.pathname === "/") {
+      void invoke("set_notification_texts", {
+        texts: {
+          overdue_title: m.notification_expired_title({ board: "{board}" }),
+          overdue_body: m.notification_expired_body({ task: "{task}" }),
+          reminder_title: m.notification_reminder_title({ board: "{board}" }),
+          reminder_body: m.notification_reminder_body({ task: "{task}" }),
+          more_title: m.notification_more_title(),
+          more_body: m.notification_more_body(),
+        },
+      }).catch((error) => logger.warn("notifications.language.failed", error));
+    }
+  });
+
   onMount(() => {
     let disposed = false;
     let unlistenLanguage: UnlistenFn | undefined;

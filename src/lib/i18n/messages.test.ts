@@ -130,6 +130,19 @@ describe("core messages", () => {
             ? "任務「{task}」已超過截止時間"
             : 'Task "{task}" has passed its due date',
         );
+        expect(m.notification_reminder_title({ board: "{board}" })).toBe(
+          chinese ? "任務即將到期 — {board}" : "Task Due Soon — {board}",
+        );
+        expect(
+          [1, 15].map((count) => m.notification_reminder_minutes({ count })),
+        ).toEqual(
+          chinese
+            ? ["1 分鐘前", "15 分鐘前"]
+            : ["1 minute before", "15 minutes before"],
+        );
+        expect(m.notification_reminder_days({ count: 1 })).toBe(
+          chinese ? "1 天前" : "1 day before",
+        );
         expect(create_card_reference("", "task_42")).toBe(
           chinese ? "[[無標題卡片|task_42]]" : "[[Untitled card|task_42]]",
         );

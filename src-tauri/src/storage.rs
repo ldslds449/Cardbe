@@ -18,6 +18,14 @@ use std::{
 };
 
 pub(crate) type StorageResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+/// A task found for due notifications, with where it is.
+pub struct DueTask {
+    pub board_id: i64,
+    pub board_name: String,
+    pub column_id: i64,
+    pub task: Task,
+}
 type IrohInviteRecord = (String, i64, String, IrohPermission, bool);
 type IrohInviteSummaryRecord = (String, i64, IrohPermission, bool, String, String);
 
@@ -1385,6 +1393,37 @@ impl Database {
         )?;
         Ok(())
     }
+    /// Unarchived tasks with a due time in `[from, to)`, for due notifications.
+    pub fn tasks_due_between(&self, from: u128, to: u128) -> StorageResult<Vec<DueTask>> {
+        let bound = |time: u128| i64::try_from(time).unwrap_or(i64::MAX);
+        let mut stmt = self.connection.prepare(
+            "SELECT t.board_id,b.name,t.column_id,t.payload
+             FROM cardbe_tasks t JOIN cardbe_boards b ON b.id=t.board_id
+             WHERE json_extract(t.payload,'$.due_time')>=?1
+               AND json_extract(t.payload,'$.due_time')<?2
+             ORDER BY t.board_id,t.column_id,t.position,t.id",
+        )?;
+        let rows = stmt.query_map([bound(from), bound(to)], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut tasks = Vec::new();
+        for row in rows {
+            let (board_id, board_name, column_id, payload) = row?;
+            tasks.push(DueTask {
+                board_id,
+                board_name,
+                column_id,
+                task: serde_json::from_str(&payload)?,
+            });
+        }
+        Ok(tasks)
+    }
+
     /// Due times before this instant (milliseconds since the Unix epoch) were
     /// already checked for notifications on this device.
     pub fn notifications_checked_until(&self) -> StorageResult<Option<u128>> {
@@ -5798,6 +5837,56 @@ mod tests {
         let database = Database::open(path).unwrap();
         assert_eq!(database.notifications_checked_until().unwrap(), Some(200));
         drop(database);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn due_tasks_are_found_by_due_time_without_archives() {
+        let dir = test_dir("due-tasks");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let task = |id, due_time| Task {
+            id,
+            title: format!("Task {id}"),
+            due_time,
+            ..Task::default()
+        };
+        let mut data = StoredData::default();
+        data.columns.push(Column {
+            id: 5,
+            name: "Todo".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            sort_rules: Vec::new(),
+            tasks: vec![
+                task(1, Some(100)),
+                task(2, Some(200)),
+                task(3, None),
+                task(4, Some(99)),
+            ],
+        });
+        data.archives.push(crate::models::Archive {
+            time: 1,
+            task: task(6, Some(150)),
+        });
+        let board = loaded
+            .database
+            .create_board_with_data("Work 工作", &data)
+            .unwrap();
+
+        let due = loaded.database.tasks_due_between(100, 200).unwrap();
+        assert_eq!(
+            due.iter()
+                .map(|due| (
+                    due.board_id,
+                    due.board_name.as_str(),
+                    due.column_id,
+                    due.task.id
+                ))
+                .collect::<Vec<_>>(),
+            vec![(board.id, "Work 工作", 5, 1)]
+        );
+        drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }
 

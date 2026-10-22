@@ -52,6 +52,21 @@ pub fn set_notify_enabled(
 }
 
 #[tauri::command]
+pub fn set_notify_reminder(
+    state: State<'_, SharedAppData>,
+    minutes: u32,
+) -> Result<(), CommandError> {
+    if !crate::commands::notifications::REMINDER_MINUTES.contains(&minutes) {
+        return Err(CommandError::InvalidArgument);
+    }
+    update_stored(&state, |data| {
+        data.settings.notify_reminder_minutes = minutes;
+        Ok(())
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
 pub fn set_column_notify_muted(
     state: State<'_, SharedAppData>,
     board_id: i64,

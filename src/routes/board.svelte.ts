@@ -60,8 +60,8 @@ export class BoardStore extends TaskBoardStore {
         false)
     );
   }
+  notify_reminder_minutes = $state(0);
   notification_setting_updating = $state(false);
-  private expired_task_checker: ReturnType<typeof setInterval> | undefined;
 
   async init() {
     await this.get_boards();
@@ -74,9 +74,9 @@ export class BoardStore extends TaskBoardStore {
     await this.show_recovery_messages();
     this.start_iroh_background_sync();
 
-    // Check notification permission and start expired task checker (only if enabled)
+    // The backend checks due tasks; it still needs notification permission.
     if (this.notify_enabled) {
-      const permission_granted = await this.enable_expired_task_notifications();
+      const permission_granted = await this.request_notification_permission();
       if (!permission_granted) {
         await this.set_notify_enabled(false);
         toast.warning(m.settings_notify_permission_disabled());
@@ -86,7 +86,6 @@ export class BoardStore extends TaskBoardStore {
 
   dispose() {
     this.disposed = true;
-    this.stop_expired_task_checker();
     this.stop_iroh_background_sync();
     // Let pending user writes finish; only recurring background work is stopped.
   }
@@ -95,6 +94,7 @@ export class BoardStore extends TaskBoardStore {
     try {
       const settings = await invoke<{
         notify_enabled: boolean;
+        notify_reminder_minutes?: number;
         task_expand_mode?: boolean;
         board_task_expand_modes?: Record<string, boolean>;
         notify_muted_columns?: Record<string, number[]>;
@@ -102,6 +102,7 @@ export class BoardStore extends TaskBoardStore {
         language?: LanguagePreference;
       }>("get_settings");
       this.notify_enabled = settings.notify_enabled;
+      this.notify_reminder_minutes = settings.notify_reminder_minutes ?? 0;
       this.default_task_expand_mode = settings.task_expand_mode ?? true;
       this.board_task_expand_modes = settings.board_task_expand_modes ?? {};
       this.notify_muted_columns = settings.notify_muted_columns ?? {};
@@ -141,13 +142,28 @@ export class BoardStore extends TaskBoardStore {
       }
 
       this.notify_enabled = enabled;
-      if (enabled) {
-        this.start_expired_task_checker();
-      } else {
-        this.stop_expired_task_checker();
-      }
     } finally {
       this.notification_setting_updating = false;
+    }
+  }
+
+  async set_notify_reminder(minutes: number) {
+    const previous = this.notify_reminder_minutes;
+    this.notify_reminder_minutes = minutes;
+    const saved = await addMission(async () => {
+      try {
+        await invoke<void>("set_notify_reminder", { minutes });
+        return true;
+      } catch (error) {
+        logger.error("settings.notify_reminder_save.failed", error);
+        toast.error(m.settings_notify_save_error(), {
+          description: translateCommandError(error),
+        });
+        return false;
+      }
+    });
+    if (!saved && this.notify_reminder_minutes === minutes) {
+      this.notify_reminder_minutes = previous;
     }
   }
 
@@ -248,48 +264,6 @@ export class BoardStore extends TaskBoardStore {
       logger.warn("notifications.permission_request.failed", e);
       return false;
     }
-  }
-
-  private async enable_expired_task_notifications(): Promise<boolean> {
-    const permission_granted = await this.request_notification_permission();
-    if (permission_granted && this.notify_enabled) {
-      this.start_expired_task_checker();
-    }
-    return permission_granted;
-  }
-
-  private start_expired_task_checker() {
-    if (this.disposed || this.expired_task_checker !== undefined) {
-      return;
-    }
-
-    const check_expired_tasks = async () => {
-      if (!this.notify_enabled) {
-        return;
-      }
-      try {
-        await invoke("check_expired_tasks", {
-          titleTemplate: m.notification_expired_title({ board: "{board}" }),
-          bodyTemplate: m.notification_expired_body({ task: "{task}" }),
-        });
-      } catch (e: unknown) {
-        logger.warn("notifications.expired_task_check.failed", e);
-      }
-    };
-
-    void check_expired_tasks();
-    // Check every minute for expired tasks
-    this.expired_task_checker = setInterval(() => {
-      void check_expired_tasks();
-    }, 60000);
-  }
-
-  private stop_expired_task_checker() {
-    if (this.expired_task_checker === undefined) {
-      return;
-    }
-    clearInterval(this.expired_task_checker);
-    this.expired_task_checker = undefined;
   }
 
   // ============ Task Templates ============

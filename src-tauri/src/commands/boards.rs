@@ -137,6 +137,16 @@ pub fn delete_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<i6
             .load_active_board(next)
             .map_err(CommandError::repository)?;
     }
+    drop(guard);
+    // Forget this device's preferences for the board; the board is already
+    // deleted, so a failure here only leaves unused entries.
+    if let Err(error) = crate::state::update_stored(&state, |data| {
+        data.settings.board_task_expand_modes.remove(&board_id);
+        data.settings.notify_muted_columns.remove(&board_id);
+        Ok(())
+    }) {
+        log::warn!(target: "settings", "Could not remove settings of a deleted board: {error}");
+    }
     Ok(next)
 }
 

@@ -19,6 +19,7 @@
   import XIcon from "@lucide/svelte/icons/x";
 
   import { Button } from "$lib/components/ui/button/index.js";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import * as InputGroup from "$lib/components/ui/input-group/index.js";
   import * as Kbd from "$lib/components/ui/kbd/index.js";
   import * as Menubar from "$lib/components/ui/menubar/index.js";
@@ -91,6 +92,21 @@
   let plugins_open = $state(false);
   let reviewPluginDomain = $state<string | null>(null);
   let diagnostics_open = $state(false);
+
+  // Matches the backend's allowed reminder offsets.
+  const reminder_minutes = [0, 5, 15, 30, 60, 1440];
+  function reminder_label(minutes: number) {
+    if (minutes === 0) {
+      return m.notification_reminder_off();
+    }
+    if (minutes % 1440 === 0) {
+      return m.notification_reminder_days({ count: minutes / 1440 });
+    }
+    if (minutes % 60 === 0) {
+      return m.notification_reminder_hours({ count: minutes / 60 });
+    }
+    return m.notification_reminder_minutes({ count: minutes });
+  }
 </script>
 
 <Menubar.Root class="h-12 shrink-0 rounded-none border-x-0 border-t-0 px-3">
@@ -361,35 +377,66 @@
         <LayoutTemplateIcon />
       </Button>
 
-      <Button
-        onclick={() => {
-          void board.set_notify_enabled(!board.notify_enabled);
-        }}
-        variant="outline"
-        size="icon-sm"
-        class="flex-none"
-        disabled={board.notification_setting_updating}
-        aria-pressed={board.notify_enabled}
-        aria-label={board.notify_enabled
-          ? m.settings_notify_disable()
-          : m.settings_notify_enable()}
-        title={board.notify_enabled
-          ? m.settings_notify_disable()
-          : m.settings_notify_enable()}
-      >
-        <BellIcon
-          class={cn(
-            "h-[1.2rem] w-[1.2rem] !transition-all ",
-            board.notify_enabled ? "rotate-0 scale-100" : "rotate-90 scale-0",
-          )}
-        />
-        <BellOffIcon
-          class={cn(
-            "absolute h-[1.2rem] w-[1.2rem] !transition-all ",
-            board.notify_enabled ? "rotate-90 scale-0" : "rotate-0 scale-100",
-          )}
-        />
-      </Button>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="outline"
+              size="icon-sm"
+              class="flex-none"
+              aria-label={m.notification_settings()}
+              title={m.notification_settings()}
+            >
+              <BellIcon
+                class={cn(
+                  "h-[1.2rem] w-[1.2rem] !transition-all ",
+                  board.notify_enabled
+                    ? "rotate-0 scale-100"
+                    : "rotate-90 scale-0",
+                )}
+              />
+              <BellOffIcon
+                class={cn(
+                  "absolute h-[1.2rem] w-[1.2rem] !transition-all ",
+                  board.notify_enabled
+                    ? "rotate-90 scale-0"
+                    : "rotate-0 scale-100",
+                )}
+              />
+            </Button>
+          {/snippet}
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content align="end" class="min-w-48">
+          <DropdownMenu.CheckboxItem
+            checked={board.notify_enabled}
+            disabled={board.notification_setting_updating}
+            closeOnSelect={false}
+            onCheckedChange={(enabled) =>
+              void board.set_notify_enabled(enabled)}
+          >
+            {m.notification_due_enabled()}
+          </DropdownMenu.CheckboxItem>
+          <DropdownMenu.Separator />
+          <DropdownMenu.Label
+            >{m.notification_reminder_label()}</DropdownMenu.Label
+          >
+          <DropdownMenu.RadioGroup
+            value={String(board.notify_reminder_minutes)}
+            onValueChange={(value) =>
+              void board.set_notify_reminder(Number(value))}
+          >
+            {#each reminder_minutes as minutes (minutes)}
+              <DropdownMenu.RadioItem
+                value={String(minutes)}
+                closeOnSelect={false}
+              >
+                {reminder_label(minutes)}
+              </DropdownMenu.RadioItem>
+            {/each}
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
 
       <div
         class="size-8 flex-none"

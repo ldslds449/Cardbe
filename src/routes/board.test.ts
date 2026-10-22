@@ -81,7 +81,8 @@ describe("BoardStore disposal", () => {
     const remove_online = vi.spyOn(dev_window, "removeEventListener");
     const remove_visibility = vi.spyOn(dev_document, "removeEventListener");
     await store.init();
-    expect(vi.getTimerCount()).toBe(2);
+    // Only Iroh sync; the backend schedules due notifications.
+    expect(vi.getTimerCount()).toBe(1);
     const boards_ready = deferred<void>();
     vi.mocked(store.get_boards).mockReturnValueOnce(boards_ready.promise);
     const initializing = store.init();
@@ -1086,6 +1087,22 @@ describe("Undo scope and shared Task Explorer updates", () => {
     expect(store.task_expand_mode).toBe(true);
     store.active_board_id = 7;
     expect(store.task_expand_mode).toBe(false);
+  });
+
+  it("saves the reminder time and restores it when saving fails", async () => {
+    const store = create_store();
+    vi.mocked(toast.error).mockClear();
+    invoke_mock.mockResolvedValue(undefined);
+    await store.set_notify_reminder(15);
+    expect(invoke_mock).toHaveBeenCalledWith("set_notify_reminder", {
+      minutes: 15,
+    });
+    expect(store.notify_reminder_minutes).toBe(15);
+
+    invoke_mock.mockRejectedValueOnce({ code: "INVALID_ARGUMENT" });
+    await store.set_notify_reminder(60);
+    expect(store.notify_reminder_minutes).toBe(15);
+    expect(toast.error).toHaveBeenCalled();
   });
 
   it("mutes column notifications per board and restores them when saving fails", async () => {

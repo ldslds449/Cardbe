@@ -375,6 +375,9 @@ pub struct Settings {
     pub language: LanguagePreference,
     #[serde(default)]
     pub notify_enabled: bool,
+    /// Minutes before a due time to send a reminder; `0` sends none.
+    #[serde(default)]
+    pub notify_reminder_minutes: u32,
     #[serde(default = "default_true")]
     pub global_shortcuts_enabled: bool,
     /// Fallback for boards without their own choice; older versions kept one
@@ -463,6 +466,7 @@ impl Default for Settings {
             theme: None,
             language: LanguagePreference::default(),
             notify_enabled: false,
+            notify_reminder_minutes: 0,
             global_shortcuts_enabled: true,
             task_expand_mode: true,
             board_task_expand_modes: BTreeMap::new(),

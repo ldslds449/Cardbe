@@ -1594,6 +1594,56 @@
   "tray_quit": "Quit Cardbe",
   "notification_expired_title": "Task Expired — {board}",
   "notification_expired_body": "Task \"{task}\" has passed its due date",
+  "notification_reminder_title": "Task Due Soon — {board}",
+  "notification_reminder_body": "Task \"{task}\" is due soon",
+  "notification_more_title": "More tasks are due",
+  "notification_more_body": "Open Cardbe to see the other due and overdue tasks",
+  "notification_settings": "Notification settings",
+  "notification_due_enabled": "Due notifications",
+  "notification_reminder_label": "Remind before due",
+  "notification_reminder_off": "No reminder",
+  "notification_reminder_minutes": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} minute before",
+        "countPlural=*": "{countFormatted} minutes before"
+      }
+    }
+  ],
+  "notification_reminder_hours": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} hour before",
+        "countPlural=*": "{countFormatted} hours before"
+      }
+    }
+  ],
+  "notification_reminder_days": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} day before",
+        "countPlural=*": "{countFormatted} days before"
+      }
+    }
+  ],
   "task_id_invalid": "Invalid task ID: {value}",
   "column_id_invalid": "Invalid column ID: {value}",
   "share_join_error": "Couldn't join shared board",

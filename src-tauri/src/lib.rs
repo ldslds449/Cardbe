@@ -346,6 +346,7 @@ pub fn run() {
             app.manage(debug_data_lock);
             app.manage(share::LanShareState::default());
             app.manage(iroh_share::IrohShareState::default());
+            app.manage(notifications::NotificationState::default());
             let startup_result = storage::load(&app_data_dir)
                 .map_err(|error| {
                     format!(
@@ -378,6 +379,7 @@ pub fn run() {
                             log::warn!(target: "plugins", "Plugin initialization failed; plugins disabled for this session");
                         }
                     }
+                    notifications::start_scheduler(app.handle().clone());
                     let iroh_app = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
                         let network = iroh_app.state::<iroh_share::IrohShareState>();
@@ -493,7 +495,7 @@ pub fn run() {
             iroh_share::get_iroh_invite_access,
             iroh_share::update_iroh_invite,
             iroh_share::delete_iroh_invite,
-            notifications::check_expired_tasks,
+            notifications::set_notification_texts,
             notifications::get_task_detail,
             task_explorer::list_all_tasks,
             notes::get_notes,
@@ -505,6 +507,7 @@ pub fn run() {
             settings::set_notify_enabled,
             settings::set_task_expand_mode,
             settings::set_column_notify_muted,
+            settings::set_notify_reminder,
             settings::get_iroh_network_settings,
             settings::set_iroh_network_settings,
             settings::set_language,
