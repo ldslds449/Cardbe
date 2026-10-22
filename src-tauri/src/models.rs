@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 8;
 
@@ -384,6 +384,10 @@ pub struct Settings {
     /// Device-local task detail visibility, keyed by board ID.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub board_task_expand_modes: BTreeMap<i64, bool>,
+    /// Device-local columns whose tasks never send due notifications, keyed
+    /// by board ID.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub notify_muted_columns: BTreeMap<i64, BTreeSet<i64>>,
     #[serde(default)]
     pub global_shortcuts: GlobalShortcutSettings,
     #[serde(default)]
@@ -462,6 +466,7 @@ impl Default for Settings {
             global_shortcuts_enabled: true,
             task_expand_mode: true,
             board_task_expand_modes: BTreeMap::new(),
+            notify_muted_columns: BTreeMap::new(),
             global_shortcuts: GlobalShortcutSettings::default(),
             iroh_network: IrohNetworkSettings::default(),
         }

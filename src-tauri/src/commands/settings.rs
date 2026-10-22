@@ -33,8 +33,49 @@ pub fn set_notify_enabled(
     state: State<'_, SharedAppData>,
     enabled: bool,
 ) -> Result<(), CommandError> {
+    {
+        let mut guard = lock_app(&state)?;
+        if enabled && !guard.stored.settings.notify_enabled {
+            // Tasks that became overdue while notifications were off stay silent.
+            let now = crate::commands::notifications::current_time_millis()?;
+            guard
+                .database
+                .set_notifications_checked_until(now)
+                .map_err(CommandError::repository)?;
+        }
+    }
     update_stored(&state, |data| {
         data.settings.notify_enabled = enabled;
+        Ok(())
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn set_column_notify_muted(
+    state: State<'_, SharedAppData>,
+    board_id: i64,
+    column_id: i64,
+    muted: bool,
+) -> Result<(), CommandError> {
+    // Device-local like other notification settings, so viewers may change it.
+    if !lock_app(&state)?
+        .boards
+        .iter()
+        .any(|board| board.id == board_id)
+    {
+        return Err(crate::errors::DomainError::BoardNotFound.into());
+    }
+    update_stored(&state, |data| {
+        let muted_columns = &mut data.settings.notify_muted_columns;
+        if muted {
+            muted_columns.entry(board_id).or_default().insert(column_id);
+        } else if let Some(columns) = muted_columns.get_mut(&board_id) {
+            columns.remove(&column_id);
+            if columns.is_empty() {
+                muted_columns.remove(&board_id);
+            }
+        }
         Ok(())
     })
     .map_err(CommandError::from)

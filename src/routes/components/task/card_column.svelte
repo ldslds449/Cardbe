@@ -17,6 +17,7 @@
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import ClipboardPasteIcon from "@lucide/svelte/icons/clipboard-paste";
   import SquareCheckIcon from "@lucide/svelte/icons/square-check";
+  import BellOffIcon from "@lucide/svelte/icons/bell-off";
 
   import EditableLabel from "../editable_label.svelte";
   import ColumnSortDialog from "../dialog/column_sort_dialog.svelte";
@@ -48,6 +49,8 @@
     width?: number;
     onResize?: (width: number, commit: boolean) => void;
     read_only?: boolean;
+    notify_muted?: boolean;
+    onToggleNotifyMuted?: (muted: boolean) => void;
   }
 
   let {
@@ -65,6 +68,8 @@
     width = column_width_bounds.default,
     onResize,
     read_only = false,
+    notify_muted = false,
+    onToggleNotifyMuted,
   }: CardColumnProps = $props();
 
   const { ref, isDragging } = useSortable({
@@ -144,6 +149,16 @@
             >
               {formatNumber(numberTasks)}
             </Badge>
+            {#if notify_muted}
+              <span
+                class="mr-1 inline-flex shrink-0 text-muted-foreground"
+                role="img"
+                title={m.column_notify_muted_hint()}
+                aria-label={m.column_notify_muted_hint()}
+              >
+                <BellOffIcon class="size-3.5" />
+              </span>
+            {/if}
             {#if primary_sort}
               <button
                 type="button"
@@ -204,46 +219,58 @@
         onresize={onResize}
       />
     {/if}
-    {#if !read_only}
+    {#if !read_only || onToggleNotifyMuted}
       <ContextMenu.Content>
-        <ContextMenu.Item onclick={onAddTask}>
-          <CirclePlus />
-          {m.task_create()}
-        </ContextMenu.Item>
-        <ContextMenu.Item onclick={onImportTask}>
-          <ClipboardPasteIcon />
-          {m.task_import()}
-        </ContextMenu.Item>
-        {#if numberTasks > 0}
-          {#if onSelectAllTasks}
-            <ContextMenu.Item onclick={onSelectAllTasks}>
-              <SquareCheckIcon />
-              {m.column_select_tasks()}
+        {#if !read_only}
+          <ContextMenu.Item onclick={onAddTask}>
+            <CirclePlus />
+            {m.task_create()}
+          </ContextMenu.Item>
+          <ContextMenu.Item onclick={onImportTask}>
+            <ClipboardPasteIcon />
+            {m.task_import()}
+          </ContextMenu.Item>
+          {#if numberTasks > 0}
+            {#if onSelectAllTasks}
+              <ContextMenu.Item onclick={onSelectAllTasks}>
+                <SquareCheckIcon />
+                {m.column_select_tasks()}
+              </ContextMenu.Item>
+            {/if}
+            <ContextMenu.Item onclick={onArchiveAllTasks}>
+              <ArchiveIcon />
+              {m.column_archive_tasks()}
             </ContextMenu.Item>
           {/if}
-          <ContextMenu.Item onclick={onArchiveAllTasks}>
-            <ArchiveIcon />
-            {m.column_archive_tasks()}
+          <ContextMenu.Item onclick={() => (sort_dialog_open = true)}>
+            <ArrowUpDownIcon />
+            {m.column_sort_open()}
           </ContextMenu.Item>
         {/if}
-        <ContextMenu.Item onclick={() => (sort_dialog_open = true)}>
-          <ArrowUpDownIcon />
-          {m.column_sort_open()}
-        </ContextMenu.Item>
-        <ContextMenu.Separator />
-        <ContextMenu.Item
-          variant="destructive"
-          onclick={() => {
-            if (numberTasks > 0) {
-              delete_confirm_open = true;
-            } else {
-              onDeleteColumn();
-            }
-          }}
-        >
-          <TrashIcon />
-          {m.column_delete()}</ContextMenu.Item
-        >
+        {#if onToggleNotifyMuted}
+          <ContextMenu.CheckboxItem
+            checked={notify_muted}
+            onCheckedChange={(checked) => onToggleNotifyMuted(checked)}
+          >
+            {m.column_notify_mute()}
+          </ContextMenu.CheckboxItem>
+        {/if}
+        {#if !read_only}
+          <ContextMenu.Separator />
+          <ContextMenu.Item
+            variant="destructive"
+            onclick={() => {
+              if (numberTasks > 0) {
+                delete_confirm_open = true;
+              } else {
+                onDeleteColumn();
+              }
+            }}
+          >
+            <TrashIcon />
+            {m.column_delete()}</ContextMenu.Item
+          >
+        {/if}
       </ContextMenu.Content>
     {/if}
   </ContextMenu.Root>

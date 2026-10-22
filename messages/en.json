@@ -79,6 +79,8 @@
   "column_sort_hint_three": "Sorted by {first}, then {second}, then {third}. Click to change.",
   "column_sort_more": "+{count}",
   "column_sort_open": "Sort…",
+  "column_notify_mute": "Mute due notifications",
+  "column_notify_muted_hint": "Tasks in this column don't send due notifications",
   "column_sort_dialog_title": "Sort “{name}”",
   "column_sort_dialog_description": "Cards follow the first level, and later levels break ties. Pinned cards stay on top, cards without a value go last, and your manual order is kept for when you switch back.",
   "column_sort_dialog_empty": "No levels. Cards keep their manual order.",

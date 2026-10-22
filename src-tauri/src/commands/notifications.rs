@@ -1,26 +1,53 @@
 use crate::errors::{CommandError, DomainError};
 use crate::{
-    models::Task,
+    models::{StoredData, Task},
     state::{lock_app, SharedAppData},
     task_dates::due_limit_millis,
 };
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 use tauri_plugin_notification::NotificationExt;
 
-fn current_time_millis() -> Result<u128, DomainError> {
+pub(crate) fn current_time_millis() -> Result<u128, DomainError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .map_err(|error| DomainError::Internal(error.to_string()))
 }
 
-fn notification_key(board_id: i64, task: &Task, now: u128) -> Option<(i64, i64, u128)> {
-    let due_time = task.due_time?;
-    (due_limit_millis(due_time, task.due_at_midnight) < now
-        && task.id >= 0
-        && !task.title.is_empty())
-    .then_some((board_id, task.id, due_time))
+/// Whether `task` became overdue in `[since, now)`, the period not yet checked.
+fn became_overdue(task: &Task, since: u128, now: u128) -> bool {
+    task.due_time.is_some_and(|due_time| {
+        (since..now).contains(&due_limit_millis(due_time, task.due_at_midnight))
+    }) && task.id >= 0
+        && !task.title.is_empty()
+}
+
+/// Board and task names to notify about, skipping columns muted on this device.
+fn overdue_task_titles(
+    boards: impl IntoIterator<Item = (i64, String, StoredData)>,
+    muted_columns: &BTreeMap<i64, BTreeSet<i64>>,
+    since: u128,
+    now: u128,
+) -> Vec<(String, String)> {
+    let mut titles = Vec::new();
+    for (board_id, board_name, data) in boards {
+        let muted = muted_columns.get(&board_id);
+        for column in data.columns {
+            if muted.is_some_and(|muted| muted.contains(&column.id)) {
+                continue;
+            }
+            titles.extend(
+                column
+                    .tasks
+                    .into_iter()
+                    .filter(|task| became_overdue(task, since, now))
+                    .map(|task| (board_name.clone(), task.title)),
+            );
+        }
+    }
+    titles
 }
 
 fn expired_notification(
@@ -61,37 +88,44 @@ pub fn check_expired_tasks(
 ) -> Result<(), CommandError> {
     let now = current_time_millis()?;
     let mut guard = lock_app(&state)?;
-
-    let expired = guard
-        .boards
-        .iter()
-        .filter_map(|board| match guard.database.read_board(board.id) {
-            Ok(data) => Some((board.id, board.name.clone(), data)),
-            Err(error) => {
-                log::warn!(target: "notifications", "Could not read board {} while checking expired tasks: {error}", board.id);
-                None
-            }
-        })
-        .flat_map(|(board_id, board_name, data)| {
-            data.columns.into_iter().flat_map(move |column| {
-                let board_name = board_name.clone();
-                column.tasks.into_iter().filter_map(move |task| {
-                    notification_key(board_id, &task, now)
-                        .map(|key| (key, board_name.clone(), task.title))
+    if !guard.stored.settings.notify_enabled {
+        return Ok(());
+    }
+    // The checked time persists, so restarting does not repeat notifications
+    // and tasks that became overdue while the app was closed notify once.
+    let since = guard
+        .database
+        .notifications_checked_until()
+        .map_err(CommandError::repository)?;
+    let titles = match since {
+        Some(since) => {
+            let boards = guard
+                .boards
+                .iter()
+                .filter_map(|board| match guard.database.read_board(board.id) {
+                    Ok(data) => Some((board.id, board.name.clone(), data)),
+                    Err(error) => {
+                        log::warn!(target: "notifications", "Could not read board {} while checking expired tasks: {error}", board.id);
+                        None
+                    }
                 })
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let titles = expired
-        .into_iter()
-        .filter_map(|(key, board_name, title)| {
-            guard
-                .notified_tasks
-                .insert(key)
-                .then_some((board_name, title))
-        })
-        .collect::<Vec<_>>();
+                .collect::<Vec<_>>();
+            overdue_task_titles(
+                boards,
+                &guard.stored.settings.notify_muted_columns,
+                since,
+                now,
+            )
+        }
+        // The first check only records where later checks start.
+        None => Vec::new(),
+    };
+    if since.is_none_or(|since| since < now) {
+        guard
+            .database
+            .set_notifications_checked_until(now)
+            .map_err(CommandError::repository)?;
+    }
     drop(guard);
 
     for (board_name, task_title) in titles {
@@ -106,8 +140,9 @@ pub fn check_expired_tasks(
 
 #[cfg(test)]
 mod tests {
-    use super::{expired_notification, notification_key};
-    use crate::models::Task;
+    use super::{became_overdue, expired_notification, overdue_task_titles};
+    use crate::models::{Column, StoredData, Task};
+    use std::collections::{BTreeMap, BTreeSet};
 
     fn task_with_due_time(due_time: u128) -> Task {
         Task {
@@ -118,35 +153,57 @@ mod tests {
         }
     }
 
-    #[test]
-    fn notification_key_changes_when_task_is_rescheduled() {
-        let first = task_with_due_time(100);
-        let rescheduled = task_with_due_time(200);
-
-        assert_eq!(notification_key(1, &first, 300), Some((1, 7, 100)));
-        assert_eq!(notification_key(1, &rescheduled, 300), Some((1, 7, 200)));
+    fn board_with_columns(columns: Vec<(i64, Vec<Task>)>) -> StoredData {
+        StoredData {
+            columns: columns
+                .into_iter()
+                .map(|(id, tasks)| Column {
+                    id,
+                    name: String::new(),
+                    color: String::new(),
+                    sort_order: Default::default(),
+                    sort_rules: Vec::new(),
+                    tasks,
+                })
+                .collect(),
+            ..StoredData::default()
+        }
     }
 
     #[test]
-    fn notification_key_keeps_same_task_id_on_different_boards_distinct() {
-        let task = task_with_due_time(100);
-        assert_ne!(
-            notification_key(1, &task, 300),
-            notification_key(2, &task, 300)
-        );
+    fn tasks_notify_only_when_they_become_overdue_in_the_unchecked_period() {
+        let task = task_with_due_time(200);
+
+        assert!(!became_overdue(&task, 100, 200));
+        assert!(became_overdue(&task, 100, 201));
+        assert!(became_overdue(&task, 200, 300));
+        // Already checked before an earlier restart.
+        assert!(!became_overdue(&task, 201, 300));
     }
 
     #[test]
-    fn notification_key_only_exists_for_expired_valid_tasks() {
-        let mut task = task_with_due_time(500);
-        assert_eq!(notification_key(1, &task, 300), None);
+    fn rescheduled_tasks_notify_again_when_they_become_overdue() {
+        let rescheduled = task_with_due_time(400);
 
+        assert!(!became_overdue(&rescheduled, 300, 350));
+        assert!(became_overdue(&rescheduled, 350, 450));
+    }
+
+    #[test]
+    fn only_valid_tasks_with_due_times_notify() {
+        let mut task = task_with_due_time(100);
         task.due_time = None;
-        assert_eq!(notification_key(1, &task, 300), None);
+        assert!(!became_overdue(&task, 0, 300));
 
         task.due_time = Some(100);
         task.title.clear();
-        assert_eq!(notification_key(1, &task, 300), None);
+        assert!(!became_overdue(&task, 0, 300));
+
+        let unsaved = Task {
+            id: -1,
+            ..task_with_due_time(100)
+        };
+        assert!(!became_overdue(&unsaved, 0, 300));
     }
 
     #[test]
@@ -163,20 +220,46 @@ mod tests {
             .unwrap()
         };
         let task = task_with_due_time(midnight(14));
+        let since = midnight(14) - 1;
 
-        assert_eq!(notification_key(1, &task, midnight(14) + 3_600_000), None);
-        assert_eq!(
-            notification_key(1, &task, midnight(15)),
-            Some((1, 7, midnight(14)))
-        );
+        assert!(!became_overdue(&task, since, midnight(14) + 3_600_000));
+        assert!(became_overdue(&task, since, midnight(15) + 1));
 
         let chosen = Task {
             due_at_midnight: true,
             ..task
         };
+        assert!(became_overdue(&chosen, since, midnight(14) + 3_600_000));
+    }
+
+    #[test]
+    fn muted_columns_do_not_notify_on_their_board_only() {
+        let task = task_with_due_time(100);
+        let other = Task {
+            id: 8,
+            title: "Review".into(),
+            ..task.clone()
+        };
+        let boards = vec![
+            (
+                1,
+                "Work".to_owned(),
+                board_with_columns(vec![(10, vec![task.clone()]), (11, vec![other])]),
+            ),
+            (
+                2,
+                "Home".to_owned(),
+                board_with_columns(vec![(10, vec![task])]),
+            ),
+        ];
+        let muted = BTreeMap::from([(1, BTreeSet::from([10]))]);
+
         assert_eq!(
-            notification_key(1, &chosen, midnight(14) + 3_600_000),
-            Some((1, 7, midnight(14)))
+            overdue_task_titles(boards, &muted, 0, 200),
+            vec![
+                ("Work".to_owned(), "Review".to_owned()),
+                ("Home".to_owned(), "Follow up".to_owned()),
+            ]
         );
     }
 

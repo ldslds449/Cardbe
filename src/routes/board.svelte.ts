@@ -17,6 +17,7 @@ import {
   deserialize_task,
   type TaskTemplateSerialized,
 } from "./type/task.svelte";
+import { get_column_id } from "./type/column.svelte";
 import { parse_import_summary, type ImportSummary } from "./utils/import-data";
 import { addMission } from "./utils/mission.svelte";
 import type { BoardSummary } from "./board-base.svelte";
@@ -45,6 +46,18 @@ export class BoardStore extends TaskBoardStore {
         ? undefined
         : this.board_task_expand_modes[board_id]) ??
       this.default_task_expand_mode
+    );
+  }
+  // Device-local columns that send no due notifications, keyed by board ID.
+  private notify_muted_columns = $state<Record<number, number[]>>({});
+  is_column_notify_muted(column_id: string) {
+    const board_id = this.active_board_id;
+    return (
+      board_id !== null &&
+      (this.notify_muted_columns[board_id]?.includes(
+        get_column_id(column_id),
+      ) ??
+        false)
     );
   }
   notification_setting_updating = $state(false);
@@ -84,12 +97,14 @@ export class BoardStore extends TaskBoardStore {
         notify_enabled: boolean;
         task_expand_mode?: boolean;
         board_task_expand_modes?: Record<string, boolean>;
+        notify_muted_columns?: Record<string, number[]>;
         iroh_network?: { enabled: boolean };
         language?: LanguagePreference;
       }>("get_settings");
       this.notify_enabled = settings.notify_enabled;
       this.default_task_expand_mode = settings.task_expand_mode ?? true;
       this.board_task_expand_modes = settings.board_task_expand_modes ?? {};
+      this.notify_muted_columns = settings.notify_muted_columns ?? {};
       this.iroh_enabled = settings.iroh_network?.enabled ?? false;
       applyLanguagePreference(settings.language);
     } catch (e) {
@@ -163,6 +178,38 @@ export class BoardStore extends TaskBoardStore {
         delete this.board_task_expand_modes[board_id];
       } else {
         this.board_task_expand_modes[board_id] = previous;
+      }
+    }
+  }
+
+  async set_column_notify_muted(column_id: string, muted: boolean) {
+    const board_id = this.active_board_id;
+    if (board_id === null) {
+      return;
+    }
+    const id = get_column_id(column_id);
+    const previous = this.notify_muted_columns[board_id];
+    const others = (previous ?? []).filter((muted_id) => muted_id !== id);
+    this.notify_muted_columns[board_id] = muted ? [...others, id] : others;
+    const saved = await addMission(async () => {
+      try {
+        await invoke<void>("set_column_notify_muted", {
+          boardId: board_id,
+          columnId: id,
+          muted,
+        });
+        return true;
+      } catch (error) {
+        logger.error("settings.column_notify_save.failed", error);
+        toast.error(translateCommandError(error));
+        return false;
+      }
+    });
+    if (!saved && this.is_column_notify_muted(column_id) === muted) {
+      if (previous === undefined) {
+        delete this.notify_muted_columns[board_id];
+      } else {
+        this.notify_muted_columns[board_id] = previous;
       }
     }
   }

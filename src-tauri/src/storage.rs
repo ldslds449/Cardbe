@@ -1385,6 +1385,23 @@ impl Database {
         )?;
         Ok(())
     }
+    /// Due times before this instant (milliseconds since the Unix epoch) were
+    /// already checked for notifications on this device.
+    pub fn notifications_checked_until(&self) -> StorageResult<Option<u128>> {
+        Ok(
+            namespaced_metadata_value(&self.connection, "notifications_checked_until")?
+                .and_then(|value| value.parse().ok()),
+        )
+    }
+
+    pub fn set_notifications_checked_until(&mut self, time: u128) -> StorageResult<()> {
+        self.connection.execute(
+            "INSERT INTO cardbe_global_metadata(key,value) VALUES('notifications_checked_until',?1)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [time.to_string()],
+        )?;
+        Ok(())
+    }
     pub fn apply_iroh_snapshot(
         &mut self,
         board_id: i64,
@@ -5762,6 +5779,24 @@ mod tests {
         drop(database);
         let database = Database::open(path).unwrap();
         assert_eq!(database.iroh_automatic_port().unwrap(), Some(51_235));
+        drop(database);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn notification_check_time_persists_across_reopen() {
+        let dir = test_dir("notifications-checked-until");
+        fs::create_dir_all(&dir).unwrap();
+        let loaded = load(&dir).unwrap();
+        let path = loaded.database.path().to_path_buf();
+        assert_eq!(loaded.database.notifications_checked_until().unwrap(), None);
+        drop(loaded);
+        let mut database = Database::open(path.clone()).unwrap();
+        database.set_notifications_checked_until(100).unwrap();
+        database.set_notifications_checked_until(200).unwrap();
+        drop(database);
+        let database = Database::open(path).unwrap();
+        assert_eq!(database.notifications_checked_until().unwrap(), Some(200));
         drop(database);
         fs::remove_dir_all(dir).unwrap();
     }

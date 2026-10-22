@@ -73,6 +73,8 @@
   "column_sort_hint_three": "依「{first}」排序，再依「{second}」與「{third}」排序。點一下即可修改。",
   "column_sort_more": "+{count}",
   "column_sort_open": "排序…",
+  "column_notify_mute": "不發送到期通知",
+  "column_notify_muted_hint": "此欄位的任務不會發送到期通知",
   "column_sort_dialog_title": "排序「{name}」",
   "column_sort_dialog_description": "卡片先依第一層排序，相同時再依下一層。釘選的卡片固定在最上方，沒有該值的卡片排在最後；手動排列的順序會保留，切回手動排序即可恢復。",
   "column_sort_dialog_empty": "尚未設定排序層級，卡片會維持手動排列的順序。",

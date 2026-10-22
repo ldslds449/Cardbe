@@ -504,6 +504,7 @@ pub fn run() {
             settings::get_settings,
             settings::set_notify_enabled,
             settings::set_task_expand_mode,
+            settings::set_column_notify_muted,
             settings::get_iroh_network_settings,
             settings::set_iroh_network_settings,
             settings::set_language,

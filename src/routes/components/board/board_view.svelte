@@ -439,6 +439,9 @@
               commit,
             )}
           {read_only}
+          notify_muted={board.is_column_notify_muted(column.id)}
+          onToggleNotifyMuted={(muted) =>
+            void board.set_column_notify_muted(column.id, muted)}
         >
           <!-- Callbacks use the stored (manual) position. -->
           {@const task_positions = new Map(

@@ -19,7 +19,6 @@ pub struct AppData {
     pub labels: BTreeSet<String>,
     pub database: Database,
     pub recovery_messages: Vec<String>,
-    pub notified_tasks: HashSet<(i64, i64, u128)>,
     pub archives_loaded: bool,
 }
 
@@ -82,7 +81,6 @@ impl AppData {
             labels: BTreeSet::new(),
             database,
             recovery_messages,
-            notified_tasks: HashSet::new(),
             archives_loaded,
         };
         data.refresh_labels();

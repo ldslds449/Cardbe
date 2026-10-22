@@ -1088,6 +1088,31 @@ describe("Undo scope and shared Task Explorer updates", () => {
     expect(store.task_expand_mode).toBe(false);
   });
 
+  it("mutes column notifications per board and restores them when saving fails", async () => {
+    const store = create_store();
+    vi.mocked(toast.error).mockClear();
+    invoke_mock.mockResolvedValue(undefined);
+    await store.set_column_notify_muted("column_3", true);
+    expect(invoke_mock).toHaveBeenCalledWith("set_column_notify_muted", {
+      boardId: 7,
+      columnId: 3,
+      muted: true,
+    });
+    expect(store.is_column_notify_muted("column_3")).toBe(true);
+
+    invoke_mock.mockRejectedValueOnce({ code: "INTERNAL_ERROR" });
+    await store.set_column_notify_muted("column_3", false);
+    expect(store.is_column_notify_muted("column_3")).toBe(true);
+    expect(toast.error).toHaveBeenCalled();
+
+    // Other boards keep their own columns.
+    store.active_board_id = 9;
+    expect(store.is_column_notify_muted("column_3")).toBe(false);
+    store.active_board_id = 7;
+    await store.set_column_notify_muted("column_3", false);
+    expect(store.is_column_notify_muted("column_3")).toBe(false);
+  });
+
   it.each(["sync", "push"])(
     "refreshes Explorer after an inactive shared board %s",
     async (event) => {
