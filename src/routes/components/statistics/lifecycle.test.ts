@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { create_task, type Task } from "../../type/task.svelte";
 import { create_column, type Column } from "../../type/column.svelte";
-import {
-  lifecycle_labels,
-  median,
-  percentile,
-  task_lifecycle,
-} from "./lifecycle";
+import { median, percentile, task_lifecycle } from "./lifecycle";
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = new Date(2024, 5, 30, 12);
@@ -41,7 +36,7 @@ describe("task lifecycle", () => {
       { time: ago(10), task: task("previous", { created_time: ago(11) }) },
       { time: ago(20), task: task("old", { created_time: ago(21) }) },
     ];
-    const result = task_lifecycle(archives, [], { range: 7, label: null }, now);
+    const result = task_lifecycle(archives, [], 7, now);
     expect(result.completed).toBe(4);
     expect(result.previous_completed).toBe(1);
     expect(result.unknown_created).toBe(1);
@@ -52,12 +47,7 @@ describe("task lifecycle", () => {
     expect(result.due_completed).toBe(2);
     expect(result.on_time).toBe(1);
 
-    const all = task_lifecycle(
-      archives,
-      [],
-      { range: "all", label: null },
-      now,
-    );
+    const all = task_lifecycle(archives, [], "all", now);
     expect(all.completed).toBe(6);
     expect(all.previous_completed).toBeNull();
     expect(all.weekly).toHaveLength(52);
@@ -70,7 +60,7 @@ describe("task lifecycle", () => {
         { time: ago(1), task: task("skewed", { created_time: ago(0) }) },
       ],
       [],
-      { range: 30, label: null },
+      30,
       now,
     );
     expect(result.completed).toBe(1);
@@ -95,7 +85,7 @@ describe("task lifecycle", () => {
         "Todo",
       ),
     ];
-    const result = task_lifecycle([], columns, { range: 30, label: null }, now);
+    const result = task_lifecycle([], columns, 30, now);
     expect(result.aging.map((item) => item.task.id)).toEqual([
       "stale",
       "today",
@@ -110,55 +100,68 @@ describe("task lifecycle", () => {
     expect(result.overdue).toBe(2);
   });
 
-  it("filters by label and groups lead times per label", () => {
+  it("groups completion, due dates and overdue tasks per label", () => {
     const archives = [
       {
         time: ago(1),
-        task: task("a", { created_time: ago(2), labels: ["work", "home"] }),
+        task: task("a", {
+          created_time: ago(2),
+          due_time: ago(0.5),
+          labels: ["work", "home"],
+        }),
       },
       {
         time: ago(1),
-        task: task("b", { created_time: ago(4), labels: ["work"] }),
+        task: task("b", {
+          created_time: ago(4),
+          due_time: ago(2),
+          labels: ["work"],
+        }),
       },
       { time: ago(1), task: task("c", { created_time: ago(3) }) },
     ];
     const columns = [
-      column([task("d", { created_time: ago(1), labels: ["home"] })]),
+      column([
+        task("d", { created_time: ago(1), due_time: ago(1), labels: ["home"] }),
+        task("e", { due_time: ago(1), labels: ["garden"] }),
+        task("f", { created_time: ago(1), labels: ["garden"] }),
+      ]),
     ];
-    const all = task_lifecycle(
-      archives,
-      columns,
-      { range: 30, label: null },
-      now,
-    );
-    expect(all.by_label).toEqual([
-      { label: "work", completed: 2, median: 2 * DAY },
-      { label: "", completed: 1, median: 2 * DAY },
-      { label: "home", completed: 1, median: DAY },
+    const empty = { median: null, due_completed: 0, on_time: 0 };
+    expect(task_lifecycle(archives, columns, 30, now).by_label).toEqual([
+      {
+        label: "work",
+        completed: 2,
+        median: 2 * DAY,
+        due_completed: 2,
+        on_time: 1,
+        overdue: 0,
+      },
+      {
+        label: "home",
+        completed: 1,
+        median: DAY,
+        due_completed: 1,
+        on_time: 1,
+        overdue: 1,
+      },
+      {
+        label: "",
+        completed: 1,
+        median: 2 * DAY,
+        due_completed: 0,
+        on_time: 0,
+        overdue: 0,
+      },
+      { label: "garden", completed: 0, ...empty, overdue: 1 },
     ]);
-    const work = task_lifecycle(
-      archives,
-      columns,
-      { range: 30, label: "work" },
-      now,
-    );
-    expect(work.completed).toBe(2);
-    expect(work.aging).toHaveLength(0);
-    const unlabeled = task_lifecycle(
-      archives,
-      columns,
-      { range: 30, label: "" },
-      now,
-    );
-    expect(unlabeled.completed).toBe(1);
-    expect(lifecycle_labels(archives, columns)).toEqual(["home", "work"]);
   });
 
   it("buckets created and completed tasks into calendar weeks", () => {
     const result = task_lifecycle(
       [{ time: ago(1), task: task("a", { created_time: ago(8) }) }],
       [column([task("b", { created_time: ago(0) })])],
-      { range: 30, label: null },
+      30,
       now,
     );
     expect(result.weekly).toHaveLength(12);

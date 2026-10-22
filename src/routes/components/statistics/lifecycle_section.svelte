@@ -8,7 +8,6 @@
   import type { Column } from "../../type/column.svelte";
   import type { Task } from "../../type/task.svelte";
   import {
-    lifecycle_labels,
     lifecycle_ranges,
     task_lifecycle,
     type LifecycleRange,
@@ -27,20 +26,12 @@
   } = $props();
 
   const AGING_LIMIT = 10;
-  // Select values are strings; these sentinels cannot be label text.
-  const ALL_LABELS = "\u0000all";
-  const NO_LABEL = "\u0000none";
   let range = $state("30");
-  let label = $state(ALL_LABELS);
-  const labels = $derived(lifecycle_labels(archives, columns));
   const lifecycle = $derived(
     task_lifecycle(
       archives,
       columns,
-      {
-        range: (range === "all" ? "all" : Number(range)) as LifecycleRange,
-        label: label === ALL_LABELS ? null : label === NO_LABEL ? "" : label,
-      },
+      (range === "all" ? "all" : Number(range)) as LifecycleRange,
       now,
     ),
   );
@@ -67,11 +58,7 @@
   }
 
   function label_name(value: string) {
-    return value === ALL_LABELS
-      ? m.statistics_all_labels()
-      : value === NO_LABEL || value === ""
-        ? m.statistics_no_label()
-        : value;
+    return value === "" ? m.statistics_no_label() : value;
   }
 
   function duration(ms: number) {
@@ -102,32 +89,18 @@
         {m.statistics_lifecycle_description()}
       </p>
     </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <Select.Root type="single" bind:value={range}>
-        <Select.Trigger class="w-36" aria-label={m.statistics_range()}
-          >{range_label(range)}</Select.Trigger
-        >
-        <Select.Content>
-          {#each lifecycle_ranges as item (item)}
-            <Select.Item value={String(item)} label={range_label(item)}
-              >{range_label(item)}</Select.Item
-            >
-          {/each}
-        </Select.Content>
-      </Select.Root>
-      <Select.Root type="single" bind:value={label}>
-        <Select.Trigger class="w-40" aria-label={m.statistics_label_filter()}
-          ><span class="truncate">{label_name(label)}</span></Select.Trigger
-        >
-        <Select.Content>
-          {#each [ALL_LABELS, NO_LABEL, ...labels] as item (item)}
-            <Select.Item value={item} label={label_name(item)}
-              >{label_name(item)}</Select.Item
-            >
-          {/each}
-        </Select.Content>
-      </Select.Root>
-    </div>
+    <Select.Root type="single" bind:value={range}>
+      <Select.Trigger class="w-36" aria-label={m.statistics_range()}
+        >{range_label(range)}</Select.Trigger
+      >
+      <Select.Content>
+        {#each lifecycle_ranges as item (item)}
+          <Select.Item value={String(item)} label={range_label(item)}
+            >{range_label(item)}</Select.Item
+          >
+        {/each}
+      </Select.Content>
+    </Select.Root>
   </header>
 
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -295,7 +268,7 @@
     </Card.Root>
   </div>
 
-  <div class="grid gap-4 lg:grid-cols-2">
+  <div class="grid gap-4">
     <Card.Root>
       <Card.Header>
         <Card.Title>{m.statistics_aging()}</Card.Title>
@@ -344,50 +317,72 @@
         {/if}
       </Card.Content>
     </Card.Root>
+  </div>
 
-    <Card.Root>
-      <Card.Header>
-        <Card.Title>{m.statistics_by_label()}</Card.Title>
-        <Card.Description>{range_label(range)}</Card.Description>
-      </Card.Header>
-      <Card.Content>
-        {#if lifecycle.by_label.length === 0}
-          <p class="text-sm text-muted-foreground">
-            {m.statistics_completed_empty()}
-          </p>
-        {:else}
-          <Table.Root>
-            <Table.Header>
+  <Card.Root>
+    <Card.Header>
+      <Card.Title>{m.statistics_by_label()}</Card.Title>
+      <Card.Description>{m.statistics_by_label_description()}</Card.Description>
+    </Card.Header>
+    <Card.Content>
+      {#if lifecycle.by_label.length === 0}
+        <p class="text-sm text-muted-foreground">
+          {m.statistics_completed_empty()}
+        </p>
+      {:else}
+        <Table.Root>
+          <Table.Header>
+            <Table.Row>
+              <Table.Head>{m.statistics_label()}</Table.Head>
+              <Table.Head class="text-right"
+                >{m.statistics_completed()}</Table.Head
+              >
+              <Table.Head class="text-right"
+                >{m.statistics_median_time()}</Table.Head
+              >
+              <Table.Head class="text-right"
+                >{m.statistics_on_time_rate()}</Table.Head
+              >
+              <Table.Head class="text-right"
+                >{m.statistics_overdue_now()}</Table.Head
+              >
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {#each lifecycle.by_label as row (row.label)}
               <Table.Row>
-                <Table.Head>{m.statistics_label_filter()}</Table.Head>
-                <Table.Head class="text-right"
-                  >{m.statistics_completed()}</Table.Head
+                <Table.Cell class="max-w-48 truncate"
+                  >{label_name(row.label)}</Table.Cell
                 >
-                <Table.Head class="text-right"
-                  >{m.statistics_lead_time_median()}</Table.Head
+                <Table.Cell class="text-right tabular-nums"
+                  >{formatNumber(row.completed)}</Table.Cell
+                >
+                <Table.Cell class="text-right tabular-nums"
+                  >{row.median === null
+                    ? m.statistics_no_data()
+                    : duration(row.median)}</Table.Cell
+                >
+                <Table.Cell
+                  class="text-right tabular-nums"
+                  title={m.statistics_on_time_detail({
+                    on_time: row.on_time,
+                    count: row.due_completed,
+                  })}
+                  >{row.due_completed === 0
+                    ? m.statistics_no_data()
+                    : formatNumber(row.on_time / row.due_completed, {
+                        style: "percent",
+                      })}</Table.Cell
+                >
+                <Table.Cell
+                  class={`text-right tabular-nums ${row.overdue ? "text-destructive" : ""}`}
+                  >{formatNumber(row.overdue)}</Table.Cell
                 >
               </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {#each lifecycle.by_label as row (row.label)}
-                <Table.Row>
-                  <Table.Cell class="max-w-40 truncate"
-                    >{label_name(row.label)}</Table.Cell
-                  >
-                  <Table.Cell class="text-right tabular-nums"
-                    >{formatNumber(row.completed)}</Table.Cell
-                  >
-                  <Table.Cell class="text-right tabular-nums"
-                    >{row.median === null
-                      ? m.statistics_no_data()
-                      : duration(row.median)}</Table.Cell
-                  >
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-        {/if}
-      </Card.Content>
-    </Card.Root>
-  </div>
+            {/each}
+          </Table.Body>
+        </Table.Root>
+      {/if}
+    </Card.Content>
+  </Card.Root>
 </section>

@@ -1553,8 +1553,6 @@
       }
     }
   ],
-  "statistics_label_filter": "Label",
-  "statistics_all_labels": "All labels",
   "statistics_no_label": "No label",
   "statistics_completed": "Completed",
   "statistics_created": "Created",
@@ -1648,6 +1646,9 @@
   "statistics_aging_overdue": "Overdue by {duration}",
   "statistics_aging_empty": "No active tasks.",
   "statistics_by_label": "By label",
+  "statistics_label": "Label",
+  "statistics_median_time": "Median time",
+  "statistics_by_label_description": "Completed tasks in the selected range and active tasks overdue now. A task with several labels counts under each.",
   "export_document_title": "Calendar export",
   "export_month_label": "Month {month}",
   "task_move_board": "Move to Board",

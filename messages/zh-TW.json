@@ -1371,8 +1371,6 @@
       }
     }
   ],
-  "statistics_label_filter": "標籤",
-  "statistics_all_labels": "全部標籤",
   "statistics_no_label": "無標籤",
   "statistics_completed": "完成",
   "statistics_created": "建立",
@@ -1445,6 +1443,9 @@
   "statistics_aging_overdue": "逾期 {duration}",
   "statistics_aging_empty": "目前沒有未完成的任務。",
   "statistics_by_label": "依標籤",
+  "statistics_label": "標籤",
+  "statistics_median_time": "時間中位數",
+  "statistics_by_label_description": "所選期間完成的任務，以及目前逾期的未完成任務。有多個標籤的任務會在每個標籤各算一次。",
   "export_document_title": "行事曆匯出",
   "export_month_label": "第 {month} 個月",
   "task_move_board": "移至其他看板",

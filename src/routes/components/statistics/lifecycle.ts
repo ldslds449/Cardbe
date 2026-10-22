@@ -11,12 +11,6 @@ export const lifecycle_ranges: LifecycleRange[] = [7, 30, 90, 365, "all"];
 // Upper bounds of the lead time buckets; the last bucket is open-ended.
 export const lead_time_bucket_limits = [1, 3, 7, 14, 30].map((d) => d * DAY);
 
-export interface LifecycleFilter {
-  range: LifecycleRange;
-  /** `null` keeps all tasks; `""` keeps tasks without labels. */
-  label: string | null;
-}
-
 export interface AgingTask {
   task: Task;
   column_name: string;
@@ -25,10 +19,15 @@ export interface AgingTask {
   overdue: number | null;
 }
 
-export interface LabelLeadTime {
+export interface LabelLifecycle {
+  /** `""` groups tasks without labels. */
   label: string;
   completed: number;
   median: number | null;
+  due_completed: number;
+  on_time: number;
+  /** Active tasks past their due time, regardless of the range. */
+  overdue: number;
 }
 
 export function percentile(sorted: number[], p: number): number | null {
@@ -48,19 +47,24 @@ export function median(sorted: number[]): number | null {
     : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function matches_label(task: Task, label: string | null): boolean {
-  return (
-    label === null ||
-    (label === "" ? task.labels.length === 0 : task.labels.includes(label))
-  );
-}
-
 function lead_time(archive: Archive): number | null {
   const created = archive.task.created_time?.getTime();
   if (!created || created > archive.time.getTime()) {
     return null;
   }
   return archive.time.getTime() - created;
+}
+
+function on_time(archive: Archive): boolean {
+  const due = archive.task.due_time;
+  return (
+    !!due &&
+    archive.time.getTime() <= due_limit(due, archive.task.due_at_midnight)
+  );
+}
+
+function task_labels(task: Task): string[] {
+  return task.labels.length ? task.labels : [""];
 }
 
 function week_start(time: Date): Date {
@@ -73,19 +77,14 @@ function week_start(time: Date): Date {
 export function task_lifecycle(
   archives: Archive[],
   columns: Column[],
-  filter: LifecycleFilter,
+  range: LifecycleRange,
   now = new Date(),
 ) {
   const end = now.getTime();
-  const start = filter.range === "all" ? -Infinity : end - filter.range * DAY;
-  const previous_start =
-    filter.range === "all" ? null : start - filter.range * DAY;
+  const start = range === "all" ? -Infinity : end - range * DAY;
+  const previous_start = range === "all" ? null : start - range * DAY;
 
-  const archived = archives.filter(
-    (archive) =>
-      archive.time.getTime() <= end &&
-      matches_label(archive.task, filter.label),
-  );
+  const archived = archives.filter((archive) => archive.time.getTime() <= end);
   const completed = archived.filter(
     (archive) => archive.time.getTime() > start,
   );
@@ -108,16 +107,9 @@ export function task_lifecycle(
   }
 
   const with_due = completed.filter((archive) => archive.task.due_time);
-  const on_time = with_due.filter(
-    (archive) =>
-      archive.time.getTime() <=
-      due_limit(archive.task.due_time!, archive.task.due_at_midnight),
-  ).length;
 
   const active = columns.flatMap((column) =>
-    column.tasks
-      .filter((task) => matches_label(task, filter.label))
-      .map((task) => ({ task, column_name: column.name })),
+    column.tasks.map((task) => ({ task, column_name: column.name })),
   );
   const overdue_time = (task: Task) => {
     if (!task.due_time) {
@@ -138,27 +130,53 @@ export function task_lifecycle(
     }))
     .sort((a, b) => b.age - a.age || Number(a.task.id) - Number(b.task.id));
 
-  const label_times = new Map<string, number[]>();
-  const label_counts = new Map<string, number>();
+  // A task with several labels counts once under each of them.
+  const labels = new Map<string, LabelLifecycle & { times: number[] }>();
+  const row = (label: string) => {
+    let entry = labels.get(label);
+    if (!entry) {
+      entry = {
+        label,
+        completed: 0,
+        median: null,
+        due_completed: 0,
+        on_time: 0,
+        overdue: 0,
+        times: [],
+      };
+      labels.set(label, entry);
+    }
+    return entry;
+  };
   for (const archive of completed) {
     const time = lead_time(archive);
-    for (const label of archive.task.labels.length
-      ? archive.task.labels
-      : [""]) {
-      label_counts.set(label, (label_counts.get(label) ?? 0) + 1);
+    for (const label of task_labels(archive.task)) {
+      const entry = row(label);
+      entry.completed++;
+      entry.due_completed += archive.task.due_time ? 1 : 0;
+      entry.on_time += on_time(archive) ? 1 : 0;
       if (time !== null) {
-        label_times.set(label, [...(label_times.get(label) ?? []), time]);
+        entry.times.push(time);
       }
     }
   }
-  const by_label: LabelLeadTime[] = [...label_counts]
-    .map(([label, count]) => ({
-      label,
-      completed: count,
-      median: median((label_times.get(label) ?? []).sort((a, b) => a - b)),
+  for (const { task } of active) {
+    if (overdue_time(task) !== null) {
+      for (const label of task_labels(task)) {
+        row(label).overdue++;
+      }
+    }
+  }
+  const by_label: LabelLifecycle[] = [...labels.values()]
+    .map(({ times, ...entry }) => ({
+      ...entry,
+      median: median(times.sort((a, b) => a - b)),
     }))
     .sort(
-      (a, b) => b.completed - a.completed || a.label.localeCompare(b.label),
+      (a, b) =>
+        b.completed - a.completed ||
+        b.overdue - a.overdue ||
+        a.label.localeCompare(b.label),
     );
 
   return {
@@ -170,14 +188,14 @@ export function task_lifecycle(
     unknown_created: completed.length - lead_times.length,
     distribution,
     due_completed: with_due.length,
-    on_time,
+    on_time: with_due.filter(on_time).length,
     overdue: active.filter(({ task }) => overdue_time(task) !== null).length,
     aging,
     by_label,
     weekly: weekly_flow(
       archived,
       active.map(({ task }) => task),
-      filter,
+      range,
       now,
     ),
   };
@@ -187,13 +205,11 @@ export function task_lifecycle(
 function weekly_flow(
   archived: Archive[],
   active: Task[],
-  filter: LifecycleFilter,
+  range: LifecycleRange,
   now: Date,
 ) {
   const count =
-    filter.range === "all"
-      ? 52
-      : Math.min(52, Math.max(12, Math.ceil(filter.range / 7)));
+    range === "all" ? 52 : Math.min(52, Math.max(12, Math.ceil(range / 7)));
   const first = week_start(now);
   first.setDate(first.getDate() - (count - 1) * 7);
   const weeks = Array.from({ length: count }, (_, index) => {
@@ -222,18 +238,4 @@ function weekly_flow(
     }
   }
   return weeks;
-}
-
-export function lifecycle_labels(
-  archives: Archive[],
-  columns: Column[],
-): string[] {
-  return [
-    ...new Set([
-      ...archives.flatMap((archive) => archive.task.labels),
-      ...columns.flatMap((column) =>
-        column.tasks.flatMap((task) => task.labels),
-      ),
-    ]),
-  ].sort((a, b) => a.localeCompare(b));
 }
