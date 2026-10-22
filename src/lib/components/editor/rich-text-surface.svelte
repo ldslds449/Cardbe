@@ -1,6 +1,6 @@
 ﻿<script lang="ts">
   import { m } from "$lib/paraglide/messages";
-  import { onMount, untrack } from "svelte";
+  import { untrack } from "svelte";
   import "./markdown-content.css";
   import type { Editor } from "@tiptap/core";
   import { Editor as TiptapEditor } from "@tiptap/core";
@@ -225,13 +225,18 @@
     };
   }
 
-  onMount(() => {
-    if (!editor_host) {
-      return;
+  // Wait for the host instead of using onMount: another editor's code block
+  // view can flush this component's mount before `bind:this` is assigned.
+  $effect(() => {
+    const host = editor_host;
+    if (host) {
+      return untrack(() => createEditor(host));
     }
+  });
 
+  function createEditor(host: HTMLDivElement) {
     const instance = new TiptapEditor({
-      element: editor_host,
+      element: host,
       extensions: createEditorExtensions(placeholder),
       content: value,
       contentType: "markdown",
@@ -282,13 +287,17 @@
       instance.destroy();
       editor = null;
     };
-  });
+  }
 
   $effect(() => {
     const instance = editor;
     if (instance) {
       const editable = !disabled && !readonly;
-      untrack(() => instance.setEditable(editable));
+      // An update event would report unchanged content as an edit.
+      untrack(() => {
+        instance.setEditable(editable, false);
+        revision += 1;
+      });
     }
   });
 

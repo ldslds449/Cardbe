@@ -1,7 +1,15 @@
+<script lang="ts" module>
+  import type { Component } from "svelte";
+
+  // Reuse the loaded renderer so later mounts render without the plain-text
+  // fallback, which has a different height and would shift restored scroll.
+  let loadedRenderer: Component<{ md: string; compact?: boolean }> | null =
+    null;
+</script>
+
 <script lang="ts">
   import { logger } from "$lib/logger";
   import { onMount } from "svelte";
-  import type { Component } from "svelte";
   import { render_card_references } from "../utils/card-reference";
 
   let {
@@ -12,15 +20,17 @@
     compact?: boolean;
   } = $props();
 
-  let Renderer = $state<Component<{ md: string; compact?: boolean }> | null>(
-    null,
-  );
+  let Renderer = $state(loadedRenderer);
   const rendered_md = $derived(render_card_references(md));
 
   onMount(() => {
+    if (Renderer) {
+      return;
+    }
     let active = true;
     void import("./markdown_renderer.svelte")
       .then((module) => {
+        loadedRenderer = module.default;
         if (active) {
           Renderer = module.default;
         }

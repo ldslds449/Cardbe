@@ -86,8 +86,7 @@
     {#snippet child({ props })}
       <a {...props} {...rest} {href} role={undefined}>{@render children?.()}</a>
     {/snippet}
-  </HoverCard.Trigger>
-  <HoverCard.Portal>
+  </HoverCard.Trigger><HoverCard.Portal>
     <HoverCard.Content
       sideOffset={6}
       collisionPadding={12}

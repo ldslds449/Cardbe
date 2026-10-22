@@ -31,6 +31,10 @@
     ref = $editorMode === "rich" ? richRef : plainRef;
   });
 
+  // Switching to rich mode also resets `previewing`. Keep the position
+  // measured before the first change instead of the new editor's top.
+  let restoringScroll = false;
+
   $effect.pre(() => {
     void $editorMode;
     void previewing;
@@ -39,9 +43,10 @@
       const body = root?.querySelector<HTMLElement>(
         "[data-slot='scroll-area-viewport']",
       );
-      if (!root || !body) {
+      if (!root || !body || restoringScroll) {
         return;
       }
+      restoringScroll = true;
       const scrollRatio =
         body.scrollTop / Math.max(1, body.scrollHeight - body.clientHeight);
       const parents: [HTMLElement, number, number][] = [];
@@ -53,6 +58,7 @@
         parents.push([element, element.scrollTop, element.scrollLeft]);
       }
       void tick().then(() => {
+        restoringScroll = false;
         if (!root.isConnected) {
           return;
         }
