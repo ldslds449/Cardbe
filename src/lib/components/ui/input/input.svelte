@@ -22,6 +22,7 @@
     files = $bindable(),
     class: className,
     "data-slot": dataSlot = "input",
+    autocomplete = "off",
     ...restProps
   }: Props = $props();
 </script>
@@ -52,6 +53,7 @@
       className,
     )}
     {type}
+    {autocomplete}
     bind:value
     {...restProps}
   />
