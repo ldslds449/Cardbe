@@ -355,6 +355,76 @@ fn archive_and_restore_round_trip_and_recurring_tasks_continue() {
 }
 
 #[test]
+fn writes_record_task_events_as_local_changes() {
+    use crate::task_events::{EventKind::*, EventOrigin};
+    let host = TestHost::new();
+    let writer = context("writer", &[host.board_id], true);
+    let events = |after: Option<i64>| {
+        let app = host.app.lock().unwrap();
+        crate::task_events::list(&app.database.connection, host.board_id, None, after).unwrap()
+    };
+    let start = events(None).last().map(|event| event.id);
+
+    let created = call(
+        &host,
+        &writer,
+        "task.create",
+        json!({"board_id": host.board_id, "column_id": 1, "title": "Plan"}),
+    )
+    .unwrap();
+    let id = created["task"]["id"].as_i64().unwrap();
+    call(
+        &host,
+        &writer,
+        "task.move",
+        json!({"board_id": host.board_id, "task_id": id, "column_id": 2}),
+    )
+    .unwrap();
+    call(
+        &host,
+        &writer,
+        "task.archive",
+        json!({"board_id": host.board_id, "task_id": id}),
+    )
+    .unwrap();
+    call(
+        &host,
+        &writer,
+        "task.restore",
+        json!({"board_id": host.board_id, "task_id": id, "column_id": 1}),
+    )
+    .unwrap();
+    // Changes that keep the task in place record no lifecycle event.
+    call(
+        &host,
+        &writer,
+        "task.update",
+        json!({"board_id": host.board_id, "task_id": id, "title": "Plan B"}),
+    )
+    .unwrap();
+
+    let recorded = events(start);
+    assert!(recorded
+        .iter()
+        .all(|event| event.task_id == id && event.origin == EventOrigin::Local));
+    assert!(recorded
+        .iter()
+        .all(|event| event.plugin_instance_id.is_none()));
+    assert_eq!(
+        recorded
+            .iter()
+            .map(|event| (event.kind, event.from_column_id, event.to_column_id))
+            .collect::<Vec<_>>(),
+        vec![
+            (Created, None, Some(1)),
+            (Moved, Some(1), Some(2)),
+            (Archived, Some(2), None),
+            (Restored, None, Some(1)),
+        ]
+    );
+}
+
+#[test]
 fn moves_respect_custom_order_and_search_finds_unicode_text() {
     let host = TestHost::new();
     let writer = context("writer", &[host.board_id], true);
