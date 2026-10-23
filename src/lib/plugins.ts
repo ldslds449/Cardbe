@@ -61,7 +61,7 @@ export interface HttpCredentialRule {
     | null;
 }
 /** WIT API versions accepted by the host; 1.x releases are additive. */
-export const pluginApiVersions = ["1.1.0"];
+export const pluginApiVersions = ["1.1.0", "1.2.0"];
 export function validPluginManifestVersion(pkg: PluginPackage): boolean {
   const version = pkg.manifest_version === undefined ? 1 : pkg.manifest_version;
   return (

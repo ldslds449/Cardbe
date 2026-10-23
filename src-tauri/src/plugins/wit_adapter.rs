@@ -22,6 +22,14 @@ macro_rules! enum_mapping {
 }
 enum_mapping!(model::BoardRole, wit::BoardRole, Owner, Editor, Viewer);
 enum_mapping!(
+    model::TaskPriority,
+    wit::TaskPriority,
+    Low,
+    Medium,
+    High,
+    Urgent
+);
+enum_mapping!(
     model::SyncStatus,
     wit::SyncStatus,
     Local,
@@ -197,6 +205,14 @@ impl From<wit::ColumnReference> for board::Reference {
         }
     }
 }
+impl From<wit::TaskReference> for board::Reference {
+    fn from(r: wit::TaskReference) -> Self {
+        match r {
+            wit::TaskReference::Id(id) => Self::Id(id),
+            wit::TaskReference::Temporary(key) => Self::Temporary(key),
+        }
+    }
+}
 impl From<wit::ExternalTask> for ExternalTask {
     fn from(t: wit::ExternalTask) -> Self {
         Self {
@@ -208,6 +224,7 @@ impl From<wit::ExternalTask> for ExternalTask {
             labels: t.labels,
             updated_at: t.updated_at,
             column_id: t.column_id,
+            priority: None,
         }
     }
 }

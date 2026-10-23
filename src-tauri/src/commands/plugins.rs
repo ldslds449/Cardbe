@@ -195,7 +195,7 @@ fn release_version(value: &str) -> Option<[u64; 3]> {
     ])
 }
 /// 1.1.0 changed the task record, so draft 1.0.0 components are not supported.
-const SUPPORTED_API_VERSIONS: [&str; 1] = ["1.1.0"];
+const SUPPORTED_API_VERSIONS: [&str; 2] = ["1.1.0", "1.2.0"];
 fn validate_update(old: &PluginPackage, new: &PluginPackage) -> Result<(), CommandError> {
     if old.id != new.id {
         return Err(CommandError::InvalidArgument);

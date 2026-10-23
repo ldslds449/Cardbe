@@ -1,7 +1,7 @@
 use super::{runtime::ExternalTask, storage, types::*};
 use crate::{
     errors::DomainError,
-    models::{StoredData, Task},
+    models::{StoredData, Task, TaskPriority},
 };
 use rusqlite::{params, OptionalExtension};
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -13,6 +13,33 @@ pub struct SourceLink {
     pub title_owned: bool,
     pub description_owned: bool,
     pub column_owned: bool,
+    #[serde(default = "owned")]
+    pub priority_owned: bool,
+}
+fn owned() -> bool {
+    true
+}
+/// Applies a reported source priority while the user has not changed it since the last report.
+pub fn merge_priority(
+    data: &mut StoredData,
+    link: &mut SourceLink,
+    priority: Option<TaskPriority>,
+) -> bool {
+    let Some(task) = data
+        .columns
+        .iter_mut()
+        .flat_map(|c| c.tasks.iter_mut())
+        .find(|t| t.id == link.task_id)
+    else {
+        return false;
+    };
+    link.priority_owned &= task.priority == link.imported.priority;
+    link.imported.priority = priority;
+    if !link.priority_owned || task.priority == priority {
+        return false;
+    }
+    task.priority = priority;
+    true
 }
 pub fn merge(
     data: &mut StoredData,
@@ -86,7 +113,10 @@ pub fn merge(
             if next.ignored_labels.len() > 1000 {
                 return Err(DomainError::InvalidArgument);
             }
-            next.imported = incoming.clone();
+            next.imported = ExternalTask {
+                priority: link.imported.priority,
+                ..incoming.clone()
+            };
             return Ok((next, false, changed));
         }
         return Ok((link.clone(), false, false));
@@ -109,6 +139,7 @@ pub fn merge(
             title_owned: true,
             description_owned: true,
             column_owned: true,
+            priority_owned: true,
         },
         true,
         false,
@@ -266,6 +297,7 @@ mod tests {
             labels: vec!["imported".into()],
             updated_at: String::new(),
             column_id: 1,
+            priority: None,
         }
     }
     #[test]
@@ -288,6 +320,51 @@ mod tests {
         t.title = "Reclaim".into();
         merge(&mut d, &t, Some(&l)).unwrap();
         assert_eq!(d.columns[1].tasks[0].title, "User title");
+    }
+    #[test]
+    fn source_priority_is_owned_until_the_user_changes_it() {
+        use TaskPriority::{High, Low, Urgent};
+        let mut d = data();
+        let t = task();
+        let (mut l, _, _) = merge(&mut d, &t, None).unwrap();
+        assert!(merge_priority(&mut d, &mut l, Some(High)));
+        assert_eq!(d.columns[0].tasks[0].priority, Some(High));
+        // An upsert without a report keeps both the task and the imported value.
+        l = merge(&mut d, &t, Some(&l)).unwrap().0;
+        assert_eq!(l.imported.priority, Some(High));
+        assert_eq!(d.columns[0].tasks[0].priority, Some(High));
+        assert!(merge_priority(&mut d, &mut l, None));
+        assert_eq!(d.columns[0].tasks[0].priority, None);
+
+        d.columns[0].tasks[0].priority = Some(Low);
+        assert!(!merge_priority(&mut d, &mut l, Some(Urgent)));
+        assert!(!l.priority_owned);
+        assert_eq!(d.columns[0].tasks[0].priority, Some(Low));
+        // Matching values again never reclaims ownership.
+        merge_priority(&mut d, &mut l, Some(Low));
+        assert!(!merge_priority(&mut d, &mut l, Some(High)));
+        assert_eq!(d.columns[0].tasks[0].priority, Some(Low));
+    }
+    #[test]
+    fn legacy_links_own_priority_only_while_it_is_unset() {
+        let mut d = data();
+        let (l, _, _) = merge(&mut d, &task(), None).unwrap();
+        let mut raw = serde_json::to_value(&l).unwrap();
+        raw.as_object_mut().unwrap().remove("priority_owned");
+        assert!(raw["imported"].get("priority").is_none());
+        let legacy: SourceLink = serde_json::from_value(raw).unwrap();
+        assert!(legacy.priority_owned);
+
+        let mut unset = legacy.clone();
+        assert!(merge_priority(&mut d, &mut unset, Some(TaskPriority::High)));
+        d.columns[0].tasks[0].priority = Some(TaskPriority::Low);
+        let mut user_set = legacy;
+        assert!(!merge_priority(
+            &mut d,
+            &mut user_set,
+            Some(TaskPriority::High)
+        ));
+        assert_eq!(d.columns[0].tasks[0].priority, Some(TaskPriority::Low));
     }
     #[test]
     fn removed_task_is_not_recreated() {
@@ -406,6 +483,7 @@ mod persistence_tests {
                 labels: vec![],
                 updated_at: String::new(),
                 column_id: 1,
+                priority: None,
             }],
             cursor: Some("cursor-a".into()),
         }

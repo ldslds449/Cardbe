@@ -11,7 +11,7 @@ use crate::{
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 fn internal(error: impl std::fmt::Display) -> DomainError {
     DomainError::Internal(error.to_string())
@@ -221,6 +221,26 @@ pub enum Operation {
         column: Reference,
         before_task_id: Option<i64>,
     },
+    /// Staged through `set-task-priority` (API 1.2.0); `None` clears it.
+    SetTaskPriority {
+        task: Reference,
+        priority: Option<TaskPriority>,
+    },
+    /// Staged through `set-external-task-priority` (API 1.2.0); applied after
+    /// all upserts with source ownership. `None` clears it.
+    SetExternalTaskPriority {
+        external_key: String,
+        priority: Option<TaskPriority>,
+    },
+}
+impl Operation {
+    /// Source operations merge against current ownership instead of the run snapshot.
+    fn is_source(&self) -> bool {
+        matches!(
+            self,
+            Self::UpsertExternalTask { .. } | Self::SetExternalTaskPriority { .. }
+        )
+    }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -264,11 +284,7 @@ pub fn prepare_output(
     );
     // Source upserts merge against current task ownership, so concurrent user or remote
     // edits need not discard them. General operations still require the run snapshot.
-    if changeset
-        .operations
-        .iter()
-        .all(|op| matches!(op, Operation::UpsertExternalTask { .. }))
-    {
+    if changeset.operations.iter().all(Operation::is_source) {
         changeset.version = version(db, instance.board_id)?;
     }
     let mut prepared = prepare(db, instance, run_id, changeset)?;
@@ -300,12 +316,12 @@ pub fn prepare(
     {
         return Err(DomainError::PermissionDenied);
     }
-    let upserts = changeset
-        .operations
-        .iter()
-        .filter(|op| matches!(op, Operation::UpsertExternalTask { .. }))
-        .count();
-    if upserts > 2000 || changeset.operations.len() - upserts > 200 {
+    let count =
+        |kind: fn(&Operation) -> bool| changeset.operations.iter().filter(|op| kind(op)).count();
+    let upserts = count(|op| matches!(op, Operation::UpsertExternalTask { .. }));
+    let source_priorities = count(|op| matches!(op, Operation::SetExternalTaskPriority { .. }));
+    let general_count = changeset.operations.len() - upserts - source_priorities;
+    if upserts > 2000 || source_priorities > 2000 || general_count > 200 {
         return Err(DomainError::InvalidArgument);
     }
     if version(db, instance.board_id)? != changeset.version {
@@ -320,9 +336,13 @@ pub fn prepare(
     };
     let mut ids = HashMap::new();
     let mut columns = HashMap::new();
+    // Created task keys only, so a column key never resolves to a task.
+    let mut tasks = HashMap::new();
     let mut sources = HashMap::new();
     let mut source_created = 0;
     let mut source_updated = 0;
+    let mut counted = HashSet::new();
+    let mut reported = Vec::new();
     for op in &changeset.operations {
         match op {
             Operation::UpsertExternalTask { task, column } => {
@@ -339,6 +359,9 @@ pub fn prepare(
                 )?;
                 source_created += usize::from(created);
                 source_updated += usize::from(updated);
+                if created || updated {
+                    counted.insert(incoming.external_key.clone());
+                }
                 sources.insert(incoming.external_key.clone(), change);
             }
             Operation::CreateColumn { key, name, color } => {
@@ -382,6 +405,7 @@ pub fn prepare(
                     super::types::now() as u128,
                 )?;
                 ids.insert(key.clone(), id);
+                tasks.insert(key.clone(), id);
             }
             Operation::UpdateTask { task_id, task } => {
                 let (column, index) = crate::board_mutations::task_position(&after, *task_id)?;
@@ -405,13 +429,28 @@ pub fn prepare(
                     *before_task_id,
                 )?;
             }
+            Operation::SetTaskPriority { task, priority } => {
+                let task_id = resolve(task, &tasks)?;
+                crate::board_mutations::set_tasks_priority(&mut after, &[task_id], *priority)?;
+            }
+            Operation::SetExternalTaskPriority {
+                external_key,
+                priority,
+            } => reported.push((external_key, *priority)),
+        }
+    }
+    for (key, priority) in reported {
+        let change = sources.get_mut(key).ok_or(DomainError::InvalidArgument)?;
+        if super::changeset::merge_priority(&mut after, &mut change.link, priority)
+            && counted.insert(key.clone())
+        {
+            source_updated += 1;
         }
     }
     after.keep_pinned_tasks_first();
     if serde_json::to_vec(&after.columns).map_err(internal)?.len() > 8 * 1024 * 1024 {
         return Err(DomainError::InvalidArgument);
     }
-    let general_count = changeset.operations.len() - upserts;
     let general_created = ids.len();
     // Only the mutable projection is retained; archives and settings are read fresh at commit.
     let after = StoredData {

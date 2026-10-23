@@ -36,6 +36,10 @@ pub struct ExternalTask {
     pub labels: Vec<String>,
     pub updated_at: String,
     pub column_id: i64,
+    /// Last source priority reported through `set-external-task-priority`;
+    /// not part of the WIT record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<crate::models::TaskPriority>,
 }
 /// Either an allowlisted diagnostic code with a count, or a sanitized free-text message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -119,9 +123,15 @@ struct HostState {
     request_bytes: usize,
     response_bytes: usize,
     failure: Option<RuntimeError>,
+    /// `set-task-priority` calls, applied after the returned changeset.
+    priorities: Vec<super::board::Operation>,
+    /// `set-external-task-priority` reports; the last call per key wins.
+    source_priorities: std::collections::BTreeMap<String, Option<crate::models::TaskPriority>>,
     #[cfg(test)]
     fixtures: Option<std::collections::VecDeque<bindings::cardbe::plugin::types::HttpResponse>>,
 }
+const MAX_STAGED_PRIORITIES: usize = 200;
+const MAX_SOURCE_PRIORITIES: usize = 2000;
 fn query_error(error: crate::errors::DomainError) -> bindings::cardbe::plugin::board::HostError {
     use crate::errors::DomainError;
     use bindings::cardbe::plugin::board::HostError;
@@ -245,6 +255,66 @@ impl bindings::cardbe::plugin::board::Host for HostState {
                 .collect::<Result<_, _>>()
                 .map_err(query_error)?,
         })
+    }
+    fn get_task_priority(
+        &mut self,
+        id: i64,
+        archived: bool,
+    ) -> Result<
+        Option<bindings::cardbe::plugin::types::TaskPriority>,
+        bindings::cardbe::plugin::board::HostError,
+    > {
+        let (_, priority) =
+            self.read(|reader| reader.get_task(id, archived).map(|info| info.task.priority))?;
+        Ok(priority.map(Into::into))
+    }
+    fn set_task_priority(
+        &mut self,
+        task: bindings::cardbe::plugin::types::TaskReference,
+        priority: Option<bindings::cardbe::plugin::types::TaskPriority>,
+    ) -> Result<(), bindings::cardbe::plugin::board::HostError> {
+        use bindings::cardbe::plugin::{board::HostError, types::TaskReference};
+        if self.reader.is_none() {
+            return Err(HostError::PermissionDenied);
+        }
+        if matches!(&task, TaskReference::Temporary(key) if key.is_empty() || key.len() > 128) {
+            return Err(HostError::InvalidArgument);
+        }
+        if self.priorities.len() >= MAX_STAGED_PRIORITIES
+            || self.cancel.load(Ordering::Acquire)
+            || Instant::now() >= self.deadline
+        {
+            return Err(HostError::ResourceLimit);
+        }
+        self.priorities
+            .push(super::board::Operation::SetTaskPriority {
+                task: task.into(),
+                priority: priority.map(Into::into),
+            });
+        Ok(())
+    }
+    fn set_external_task_priority(
+        &mut self,
+        external_key: String,
+        priority: Option<bindings::cardbe::plugin::types::TaskPriority>,
+    ) -> Result<(), bindings::cardbe::plugin::board::HostError> {
+        use bindings::cardbe::plugin::board::HostError;
+        if self.reader.is_none() {
+            return Err(HostError::PermissionDenied);
+        }
+        if external_key.is_empty() || external_key.len() > 512 {
+            return Err(HostError::InvalidArgument);
+        }
+        if (self.source_priorities.len() >= MAX_SOURCE_PRIORITIES
+            && !self.source_priorities.contains_key(&external_key))
+            || self.cancel.load(Ordering::Acquire)
+            || Instant::now() >= self.deadline
+        {
+            return Err(HostError::ResourceLimit);
+        }
+        self.source_priorities
+            .insert(external_key, priority.map(Into::into));
+        Ok(())
     }
 }
 impl bindings::cardbe::plugin::types::Host for HostState {}
@@ -492,6 +562,8 @@ fn execute_inner(
         request_bytes: 0,
         response_bytes: 0,
         failure: None,
+        priorities: vec![],
+        source_priorities: Default::default(),
         #[cfg(test)]
         fixtures: fixtures.map(std::collections::VecDeque::from),
     };
@@ -575,7 +647,27 @@ fn execute_inner(
         {
             return Err(RuntimeError::ResourceLimit);
         }
-        let general: Option<super::board::ChangeSet> = changeset.changeset.map(Into::into);
+        let mut general: Option<super::board::ChangeSet> = changeset.changeset.map(Into::into);
+        let mut priorities = std::mem::take(&mut store.data_mut().priorities);
+        priorities.extend(
+            std::mem::take(&mut store.data_mut().source_priorities)
+                .into_iter()
+                .map(
+                    |(external_key, priority)| super::board::Operation::SetExternalTaskPriority {
+                        external_key,
+                        priority,
+                    },
+                ),
+        );
+        if !priorities.is_empty() {
+            general
+                .get_or_insert_with(|| super::board::ChangeSet {
+                    version: context.board_version.clone(),
+                    operations: vec![],
+                })
+                .operations
+                .extend(priorities);
+        }
         let tasks: Vec<ExternalTask> = changeset.tasks.into_iter().map(Into::into).collect();
         let encoded =
             serde_json::to_vec(&(&general, &tasks)).map_err(|_| RuntimeError::ResourceLimit)?;
@@ -665,6 +757,128 @@ mod tests {
             validate_component(&vec![0; 17 * 1024 * 1024]),
             Err(RuntimeError::InvalidComponent)
         ));
+    }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn task_priorities_are_read_and_staged_after_the_returned_changeset() {
+        tokio::task::spawn_blocking(|| {
+            use crate::models::TaskPriority::{High, Low, Medium, Urgent};
+            let dir = std::env::temp_dir().join(format!(
+                "cardbe-plugin-priority-{}",
+                super::super::types::id()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut loaded = crate::storage::load(&dir).unwrap();
+            loaded.database.initialize_plugins().unwrap();
+            let path = loaded.database.path().to_owned();
+            let board_id = loaded.database.active_board_id();
+            let task = |id, title: &str, priority| crate::models::Task {
+                id,
+                title: title.into(),
+                priority: Some(priority),
+                ..Default::default()
+            };
+            loaded
+                .database
+                .replace_board_as_local_edit(
+                    board_id,
+                    &crate::models::StoredData {
+                        columns: vec![crate::models::Column {
+                            id: 1,
+                            name: "Todo".into(),
+                            color: String::new(),
+                            sort_order: Default::default(),
+                            sort_rules: Vec::new(),
+                            tasks: vec![task(10, "A", High), task(11, "B", Medium)],
+                        }],
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            let bytes = component("runtime-fixture");
+            let execute = |mode: &str| {
+                let mut context = input(mode);
+                context.board_scope = Some((path.clone(), board_id));
+                execute_inner(
+                    &bytes,
+                    context,
+                    policy(),
+                    Arc::new(AtomicBool::new(false)),
+                    None,
+                    Duration::from_secs(10),
+                    &mut Vec::new(),
+                )
+                .unwrap()
+            };
+
+            let output = execute("priority");
+            assert_eq!(output.cursor.as_deref(), Some("Some(TaskPriority::High)"));
+            let operations = &output.changeset.as_ref().unwrap().operations;
+            assert_eq!(operations.len(), 5);
+            assert!(operations[2..].iter().all(|operation| matches!(
+                operation,
+                super::super::board::Operation::SetTaskPriority { .. }
+            )));
+            let instance = serde_json::from_value(serde_json::json!({
+                "id":"instance","plugin_id":"fixture","name":"Fixture","board_id":board_id,
+                "config":{},"allowed_domains":[],"enabled":true,"interval_seconds":0,"failures":0,
+            }))
+            .unwrap();
+            let prepared = super::super::board::prepare_output(
+                &loaded.database,
+                instance,
+                "run".into(),
+                &output,
+            )
+            .unwrap();
+            let tasks = &prepared.after.columns[0].tasks;
+            let find = |title: &str| tasks.iter().find(|task| task.title == title).unwrap();
+            assert_eq!(find("Renamed").priority, Some(Urgent));
+            assert_eq!(find("B").priority, None);
+            assert_eq!(find("Ranked").priority, Some(Low));
+
+            // Staging is bounded; a run without a changeset still gets one.
+            let output = execute("priority-limit");
+            let changeset = output.changeset.unwrap();
+            assert_eq!(changeset.operations.len(), 200);
+            assert_eq!(changeset.version, output.snapshot_version);
+
+            // Source reports are deduplicated by key and applied after the returned tasks.
+            let output = execute("source-priority");
+            assert_eq!(output.tasks.len(), 2000);
+            let operations = &output.changeset.as_ref().unwrap().operations;
+            assert_eq!(operations.len(), 2000);
+            assert!(operations.iter().any(|operation| matches!(
+                operation,
+                super::super::board::Operation::SetExternalTaskPriority {
+                    external_key,
+                    priority: Some(High),
+                } if external_key == "source:0"
+            )));
+            let instance = serde_json::from_value(serde_json::json!({
+                "id":"instance","plugin_id":"fixture","name":"Fixture","board_id":board_id,
+                "config":{},"allowed_domains":[],"enabled":true,"interval_seconds":0,"failures":0,
+            }))
+            .unwrap();
+            let prepared = super::super::board::prepare_output(
+                &loaded.database,
+                instance,
+                "run".into(),
+                &output,
+            )
+            .unwrap();
+            assert_eq!(prepared.created, 2000);
+            let source = prepared.after.columns[0]
+                .tasks
+                .iter()
+                .find(|task| task.title == "Source 0")
+                .unwrap();
+            assert_eq!(source.priority, Some(High));
+
+            drop(loaded);
+            std::fs::remove_dir_all(dir).unwrap();
+        })
+        .await
+        .unwrap();
     }
     #[test]
     fn update_validation_checks_the_host_contract_without_executing_the_guest() {
@@ -804,9 +1018,9 @@ mod tests {
         assert_eq!(
             imports,
             [
-                "cardbe:plugin/board@1.1.0",
-                "cardbe:plugin/host@1.1.0",
-                "cardbe:plugin/types@1.1.0"
+                "cardbe:plugin/board@1.2.0",
+                "cardbe:plugin/host@1.2.0",
+                "cardbe:plugin/types@1.2.0"
             ]
         );
         let exports: Vec<_> = ty.exports(&engine).map(|(name, _)| name).collect();
@@ -826,6 +1040,7 @@ mod tests {
         };
         assert!(linkable(&host("1.0.0", "log")));
         assert!(linkable(&host("1.1.0", "log")));
+        assert!(linkable(&host("1.2.0", "log")));
         assert!(!linkable(&host("2.0.0", "log")));
         assert!(!linkable(&host("1.0.0", "missing")));
     }

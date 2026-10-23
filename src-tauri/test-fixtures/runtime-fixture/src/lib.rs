@@ -217,6 +217,116 @@ mod fixture {
                         cursor: Some("next".into()),
                     });
                 }
+                "priority" => {
+                    use cardbe::plugin::{board, types::*};
+                    let failure = |_| PluginError {
+                        code: "QUERY_FAILED".into(),
+                        retry_after_seconds: None,
+                    };
+                    let page = board::list_tasks(&TaskQuery {
+                        query: String::new(),
+                        column_id: None,
+                        status: TaskStatus::Active,
+                        sort: TaskSort::Title,
+                        due: DueFilter::All,
+                        due_start: None,
+                        due_end: None,
+                        archive_start: None,
+                        archive_end: None,
+                        search_options: None,
+                        offset: 0,
+                        limit: 2,
+                    })
+                    .map_err(failure)?;
+                    let [first, second] = [&page.tasks[0], &page.tasks[1]];
+                    // Reported through the cursor so the host test can check reads.
+                    let read = board::get_task_priority(first.task.id, false).map_err(failure)?;
+                    assert!(matches!(
+                        board::set_task_priority(&TaskReference::Temporary(String::new()), None),
+                        Err(board::HostError::InvalidArgument)
+                    ));
+                    board::set_task_priority(
+                        &TaskReference::Id(first.task.id),
+                        Some(TaskPriority::Urgent),
+                    )
+                    .map_err(failure)?;
+                    board::set_task_priority(&TaskReference::Id(second.task.id), None)
+                        .map_err(failure)?;
+                    board::set_task_priority(
+                        &TaskReference::Temporary("ranked".into()),
+                        Some(TaskPriority::Low),
+                    )
+                    .map_err(failure)?;
+                    // Updates keep the stored priority; the staged one applies after.
+                    let mut renamed = first.task.clone();
+                    renamed.title = "Renamed".into();
+                    return Ok(RunOutput {
+                        tasks: vec![],
+                        changeset: Some(Changeset {
+                            version: context.board_version,
+                            operations: vec![
+                                Operation::UpdateTask(UpdateTask {
+                                    task_id: first.task.id,
+                                    task: renamed,
+                                }),
+                                Operation::CreateTask(CreateTask {
+                                    key: "ranked".into(),
+                                    column: ColumnReference::Id(first.column_id.unwrap()),
+                                    task: Task {
+                                        id: 0,
+                                        title: "Ranked".into(),
+                                        ..first.task.clone()
+                                    },
+                                }),
+                            ],
+                        }),
+                        cursor: Some(format!("{read:?}")),
+                    });
+                }
+                "priority-limit" => {
+                    use cardbe::plugin::{board, types::*};
+                    for _ in 0..200 {
+                        board::set_task_priority(&TaskReference::Id(10), None).unwrap();
+                    }
+                    assert!(matches!(
+                        board::set_task_priority(&TaskReference::Id(10), None),
+                        Err(board::HostError::ResourceLimit)
+                    ));
+                }
+                "source-priority" => {
+                    use cardbe::plugin::{board, types::*};
+                    assert!(matches!(
+                        board::set_external_task_priority("", None),
+                        Err(board::HostError::InvalidArgument)
+                    ));
+                    for index in 0..2000 {
+                        board::set_external_task_priority(&format!("source:{index}"), None)
+                            .unwrap();
+                    }
+                    assert!(matches!(
+                        board::set_external_task_priority("source:extra", None),
+                        Err(board::HostError::ResourceLimit)
+                    ));
+                    // Repeating a staged key replaces its report instead of adding one.
+                    board::set_external_task_priority("source:0", Some(TaskPriority::High))
+                        .unwrap();
+                    return Ok(RunOutput {
+                        tasks: (0..2000)
+                            .map(|index| ExternalTask {
+                                external_key: format!("source:{index}"),
+                                title: format!("Source {index}"),
+                                description: String::new(),
+                                url: String::new(),
+                                state: "open".into(),
+                                labels: vec![],
+                                updated_at: String::new(),
+                                column_id: 1,
+                            })
+                            .collect(),
+                        changeset: None,
+                        cursor: None,
+                    });
+                }
                 "logs-error" => {
                     cardbe::plugin::host::log("ALLOWED_LOG", 3);
                     return Err(PluginError {

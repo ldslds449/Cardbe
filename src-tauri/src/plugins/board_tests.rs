@@ -142,6 +142,7 @@ fn mixed_operations_sources_cursor_and_history_commit_or_rollback_together() {
         labels: vec![],
         updated_at: String::new(),
         column_id: 1,
+        priority: None,
     };
     let mut nested = incoming.clone();
     nested.external_key = "mixed:1".into();
@@ -233,6 +234,7 @@ fn source_mapping_conflicts_and_grant_revocation_invalidate_output() {
         labels: vec![],
         updated_at: String::new(),
         column_id: 1,
+        priority: None,
     };
     let prepared = f
         .prepare(json!([{"kind":"upsert_external_task","task":task}]))
@@ -433,6 +435,89 @@ fn task_updates_keep_the_priority_outside_the_plugin_api() {
 }
 
 #[test]
+fn staged_priorities_resolve_created_task_keys_but_never_column_keys() {
+    let f = Fixture::new();
+    let p = f
+        .prepare(json!([
+            {"kind":"create_task","key":"new","column":1,"task":{"title":"New"}},
+            {"kind":"set_task_priority","task":"new","priority":"urgent"},
+            {"kind":"set_task_priority","task":12,"priority":null}
+        ]))
+        .unwrap();
+    let created = p.after.columns[0]
+        .tasks
+        .iter()
+        .find(|t| t.title == "New")
+        .unwrap();
+    assert_eq!(created.priority, Some(TaskPriority::Urgent));
+    let cleared = p.after.columns[0]
+        .tasks
+        .iter()
+        .find(|t| t.id == 12)
+        .unwrap();
+    assert_eq!(cleared.priority, None);
+
+    for operations in [
+        json!([
+            {"kind":"create_column","key":"col","name":"Column","color":""},
+            {"kind":"set_task_priority","task":"col","priority":"low"}
+        ]),
+        json!([{"kind":"set_task_priority","task":"missing","priority":"low"}]),
+        json!([{"kind":"set_task_priority","task":9999,"priority":"low"}]),
+    ] {
+        assert!(f.prepare(operations).is_err());
+    }
+    cleanup(f);
+}
+
+#[test]
+fn source_priorities_apply_after_upserts_and_require_an_upserted_key() {
+    let mut f = Fixture::new();
+    let source = json!({"external_key":"source:p","title":"Source","description":"",
+        "url":"","state":"open","labels":[],"updated_at":"","column_id":1});
+    // Reported before its upsert, yet applied after all of them.
+    let p = f
+        .prepare(json!([
+            {"kind":"set_external_task_priority","external_key":"source:p","priority":"high"},
+            {"kind":"upsert_external_task","task":source}
+        ]))
+        .unwrap();
+    assert_eq!((p.created, p.updated), (1, 0));
+    let link = &p.sources["source:p"].link;
+    assert_eq!(link.imported.priority, Some(TaskPriority::High));
+    f.db.commit_changeset(&p).unwrap();
+
+    // A priority-only change on an existing source counts as one update.
+    let p = f
+        .prepare(json!([
+            {"kind":"upsert_external_task","task":source},
+            {"kind":"set_external_task_priority","external_key":"source:p","priority":"urgent"}
+        ]))
+        .unwrap();
+    assert_eq!((p.created, p.updated), (0, 1));
+    let task = p.after.columns[0]
+        .tasks
+        .iter()
+        .find(|t| t.title == "Source")
+        .unwrap();
+    assert_eq!(task.priority, Some(TaskPriority::Urgent));
+
+    for operations in [
+        json!([{"kind":"set_external_task_priority","external_key":"source:p","priority":"low"}]),
+        json!([
+            {"kind":"upsert_external_task","task":source},
+            {"kind":"set_external_task_priority","external_key":"other","priority":null}
+        ]),
+    ] {
+        assert!(matches!(
+            f.prepare(operations),
+            Err(DomainError::InvalidArgument)
+        ));
+    }
+    cleanup(f);
+}
+
+#[test]
 fn invalid_operations_and_permissions_never_write() {
     let mut f = Fixture::new();
     let token = version(&f.db, f.instance.board_id).unwrap();
@@ -536,6 +621,7 @@ fn source_upserts_rebase_after_concurrent_edits_but_general_operations_stay_stal
         labels: vec![],
         updated_at: String::new(),
         column_id: 1,
+        priority: None,
     };
     let general = super::runtime::RuntimeOutput {
         changeset: Some(ChangeSet {
@@ -617,6 +703,7 @@ fn source_limit_prunes_only_deleted_task_mappings_before_failing() {
             labels: vec![],
             updated_at: String::new(),
             column_id: 1,
+            priority: None,
         }],
         cursor: None,
         logs: vec![],
