@@ -2,6 +2,7 @@
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
   import { formatNumber } from "$lib/i18n";
+  import { Button } from "$lib/components/ui/button/index.js";
   import CircleIcon from "@lucide/svelte/icons/circle";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
 
@@ -12,14 +13,36 @@
   let {
     items,
     show_items = true,
+    preview_limit,
   }: {
     items: TaskItem[];
     show_items?: boolean;
+    // Card preview: lists at most this many unfinished items, one line each,
+    // and leaves the full checklist to the task dialog.
+    preview_limit?: number;
   } = $props();
 
-  let completed_count = $derived(items.filter((item) => item.completed).length);
+  // Completed items stay hidden until requested; the progress bar already
+  // counts them, so a long checklist lists only the remaining work.
+  let show_completed = $state(false);
+
+  let incomplete_items = $derived(items.filter((item) => !item.completed));
+  let completed_items = $derived(items.filter((item) => item.completed));
+  let completed_count = $derived(completed_items.length);
   let progress_percentage = $derived(
     items.length === 0 ? 0 : Math.round((completed_count / items.length) * 100),
+  );
+  let listed_items = $derived(
+    preview_limit !== undefined
+      ? incomplete_items.slice(0, preview_limit)
+      : show_completed
+        ? [...incomplete_items, ...completed_items]
+        : incomplete_items,
+  );
+  let remaining_count = $derived(
+    preview_limit === undefined
+      ? 0
+      : incomplete_items.length - listed_items.length,
   );
 </script>
 
@@ -53,28 +76,51 @@
       </div>
     </div>
     {#if show_items}
-      <div class="space-y-1.5">
-        {#each items as item (item.id)}
-          <div class="flex min-w-0 items-start gap-2 text-sm">
-            {#if item.completed}
-              <CircleCheckIcon
-                class="mt-0.5 size-4 shrink-0 text-muted-foreground"
-              />
-            {:else}
-              <CircleIcon
-                class="mt-0.5 size-4 shrink-0 text-muted-foreground"
-              />
-            {/if}
-            <div
-              class="min-w-0 break-words [&_p]:inline"
-              class:line-through={item.completed}
-              class:text-muted-foreground={item.completed}
-            >
-              <Markdown md={item.text} compact />
+      {#if listed_items.length > 0}
+        <div class="space-y-1.5">
+          {#each listed_items as item (item.id)}
+            <div class="flex min-w-0 items-start gap-2 text-sm">
+              {#if item.completed}
+                <CircleCheckIcon
+                  class="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                />
+              {:else}
+                <CircleIcon
+                  class="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                />
+              {/if}
+              <div
+                class="min-w-0 break-words [&_p]:inline"
+                class:line-clamp-1={preview_limit !== undefined}
+                class:line-through={item.completed}
+                class:text-muted-foreground={item.completed}
+              >
+                <Markdown md={item.text} compact />
+              </div>
             </div>
-          </div>
-        {/each}
-      </div>
+          {/each}
+        </div>
+      {/if}
+      {#if remaining_count > 0}
+        <p class="pl-6 text-xs text-muted-foreground">
+          {m.task_checklist_more_items({ count: remaining_count })}
+        </p>
+      {/if}
+      {#if preview_limit === undefined && completed_count > 0}
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          class="text-muted-foreground"
+          aria-pressed={show_completed}
+          onclick={() => (show_completed = !show_completed)}
+        >
+          <CircleCheckIcon />
+          {show_completed
+            ? m.task_checklist_hide_completed()
+            : m.task_checklist_show_completed({ count: completed_count })}
+        </Button>
+      {/if}
     {/if}
   </div>
 {/if}

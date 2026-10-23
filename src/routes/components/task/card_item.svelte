@@ -356,6 +356,7 @@
             <ChecklistDisplay
               items={task.items}
               show_items={expand_content || content_open}
+              preview_limit={5}
             />
           {/if}
           <!-- Not a Collapsible: it measures each card on mount, with no animation to size. -->

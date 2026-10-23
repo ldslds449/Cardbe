@@ -441,6 +441,25 @@
       }
     }
   ],
+  "task_checklist_show_completed": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "selectors": [],
+      "match": {
+        "*": "顯示已完成的 {countFormatted} 項"
+      }
+    }
+  ],
+  "task_checklist_hide_completed": "隱藏已完成項目",
+  "task_checklist_more_items": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "selectors": [],
+      "match": {
+        "*": "還有 {countFormatted} 項"
+      }
+    }
+  ],
   "task_item_mark_complete": "將「{name}」標記為已完成",
   "task_item_mark_incomplete": "將「{name}」標記為未完成",
   "task_color_use": "使用 {name}（{color}）",

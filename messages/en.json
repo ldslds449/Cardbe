@@ -521,6 +521,35 @@
       }
     }
   ],
+  "task_checklist_show_completed": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Show {countFormatted} completed item",
+        "countPlural=*": "Show {countFormatted} completed items"
+      }
+    }
+  ],
+  "task_checklist_hide_completed": "Hide completed items",
+  "task_checklist_more_items": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} more item",
+        "countPlural=*": "{countFormatted} more items"
+      }
+    }
+  ],
   "task_item_mark_complete": "Mark {name} as completed",
   "task_item_mark_incomplete": "Mark {name} as not completed",
   "task_color_use": "Use {name} ({color})",
