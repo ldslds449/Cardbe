@@ -68,25 +68,30 @@
 
   function card_is_mounted(task_id: string, display_idx: number): boolean {
     return (
-      display_idx < EAGER_CARDS_PER_COLUMN || lazy_cards.is_mounted(task_id)
+      display_idx < EAGER_CARDS_PER_COLUMN ||
+      task_id.startsWith("pending_task_") ||
+      lazy_cards.is_mounted(board.task_render_key(task_id))
     );
   }
 
-  // Remember the eagerly mounted cards so moving them down a column keeps them.
+  // Remember the eagerly mounted cards so moving them down a column keeps them,
+  // and mount new cards at once instead of showing a placeholder first.
   $effect(() => {
     for (const column of board.columns) {
-      for (const task of sorted_column_tasks(column).slice(
-        0,
-        EAGER_CARDS_PER_COLUMN,
-      )) {
-        lazy_cards.mount(task.id);
-      }
+      sorted_column_tasks(column).forEach((task, display_idx) => {
+        if (
+          display_idx < EAGER_CARDS_PER_COLUMN ||
+          task.id.startsWith("pending_task_")
+        ) {
+          lazy_cards.mount(board.task_render_key(task.id));
+        }
+      });
     }
   });
 
   /** The card's last measured height, or an estimate including its margin. */
   function placeholder_height(task: Task): number {
-    const measured = lazy_cards.height(task.id);
+    const measured = lazy_cards.height(board.task_render_key(task.id));
     if (measured !== undefined) {
       return measured;
     }
@@ -447,7 +452,7 @@
           {@const task_positions = new Map(
             column.tasks.map((task, task_idx) => [task.id, task_idx]),
           )}
-          {#each sorted_column_tasks(column) as task, display_idx (task.id)}
+          {#each sorted_column_tasks(column) as task, display_idx (board.task_render_key(task.id))}
             {@const task_idx = task_positions.get(task.id) ?? display_idx}
             {#if !task_matches_search(task, search_text, search_task_ids)}
               <!-- Hidden by the current search. -->
@@ -458,11 +463,11 @@
                 role="button"
                 tabindex="0"
                 aria-label={task.title}
-                {@attach lazy_cards.placeholder(task.id)}
+                {@attach lazy_cards.placeholder(board.task_render_key(task.id))}
                 onfocus={(event) =>
                   void lazy_cards.mount_focused(
                     event,
-                    task.id,
+                    board.task_render_key(task.id),
                     card_focus_target,
                   )}
               ></div>
@@ -500,7 +505,7 @@
                     pinned: !task.pinned,
                   })}
                 {read_only}
-                attach={lazy_cards.item(task.id)}
+                attach={lazy_cards.item(board.task_render_key(task.id))}
               />
             {/if}
           {/each}

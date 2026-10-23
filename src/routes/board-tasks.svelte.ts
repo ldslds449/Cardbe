@@ -43,6 +43,13 @@ export abstract class TaskBoardStore extends IrohBoardStore {
   // Dialogs and delayed callbacks can retain a temporary ID after creation
   // has completed, so keep a session-scoped alias to its persisted ID.
   private resolved_task_ids = new Map<string, string>();
+  // Persisted IDs keep the temporary ID as their render key, so the card is
+  // not remounted when its creation completes.
+  private task_render_keys = new Map<string, string>();
+
+  task_render_key(task_id: string): string {
+    return this.task_render_keys.get(task_id) ?? task_id;
+  }
 
   private find_task_position(task_id: string) {
     const current_task_id = this.resolve_task_alias(task_id);
@@ -178,6 +185,7 @@ export abstract class TaskBoardStore extends IrohBoardStore {
         // original optimistic object.
         const position = this.find_task_position(pending_task_id);
         if (position) {
+          this.task_render_keys.set(`task_${new_id}`, pending_task_id);
           set_task_id(
             this.columns[position.column_idx].tasks[position.task_idx],
             new_id,

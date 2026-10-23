@@ -13,6 +13,9 @@ export class LazyMount {
   #heights = new Map<string, number>();
   #placeholders = new Map<Element, string>();
   #items = new Map<Element, string>();
+  // Reusing an item's attachment keeps it from being observed again, with a
+  // fresh unmount check, whenever its owner re-renders.
+  #item_attachments = new Map<string, Attachment<HTMLElement>>();
   #mount_observer: IntersectionObserver | null = null;
   #unmount_observer: IntersectionObserver | null = null;
 
@@ -59,7 +62,11 @@ export class LazyMount {
 
   /** Unmounts the mounted item once it is far outside the ScrollArea. */
   item(id: string): Attachment<HTMLElement> {
-    return (node) => {
+    const existing = this.#item_attachments.get(id);
+    if (existing) {
+      return existing;
+    }
+    const attachment: Attachment<HTMLElement> = (node) => {
       this.#unmount_observer ??= new IntersectionObserver(
         (entries) => {
           if (document.querySelector(KEEP_MOUNTED)) {
@@ -86,6 +93,8 @@ export class LazyMount {
         this.#unmount_observer?.unobserve(node);
       };
     };
+    this.#item_attachments.set(id, attachment);
+    return attachment;
   }
 
   /**

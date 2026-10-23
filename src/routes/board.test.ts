@@ -1515,6 +1515,30 @@ describe("pending task operations", () => {
     ]);
   });
 
+  it("keeps the temporary ID as the render key after creation", async () => {
+    invoke_mock.mockImplementation((command) => {
+      if (command === "add_task") {
+        return Promise.resolve(42);
+      }
+      if (command === "get_labels") {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve();
+    });
+    const store = create_store();
+
+    const creation = store.add_new_task(
+      "column_1",
+      create_task("", "New task"),
+    );
+    const pending_task_id = store.columns[0].tasks[0].id;
+
+    await expect(creation).resolves.toBe(true);
+    expect(store.columns[0].tasks[0].id).toBe("task_42");
+    expect(store.task_render_key("task_42")).toBe(pending_task_id);
+    expect(store.task_render_key("task_7")).toBe("task_7");
+  });
+
   it("waits for creation before updating a new task", async () => {
     const add_task = deferred<number>();
     invoke_mock.mockImplementation((command) => {
