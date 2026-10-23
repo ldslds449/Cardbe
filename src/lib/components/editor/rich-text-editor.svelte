@@ -209,7 +209,7 @@
         bind:value
         class={cn(
           props.class,
-          "h-auto min-h-full max-h-none flex-none resize-none overflow-hidden border-0 shadow-none focus-visible:ring-0",
+          "h-auto min-h-full max-h-none flex-none resize-none overflow-hidden rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent",
         )}
         id={props.id}
         placeholder={props.placeholder}
