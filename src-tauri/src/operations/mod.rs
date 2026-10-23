@@ -174,7 +174,7 @@ fn execute<O: Operation>(
     serde_json::to_value(output).map_err(|error| DomainError::Internal(error.to_string()).into())
 }
 
-pub static OPERATIONS: [OperationSpec; 12] = [
+pub static OPERATIONS: [OperationSpec; 14] = [
     spec::<handlers::ListBoards>(),
     spec::<handlers::ListColumns>(),
     spec::<handlers::CreateColumn>(),
@@ -187,6 +187,8 @@ pub static OPERATIONS: [OperationSpec; 12] = [
     spec::<handlers::MoveTask>(),
     spec::<handlers::ArchiveTask>(),
     spec::<handlers::RestoreTask>(),
+    spec::<handlers::CompleteTask>(),
+    spec::<handlers::ReopenTask>(),
 ];
 
 /// Operations the caller's grants allow, so others are never advertised.

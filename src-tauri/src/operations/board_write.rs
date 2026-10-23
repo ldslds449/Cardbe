@@ -18,9 +18,20 @@ pub(super) fn commit<R>(
     board_id: i64,
     change: impl FnOnce(&mut StoredData) -> Result<R, DomainError>,
 ) -> Result<R, DomainError> {
+    commit_then(host, board_id, change, |_, result| Ok(result))
+}
+
+/// Like `commit`, but builds the result with `output` from the board as it is
+/// saved, after derived state such as completion times has been settled.
+pub(super) fn commit_then<T, R>(
+    host: &dyn OperationHost,
+    board_id: i64,
+    change: impl FnOnce(&mut StoredData) -> Result<T, DomainError>,
+    output: impl FnOnce(&StoredData, T) -> Result<R, DomainError>,
+) -> Result<R, DomainError> {
     let (result, changed) = {
         let mut guard = lock_app(host.app_data()?)?;
-        commit_locked(&mut guard, board_id, change)?
+        commit_locked(&mut guard, board_id, change, output)?
     };
     if changed {
         host.board_changed(board_id);
@@ -28,10 +39,11 @@ pub(super) fn commit<R>(
     Ok(result)
 }
 
-fn commit_locked<R>(
+fn commit_locked<T, R>(
     guard: &mut AppData,
     board_id: i64,
-    change: impl FnOnce(&mut StoredData) -> Result<R, DomainError>,
+    change: impl FnOnce(&mut StoredData) -> Result<T, DomainError>,
+    output: impl FnOnce(&StoredData, T) -> Result<R, DomainError>,
 ) -> Result<(R, bool), DomainError> {
     let role = guard
         .database
@@ -49,6 +61,7 @@ fn commit_locked<R>(
     let now = crate::commands::archive::current_time_millis()?;
     crate::completion::reconcile(&before, &mut after, now)?;
     after.keep_pinned_tasks_first();
+    let result = output(&after, result)?;
     if serde_json::to_vec(&after.columns).map_err(internal)?.len() > 8 * 1024 * 1024 {
         return Err(DomainError::InvalidArgument);
     }

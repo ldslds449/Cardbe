@@ -92,7 +92,7 @@ Do not commit configuration files that contain a token.
 | `board_list`    | Read   | Boards the app may access, with this device's role on each        |
 | `column_list`   | Read   | A board's columns in display order                                |
 | `column_create` | Write  | Add a custom-ordered column at the end or before another column   |
-| `column_update` | Write  | Rename or recolor a column; its sort order is unchanged           |
+| `column_update` | Write  | Rename or recolor a column, or make it the done column            |
 | `column_move`   | Write  | Move a column before another column or to the end                 |
 | `task_list`     | Read   | Search or page through tasks (`active`, `archived`, `all`, ...)   |
 | `task_get`      | Read   | One task with its description and checklist                       |
@@ -101,8 +101,12 @@ Do not commit configuration files that contain a token.
 | `task_move`     | Write  | Move a task to a position in a custom-ordered column              |
 | `task_archive`  | Write  | Archive a task; recurring tasks continue with the next occurrence |
 | `task_restore`  | Write  | Restore an archived task to a column                              |
+| `task_complete` | Write  | Move a task to the done column, or archive it if there is none    |
+| `task_reopen`   | Write  | Move a done or archived task back to another column               |
 
 Times are Unix epoch milliseconds. `board_list` also returns `hidden_board_count`, the number of boards the app was not granted, so a client can tell that boards exist without seeing their names. `task_create` accepts an optional `idempotency_key` (1 to 128 bytes): retrying with the same key and arguments returns the task the first call created instead of a duplicate, and the same key with other arguments is rejected. Keys belong to the app that used them and are kept in memory for a day; they do not survive a restart. There is no delete tool: archive tasks instead, and `task_restore` brings them back. Write tools are not listed for read-only apps. Input and output JSON Schemas come from the Rust types and are returned by `tools/list`.
+
+Tasks carry an optional `priority` (`low`, `medium`, `high`, `urgent`). Completion follows position: a board has at most one done column (`done` on columns), tasks in it are completed, and their read-only `completed_time` records when they entered it. Moving a task there with `task_move` completes it just like `task_complete`. `blocked_by` lists tasks of the same board that a task waits on; only those still open block it, and writes reject the task itself, unknown tasks, more than 50 tasks, and cycles.
 
 ## Security and permissions
 

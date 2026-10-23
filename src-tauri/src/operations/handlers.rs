@@ -1,7 +1,7 @@
 //! Registry operations. Reads use one read-only SQLite snapshot per call,
 //! outside the application lock; writes go through `board_write::commit`.
 use super::{
-    board_write::commit,
+    board_write::{commit, commit_then},
     columns,
     dto::{self, present},
     idempotency::{self, Recorded},
@@ -10,6 +10,7 @@ use super::{
 use crate::{
     board_mutations as mutation,
     commands::archive::{archive_task_in, unarchive_task_in},
+    completion,
     errors::DomainError,
     models::{self, StoredData},
     plugins::board::Reader,
@@ -107,10 +108,12 @@ impl Operation for ListColumns {
         _: &OperationContext,
         input: BoardInput,
     ) -> Result<dto::ColumnList, DomainError> {
-        let columns = reader(host, input.board_id)?
+        let reader = reader(host, input.board_id)?;
+        let done_column = reader.done_column()?;
+        let columns = reader
             .list_columns()?
             .into_iter()
-            .map(dto::Column::from)
+            .map(|column| dto::Column::from_info(column, done_column))
             .collect();
         Ok(dto::ColumnList { columns })
     }
@@ -149,7 +152,7 @@ impl Operation for CreateColumn {
             mutation::move_column(data, id, input.before_column_id)?;
             let column = &data.columns[mutation::column_index(data, id)?];
             Ok(dto::ColumnResult {
-                column: column.into(),
+                column: dto::Column::new(column, data.done_column_id()),
             })
         })
     }
@@ -165,12 +168,17 @@ pub struct UpdateColumnInput {
     pub name: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+    /// `true` makes this the board's only done column, so tasks in it are
+    /// completed; `false` leaves the board without one if it was.
+    #[serde(default)]
+    pub done: Option<bool>,
 }
 
 pub struct UpdateColumn;
 impl Operation for UpdateColumn {
     const NAME: &'static str = "column.update";
-    const DESCRIPTION: &'static str = "Rename or recolor a column. Its sort order is unchanged.";
+    const DESCRIPTION: &'static str =
+        "Rename or recolor a column, or make it the board's done column. Its sort order is unchanged.";
     const ACCESS: Access = Access::Write;
     type Input = UpdateColumnInput;
     type Output = dto::ColumnResult;
@@ -189,8 +197,15 @@ impl Operation for UpdateColumn {
                 .map_or_else(|| current.name.clone(), |name| name.trim().to_owned());
             let color = input.color.unwrap_or_else(|| current.color.clone());
             let index = columns::update_column(data, input.column_id, name, color)?;
+            match input.done {
+                Some(true) => completion::set_done_column(data, Some(input.column_id))?,
+                Some(false) if data.done_column_id() == Some(input.column_id) => {
+                    completion::set_done_column(data, None)?
+                }
+                _ => {}
+            }
             Ok(dto::ColumnResult {
-                column: (&data.columns[index]).into(),
+                column: dto::Column::new(&data.columns[index], data.done_column_id()),
             })
         })
     }
@@ -224,8 +239,13 @@ impl Operation for MoveColumn {
     ) -> Result<dto::ColumnList, DomainError> {
         commit(host, input.board_id, |data| {
             columns::move_column(data, input.column_id, input.before_column_id)?;
+            let done_column = data.done_column_id();
             Ok(dto::ColumnList {
-                columns: data.columns.iter().map(dto::Column::from).collect(),
+                columns: data
+                    .columns
+                    .iter()
+                    .map(|column| dto::Column::new(column, done_column))
+                    .collect(),
             })
         })
     }
@@ -348,6 +368,11 @@ pub struct CreateTaskInput {
     pub due_at_midnight: bool,
     #[serde(default)]
     pub recurrence: Option<dto::Recurrence>,
+    #[serde(default)]
+    pub priority: Option<dto::TaskPriority>,
+    /// Active tasks of the same board to wait on, at most 50.
+    #[serde(default)]
+    pub blocked_by: Vec<i64>,
     /// Retrying with the same key and arguments returns the task the first
     /// call created instead of creating another. Keys (1 to 128 bytes) are
     /// remembered for a day while Cardbe runs; other arguments with a used
@@ -413,17 +438,23 @@ fn create_task(
         start_at_midnight: input.start_at_midnight,
         due_at_midnight: input.due_at_midnight,
         recurrence: input.recurrence.map(models::Recurrence::from),
+        priority: input.priority.map(models::TaskPriority::from),
+        blocked_by: input.blocked_by,
         ..models::Task::default()
     };
-    commit(host, input.board_id, |data| {
-        let id = tasks::create_task(data, input.column_id, task, now())?;
-        Ok((
-            dto::TaskResult {
-                task: active_task(data, input.board_id, id)?,
-            },
-            id,
-        ))
-    })
+    commit_then(
+        host,
+        input.board_id,
+        |data| tasks::create_task(data, input.column_id, task, now()),
+        |data, id| {
+            Ok((
+                dto::TaskResult {
+                    task: active_task(data, input.board_id, id)?,
+                },
+                id,
+            ))
+        },
+    )
 }
 
 /// Omitted fields keep their values; `null` clears an optional field.
@@ -455,6 +486,12 @@ pub struct UpdateTaskInput {
     pub due_at_midnight: Option<bool>,
     #[serde(default, deserialize_with = "present")]
     pub recurrence: Option<Option<dto::Recurrence>>,
+    #[serde(default, deserialize_with = "present")]
+    pub priority: Option<Option<dto::TaskPriority>>,
+    /// Replaces the tasks this one waits on: active tasks of the same board,
+    /// at most 50, never one that already waits on this task.
+    #[serde(default)]
+    pub blocked_by: Option<Vec<i64>>,
 }
 
 pub struct UpdateTask;
@@ -511,6 +548,12 @@ impl Operation for UpdateTask {
             if let Some(recurrence) = input.recurrence {
                 task.recurrence = recurrence.map(models::Recurrence::from);
             }
+            if let Some(priority) = input.priority {
+                task.priority = priority.map(models::TaskPriority::from);
+            }
+            if let Some(blocked_by) = input.blocked_by {
+                task.blocked_by = blocked_by;
+            }
             tasks::update_task(data, input.task_id, task)?;
             active_task(data, input.board_id, input.task_id)
         })
@@ -545,10 +588,12 @@ impl Operation for MoveTask {
         _: &OperationContext,
         input: MoveTaskInput,
     ) -> Result<dto::TaskResult, DomainError> {
-        commit(host, input.board_id, |data| {
-            tasks::move_task(data, input.task_id, input.column_id, input.before_task_id)?;
-            active_task(data, input.board_id, input.task_id)
-        })
+        commit_then(
+            host,
+            input.board_id,
+            |data| tasks::move_task(data, input.task_id, input.column_id, input.before_task_id),
+            |data, ()| active_task(data, input.board_id, input.task_id),
+        )
         .map(|task| dto::TaskResult { task })
     }
 }
@@ -616,10 +661,83 @@ impl Operation for RestoreTask {
         _: &OperationContext,
         input: RestoreTaskInput,
     ) -> Result<dto::TaskResult, DomainError> {
-        commit(host, input.board_id, |data| {
-            unarchive_task_in(data, input.column_id, input.task_id)?;
-            active_task(data, input.board_id, input.task_id)
-        })
+        commit_then(
+            host,
+            input.board_id,
+            |data| unarchive_task_in(data, input.column_id, input.task_id),
+            |data, _| active_task(data, input.board_id, input.task_id),
+        )
+        .map(|task| dto::TaskResult { task })
+    }
+}
+
+pub struct CompleteTask;
+impl Operation for CompleteTask {
+    const NAME: &'static str = "task.complete";
+    const DESCRIPTION: &'static str = "Complete an active task by moving it to the end of the board's done column, or by archiving it when the board has none. A recurring task continues with its next occurrence.";
+    const ACCESS: Access = Access::Write;
+    type Input = TaskInput;
+    type Output = dto::TaskResult;
+    fn board(input: &TaskInput) -> Option<i64> {
+        Some(input.board_id)
+    }
+    fn run(
+        host: &dyn OperationHost,
+        _: &OperationContext,
+        input: TaskInput,
+    ) -> Result<dto::TaskResult, DomainError> {
+        commit_then(
+            host,
+            input.board_id,
+            |data| completion::complete_tasks(data, &[input.task_id], now()),
+            |data, ()| {
+                if mutation::task_position(data, input.task_id).is_ok() {
+                    return active_task(data, input.board_id, input.task_id);
+                }
+                let archived = data
+                    .archives
+                    .iter()
+                    .rev()
+                    .find(|archive| archive.task.id == input.task_id)
+                    .map(|archive| archive.task.clone())
+                    .ok_or(DomainError::TaskNotFound)?;
+                dto::Task::new(input.board_id, None, true, archived)
+            },
+        )
+        .map(|task| dto::TaskResult { task })
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReopenTaskInput {
+    pub board_id: i64,
+    pub task_id: i64,
+    /// Column that receives the task at its end; not the done column.
+    pub column_id: i64,
+}
+
+pub struct ReopenTask;
+impl Operation for ReopenTask {
+    const NAME: &'static str = "task.reopen";
+    const DESCRIPTION: &'static str = "Reopen a completed task: move it out of the done column, or restore it from the archive, to the end of another column.";
+    const ACCESS: Access = Access::Write;
+    type Input = ReopenTaskInput;
+    type Output = dto::TaskResult;
+    fn board(input: &ReopenTaskInput) -> Option<i64> {
+        Some(input.board_id)
+    }
+    fn run(
+        host: &dyn OperationHost,
+        _: &OperationContext,
+        input: ReopenTaskInput,
+    ) -> Result<dto::TaskResult, DomainError> {
+        commit_then(
+            host,
+            input.board_id,
+            |data| completion::reopen_tasks(data, &[input.task_id], input.column_id),
+            |data, ()| active_task(data, input.board_id, input.task_id),
+        )
         .map(|task| dto::TaskResult { task })
     }
 }

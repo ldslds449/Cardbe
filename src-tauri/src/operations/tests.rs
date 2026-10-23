@@ -460,39 +460,152 @@ fn moves_respect_custom_order_and_search_finds_unicode_text() {
 }
 
 #[test]
-fn moves_into_the_done_column_complete_tasks() {
+fn done_columns_complete_and_reopen_tasks() {
     let host = TestHost::new();
-    {
-        let mut app = host.app.lock().unwrap();
-        let mut data = app.database.read_board_complete(host.board_id).unwrap();
-        crate::completion::set_done_column(&mut data, Some(2)).unwrap();
-        app.database
-            .replace_board_as_local_edit(host.board_id, &data)
-            .unwrap();
-        app.load_active_board(host.board_id).unwrap();
-    }
     let writer = context("writer", &[host.board_id], true);
-    let task = |app: &AppData| app.stored.columns[1].tasks.first().cloned();
-    call(
+    let board_id = host.board_id;
+
+    // Without a done column, completing archives the task.
+    let archived = call(
+        &host,
+        &writer,
+        "task.complete",
+        json!({"board_id": board_id, "task_id": 11}),
+    )
+    .unwrap();
+    assert_eq!(archived["task"]["archived"], true);
+
+    let updated = call(
+        &host,
+        &writer,
+        "column.update",
+        json!({"board_id": board_id, "column_id": 2, "done": true}),
+    )
+    .unwrap();
+    assert_eq!(updated["column"]["done"], true);
+    let listed = call(&host, &writer, "column.list", json!({"board_id": board_id})).unwrap();
+    assert_eq!(listed["columns"][0]["done"], false);
+    assert_eq!(listed["columns"][1]["done"], true);
+
+    // Moving into the done column completes a task, as task.complete does.
+    let moved = call(
         &host,
         &writer,
         "task.move",
-        json!({"board_id": host.board_id, "task_id": 10, "column_id": 2}),
+        json!({"board_id": board_id, "task_id": 10, "column_id": 2}),
     )
     .unwrap();
-    assert!(task(&host.app.lock().unwrap())
-        .unwrap()
-        .completed_at
-        .is_some());
-    call(
+    assert!(moved["task"]["completed_time"].as_u64().is_some());
+    assert!(matches!(
+        call(
+            &host,
+            &writer,
+            "task.reopen",
+            json!({"board_id": board_id, "task_id": 10, "column_id": 2}),
+        ),
+        Err(OperationError::InvalidInput)
+    ));
+    let reopened = call(
         &host,
         &writer,
-        "task.move",
-        json!({"board_id": host.board_id, "task_id": 10, "column_id": 1}),
+        "task.reopen",
+        json!({"board_id": board_id, "task_id": 10, "column_id": 1}),
     )
     .unwrap();
+    assert_eq!(reopened["task"]["column_id"], 1);
+    assert!(reopened["task"]["completed_time"].is_null());
+    let completed = call(
+        &host,
+        &writer,
+        "task.complete",
+        json!({"board_id": board_id, "task_id": 10}),
+    )
+    .unwrap();
+    assert_eq!(completed["task"]["column_id"], 2);
+    assert!(completed["task"]["completed_time"].as_u64().is_some());
+
+    // Archived tasks reopen into the chosen column.
+    let restored = call(
+        &host,
+        &writer,
+        "task.reopen",
+        json!({"board_id": board_id, "task_id": 11, "column_id": 1}),
+    )
+    .unwrap();
+    assert_eq!(restored["task"]["archived"], false);
+    assert_eq!(restored["task"]["column_id"], 1);
+
+    let cleared = call(
+        &host,
+        &writer,
+        "column.update",
+        json!({"board_id": board_id, "column_id": 2, "done": false}),
+    )
+    .unwrap();
+    assert_eq!(cleared["column"]["done"], false);
     let app = host.app.lock().unwrap();
-    assert_eq!(app.stored.columns[0].tasks[0].completed_at, None);
+    assert_eq!(app.stored.done_column_id(), None);
+    assert_eq!(app.stored.columns[1].tasks[0].completed_at, None);
+}
+
+#[test]
+fn priorities_and_waiting_tasks_round_trip_with_shared_validation() {
+    let host = TestHost::new();
+    let writer = context("writer", &[host.board_id], true);
+    let board_id = host.board_id;
+    let created = call(
+        &host,
+        &writer,
+        "task.create",
+        json!({"board_id": board_id, "column_id": 1, "title": "Deploy",
+               "priority": "urgent", "blocked_by": [10]}),
+    )
+    .unwrap();
+    let id = created["task"]["id"].as_i64().unwrap();
+    assert_eq!(created["task"]["priority"], "urgent");
+    assert_eq!(created["task"]["blocked_by"], json!([10]));
+
+    // Omitted fields stay; null clears the priority.
+    let renamed = call(
+        &host,
+        &writer,
+        "task.update",
+        json!({"board_id": board_id, "task_id": id, "title": "Ship"}),
+    )
+    .unwrap();
+    assert_eq!(renamed["task"]["priority"], "urgent");
+    assert_eq!(renamed["task"]["blocked_by"], json!([10]));
+    let cleared = call(
+        &host,
+        &writer,
+        "task.update",
+        json!({"board_id": board_id, "task_id": id, "priority": null, "blocked_by": [10, 11]}),
+    )
+    .unwrap();
+    assert!(cleared["task"]["priority"].is_null());
+    assert_eq!(cleared["task"]["blocked_by"], json!([10, 11]));
+
+    // Waiting on itself, on a task that waits on it, or on unknown tasks fails.
+    for (task_id, blocked_by) in [(id, json!([id])), (10, json!([id])), (id, json!([999]))] {
+        assert!(matches!(
+            call(
+                &host,
+                &writer,
+                "task.update",
+                json!({"board_id": board_id, "task_id": task_id, "blocked_by": blocked_by}),
+            ),
+            Err(OperationError::InvalidInput)
+        ));
+    }
+    let fetched = call(
+        &host,
+        &writer,
+        "task.get",
+        json!({"board_id": board_id, "task_id": id}),
+    )
+    .unwrap();
+    assert_eq!(fetched["task"]["blocked_by"], json!([10, 11]));
+    assert!(fetched["task"]["completed_time"].is_null());
 }
 
 #[test]

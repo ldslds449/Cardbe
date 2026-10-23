@@ -56,6 +56,9 @@ pub struct Column {
     pub name: String,
     pub color: String,
     pub sort_order: ColumnSort,
+    /// Whether this is the board's done column; tasks in it are completed.
+    /// A board has at most one.
+    pub done: bool,
 }
 
 impl From<&models::ColumnSort> for ColumnSort {
@@ -68,24 +71,26 @@ impl From<&models::ColumnSort> for ColumnSort {
     }
 }
 
-impl From<board_view::ColumnInfo> for Column {
-    fn from(column: board_view::ColumnInfo) -> Self {
+impl Column {
+    /// `done_column` is the board's done column, which decides `done` even
+    /// when synchronized data flags several columns.
+    pub fn from_info(column: board_view::ColumnInfo, done_column: Option<i64>) -> Self {
         Self {
             sort_order: (&column.sort_order).into(),
+            done: Some(column.id) == done_column,
             id: column.id,
             name: column.name,
             color: column.color,
         }
     }
-}
 
-impl From<&models::Column> for Column {
-    fn from(column: &models::Column) -> Self {
+    pub fn new(column: &models::Column, done_column: Option<i64>) -> Self {
         Self {
             id: column.id,
             name: column.name.clone(),
             color: column.color.clone(),
             sort_order: (&column.sort_order).into(),
+            done: Some(column.id) == done_column,
         }
     }
 }
@@ -138,6 +143,37 @@ impl From<models::Recurrence> for Recurrence {
                 models::RecurrenceFrequency::Monthly => RecurrenceFrequency::Monthly,
             },
             interval: recurrence.interval,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskPriority {
+    Low,
+    Medium,
+    High,
+    Urgent,
+}
+
+impl From<TaskPriority> for models::TaskPriority {
+    fn from(priority: TaskPriority) -> Self {
+        match priority {
+            TaskPriority::Low => Self::Low,
+            TaskPriority::Medium => Self::Medium,
+            TaskPriority::High => Self::High,
+            TaskPriority::Urgent => Self::Urgent,
+        }
+    }
+}
+
+impl From<models::TaskPriority> for TaskPriority {
+    fn from(priority: models::TaskPriority) -> Self {
+        match priority {
+            models::TaskPriority::Low => Self::Low,
+            models::TaskPriority::Medium => Self::Medium,
+            models::TaskPriority::High => Self::High,
+            models::TaskPriority::Urgent => Self::Urgent,
         }
     }
 }
@@ -211,6 +247,13 @@ pub struct Task {
     pub labels: Vec<String>,
     pub items: Vec<TaskItem>,
     pub recurrence: Option<Recurrence>,
+    pub priority: Option<TaskPriority>,
+    /// Read-only; when the task entered the board's done column, or `null`
+    /// while it is open. Move a task to the done column to complete it.
+    pub completed_time: Option<u64>,
+    /// Tasks of the same board this one waits on. Only those still open
+    /// block it; done, archived and removed tasks no longer do.
+    pub blocked_by: Vec<i64>,
 }
 
 impl Task {
@@ -250,6 +293,13 @@ impl Task {
                 })
                 .collect(),
             recurrence: task.recurrence.map(Recurrence::from),
+            priority: task.priority.map(TaskPriority::from),
+            completed_time: task
+                .completed_at
+                .map(u64::try_from)
+                .transpose()
+                .map_err(|_| DomainError::InvalidArgument)?,
+            blocked_by: task.blocked_by,
         })
     }
 }
