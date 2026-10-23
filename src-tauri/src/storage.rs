@@ -2508,7 +2508,31 @@ impl Database {
         board_id: i64,
         task_id: Option<i64>,
     ) -> StorageResult<Vec<task_events::TaskEvent>> {
-        task_events::list(&self.connection, board_id, task_id)
+        task_events::list(&self.connection, board_id, task_id, None)
+    }
+
+    /// Board events recorded after `after_id`, for refreshing a loaded log.
+    pub fn task_events_after(
+        &self,
+        board_id: i64,
+        after_id: Option<i64>,
+    ) -> StorageResult<Vec<task_events::TaskEvent>> {
+        task_events::list(&self.connection, board_id, None, after_id)
+    }
+
+    pub fn done_columns(&self, board_id: i64) -> StorageResult<Vec<i64>> {
+        task_events::done_columns(&self.connection, board_id)
+    }
+
+    pub fn set_done_columns(
+        &mut self,
+        board_id: i64,
+        column_ids: &[i64],
+    ) -> StorageResult<Vec<i64>> {
+        let tx = self.connection.transaction()?;
+        let ids = task_events::set_done_columns(&tx, board_id, column_ids)?;
+        tx.commit()?;
+        Ok(ids)
     }
 
     pub fn load_task(&self, board_id: i64, task_id: i64) -> StorageResult<Option<Task>> {

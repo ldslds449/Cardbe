@@ -14,6 +14,7 @@
   import LifecycleSection from "./lifecycle_section.svelte";
 
   let {
+    board_id,
     archives,
     columns,
     loaded,
@@ -21,6 +22,7 @@
     onRetry,
     onViewTask,
   }: {
+    board_id: number | null;
     archives: Archive[];
     columns: Column[];
     loaded: boolean;
@@ -95,7 +97,7 @@
       <Button variant="outline" onclick={onRetry}>{m.common_retry()}</Button>
     </div>
   {:else}
-    <LifecycleSection {archives} {columns} {now} {onViewTask} />
+    <LifecycleSection {board_id} {archives} {columns} {now} {onViewTask} />
     <h2 class="mt-2 text-lg font-semibold">{m.statistics_yearly()}</h2>
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {#each [{ label: m.statistics_total_archived(), value: archives.length, detail: m.statistics_all_time() }, { label: m.statistics_archived_year(), value: activity.total, detail: year_label }, { label: m.statistics_active_days(), value: activity.active_days, detail: m.statistics_in_year( { year: year_label } ) }, { label: m.statistics_longest_streak(), value: activity.longest_streak, detail: m.statistics_streak_year( { year: year_label } ) }] as metric}

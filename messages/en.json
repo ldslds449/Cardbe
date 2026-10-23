@@ -1535,7 +1535,7 @@
   "share_conflict_error": "Resolve the saved sync conflict before syncing again.",
   "update_current": "{name} is up to date",
   "update_available": "{name} {version} is available",
-  "statistics_description": "Task lifecycle and archive activity for the current board. Archived tasks count as completed; restored or deleted tasks are excluded.",
+  "statistics_description": "Task lifecycle, column flow, and archive activity for the current board.",
   "statistics_loading": "Loading statistics...",
   "statistics_load_error": "Couldn't load statistics.",
   "statistics_total_archived": "Total archived",
@@ -1551,7 +1551,7 @@
   "statistics_more": "More",
   "statistics_yearly": "Yearly overview",
   "statistics_lifecycle": "Task lifecycle",
-  "statistics_lifecycle_description": "From creation to archive, for tasks on this board.",
+  "statistics_lifecycle_description": "From creation to completion, for tasks on this board. Tasks count as completed when archived or moved to a done column.",
   "statistics_range": "Time range",
   "statistics_range_days": [
     {
@@ -1581,7 +1581,7 @@
   ],
   "statistics_lead_time_median": "Median time to complete",
   "statistics_lead_time_p85": "85% completed within {duration}",
-  "statistics_lead_time_hint": "From creation to archive",
+  "statistics_lead_time_hint": "From creation to completion",
   "statistics_on_time_rate": "On-time rate",
   "statistics_on_time_detail": [
     {
@@ -1663,6 +1663,54 @@
   "statistics_label": "Label",
   "statistics_median_time": "Median time",
   "statistics_by_label_description": "Completed tasks in the selected range and active tasks overdue now. A task with several labels counts under each.",
+  "statistics_done_columns": "Done columns",
+  "statistics_done_columns_none": "Archive only",
+  "statistics_done_columns_selected": [
+    {
+      "declarations": [
+        "input count",
+        "local countFormatted = count: number",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} done column",
+        "countPlural=*": "{countFormatted} done columns"
+      }
+    }
+  ],
+  "statistics_done_columns_hint": "Tasks also count as done when they reach these columns. This setting applies only to this device.",
+  "statistics_column_flow": "Column flow",
+  "statistics_column_flow_description": "Tasks in each column by day, and tasks archived during the range",
+  "statistics_recorded_since": "Moves are recorded on this device since {date}.",
+  "statistics_flow_empty": "Data appears after tasks are added, moved, or archived on this device.",
+  "statistics_archived": "Archived in range",
+  "statistics_other_columns": "Other columns",
+  "statistics_column_times": "Time in column",
+  "statistics_column_times_description": "Based on stays that ended in the selected range. Backflow counts moves to an earlier column.",
+  "statistics_column": "Column",
+  "statistics_current": "Now",
+  "statistics_p85": "85th percentile",
+  "statistics_backflow": "Backflow",
+  "statistics_bottleneck": "Bottleneck",
+  "statistics_done_column": "Done",
+  "statistics_reopen_rate": "Reopen rate",
+  "statistics_reopen_detail": [
+    {
+      "declarations": [
+        "input count",
+        "input reopened",
+        "local countFormatted = count: number",
+        "local reopenedFormatted = reopened: number",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{reopenedFormatted} reopened after {countFormatted} completion",
+        "countPlural=*": "{reopenedFormatted} reopened after {countFormatted} completions"
+      }
+    }
+  ],
   "export_document_title": "Calendar export",
   "export_month_label": "Month {month}",
   "task_move_board": "Move to Board",

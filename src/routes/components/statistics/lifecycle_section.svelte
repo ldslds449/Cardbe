@@ -4,6 +4,10 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
+  import { Badge } from "$lib/components/ui/badge/index.js";
+  import { untrack } from "svelte";
+  import { toast } from "svelte-sonner";
+  import { translateCommandError } from "$lib/command-errors";
   import type { Archive } from "../../type/archive.svelte";
   import type { Column } from "../../type/column.svelte";
   import type { Task } from "../../type/task.svelte";
@@ -12,13 +16,29 @@
     task_lifecycle,
     type LifecycleRange,
   } from "./lifecycle";
+  import {
+    column_flow,
+    completions,
+    cumulative_flow,
+    current_events,
+    done_since,
+  } from "./lifecycle-flow";
+  import {
+    load_done_columns,
+    load_task_events,
+    save_done_columns,
+    type TaskEvent,
+  } from "./task-events";
+  import CumulativeFlowChart from "./cumulative_flow_chart.svelte";
 
   let {
+    board_id,
     archives,
     columns,
     now,
     onViewTask,
   }: {
+    board_id: number | null;
     archives: Archive[];
     columns: Column[];
     now: Date;
@@ -27,14 +47,132 @@
 
   const AGING_LIMIT = 10;
   let range = $state("30");
+  const range_value = $derived(
+    (range === "all" ? "all" : Number(range)) as LifecycleRange,
+  );
+
+  // Refresh the log whenever tasks move, since each move may add events.
+  const placement = $derived(
+    columns
+      .map((column) => `${column.id}:${column.tasks.map((t) => t.id)}`)
+      .join("|") + `#${archives.map((archive) => archive.task.id)}`,
+  );
+  // The structured error is kept so its message follows language changes.
+  let log = $state<
+    | { board_id: number; events: TaskEvent[]; done: string[] }
+    | { error: unknown }
+    | null
+  >(null);
+  $effect(() => {
+    const id = board_id;
+    if (id === null) {
+      log = null;
+      return;
+    }
+    let current = true;
+    log = null;
+    load_done_columns(id)
+      .then((done) =>
+        load_task_events(id).then((events) => {
+          if (current) {
+            log = { board_id: id, events: since_reset(events), done };
+          }
+        }),
+      )
+      .catch((error: unknown) => {
+        if (current) {
+          log = { error };
+        }
+      });
+    return () => (current = false);
+  });
+  // The log only grows, so later moves fetch just the new events.
+  $effect(() => {
+    void placement;
+    const target = untrack(() => (log && "events" in log ? log : null));
+    if (!target) {
+      return;
+    }
+    let current = true;
+    const after = target.events.at(-1)?.id;
+    load_task_events(target.board_id, { afterId: after })
+      .then((events) => {
+        if (current && events.length > 0 && log === target) {
+          target.events = since_reset([...target.events, ...events]);
+        }
+      })
+      .catch((error: unknown) => {
+        if (current && log === target) {
+          log = { error };
+        }
+      });
+    return () => (current = false);
+  });
+  // Statistics only use events after the last board reset.
+  function since_reset(events: TaskEvent[]) {
+    const reset = events.findLastIndex((event) => event.kind === "board_reset");
+    return reset > 0 ? events.slice(reset) : events;
+  }
+  const loaded = $derived(log && "events" in log ? log : null);
+  const done_ids = $derived(
+    (loaded?.done ?? []).filter((id) =>
+      columns.some((column) => column.id === id),
+    ),
+  );
+  const done = $derived(new Set(done_ids));
+  const recorded = $derived(current_events(loaded?.events ?? []));
+  const completed = $derived(
+    completions(archives, columns, done, done_since(recorded.effective, done)),
+  );
   const lifecycle = $derived(
-    task_lifecycle(
-      archives,
+    task_lifecycle(completed.completed, completed.active, range_value, now),
+  );
+  const flow = $derived(
+    column_flow(recorded.effective, columns, done, range_value, now),
+  );
+  const flow_points = $derived(
+    cumulative_flow(
+      recorded.all,
+      recorded.since,
       columns,
-      (range === "all" ? "all" : Number(range)) as LifecycleRange,
+      archives.length,
+      range_value,
       now,
     ),
   );
+
+  // Columns still being created have no stored id yet.
+  const is_stored_column = (id: string) => /^column_\d+$/.test(id);
+
+  async function change_done_columns(value: string[]) {
+    if (!loaded) {
+      return;
+    }
+    const previous = loaded.done;
+    const target = loaded.board_id;
+    loaded.done = value.filter(is_stored_column);
+    try {
+      const saved = await save_done_columns(target, loaded.done);
+      if (log && "events" in log && log.board_id === target) {
+        log.done = saved;
+      }
+    } catch (error) {
+      if (log && "events" in log && log.board_id === target) {
+        log.done = previous;
+      }
+      toast.error(translateCommandError(error));
+    }
+  }
+
+  function done_label(ids: string[]) {
+    if (ids.length === 0) {
+      return m.statistics_done_columns_none();
+    }
+    return ids.length === 1
+      ? (columns.find((column) => column.id === ids[0])?.name ??
+          m.statistics_done_columns_selected({ count: 1 }))
+      : m.statistics_done_columns_selected({ count: ids.length });
+  }
   const weekly_max = $derived(
     Math.max(1, ...lifecycle.weekly.flatMap((w) => [w.created, w.completed])),
   );
@@ -89,18 +227,51 @@
         {m.statistics_lifecycle_description()}
       </p>
     </div>
-    <Select.Root type="single" bind:value={range}>
-      <Select.Trigger class="w-36" aria-label={m.statistics_range()}
-        >{range_label(range)}</Select.Trigger
+    <div class="flex flex-wrap gap-2">
+      <Select.Root
+        type="multiple"
+        value={done_ids}
+        onValueChange={(value) => void change_done_columns(value)}
+        disabled={!loaded}
       >
-      <Select.Content>
-        {#each lifecycle_ranges as item (item)}
-          <Select.Item value={String(item)} label={range_label(item)}
-            >{range_label(item)}</Select.Item
-          >
-        {/each}
-      </Select.Content>
-    </Select.Root>
+        <Select.Trigger
+          class="w-auto max-w-64 min-w-44"
+          aria-label={m.statistics_done_columns()}
+          title={m.statistics_done_columns_hint()}
+          ><span class="truncate"
+            ><span class="text-muted-foreground"
+              >{m.statistics_done_columns()}</span
+            >
+            {done_label(done_ids)}</span
+          ></Select.Trigger
+        >
+        <Select.Content>
+          <Select.Group>
+            <Select.GroupHeading
+              class="max-w-64 font-normal text-muted-foreground"
+              >{m.statistics_done_columns_hint()}</Select.GroupHeading
+            >
+            {#each columns.filter( (column) => is_stored_column(column.id) ) as column (column.id)}
+              <Select.Item value={column.id} label={column.name}
+                >{column.name}</Select.Item
+              >
+            {/each}
+          </Select.Group>
+        </Select.Content>
+      </Select.Root>
+      <Select.Root type="single" bind:value={range}>
+        <Select.Trigger class="w-36" aria-label={m.statistics_range()}
+          >{range_label(range)}</Select.Trigger
+        >
+        <Select.Content>
+          {#each lifecycle_ranges as item (item)}
+            <Select.Item value={String(item)} label={range_label(item)}
+              >{range_label(item)}</Select.Item
+            >
+          {/each}
+        </Select.Content>
+      </Select.Root>
+    </div>
   </header>
 
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -383,6 +554,111 @@
           </Table.Body>
         </Table.Root>
       {/if}
+    </Card.Content>
+  </Card.Root>
+  <Card.Root>
+    <Card.Header>
+      <Card.Title>{m.statistics_column_flow()}</Card.Title>
+      <Card.Description
+        >{m.statistics_column_flow_description()}</Card.Description
+      >
+    </Card.Header>
+    <Card.Content class="flex flex-col gap-3">
+      {#if log && "error" in log}
+        <p class="text-sm text-destructive" role="alert">
+          {translateCommandError(log.error)}
+        </p>
+      {:else if flow_points.length < 2}
+        <p class="text-sm text-muted-foreground">
+          {m.statistics_flow_empty()}
+        </p>
+      {:else}
+        <CumulativeFlowChart points={flow_points} {columns} />
+      {/if}
+      {#if recorded.since}
+        <p class="text-xs text-muted-foreground">
+          {m.statistics_recorded_since({
+            date: formatDate(recorded.since, { dateStyle: "medium" }),
+          })}
+        </p>
+      {/if}
+    </Card.Content>
+  </Card.Root>
+
+  <Card.Root>
+    <Card.Header>
+      <Card.Title>{m.statistics_column_times()}</Card.Title>
+      <Card.Description
+        >{m.statistics_column_times_description()}</Card.Description
+      >
+    </Card.Header>
+    <Card.Content class="flex flex-col gap-4">
+      <dl class="flex flex-wrap items-baseline gap-x-2 text-sm">
+        <dt class="text-muted-foreground">{m.statistics_reopen_rate()}</dt>
+        <dd class="font-medium tabular-nums">
+          {flow.completed === 0
+            ? m.statistics_no_data()
+            : formatNumber(flow.reopened / flow.completed, {
+                style: "percent",
+              })}
+        </dd>
+        <dd class="text-xs text-muted-foreground">
+          {m.statistics_reopen_detail({
+            reopened: flow.reopened,
+            count: flow.completed,
+          })}
+        </dd>
+      </dl>
+      <Table.Root>
+        <Table.Header>
+          <Table.Row>
+            <Table.Head>{m.statistics_column()}</Table.Head>
+            <Table.Head class="text-right">{m.statistics_current()}</Table.Head>
+            <Table.Head class="text-right"
+              >{m.statistics_median_time()}</Table.Head
+            >
+            <Table.Head class="text-right">{m.statistics_p85()}</Table.Head>
+            <Table.Head class="text-right">{m.statistics_backflow()}</Table.Head
+            >
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {#each flow.rows as row (row.column.id)}
+            <Table.Row>
+              <Table.Cell class="max-w-56">
+                <span class="flex items-center gap-2">
+                  <span class="truncate">{row.column.name}</span>
+                  {#if flow.bottleneck === row.column.id}
+                    <Badge variant="destructive"
+                      >{m.statistics_bottleneck()}</Badge
+                    >
+                  {:else if done.has(row.column.id)}
+                    <Badge variant="secondary"
+                      >{m.statistics_done_column()}</Badge
+                    >
+                  {/if}
+                </span>
+              </Table.Cell>
+              <Table.Cell class="text-right tabular-nums"
+                >{formatNumber(row.current)}</Table.Cell
+              >
+              <Table.Cell class="text-right tabular-nums"
+                >{row.median === null
+                  ? m.statistics_no_data()
+                  : duration(row.median)}</Table.Cell
+              >
+              <Table.Cell class="text-right tabular-nums"
+                >{row.p85 === null
+                  ? m.statistics_no_data()
+                  : duration(row.p85)}</Table.Cell
+              >
+              <Table.Cell class="text-right tabular-nums"
+                >{formatNumber(row.backflow)}</Table.Cell
+              >
+            </Table.Row>
+          {/each}
+        </Table.Body>
+      </Table.Root>
     </Card.Content>
   </Card.Root>
 </section>

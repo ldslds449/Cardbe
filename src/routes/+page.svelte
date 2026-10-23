@@ -1396,6 +1396,7 @@
           >
             {#if active_view === "statistics"}
               <StatisticsView
+                board_id={board.active_board_id}
                 archives={board.archives}
                 columns={board.columns}
                 loaded={board.archives_loaded}

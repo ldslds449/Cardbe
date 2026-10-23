@@ -536,6 +536,8 @@ pub fn run() {
             notifications::set_notification_texts,
             notifications::get_task_detail,
             commands::task_events::get_task_events,
+            commands::task_events::get_done_columns,
+            commands::task_events::set_done_columns,
             task_explorer::list_all_tasks,
             notes::get_notes,
             notes::create_note,

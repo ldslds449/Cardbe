@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { get_column_id } from "../../type/column.svelte";
 import { get_task_id } from "../../type/task.svelte";
 
 /** Keep aligned with `EventOrigin` in `src-tauri/src/task_events.rs`. */
@@ -67,15 +68,17 @@ export function deserialize_task_event(
 
 /**
  * The device-local task event log of the active board, oldest first. With
- * `taskId`, only that task's events and board resets are loaded.
+ * `taskId`, only that task's events and board resets are loaded; with
+ * `afterId`, only board events recorded after that event.
  */
 export async function load_task_events(
   expectedBoardId: number,
-  taskId?: string,
+  { taskId, afterId }: { taskId?: string; afterId?: number } = {},
 ): Promise<TaskEvent[]> {
   const data = await invoke<TaskEventSerialized[]>("get_task_events", {
     expectedBoardId,
     taskId: taskId === undefined ? null : get_task_id(taskId),
+    afterId: afterId ?? null,
   });
   return data.flatMap((event) => deserialize_task_event(event) ?? []);
 }
@@ -107,4 +110,24 @@ export function task_history(events: TaskEvent[], task_id: string) {
       entries.length > 0 &&
       ["created", "transferred_in"].includes(entries[0].kind),
   };
+}
+
+/** Columns of the active board that this device counts as done. */
+export async function load_done_columns(
+  expectedBoardId: number,
+): Promise<string[]> {
+  const ids = await invoke<number[]>("get_done_columns", { expectedBoardId });
+  return ids.map((id) => `column_${id}`);
+}
+
+/** Saves the done columns and returns the ones the backend kept. */
+export async function save_done_columns(
+  expectedBoardId: number,
+  columnIds: string[],
+): Promise<string[]> {
+  const ids = await invoke<number[]>("set_done_columns", {
+    expectedBoardId,
+    columnIds: columnIds.map((id) => get_column_id(id)),
+  });
+  return ids.map((id) => `column_${id}`);
 }

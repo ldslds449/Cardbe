@@ -171,8 +171,45 @@ pub fn initialize(tx: &Transaction<'_>) -> rusqlite::Result<()> {
             from_column_id INTEGER, to_column_id INTEGER);
          CREATE INDEX IF NOT EXISTS cardbe_task_events_by_op ON cardbe_task_events(op_id);
          CREATE INDEX IF NOT EXISTS cardbe_task_events_by_board_task
-            ON cardbe_task_events(board_id,task_id,id);",
+            ON cardbe_task_events(board_id,task_id,id);
+         CREATE TABLE IF NOT EXISTS cardbe_done_columns(
+            board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,
+            column_id INTEGER NOT NULL, PRIMARY KEY(board_id,column_id));",
     )
+}
+
+/// Columns this device counts as done in lifecycle statistics. Like the log,
+/// the choice is device-local; deleted columns are left out.
+pub fn done_columns(connection: &Connection, board_id: i64) -> EventResult<Vec<i64>> {
+    let mut statement = connection.prepare(
+        "SELECT d.column_id FROM cardbe_done_columns d
+         JOIN cardbe_columns c ON c.board_id=d.board_id AND c.id=d.column_id
+         WHERE d.board_id=?1 ORDER BY c.position",
+    )?;
+    let ids = statement
+        .query_map([board_id], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
+}
+
+/// Replaces the done columns, ignoring ids that are not columns of the board.
+pub fn set_done_columns(
+    tx: &Transaction<'_>,
+    board_id: i64,
+    column_ids: &[i64],
+) -> EventResult<Vec<i64>> {
+    tx.execute(
+        "DELETE FROM cardbe_done_columns WHERE board_id=?1",
+        [board_id],
+    )?;
+    let mut statement = tx.prepare(
+        "INSERT OR IGNORE INTO cardbe_done_columns(board_id,column_id)
+         SELECT board_id,id FROM cardbe_columns WHERE board_id=?1 AND id=?2",
+    )?;
+    for id in column_ids {
+        statement.execute(params![board_id, id])?;
+    }
+    done_columns(tx, board_id)
 }
 
 /// Records how tasks moved between `before` and `after`. Returns the new
@@ -219,21 +256,24 @@ pub fn record_reset(
 }
 
 /// Events of a board in recording order, optionally only those of one task
-/// plus board resets. Unknown stored kinds are skipped.
+/// plus board resets, and only those recorded after `after_id`. Unknown
+/// stored kinds are skipped.
 pub fn list(
     connection: &Connection,
     board_id: i64,
     task_id: Option<i64>,
+    after_id: Option<i64>,
 ) -> EventResult<Vec<TaskEvent>> {
     let mut statement = connection.prepare(
         "SELECT e.id,e.op_id,o.origin,o.plugin_instance_id,o.reverts_op_id,o.at,
                 e.task_id,e.kind,e.from_column_id,e.to_column_id
          FROM cardbe_task_events e JOIN cardbe_task_event_ops o ON o.id=e.op_id
          WHERE e.board_id=?1 AND (?2 IS NULL OR e.task_id=?2 OR e.kind='board_reset')
+           AND (?3 IS NULL OR e.id>?3)
          ORDER BY e.id",
     )?;
     let rows = statement
-        .query_map(params![board_id, task_id], |row| {
+        .query_map(params![board_id, task_id, after_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, i64>(1)?,

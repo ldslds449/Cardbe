@@ -773,6 +773,29 @@ mod tests {
             [logged[4].id, logged[5].id, logged[6].id]
         );
         assert!(logged.windows(2).all(|pair| pair[0].id < pair[1].id));
+        // A loaded log grows with only the events recorded after it.
+        assert_eq!(
+            app.database
+                .task_events_after(board_id, Some(logged[4].id))
+                .unwrap(),
+            logged[5..]
+        );
+
+        // Done columns are device-local settings outside the log and Undo.
+        let undo_depth = app.undo_history.len();
+        assert_eq!(
+            app.database
+                .set_done_columns(board_id, &[2, 99, 2])
+                .unwrap(),
+            [2]
+        );
+        assert_eq!(app.undo_history.len(), undo_depth);
+        update_locked(&mut app, |data| {
+            data.columns.pop();
+            Ok(())
+        })
+        .unwrap();
+        assert!(app.database.done_columns(board_id).unwrap().is_empty());
         drop(app);
         fs::remove_dir_all(dir).unwrap();
     }

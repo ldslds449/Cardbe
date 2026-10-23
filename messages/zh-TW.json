@@ -1359,7 +1359,7 @@
   "share_conflict_error": "請先處理已儲存的同步衝突，再重新同步。",
   "update_current": "{name} 已是最新版本",
   "update_available": "{name} {version} 新版已推出",
-  "statistics_description": "目前看板的任務生命週期與封存活動。封存視為完成，不含已還原或刪除的任務。",
+  "statistics_description": "目前看板的任務生命週期、欄位流動與封存活動。",
   "statistics_loading": "正在載入統計資料…",
   "statistics_load_error": "無法載入統計資料。",
   "statistics_total_archived": "累計封存任務",
@@ -1375,7 +1375,7 @@
   "statistics_more": "較多",
   "statistics_yearly": "年度概覽",
   "statistics_lifecycle": "任務生命週期",
-  "statistics_lifecycle_description": "這個看板上的任務從建立到封存的狀況。",
+  "statistics_lifecycle_description": "這個看板上的任務從建立到完成的狀況。封存或移到完成欄的任務算是完成。",
   "statistics_range": "時間範圍",
   "statistics_range_days": [
     {
@@ -1399,7 +1399,7 @@
   ],
   "statistics_lead_time_median": "完成所需時間中位數",
   "statistics_lead_time_p85": "85% 在 {duration}內完成",
-  "statistics_lead_time_hint": "從建立到封存",
+  "statistics_lead_time_hint": "從建立到完成",
   "statistics_on_time_rate": "準時完成率",
   "statistics_on_time_detail": [
     {
@@ -1460,6 +1460,45 @@
   "statistics_label": "標籤",
   "statistics_median_time": "時間中位數",
   "statistics_by_label_description": "所選期間完成的任務，以及目前逾期的未完成任務。有多個標籤的任務會在每個標籤各算一次。",
+  "statistics_done_columns": "完成欄",
+  "statistics_done_columns_none": "只算封存",
+  "statistics_done_columns_selected": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個完成欄"
+      }
+    }
+  ],
+  "statistics_done_columns_hint": "任務移到這些欄位也算完成。這項設定只套用在這台裝置。",
+  "statistics_column_flow": "欄位流動",
+  "statistics_column_flow_description": "每天各欄的任務數，以及這段期間累計封存的任務",
+  "statistics_recorded_since": "這台裝置自 {date} 起記錄任務移動。",
+  "statistics_flow_empty": "在這台裝置新增、移動或封存任務後，才會開始有資料。",
+  "statistics_archived": "期間內封存",
+  "statistics_other_columns": "其他欄位",
+  "statistics_column_times": "各欄停留時間",
+  "statistics_column_times_description": "依所選期間內離開欄位的紀錄計算。退回是移到前面欄位的次數。",
+  "statistics_column": "欄位",
+  "statistics_current": "目前",
+  "statistics_p85": "85% 內",
+  "statistics_backflow": "退回",
+  "statistics_bottleneck": "瓶頸",
+  "statistics_done_column": "完成欄",
+  "statistics_reopen_rate": "重新開啟率",
+  "statistics_reopen_detail": [
+    {
+      "declarations": [
+        "input count",
+        "input reopened",
+        "local countFormatted = count: number",
+        "local reopenedFormatted = reopened: number"
+      ],
+      "match": {
+        "count=*": "完成 {countFormatted} 次，重新開啟 {reopenedFormatted} 次"
+      }
+    }
+  ],
   "export_document_title": "行事曆匯出",
   "export_month_label": "第 {month} 個月",
   "task_move_board": "移至其他看板",

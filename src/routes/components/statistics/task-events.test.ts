@@ -45,13 +45,22 @@ it("deserializes ids and times and skips events from newer versions", async () =
   expect(invoke).toHaveBeenCalledWith("get_task_events", {
     expectedBoardId: 7,
     taskId: null,
+    afterId: null,
   });
   expect(events.map((event) => event.id)).toEqual([3]);
   invoke.mockResolvedValueOnce([]);
-  await load_task_events(7, "task_10");
+  await load_task_events(7, { taskId: "task_10" });
   expect(invoke).toHaveBeenLastCalledWith("get_task_events", {
     expectedBoardId: 7,
     taskId: 10,
+    afterId: null,
+  });
+  invoke.mockResolvedValueOnce([]);
+  await load_task_events(7, { afterId: 5 });
+  expect(invoke).toHaveBeenLastCalledWith("get_task_events", {
+    expectedBoardId: 7,
+    taskId: null,
+    afterId: 5,
   });
 });
 

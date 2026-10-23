@@ -33,7 +33,7 @@
       result = { events: [] };
       return;
     }
-    load_task_events(board_id, task_id)
+    load_task_events(board_id, { taskId: task_id })
       .then((events) => {
         if (current) {
           result = { events };
