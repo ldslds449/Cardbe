@@ -212,6 +212,17 @@ pub fn set_done_columns(
     done_columns(tx, board_id)
 }
 
+/// Forgets done columns that were deleted, so a later column reusing the id
+/// does not inherit the choice.
+pub fn prune_done_columns(tx: &Transaction<'_>, board_id: i64) -> EventResult<()> {
+    tx.execute(
+        "DELETE FROM cardbe_done_columns WHERE board_id=?1 AND column_id NOT IN
+           (SELECT id FROM cardbe_columns WHERE board_id=?1)",
+        [board_id],
+    )?;
+    Ok(())
+}
+
 /// Records how tasks moved between `before` and `after`. Returns the new
 /// operation id, or `None` when nothing was recorded.
 pub fn record(
@@ -241,11 +252,16 @@ pub fn record_transfer(
 }
 
 /// Marks that the board's task ids were replaced, for example by an import.
+/// Column ids may now mean other columns, so done columns are cleared too.
 pub fn record_reset(
     tx: &Transaction<'_>,
     board_id: i64,
     source: &EventSource,
 ) -> EventResult<Option<i64>> {
+    tx.execute(
+        "DELETE FROM cardbe_done_columns WHERE board_id=?1",
+        [board_id],
+    )?;
     let reset = Change {
         task_id: 0,
         kind: EventKind::BoardReset,

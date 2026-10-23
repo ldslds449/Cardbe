@@ -7,6 +7,7 @@ import {
   cumulative_flow,
   current_events,
   done_since,
+  flow_groups,
 } from "./lifecycle-flow";
 import type { TaskEvent } from "./task-events";
 
@@ -178,4 +179,39 @@ it("rebuilds daily column and archive counts backwards", () => {
     [ago(0), [1, 1], 1],
   ]);
   expect(cumulative_flow([], null, columns, 0, 30, now)).toEqual([]);
+});
+
+it("folds later columns into one band but keeps done columns", () => {
+  const board = (count: number) =>
+    Array.from({ length: count }, (_, i) =>
+      create_column(`c${i}`, `C${i}`, "", []),
+    );
+  const bands = (count: number, done: string[]) =>
+    flow_groups(board(count), new Set(done)).map((group) => [
+      group.column?.id ?? null,
+      group.indexes,
+    ]);
+  expect(bands(5, [])).toEqual([0, 1, 2, 3, 4].map((i) => [`c${i}`, [i]]));
+  expect(bands(7, [])).toEqual([
+    ["c0", [0]],
+    ["c1", [1]],
+    ["c2", [2]],
+    ["c3", [3]],
+    [null, [4, 5, 6]],
+  ]);
+  expect(bands(7, ["c6", "c2"])).toEqual([
+    ["c0", [0]],
+    ["c1", [1]],
+    ["c2", [2]],
+    [null, [3, 4, 5]],
+    ["c6", [6]],
+  ]);
+  expect(bands(7, ["c4", "c5", "c6", "c0", "c1"])).toEqual([
+    ["c0", [0]],
+    ["c1", [1]],
+    [null, [2, 3]],
+    ["c4", [4]],
+    ["c5", [5]],
+    ["c6", [6]],
+  ]);
 });

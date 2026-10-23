@@ -573,7 +573,7 @@
           {m.statistics_flow_empty()}
         </p>
       {:else}
-        <CumulativeFlowChart points={flow_points} {columns} />
+        <CumulativeFlowChart points={flow_points} {columns} {done} />
       {/if}
       {#if recorded.since}
         <p class="text-xs text-muted-foreground">

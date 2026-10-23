@@ -2903,6 +2903,7 @@ pub(crate) fn persist_board_diff_transaction(
         }
     }
     crate::flow::prune(tx, board_id)?;
+    task_events::prune_done_columns(tx, board_id)?;
     positions.columns = column_positions;
     positions.tasks = task_positions;
     Ok(stats)

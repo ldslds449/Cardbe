@@ -795,6 +795,24 @@ mod tests {
             Ok(())
         })
         .unwrap();
+        // A new column reusing a deleted id is not done.
+        update_locked(&mut app, |data| {
+            data.columns.push(column(2));
+            Ok(())
+        })
+        .unwrap();
+        assert!(app.database.done_columns(board_id).unwrap().is_empty());
+        // A reset gives column ids new meanings, so the choice is cleared.
+        app.database.set_done_columns(board_id, &[1]).unwrap();
+        update_locked_with_events(
+            &mut app,
+            EventWrite::Reset(EventSource::local()),
+            |data: &mut StoredData| -> Result<(), String> {
+                data.columns[0].name = "Imported".into();
+                Ok(())
+            },
+        )
+        .unwrap();
         assert!(app.database.done_columns(board_id).unwrap().is_empty());
         drop(app);
         fs::remove_dir_all(dir).unwrap();

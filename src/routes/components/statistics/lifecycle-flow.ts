@@ -7,6 +7,8 @@ const DAY = 24 * 60 * 60 * 1000;
 // A column needs this many finished stays before it can be the bottleneck.
 export const BOTTLENECK_MIN_SAMPLES = 3;
 const MAX_FLOW_POINTS = 120;
+// Later columns fold into one band so shades stay distinguishable.
+const NAMED_COLUMNS = 4;
 
 /**
  * Events after the last board reset. `all` keeps undo operations, which
@@ -256,4 +258,33 @@ export function cumulative_flow(
     });
   }
   return points.reverse();
+}
+
+/**
+ * Chart bands for the board's columns in order. On wide boards, columns past
+ * the first few fold into one band (`column: null`) where the first of them
+ * would be; done columns were chosen to be watched, so they never fold.
+ */
+export function flow_groups(columns: Column[], done: Set<string>) {
+  let open = Math.max(
+    0,
+    NAMED_COLUMNS - columns.filter((column) => done.has(column.id)).length,
+  );
+  const groups: { column: Column | null; indexes: number[] }[] = [];
+  let folded: number[] | null = null;
+  columns.forEach((column, index) => {
+    if (
+      columns.length <= NAMED_COLUMNS + 1 ||
+      done.has(column.id) ||
+      open-- > 0
+    ) {
+      groups.push({ column, indexes: [index] });
+    } else if (folded) {
+      folded.push(index);
+    } else {
+      folded = [index];
+      groups.push({ column: null, indexes: folded });
+    }
+  });
+  return groups;
 }

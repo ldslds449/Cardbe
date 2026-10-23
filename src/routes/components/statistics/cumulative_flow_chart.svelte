@@ -2,39 +2,30 @@
   import * as m from "$lib/paraglide/messages.js";
   import { formatDate, formatNumber } from "$lib/i18n";
   import type { Column } from "../../type/column.svelte";
-  import type { FlowPoint } from "./lifecycle-flow";
+  import { flow_groups, type FlowPoint } from "./lifecycle-flow";
 
-  let { points, columns }: { points: FlowPoint[]; columns: Column[] } =
-    $props();
+  let {
+    points,
+    columns,
+    done,
+  }: { points: FlowPoint[]; columns: Column[]; done: Set<string> } = $props();
 
-  // Later columns fold into one band so shades stay distinguishable.
-  const NAMED_COLUMNS = 4;
   const WIDTH = 100;
   const HEIGHT = 100;
 
   // Bands from the top: board columns in order, then the archive.
   const bands = $derived.by(() => {
-    const folded = columns.length > NAMED_COLUMNS + 1;
-    const named = folded ? columns.slice(0, NAMED_COLUMNS) : columns;
-    const count = named.length + (folded ? 1 : 0);
+    const groups = flow_groups(columns, done);
     // One theme hue, deepening as tasks move along the board.
     const shade = (index: number) =>
-      `color-mix(in oklab, var(--primary) ${Math.round(20 + (55 * (index + 1)) / count)}%, var(--card))`;
-    const list = named.map((column, index) => ({
-      key: column.id,
-      name: column.name,
+      `color-mix(in oklab, var(--primary) ${Math.round(20 + (55 * (index + 1)) / groups.length)}%, var(--card))`;
+    const list = groups.map(({ column, indexes }, index) => ({
+      key: column?.id ?? "other",
+      name: column?.name ?? m.statistics_other_columns(),
       fill: shade(index),
-      value: (point: FlowPoint) => point.columns[index],
+      value: (point: FlowPoint) =>
+        indexes.reduce((sum, i) => sum + point.columns[i], 0),
     }));
-    if (folded) {
-      list.push({
-        key: "other",
-        name: m.statistics_other_columns(),
-        fill: shade(NAMED_COLUMNS),
-        value: (point) =>
-          point.columns.slice(NAMED_COLUMNS).reduce((a, b) => a + b, 0),
-      });
-    }
     list.push({
       key: "archived",
       name: m.statistics_archived(),
@@ -70,6 +61,19 @@
   });
 
   let hover = $state<number | null>(null);
+  function step(event: KeyboardEvent) {
+    const last = points.length - 1;
+    const next = {
+      ArrowLeft: (hover ?? last) - 1,
+      ArrowRight: (hover ?? last) + 1,
+      Home: 0,
+      End: last,
+    }[event.key];
+    if (next !== undefined) {
+      event.preventDefault();
+      hover = Math.min(last, Math.max(0, next));
+    }
+  }
   function track(event: PointerEvent) {
     const rect = (event.currentTarget as Element).getBoundingClientRect();
     const ratio = (event.clientX - rect.left) / rect.width;
@@ -78,20 +82,31 @@
       Math.max(0, Math.round(ratio * (points.length - 1))),
     );
   }
+  const hint = $props.id();
   const date = (point: FlowPoint) =>
     formatDate(point.time, { dateStyle: "medium" });
 </script>
 
 <div class="flex flex-col gap-3">
   <div class="relative">
+    <!-- Arrow keys pick a day, like moving the pointer across the chart. -->
     <svg
-      class="h-48 w-full touch-none"
+      class="h-48 w-full touch-none rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       preserveAspectRatio="none"
-      role="img"
+      role="slider"
+      tabindex="0"
       aria-label={m.statistics_column_flow_description()}
+      aria-describedby={hint}
+      aria-valuemin={0}
+      aria-valuemax={points.length - 1}
+      aria-valuenow={hover ?? points.length - 1}
+      aria-valuetext={date(points[hover ?? points.length - 1])}
       onpointermove={track}
       onpointerleave={() => (hover = null)}
+      onfocus={() => (hover ??= points.length - 1)}
+      onblur={() => (hover = null)}
+      onkeydown={step}
     >
       {#each paths as band (band.key)}
         <path d={band.d} style:fill={band.fill} />
@@ -112,6 +127,7 @@
     {#if hover !== null}
       {@const point = points[hover]}
       <div
+        aria-hidden="true"
         class="pointer-events-none absolute top-2 z-10 min-w-36 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md"
         style:left={`${(hover / (points.length - 1)) * 100}%`}
         style:transform={`translateX(${hover / (points.length - 1) > 0.5 ? "calc(-100% - 8px)" : "8px"})`}
@@ -138,6 +154,15 @@
       </div>
     {/if}
   </div>
+  <p id={hint} class="sr-only">{m.statistics_flow_keyboard_hint()}</p>
+  <!-- The tooltip comes and goes, so counts are announced from here. -->
+  <ul class="sr-only" aria-live="polite">
+    {#if hover !== null}
+      {#each bands as band (band.key)}
+        <li>{band.name} {formatNumber(band.value(points[hover]))}</li>
+      {/each}
+    {/if}
+  </ul>
   <div
     class="flex justify-between text-[10px] text-muted-foreground"
     aria-hidden="true"
