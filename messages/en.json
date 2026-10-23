@@ -2628,5 +2628,8 @@
       "selectors": ["msPlural"],
       "match": { "msPlural=*": "{msFormatted} ms" }
     }
-  ]
+  ],
+  "smart_view_starter_due": "Overdue and due today",
+  "smart_view_starter_important": "Urgent and high priority",
+  "smart_view_starter_waiting": "Waiting on other cards"
 }

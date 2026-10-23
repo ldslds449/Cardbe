@@ -16,6 +16,7 @@ mod operations;
 mod plugins;
 mod resource_usage;
 mod search;
+mod smart_views;
 mod state;
 mod storage;
 mod task_dates;
@@ -570,6 +571,8 @@ pub fn run() {
             commands::resource_usage::get_resource_usage,
             commands::task_events::get_task_events,
             task_explorer::list_all_tasks,
+            commands::smart_views::get_smart_views,
+            commands::smart_views::set_smart_views,
             notes::get_notes,
             notes::create_note,
             notes::create_quick_note,

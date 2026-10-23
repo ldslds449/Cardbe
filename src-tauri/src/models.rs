@@ -979,6 +979,10 @@ pub struct AllBoardsExport {
     pub active_board_index: usize,
     pub settings: Settings,
     pub notes: Vec<Note>,
+    /// Board filters hold positions in `boards`. Absent in older backups,
+    /// which leave the current views in place.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smart_views: Option<Vec<crate::smart_views::SmartView>>,
 }
 
 #[derive(Serialize, Deserialize)]

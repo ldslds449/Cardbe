@@ -1018,6 +1018,7 @@ mod tests {
                 0,
                 std::slice::from_ref(&note),
                 &Default::default(),
+                None,
             )
             .unwrap();
         let id = boards[0].id;
@@ -1029,7 +1030,8 @@ mod tests {
                 &[("Invalid".into(), original.clone(), invalid)],
                 0,
                 &[],
-                &Default::default()
+                &Default::default(),
+                None
             )
             .is_err());
         assert_eq!(db.read_flow(id, None).unwrap(), saved);
@@ -1232,6 +1234,7 @@ mod tests {
                 0,
                 &[],
                 &Default::default(),
+                None,
             )
             .unwrap();
         assert_eq!(db.read_flow_backup(boards[0].id).unwrap(), backup);

@@ -2325,5 +2325,8 @@
       "selectors": ["msPlural"],
       "match": { "msPlural=*": "{msFormatted} 毫秒" }
     }
-  ]
+  ],
+  "smart_view_starter_due": "逾期與今天到期",
+  "smart_view_starter_important": "緊急與高優先",
+  "smart_view_starter_waiting": "正在等其他卡片"
 }

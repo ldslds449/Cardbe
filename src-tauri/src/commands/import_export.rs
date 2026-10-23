@@ -66,12 +66,24 @@ pub fn export_all_boards(state: State<'_, SharedAppData>) -> Result<String, Comm
         .iter()
         .position(|board| board.id == active_board_id)
         .unwrap_or(0);
+    let mut smart_views =
+        crate::smart_views::load(&guard.database.connection).map_err(CommandError::from)?;
+    if let Some(views) = &mut smart_views {
+        crate::smart_views::map_boards(views, |id| {
+            guard
+                .boards
+                .iter()
+                .position(|board| board.id == id)
+                .map(|index| index as i64)
+        });
+    }
     serde_json::to_string(&AllBoardsExport {
         schema_version: 1,
         boards,
         active_board_index,
         settings: guard.stored.settings.clone(),
         notes,
+        smart_views,
     })
     .map_err(CommandError::internal)
 }
@@ -94,6 +106,19 @@ fn parse_all_boards_backup(json_data: &str) -> Result<AllBoardsExport, CommandEr
     let mut note_ids = std::collections::HashSet::new();
     if backup.notes.iter().any(|note| !note_ids.insert(note.id)) {
         return Err(CommandError::InvalidImport);
+    }
+    if let Some(views) = &backup.smart_views {
+        let board_count = backup.boards.len() as i64;
+        let positions_valid = views.iter().all(|view| {
+            view.filter
+                .board_ids
+                .iter()
+                .flatten()
+                .all(|index| (0..board_count).contains(index))
+        });
+        if crate::smart_views::validate(views).is_err() || !positions_valid {
+            return Err(CommandError::InvalidImport);
+        }
     }
     Ok(backup)
 }
@@ -143,6 +168,7 @@ pub fn import_all_boards(
             backup.active_board_index,
             &backup.notes,
             &backup.settings,
+            backup.smart_views.as_deref(),
         )
         .map_err(CommandError::repository)?;
     guard.boards = boards;
@@ -241,6 +267,7 @@ mod tests {
             active_board_index: 0,
             settings: Default::default(),
             notes: vec![],
+            smart_views: None,
         })
         .unwrap()
     }
@@ -285,6 +312,21 @@ mod tests {
             Err(CommandError::InvalidImport)
         ));
         value["active_board_index"] = 0.into();
+        // Smart view board filters refer to positions in the backup.
+        value["smart_views"] =
+            serde_json::json!([{"id":"a","name":"Mine","filter":{"board_ids":[0]}}]);
+        assert!(parse_all_boards_backup(&value.to_string()).is_ok());
+        value["smart_views"][0]["filter"]["board_ids"] = serde_json::json!([1]);
+        assert!(matches!(
+            parse_all_boards_backup(&value.to_string()),
+            Err(CommandError::InvalidImport)
+        ));
+        value["smart_views"] = serde_json::json!([{"id":"a","name":" "}]);
+        assert!(matches!(
+            parse_all_boards_backup(&value.to_string()),
+            Err(CommandError::InvalidImport)
+        ));
+        value.as_object_mut().unwrap().remove("smart_views");
         value["schema_version"] = 2.into();
         assert!(matches!(
             parse_all_boards_backup(&value.to_string()),
