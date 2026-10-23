@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
+#[cfg(not(windows))]
 use tauri_plugin_notification::NotificationExt;
 
 /// How often due notifications are checked while the app runs.
@@ -78,6 +79,15 @@ fn due_notice(task: &Task, since: u128, now: u128, reminder: u128) -> Option<(u1
         .then_some((remind_at, DueNotice::Reminder))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct Notice {
+    kind: DueNotice,
+    board_id: i64,
+    board_name: String,
+    task_id: i64,
+    task_title: String,
+}
+
 /// Notices in the order they happened, skipping columns muted on this device.
 fn due_notices(
     tasks: Vec<DueTask>,
@@ -85,7 +95,7 @@ fn due_notices(
     since: u128,
     now: u128,
     reminder: u128,
-) -> Vec<(DueNotice, String, String)> {
+) -> Vec<Notice> {
     let mut notices = tasks
         .into_iter()
         .filter(|due| {
@@ -94,48 +104,116 @@ fn due_notices(
                 .is_some_and(|muted| muted.contains(&due.column_id))
         })
         .filter_map(|due| {
-            due_notice(&due.task, since, now, reminder)
-                .map(|(time, notice)| (time, notice, due.board_name, due.task.title))
+            due_notice(&due.task, since, now, reminder).map(|(time, kind)| {
+                let notice = Notice {
+                    kind,
+                    board_id: due.board_id,
+                    board_name: due.board_name,
+                    task_id: due.task.id,
+                    task_title: due.task.title,
+                };
+                (time, notice)
+            })
         })
         .collect::<Vec<_>>();
-    notices.sort_by_key(|(time, ..)| *time);
-    notices
-        .into_iter()
-        .map(|(_, notice, board, task)| (notice, board, task))
-        .collect()
+    notices.sort_by_key(|(time, _)| *time);
+    notices.into_iter().map(|(_, notice)| notice).collect()
 }
 
-fn notification_text(
-    texts: &NotificationTexts,
-    notice: DueNotice,
-    board_name: &str,
-    task_title: &str,
-) -> (String, String) {
-    let (title, body) = match notice {
+/// A notification to show; clicking it opens `task` as `(board, task)` IDs,
+/// or only the main window for a summary.
+#[derive(Debug, PartialEq, Eq)]
+struct Shown {
+    title: String,
+    body: String,
+    task: Option<(i64, i64)>,
+}
+
+fn notification_text(texts: &NotificationTexts, notice: &Notice) -> Shown {
+    let (title, body) = match notice.kind {
         DueNotice::Overdue => (&texts.overdue_title, &texts.overdue_body),
         DueNotice::Reminder => (&texts.reminder_title, &texts.reminder_body),
     };
-    (
-        title.replace("{board}", board_name),
-        body.replace("{task}", task_title),
-    )
+    Shown {
+        title: title.replace("{board}", &notice.board_name),
+        body: body.replace("{task}", &notice.task_title),
+        task: Some((notice.board_id, notice.task_id)),
+    }
 }
 
 /// Notifications to show, with one summary in place of all but the first few.
-fn notifications(
-    texts: &NotificationTexts,
-    notices: Vec<(DueNotice, String, String)>,
-) -> Vec<(String, String)> {
+fn notifications(texts: &NotificationTexts, notices: Vec<Notice>) -> Vec<Shown> {
     let more = notices.len() > MAX_SHOWN;
     let mut shown = notices
-        .into_iter()
+        .iter()
         .take(if more { MAX_SHOWN - 1 } else { MAX_SHOWN })
-        .map(|(notice, board, task)| notification_text(texts, notice, &board, &task))
+        .map(|notice| notification_text(texts, notice))
         .collect::<Vec<_>>();
     if more {
-        shown.push((texts.more_title.clone(), texts.more_body.clone()));
+        shown.push(Shown {
+            title: texts.more_title.clone(),
+            body: texts.more_body.clone(),
+            task: None,
+        });
     }
     shown
+}
+
+/// Shows a notification that opens its task when clicked. The notification
+/// plugin cannot report clicks on desktop, so Windows toasts are shown here.
+#[cfg(windows)]
+fn show_notification(app: &AppHandle, shown: Shown) {
+    use tauri_winrt_notification::Toast;
+    // Like the notification plugin, use PowerShell's registered app ID for
+    // builds run from Cargo's default output; Windows drops notifications
+    // from unregistered IDs.
+    let from_cargo = tauri::utils::platform::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf))
+        .is_some_and(|dir| {
+            dir.ends_with(std::path::Path::new("target").join("debug"))
+                || dir.ends_with(std::path::Path::new("target").join("release"))
+        });
+    let identifier = app.config().identifier.clone();
+    let app_id = if from_cargo {
+        Toast::POWERSHELL_APP_ID
+    } else {
+        identifier.as_str()
+    };
+    let handle = app.clone();
+    let result = Toast::new(app_id)
+        .title(&shown.title)
+        .text1(&shown.body)
+        .on_activated(move |_| {
+            match shown.task {
+                Some((board_id, task_id)) => {
+                    if let Err(error) =
+                        crate::desktop::open_task_in_main_window(&handle, board_id, task_id)
+                    {
+                        log::warn!(target: "notifications", "Could not open a notified task: {error}");
+                    }
+                }
+                None => crate::desktop::show_main_window(&handle),
+            }
+            Ok(())
+        })
+        .show();
+    if let Err(error) = result {
+        log::warn!(target: "notifications", "Could not show a due-task notification: {error}");
+    }
+}
+
+#[cfg(not(windows))]
+fn show_notification(app: &AppHandle, shown: Shown) {
+    if let Err(error) = app
+        .notification()
+        .builder()
+        .title(shown.title)
+        .body(shown.body)
+        .show()
+    {
+        log::warn!(target: "notifications", "Could not show a due-task notification: {error}");
+    }
 }
 
 fn check_due_tasks(app: &AppHandle) -> Result<(), CommandError> {
@@ -184,10 +262,8 @@ fn check_due_tasks(app: &AppHandle) -> Result<(), CommandError> {
     }
     drop(guard);
 
-    for (title, body) in notifications(&texts, notices) {
-        if let Err(error) = app.notification().builder().title(title).body(body).show() {
-            log::warn!(target: "notifications", "Could not show a due-task notification: {error}");
-        }
+    for shown in notifications(&texts, notices) {
+        show_notification(app, shown);
     }
     Ok(())
 }
@@ -255,7 +331,7 @@ pub fn get_task_detail(
 #[cfg(test)]
 mod tests {
     use super::{due_notice, due_notices, notification_text, notifications, DueNotice};
-    use super::{NotificationTexts, MAX_SHOWN};
+    use super::{Notice, NotificationTexts, Shown, MAX_SHOWN};
     use crate::models::Task;
     use crate::storage::DueTask;
     use std::collections::{BTreeMap, BTreeSet};
@@ -277,6 +353,16 @@ mod tests {
             board_name: format!("Board {board_id}"),
             column_id,
             task,
+        }
+    }
+
+    fn notice(board_id: i64, task_id: i64, title: &str) -> Notice {
+        Notice {
+            kind: DueNotice::Overdue,
+            board_id,
+            board_name: format!("Board {board_id}"),
+            task_id,
+            task_title: title.to_owned(),
         }
     }
 
@@ -442,66 +528,68 @@ mod tests {
 
         assert_eq!(
             due_notices(tasks, &muted, 0, 200, 0),
-            vec![
-                (
-                    DueNotice::Overdue,
-                    "Board 1".to_owned(),
-                    "Review".to_owned()
-                ),
-                (
-                    DueNotice::Overdue,
-                    "Board 2".to_owned(),
-                    "Follow up".to_owned()
-                ),
-            ]
+            vec![notice(1, 8, "Review"), notice(2, 7, "Follow up")]
         );
     }
 
     #[test]
     fn many_notices_are_summarized() {
-        let notice = |task: &str| (DueNotice::Overdue, "Work".to_owned(), task.to_owned());
-        let few = (0..MAX_SHOWN)
-            .map(|index| notice(&index.to_string()))
-            .collect::<Vec<_>>();
-        assert_eq!(notifications(&texts(), few).len(), MAX_SHOWN);
+        let notices = |count: usize| {
+            (0..count)
+                .map(|index| notice(1, index as i64, &index.to_string()))
+                .collect::<Vec<_>>()
+        };
+        let few = notifications(&texts(), notices(MAX_SHOWN));
+        assert_eq!(few.len(), MAX_SHOWN);
+        assert!(few.iter().all(|shown| shown.task.is_some()));
 
-        let many = (0..=MAX_SHOWN)
-            .map(|index| notice(&index.to_string()))
-            .collect::<Vec<_>>();
-        let shown = notifications(&texts(), many);
-        assert_eq!(shown.len(), MAX_SHOWN);
+        let many = notifications(&texts(), notices(MAX_SHOWN + 1));
+        assert_eq!(many.len(), MAX_SHOWN);
         assert_eq!(
-            shown.last(),
-            Some(&("More tasks".to_owned(), "Open Cardbe".to_owned()))
+            many.last(),
+            Some(&Shown {
+                title: "More tasks".to_owned(),
+                body: "Open Cardbe".to_owned(),
+                task: None,
+            })
         );
     }
 
     #[test]
-    fn notification_identifies_the_board() {
+    fn notification_identifies_the_board_and_opens_the_task() {
+        let mut follow_up = Notice {
+            board_name: "Work".into(),
+            ..notice(3, 7, "Follow up")
+        };
         assert_eq!(
-            notification_text(&texts(), DueNotice::Overdue, "Work", "Follow up"),
-            (
-                "Task Expired — Work".into(),
-                "Task \"Follow up\" has passed its due date".into()
-            )
+            notification_text(&texts(), &follow_up),
+            Shown {
+                title: "Task Expired — Work".into(),
+                body: "Task \"Follow up\" has passed its due date".into(),
+                task: Some((3, 7)),
+            }
         );
+        follow_up.kind = DueNotice::Reminder;
+        let reminder = notification_text(&texts(), &follow_up);
         assert_eq!(
-            notification_text(&texts(), DueNotice::Reminder, "Work", "Follow up"),
-            (
-                "Task Due Soon — Work".into(),
-                "Task \"Follow up\" is due soon".into()
-            )
+            (reminder.title.as_str(), reminder.body.as_str()),
+            ("Task Due Soon — Work", "Task \"Follow up\" is due soon")
         );
         let chinese = NotificationTexts {
             overdue_title: "任務已逾期 — {board}".into(),
             overdue_body: "任務「{task}」已超過截止時間".into(),
             ..texts()
         };
+        let notice = Notice {
+            board_name: "工作 {board}".into(),
+            ..notice(3, 7, "跟進 {task}")
+        };
+        let shown = notification_text(&chinese, &notice);
         assert_eq!(
-            notification_text(&chinese, DueNotice::Overdue, "工作 {board}", "跟進 {task}"),
+            (shown.title.as_str(), shown.body.as_str()),
             (
-                "任務已逾期 — 工作 {board}".into(),
-                "任務「跟進 {task}」已超過截止時間".into()
+                "任務已逾期 — 工作 {board}",
+                "任務「跟進 {task}」已超過截止時間"
             )
         );
     }
