@@ -10,6 +10,7 @@ mod link_preview;
 mod loro_board;
 mod models;
 mod plugins;
+mod resource_usage;
 mod search;
 mod state;
 mod storage;
@@ -309,6 +310,7 @@ pub fn run() {
             sender: startup_sender,
             receiver: startup_receiver,
         })
+        .manage(resource_usage::ResourceMonitorState::default())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(if cfg!(debug_assertions) {
@@ -535,6 +537,7 @@ pub fn run() {
             iroh_share::delete_iroh_invite,
             notifications::set_notification_texts,
             notifications::get_task_detail,
+            commands::resource_usage::get_resource_usage,
             commands::task_events::get_task_events,
             commands::task_events::get_done_columns,
             commands::task_events::set_done_columns,

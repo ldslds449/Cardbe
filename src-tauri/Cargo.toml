@@ -89,6 +89,16 @@ tauri-plugin-window-state = "~2.4.1"
 [target.'cfg(windows)'.dependencies]
 tauri-winrt-notification = "0.8"
 windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
   "Win32_Graphics_Dwm",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_ProcessStatus",
   "Win32_System_Registry",
+  "Win32_System_Threading",
+] }
+
+# Windows reads the app's process tree directly; other desktops use sysinfo.
+[target.'cfg(not(windows))'.dependencies]
+sysinfo = { version = "0.39.6", default-features = false, features = [
+  "system",
 ] }

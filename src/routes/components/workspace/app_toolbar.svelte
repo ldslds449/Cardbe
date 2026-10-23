@@ -28,6 +28,7 @@
   import LanguageSettings from "./language_settings.svelte";
   import PluginSettings from "./plugin_settings.svelte";
   import PluginPermissions from "./plugin_permissions.svelte";
+  import ResourceUsage from "./resource_usage.svelte";
 
   import { board } from "../../board.svelte";
   import type { WorkspaceView } from "./workspace";
@@ -300,6 +301,7 @@
     {/if}
 
     <div class="ml-auto flex min-w-0 items-center gap-1.5 border-l pl-2">
+      <ResourceUsage />
       <Button
         variant="secondary"
         size="sm"

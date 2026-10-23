@@ -2428,5 +2428,32 @@
   "layout_resize_hint": "Drag to resize. Double-click to reset.",
   "layout_resize_column": "Resize column width",
   "layout_resize_task_details": "Resize task details width",
-  "layout_resize_task_editor": "Resize task editor width"
+  "layout_resize_task_editor": "Resize task editor width",
+  "resource_usage_cpu": "CPU",
+  "resource_usage_memory": "RAM",
+  "resource_usage_label": "Cardbe resource usage: CPU {cpu}, RAM {memory}",
+  "resource_usage_title": "Resource usage",
+  "resource_usage_unavailable": "Resource usage is unavailable right now.",
+  "resource_usage_cpu_total": "CPU usage",
+  "resource_usage_memory_total": "Memory",
+  "resource_usage_history": "{name} over the last minute, peak {peak}",
+  "resource_usage_process_group": "Process",
+  "resource_usage_main_process": "Main process",
+  "resource_usage_child_processes": "Child processes (total)",
+  "resource_usage_process_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} process counted",
+        "countPlural=*": "{countFormatted} processes counted"
+      }
+    }
+  ],
+  "resource_usage_process_count_unavailable": "Process count unavailable",
+  "error_resource_usage_unavailable": "Resource usage is unavailable."
 }

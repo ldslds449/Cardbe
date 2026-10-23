@@ -2164,5 +2164,26 @@
   "layout_resize_hint": "拖曳可調整寬度，按兩下恢復預設",
   "layout_resize_column": "調整欄位寬度",
   "layout_resize_task_details": "調整任務資訊寬度",
-  "layout_resize_task_editor": "調整任務編輯寬度"
+  "layout_resize_task_editor": "調整任務編輯寬度",
+  "resource_usage_cpu": "CPU",
+  "resource_usage_memory": "記憶體",
+  "resource_usage_label": "Cardbe 資源使用量：CPU {cpu}，記憶體 {memory}",
+  "resource_usage_title": "資源使用量",
+  "resource_usage_unavailable": "目前無法取得資源使用量。",
+  "resource_usage_cpu_total": "CPU 使用率",
+  "resource_usage_memory_total": "記憶體用量",
+  "resource_usage_history": "最近一分鐘的{name}，最高 {peak}",
+  "resource_usage_process_group": "行程",
+  "resource_usage_main_process": "主行程",
+  "resource_usage_child_processes": "子行程（合計）",
+  "resource_usage_process_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "共統計 {countFormatted} 個行程"
+      }
+    }
+  ],
+  "resource_usage_process_count_unavailable": "無法取得行程數量",
+  "error_resource_usage_unavailable": "無法取得資源使用量。"
 }

@@ -48,6 +48,7 @@ const coreMessages = {
   SHARE_SYNC_CONFLICT: () => m.share_conflict_error(),
   IROH_DISABLED: () => m.share_iroh_disabled(),
   SHARE_FAILED: () => m.share_sync_error(),
+  RESOURCE_USAGE_UNAVAILABLE: () => m.error_resource_usage_unavailable(),
   INTERNAL_ERROR: () => m.error_internal(),
   PLUGIN_UPDATE_NOT_NEWER: () => m.plugin_update_not_newer(),
   PLUGIN_UPDATE_BUSY: () => m.plugin_update_busy(),

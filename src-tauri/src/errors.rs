@@ -183,6 +183,7 @@ pub enum CommandError {
         plugin_id: String,
         plugin_error: PluginUserError,
     },
+    ResourceUsageUnavailable,
     InternalError,
 }
 
