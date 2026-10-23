@@ -106,6 +106,41 @@ fn debug_port() -> io::Result<u16> {
         })
 }
 
+/// Windows silently drops notifications from unregistered app IDs. Installers
+/// register the release identifier; register each development instance's own
+/// identifier so notifications can be tested.
+#[cfg(all(debug_assertions, windows))]
+fn register_debug_notification_id(identifier: &str) {
+    use windows_sys::Win32::System::Registry::{RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ};
+    let wide = |text: &str| text.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+    let key = wide(&format!(r"Software\Classes\AppUserModelId\{identifier}"));
+    let icon = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("icons/icon.png");
+    let mut values = vec![("DisplayName", "Cardbe [Debug]".to_owned())];
+    if icon.is_file() {
+        values.push(("IconUri", icon.display().to_string()));
+    }
+    for (name, value) in values {
+        let name = wide(name);
+        let data = wide(&value);
+        // SAFETY: the key, name, and data are NUL-terminated UTF-16 buffers that
+        // outlive the call, and the size covers the data and its terminator.
+        let result = unsafe {
+            RegSetKeyValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                name.as_ptr(),
+                REG_SZ,
+                data.as_ptr().cast(),
+                (data.len() * std::mem::size_of::<u16>()) as u32,
+            )
+        };
+        if result != 0 {
+            log::warn!(target: "notifications", "Could not register the development notification ID: {result}");
+            return;
+        }
+    }
+}
+
 #[cfg(all(debug_assertions, desktop))]
 fn debug_instance_id(port: u16) -> io::Result<String> {
     match std::env::var("CARDBE_DEV_INSTANCE_ID") {
@@ -320,6 +355,8 @@ pub fn run() {
                 std::env::consts::OS,
                 std::env::consts::ARCH
             );
+            #[cfg(all(debug_assertions, windows))]
+            register_debug_notification_id(&app.config().identifier);
             #[cfg(all(debug_assertions, desktop))]
             let app_data_dir = data_dir(&instance_id);
             #[cfg(not(all(debug_assertions, desktop)))]
