@@ -24,7 +24,10 @@ use tauri::{Emitter, Manager};
 pub enum ManagerError {
     Domain(DomainError),
     Host(PluginHostError),
-    AuthorizationRequired(String),
+    AuthorizationRequired {
+        domain: String,
+        private_network: bool,
+    },
 }
 impl From<DomainError> for ManagerError {
     fn from(error: DomainError) -> Self {
@@ -41,7 +44,7 @@ impl From<ManagerError> for CommandError {
         match error {
             ManagerError::Domain(error) => error.into(),
             ManagerError::Host(error) => error.into(),
-            ManagerError::AuthorizationRequired(_) => CommandError::PermissionDenied,
+            ManagerError::AuthorizationRequired { .. } => CommandError::PermissionDenied,
         }
     }
 }
@@ -249,6 +252,7 @@ pub(crate) fn same_authorization(original: &PluginInstance, current: &PluginInst
         && current.board_id == original.board_id
         && current.config == original.config
         && current.allowed_domains == original.allowed_domains
+        && current.private_network_domains == original.private_network_domains
         && current.secret_fields == original.secret_fields
 }
 fn record_failure(instance: &mut PluginInstance, error: Option<CommandError>) {
@@ -282,9 +286,20 @@ fn runtime_error(
     error: runtime::RuntimeError,
 ) -> (ManagerError, Option<u32>) {
     match error {
-        runtime::RuntimeError::AuthorizationRequired(domain) => {
-            (ManagerError::AuthorizationRequired(domain), None)
-        }
+        runtime::RuntimeError::AuthorizationRequired(domain) => (
+            ManagerError::AuthorizationRequired {
+                domain,
+                private_network: false,
+            },
+            None,
+        ),
+        runtime::RuntimeError::PrivateNetworkRequired(domain) => (
+            ManagerError::AuthorizationRequired {
+                domain,
+                private_network: true,
+            },
+            None,
+        ),
         runtime::RuntimeError::Guest {
             code,
             retry_after_seconds,
@@ -314,10 +329,17 @@ fn runtime_error(
                 )
             }
         }
-        runtime::RuntimeError::PermissionDenied => (
+        runtime::RuntimeError::PermissionDenied
+        | runtime::RuntimeError::BlockedAddress
+        | runtime::RuntimeError::Redirect => (
             PluginHostError::PermissionDenied {
                 plugin_id: plugin.id.clone(),
-                permission: "network".into(),
+                permission: match error {
+                    runtime::RuntimeError::BlockedAddress => "network_blocked_address",
+                    runtime::RuntimeError::Redirect => "network_redirect",
+                    _ => "network",
+                }
+                .into(),
             }
             .into(),
             None,
@@ -339,7 +361,10 @@ fn runtime_error(
                         PluginFailureReason::InvalidCredential
                     }
                     runtime::RuntimeError::PermissionDenied
-                    | runtime::RuntimeError::AuthorizationRequired(_) => unreachable!(),
+                    | runtime::RuntimeError::BlockedAddress
+                    | runtime::RuntimeError::Redirect
+                    | runtime::RuntimeError::AuthorizationRequired(_)
+                    | runtime::RuntimeError::PrivateNetworkRequired(_) => unreachable!(),
                 },
             }
             .into(),
@@ -434,6 +459,12 @@ fn prepare_http_policy(
     }
     Ok(HttpPolicy {
         allowed_domains: instance.allowed_domains.clone(),
+        private_network_domains: instance
+            .private_network_domains
+            .iter()
+            .filter(|domain| super::http::contains_domain(&instance.allowed_domains, domain))
+            .cloned()
+            .collect(),
         requested_domains: package.domains.clone(),
         allow_custom_domains: package.allow_custom_domains,
         token,
@@ -662,7 +693,13 @@ pub async fn run(
                         }
                     }
                 }
-                Err((ManagerError::AuthorizationRequired(domain), _)) => {
+                Err((
+                    ManagerError::AuthorizationRequired {
+                        domain,
+                        private_network,
+                    },
+                    _,
+                )) => {
                     record.status = "awaiting_permission".into();
                     let current = current
                         .as_mut()
@@ -672,6 +709,7 @@ pub async fn run(
                         domain,
                         run_id: record.id.clone(),
                         trigger: record.trigger.clone(),
+                        private_network,
                     });
                 }
                 Err((error, wait)) => {
@@ -799,6 +837,63 @@ mod tests {
         instance.credentials_need_review = false;
         instance.secret_fields = vec!["retired_token".into()];
         assert_eq!(credential_key(&instance, &package), None);
+    }
+    #[test]
+    fn network_rejections_keep_distinct_safe_codes_and_private_grants_follow_host_grants() {
+        let package: PluginPackage = serde_json::from_value(serde_json::json!({
+            "id":"fixture", "name":"Fixture", "version":"1.0.0", "api_version":"1.1.0",
+            "storage_schema_version":1, "domains":["jira.example.com"]
+        }))
+        .unwrap();
+        assert!(matches!(
+            runtime_error(
+                &package,
+                runtime::RuntimeError::PrivateNetworkRequired("jira.example.com".into())
+            ),
+            (ManagerError::AuthorizationRequired { domain, private_network: true }, None)
+                if domain == "jira.example.com"
+        ));
+        assert!(matches!(
+            runtime_error(
+                &package,
+                runtime::RuntimeError::AuthorizationRequired("jira.example.com".into())
+            ),
+            (
+                ManagerError::AuthorizationRequired {
+                    private_network: false,
+                    ..
+                },
+                None
+            )
+        ));
+        for (error, permission) in [
+            (runtime::RuntimeError::PermissionDenied, "network"),
+            (
+                runtime::RuntimeError::BlockedAddress,
+                "network_blocked_address",
+            ),
+            (runtime::RuntimeError::Redirect, "network_redirect"),
+        ] {
+            assert_eq!(error.code(), "PERMISSION_DENIED");
+            assert_eq!(
+                serde_json::to_value(CommandError::from(runtime_error(&package, error).0)).unwrap(),
+                serde_json::json!({
+                    "code":"PLUGIN_PERMISSION_DENIED", "plugin_id":"fixture", "permission":permission
+                })
+            );
+        }
+        let mut instance = instance("private");
+        instance.allowed_domains = vec!["jira.example.com".into()];
+        instance.private_network_domains =
+            vec!["jira.example.com:443".into(), "revoked.example.com".into()];
+        let policy = prepare_http_policy(&instance, &package, |_| Ok(None)).unwrap();
+        assert_eq!(policy.private_network_domains, ["jira.example.com:443"]);
+        let mut changed = instance.clone();
+        changed.private_network_domains.clear();
+        instance.enabled = true;
+        changed.enabled = true;
+        assert!(same_authorization(&instance, &instance.clone()));
+        assert!(!same_authorization(&instance, &changed));
     }
     #[test]
     fn scoped_policy_reads_only_assigned_current_instance_secrets() {
@@ -996,6 +1091,7 @@ mod tests {
             config: Default::default(),
             secret_fields: vec![],
             allowed_domains: vec![],
+            private_network_domains: vec![],
             pending_domain: None,
             enabled: true,
             needs_review: false,

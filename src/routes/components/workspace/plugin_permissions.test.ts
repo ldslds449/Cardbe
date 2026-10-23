@@ -21,10 +21,12 @@ function setup(invoke: ReturnType<typeof vi.fn>) {
     "invoke",
     "parseCommandError",
     transpile(`
-    let instances=[],safeMode=false,selected=null,open=false,busy=false,error=null,generation=0;
+    let instances=[],safeMode=false,selected=null,open=false,busy=false,error=null,generation=0,
+      allowPrivateNetwork=false;
     const shown=new Set();
     ${functions}
-    return { refresh,show,resolve,close:()=>{open=false;},state:()=>({instances,safeMode,selected,open,busy,error}) };
+    return { refresh,show,resolve,close:()=>{open=false;},allowPrivate:()=>{allowPrivateNetwork=true;},
+      state:()=>({instances,safeMode,selected,open,busy,error,allowPrivateNetwork}) };
   `),
   )(invoke, parseCommandError);
 }
@@ -75,6 +77,7 @@ it("sends only the instance and pending run identity, and waits for backend appr
     instanceId: "one",
     runId: "run-1",
     allow: true,
+    privateNetwork: false,
   });
   expect(request.allowed_domains).toEqual([]);
   expect(ui.state().open).toBe(false);
@@ -95,6 +98,7 @@ it("keeps failed decisions visible and translates structured errors", async () =
     instanceId: "one",
     runId: "run-1",
     allow: false,
+    privateNetwork: false,
   });
   expect(ui.state().error).toEqual({ code: "PERMISSION_DENIED" });
   expect(ui.state().open).toBe(true);
@@ -164,6 +168,49 @@ it("removes duplicate host entry and keeps permission review and revocation in s
   expect(disabled(false, hosts, hosts[0])).toBe(false);
   expect(disabled(false, hosts.slice(1), "new.example.com")).toBe(false);
   expect(disabled(true, hosts, hosts[0])).toBe(true);
+});
+
+it("lets one host approval include private network access and explains later requests", async () => {
+  let instances = [instance()];
+  const invoke = vi.fn(async (command: string) => {
+    if (command === "resolve_plugin_domain") {
+      instances = [];
+      return;
+    }
+    return { safe_mode: false, instances };
+  });
+  const ui = setup(invoke);
+  await ui.refresh();
+  ui.allowPrivate();
+  await ui.resolve(true);
+  expect(invoke).toHaveBeenCalledWith("resolve_plugin_domain", {
+    instanceId: "one",
+    runId: "run-1",
+    allow: true,
+    privateNetwork: true,
+  });
+  const declined = instance("manual", "run-2");
+  instances = [declined];
+  await ui.refresh();
+  expect(ui.state().allowPrivateNetwork).toBe(false);
+  ui.allowPrivate();
+  await ui.resolve(false);
+  expect(invoke).toHaveBeenCalledWith("resolve_plugin_domain", {
+    instanceId: "one",
+    runId: "run-2",
+    allow: false,
+    privateNetwork: false,
+  });
+  const later = instance("manual", "run-3");
+  later.pending_domain = {
+    ...later.pending_domain,
+    private_network: true,
+  } as typeof later.pending_domain;
+  instances = [later];
+  await ui.refresh();
+  expect(ui.state().selected.pending_domain.private_network).toBe(true);
+  expect(source).toContain("m.plugin_private_network_request_title()");
+  expect(source).toContain("{#if !privateNetwork}");
 });
 
 it("retains the requested port for manual and scheduled approval prompts", async () => {

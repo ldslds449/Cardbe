@@ -5,6 +5,8 @@
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import * as Field from "$lib/components/ui/field/index.js";
   import { m } from "$lib/paraglide/messages.js";
   import { formatNumber } from "$lib/i18n";
   import { parseCommandError, type CommandError } from "$lib/command-errors";
@@ -21,7 +23,9 @@
   let open = $state(false);
   let busy = $state(false);
   let error = $state<CommandError | null>(null);
+  let allowPrivateNetwork = $state(false);
   const shown = new Set<string>();
+  const privateNetwork = $derived(!!selected?.pending_domain?.private_network);
   let generation = 0;
 
   function show(instance: PluginInstance) {
@@ -30,6 +34,7 @@
     }
     shown.add(instance.pending_domain.run_id);
     selected = instance;
+    allowPrivateNetwork = false;
     error = null;
     open = true;
   }
@@ -123,6 +128,7 @@
         instanceId: instance.id,
         runId: instance.pending_domain.run_id,
         allow,
+        privateNetwork: allow && allowPrivateNetwork,
       });
       open = false;
       selected = null;
@@ -145,9 +151,15 @@
 <Dialog.Root bind:open {busy}>
   <Dialog.Content class="z-80" showCloseButton={!busy}>
     <Dialog.Header>
-      <Dialog.Title>{m.plugin_domain_request_title()}</Dialog.Title>
+      <Dialog.Title
+        >{privateNetwork
+          ? m.plugin_private_network_request_title()
+          : m.plugin_domain_request_title()}</Dialog.Title
+      >
       <Dialog.Description>
-        {m.plugin_domain_request_description({
+        {(privateNetwork
+          ? m.plugin_private_network_request_description
+          : m.plugin_domain_request_description)({
           name: selected?.name ?? "",
           domain: selected?.pending_domain?.domain ?? "",
         })}
@@ -157,8 +169,30 @@
       {selected?.pending_domain?.domain}
     </p>
     <p class="text-sm text-muted-foreground">
-      {m.plugin_domain_request_help()}
+      {privateNetwork
+        ? m.plugin_private_network_request_help({
+            domain: selected?.pending_domain?.domain ?? "",
+          })
+        : m.plugin_domain_request_help()}
     </p>
+    {#if !privateNetwork}
+      <Field.Field orientation="horizontal" data-disabled={busy}>
+        <Checkbox
+          id="plugin-domain-private-network"
+          bind:checked={allowPrivateNetwork}
+          disabled={busy}
+          aria-describedby="plugin-domain-private-network-help"
+        />
+        <Field.Content>
+          <Field.Label for="plugin-domain-private-network" class="font-normal"
+            >{m.plugin_domain_request_private_network()}</Field.Label
+          >
+          <Field.Description id="plugin-domain-private-network-help"
+            >{m.plugin_domain_request_private_network_help()}</Field.Description
+          >
+        </Field.Content>
+      </Field.Field>
+    {/if}
     {#if error}<p role="alert" class="text-sm text-destructive">
         {pluginErrorMessage(error)}
       </p>{/if}

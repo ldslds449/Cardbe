@@ -120,6 +120,9 @@ pub struct PendingDomain {
     pub domain: String,
     pub run_id: String,
     pub trigger: String,
+    /// The approved host resolved to intranet addresses and needs private-network approval.
+    #[serde(default)]
+    pub private_network: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginInstance {
@@ -131,6 +134,9 @@ pub struct PluginInstance {
     #[serde(default)]
     pub secret_fields: Vec<String>,
     pub allowed_domains: Vec<String>,
+    /// Approved hosts that may resolve to intranet addresses; a subset of `allowed_domains`.
+    #[serde(default)]
+    pub private_network_domains: Vec<String>,
     #[serde(default)]
     pub pending_domain: Option<PendingDomain>,
     pub enabled: bool,
@@ -181,6 +187,8 @@ pub struct InstanceInput {
     pub board_id: i64,
     pub config: BTreeMap<String, serde_json::Value>,
     pub allowed_domains: Vec<String>,
+    #[serde(default)]
+    pub private_network_domains: Vec<String>,
     pub enabled: bool,
     pub interval_seconds: u64,
 }

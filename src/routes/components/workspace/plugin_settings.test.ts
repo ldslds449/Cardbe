@@ -1005,7 +1005,7 @@ it("discards cancelled updates without applying them", async () => {
     invoke.mock.calls.some(([command]) => command === "confirm_plugin_update"),
   ).toBe(false);
 });
-function setupEditor() {
+function setupEditor(privateNetwork = false) {
   const node = parse(source, { modern: true }).instance!.content.body.find(
     (node) => node.type === "FunctionDeclaration" && node.id!.name === "edit",
   )!;
@@ -1014,17 +1014,21 @@ function setupEditor() {
     "pluginText",
     "pluginDefaults",
     "canonicalPluginDomain",
+    "privateNetwork",
     transpile(`
     let editing=null,instanceId,name,config,secrets,savedSecrets,domains,customDomains,
-      enabled,interval,consent,invalid,saveAttempted,historyId,error;
+      privateNetworkDomains,enabled,interval,consent,invalid,saveAttempted,historyId,error;
     async function chooseBoard(){}
     ${source.slice(start, end)}
-    return (pkg,instance)=>{edit(pkg,instance);return {config,savedSecrets,domains,enabled,consent};};
+    return (pkg,instance)=>{edit(pkg,instance);return privateNetwork
+      ? {domains,privateNetworkDomains}
+      : {config,savedSecrets,domains,enabled,consent};};
   `),
   )(
     () => "Plugin",
     () => ({}),
     canonicalPluginDomain,
+    privateNetwork,
   );
 }
 
@@ -1158,6 +1162,35 @@ it("restores removal focus without scrolling, even when the deleted button is go
   button.isConnected = false;
   restore(event, button, dialog);
   expect(dialog.focus).toHaveBeenCalledWith({ preventScroll: true });
+});
+
+it("restores private network access only for hosts that remain approved", () => {
+  const edit = setupEditor(true);
+  const pkg = {
+    id: "jira",
+    domains: [],
+    allow_custom_domains: true,
+    settings: [],
+  };
+  const instance = {
+    id: "one",
+    name: "Instance",
+    config: {},
+    secret_fields: [],
+    allowed_domains: ["jira.example.com:443", "api.example.com"],
+    private_network_domains: ["jira.example.com", "revoked.example.com"],
+    enabled: true,
+  };
+  expect(edit(pkg, instance)).toEqual({
+    domains: ["jira.example.com", "api.example.com"],
+    privateNetworkDomains: ["jira.example.com"],
+  });
+  expect(
+    edit(pkg, { ...instance, private_network_domains: undefined }),
+  ).toEqual({
+    domains: ["jira.example.com", "api.example.com"],
+    privateNetworkDomains: [],
+  });
 });
 
 it("preserves explicit default-port grants and keeps custom ports separate in settings", () => {

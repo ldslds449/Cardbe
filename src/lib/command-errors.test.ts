@@ -243,6 +243,37 @@ describe("command error boundary", () => {
     applyLanguagePreference("en");
   });
 
+  it("distinguishes blocked plugin network destinations in both languages", () => {
+    const error = (permission: string) => ({
+      code: "PLUGIN_PERMISSION_DENIED",
+      plugin_id: "jira-tickets",
+      permission,
+    });
+    for (const [locale, blocked, redirect, generic] of [
+      [
+        "en",
+        "The plugin's destination resolves to a loopback, link-local, or reserved address, which Cardbe always blocks.",
+        "The server responded with a redirect, which plugins cannot follow. Check that the configured URL is the final address.",
+        "The plugin does not have permission to perform this action.",
+      ],
+      [
+        "zh-TW",
+        "外掛的連線目的地指向本機迴路、鏈路本地或保留位址，Cardbe 一律封鎖這類連線。",
+        "伺服器回應了重新導向，外掛無法跟隨。請確認設定的網址就是最終網址。",
+        "擴充套件沒有執行這項操作的權限。",
+      ],
+    ] as const) {
+      applyLanguagePreference(locale);
+      expect(translateCommandError(error("network_blocked_address"))).toBe(
+        blocked,
+      );
+      expect(translateCommandError(error("network_redirect"))).toBe(redirect);
+      expect(translateCommandError(error("network"))).toBe(generic);
+      expect(translateCommandError(error("future_permission"))).toBe(generic);
+    }
+    applyLanguagePreference("en");
+  });
+
   it("explains that a saved conflict needs resolution in the current language", () => {
     const error = { code: "SHARE_SYNC_CONFLICT" };
     for (const [locale, message] of [

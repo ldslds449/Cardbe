@@ -278,6 +278,12 @@ export function translateCommandError(
         ? pluginPackageMessages[error.reason]()
         : m.plugin_package_invalid();
     case "PLUGIN_PERMISSION_DENIED":
+      if (error.permission === "network_blocked_address") {
+        return m.error_plugin_network_blocked_address();
+      }
+      if (error.permission === "network_redirect") {
+        return m.error_plugin_network_redirect();
+      }
       return m.error_plugin_permission_denied();
     case "PLUGIN_EXECUTION_FAILED":
       return error.reason

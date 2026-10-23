@@ -279,7 +279,13 @@ export interface PluginInstance {
   config: Record<string, unknown>;
   secret_fields: string[];
   allowed_domains: string[];
-  pending_domain?: { domain: string; run_id: string; trigger: string } | null;
+  private_network_domains?: string[];
+  pending_domain?: {
+    domain: string;
+    run_id: string;
+    trigger: string;
+    private_network?: boolean;
+  } | null;
   enabled: boolean;
   needs_review?: boolean;
   credentials_need_review?: boolean;

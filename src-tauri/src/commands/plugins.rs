@@ -759,6 +759,11 @@ pub fn save_plugin_instance(
             )
         })
         .unwrap_or_default();
+    let allowed_domains: Vec<String> = instance
+        .allowed_domains
+        .into_iter()
+        .filter(|host| !crate::plugins::http::contains_domain(&changed_hosts, host))
+        .collect();
     let saved = PluginInstance {
         id: id.clone(),
         plugin_id: instance.plugin_id,
@@ -766,11 +771,11 @@ pub fn save_plugin_instance(
         board_id: instance.board_id,
         config: instance.config,
         secret_fields,
-        allowed_domains: instance
-            .allowed_domains
-            .into_iter()
-            .filter(|host| !crate::plugins::http::contains_domain(&changed_hosts, host))
-            .collect(),
+        private_network_domains: retained_private_network_domains(
+            instance.private_network_domains,
+            &allowed_domains,
+        ),
+        allowed_domains,
         pending_domain: None,
         enabled: instance.enabled,
         needs_review: false,
@@ -822,6 +827,21 @@ pub fn save_plugin_instance(
     let _ = app.emit("cardbe:plugins-changed", ());
     Ok(saved)
 }
+/// Private network access is an option of a host grant, so it never outlives that grant.
+fn retained_private_network_domains(
+    requested: Vec<String>,
+    allowed_domains: &[String],
+) -> Vec<String> {
+    let mut retained: Vec<String> = Vec::new();
+    for host in requested {
+        if crate::plugins::http::contains_domain(allowed_domains, &host)
+            && !crate::plugins::http::contains_domain(&retained, &host)
+        {
+            retained.push(host);
+        }
+    }
+    retained
+}
 fn updated_secret_fields(
     package: &PluginPackage,
     previous: Option<&PluginInstance>,
@@ -857,6 +877,7 @@ pub fn resolve_plugin_domain(
     instance_id: String,
     run_id: String,
     allow: bool,
+    private_network: Option<bool>,
 ) -> Result<(), CommandError> {
     if allow
         && app
@@ -889,7 +910,13 @@ pub fn resolve_plugin_domain(
         {
             return Err(CommandError::PermissionDenied);
         }
-        let trigger = resolve_domain(&mut instance, &package, &run_id, allow)?;
+        let trigger = resolve_domain(
+            &mut instance,
+            &package,
+            &run_id,
+            allow,
+            private_network.unwrap_or(false),
+        )?;
         storage::put(connection, "instance", &instance.id, &instance)?;
         trigger
     };
@@ -907,6 +934,8 @@ fn resolve_domain(
     package: &PluginPackage,
     run_id: &str,
     allow: bool,
+    // A host approval may also grant private network access for a self-hosted service.
+    private_network: bool,
 ) -> Result<String, CommandError> {
     let pending = instance
         .pending_domain
@@ -923,12 +952,26 @@ fn resolve_domain(
     if allow {
         let mut domains = instance.allowed_domains.clone();
         if !crate::plugins::http::contains_domain(&domains, &pending.domain) {
+            // DNS runs only after host approval, so a private network request needs that grant.
+            if pending.private_network {
+                return Err(CommandError::PermissionDenied);
+            }
             domains.push(pending.domain.clone());
         }
         if !valid_instance_domains(package, &domains) {
             return Err(CommandError::PermissionDenied);
         }
         instance.allowed_domains = domains;
+        if (pending.private_network || private_network)
+            && !crate::plugins::http::contains_domain(
+                &instance.private_network_domains,
+                &pending.domain,
+            )
+        {
+            instance
+                .private_network_domains
+                .push(pending.domain.clone());
+        }
         instance.next_run_at = Some(now().saturating_add(60_000));
     } else {
         // A declined request pauses this instance until the user enables it again.
@@ -1599,6 +1642,7 @@ mod tests {
             config: Default::default(),
             secret_fields: vec![],
             allowed_domains: vec![],
+            private_network_domains: vec![],
             pending_domain: None,
             enabled: false,
             needs_review: false,
@@ -1625,40 +1669,41 @@ mod tests {
             domain: "api.example.com".into(),
             run_id: "run-1".into(),
             trigger: "manual".into(),
+            private_network: false,
         });
         assert_eq!(
-            resolve_domain(&mut pending.clone(), &package, "run-1", true).unwrap(),
+            resolve_domain(&mut pending.clone(), &package, "run-1", true, false).unwrap(),
             "manual"
         );
         let mut scheduled = pending.clone();
         scheduled.pending_domain.as_mut().unwrap().trigger = "schedule".into();
         assert_eq!(
-            resolve_domain(&mut scheduled, &package, "run-1", true).unwrap(),
+            resolve_domain(&mut scheduled, &package, "run-1", true, false).unwrap(),
             "schedule"
         );
-        assert!(resolve_domain(&mut pending.clone(), &package, "stale-run", true).is_err());
+        assert!(resolve_domain(&mut pending.clone(), &package, "stale-run", true, false).is_err());
         let mut needs_review = pending.clone();
         let mut future = package.clone();
         future.manifest_version = 3;
-        assert!(resolve_domain(&mut pending.clone(), &future, "run-1", true).is_err());
+        assert!(resolve_domain(&mut pending.clone(), &future, "run-1", true, false).is_err());
         let mut declined = pending.clone();
-        resolve_domain(&mut declined, &future, "run-1", false).unwrap();
+        resolve_domain(&mut declined, &future, "run-1", false, false).unwrap();
         assert!(!declined.enabled && declined.pending_domain.is_none());
         needs_review.needs_review = true;
-        assert!(resolve_domain(&mut needs_review, &package, "run-1", true).is_err());
+        assert!(resolve_domain(&mut needs_review, &package, "run-1", true, false).is_err());
         let mut disabled = pending.clone();
         disabled.enabled = false;
-        assert!(resolve_domain(&mut disabled, &package, "run-1", true).is_err());
+        assert!(resolve_domain(&mut disabled, &package, "run-1", true, false).is_err());
         let mut other_host = pending.clone();
         other_host.pending_domain.as_mut().unwrap().domain = "other.example.com".into();
-        assert!(resolve_domain(&mut other_host, &package, "run-1", true).is_err());
+        assert!(resolve_domain(&mut other_host, &package, "run-1", true, false).is_err());
         let mut full = pending.clone();
         full.allowed_domains = (0..16).map(|i| format!("host{i}.example.com")).collect();
         let mut custom_package = package.clone();
         custom_package.allow_custom_domains = true;
-        assert!(resolve_domain(&mut full, &custom_package, "run-1", true).is_err());
+        assert!(resolve_domain(&mut full, &custom_package, "run-1", true, false).is_err());
         let mut rejected = pending.clone();
-        resolve_domain(&mut rejected, &package, "run-1", false).unwrap();
+        resolve_domain(&mut rejected, &package, "run-1", false, false).unwrap();
         assert!(
             !rejected.enabled
                 && rejected.pending_domain.is_none()
@@ -1670,19 +1715,105 @@ mod tests {
         storage::put(&connection, "instance", "pending", &pending).unwrap();
         let mut restored: PluginInstance =
             storage::list(&connection, "instance").unwrap().remove(0);
-        resolve_domain(&mut restored, &package, "run-1", true).unwrap();
+        resolve_domain(&mut restored, &package, "run-1", true, false).unwrap();
         storage::put(&connection, "instance", "pending", &restored).unwrap();
         let restored: PluginInstance = storage::list(&connection, "instance").unwrap().remove(0);
         assert_eq!(restored.allowed_domains, ["api.example.com"]);
         assert!(restored.enabled && restored.pending_domain.is_none());
         assert!(instance().allowed_domains.is_empty());
-        assert!(resolve_domain(&mut restored.clone(), &package, "run-1", true).is_err());
+        assert!(resolve_domain(&mut restored.clone(), &package, "run-1", true, false).is_err());
         let mut legacy = serde_json::to_value(instance()).unwrap();
         legacy.as_object_mut().unwrap().remove("pending_domain");
         assert!(serde_json::from_value::<PluginInstance>(legacy)
             .unwrap()
             .pending_domain
             .is_none());
+    }
+    #[test]
+    fn private_network_access_is_an_option_of_the_host_grant() {
+        let package: PluginPackage = serde_json::from_value(serde_json::json!({
+            "id":"example", "name":"Example", "version":"1.0.0", "api_version":"1.1.0",
+            "storage_schema_version":1, "domains":[], "allow_custom_domains":true
+        }))
+        .unwrap();
+        let mut host_request = instance();
+        host_request.enabled = true;
+        host_request.pending_domain = Some(PendingDomain {
+            domain: "jira.example.com:8443".into(),
+            run_id: "run-host".into(),
+            trigger: "manual".into(),
+            private_network: false,
+        });
+        // One approval can grant the host and its private network access together.
+        let mut both = host_request.clone();
+        resolve_domain(&mut both, &package, "run-host", true, true).unwrap();
+        assert_eq!(both.allowed_domains, ["jira.example.com:8443"]);
+        assert_eq!(both.private_network_domains, ["jira.example.com:8443"]);
+        let mut public = host_request.clone();
+        resolve_domain(&mut public, &package, "run-host", true, false).unwrap();
+        assert_eq!(public.allowed_domains, ["jira.example.com:8443"]);
+        assert!(public.private_network_domains.is_empty());
+        let mut declined = host_request.clone();
+        resolve_domain(&mut declined, &package, "run-host", false, true).unwrap();
+        assert!(!declined.enabled && declined.allowed_domains.is_empty());
+        assert!(declined.private_network_domains.is_empty());
+
+        // A private network request follows an approved host whose DNS answered privately.
+        let mut pending = public.clone();
+        pending.pending_domain = Some(PendingDomain {
+            domain: "jira.example.com:8443".into(),
+            run_id: "run-private".into(),
+            trigger: "schedule".into(),
+            private_network: true,
+        });
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        storage::initialize(&connection).unwrap();
+        storage::put(&connection, "instance", "private", &pending).unwrap();
+        let mut restored: PluginInstance =
+            storage::list(&connection, "instance").unwrap().remove(0);
+        assert!(restored.pending_domain.as_ref().unwrap().private_network);
+        assert!(resolve_domain(&mut restored.clone(), &package, "stale", true, false).is_err());
+        let mut revoked_host = restored.clone();
+        revoked_host.allowed_domains.clear();
+        assert!(resolve_domain(&mut revoked_host, &package, "run-private", true, false).is_err());
+        assert!(revoked_host.private_network_domains.is_empty());
+        assert_eq!(
+            resolve_domain(&mut restored, &package, "run-private", true, false).unwrap(),
+            "schedule"
+        );
+        assert_eq!(restored.allowed_domains, ["jira.example.com:8443"]);
+        assert_eq!(restored.private_network_domains, ["jira.example.com:8443"]);
+        assert!(restored.enabled && restored.pending_domain.is_none());
+        let mut declined = pending.clone();
+        resolve_domain(&mut declined, &package, "run-private", false, false).unwrap();
+        assert!(!declined.enabled && declined.private_network_domains.is_empty());
+        assert_eq!(declined.allowed_domains, ["jira.example.com:8443"]);
+
+        // Settings grant and revoke it with the host, like other connection permissions.
+        let allowed = vec!["jira.example.com:8443".to_owned(), "api.example.com".into()];
+        assert_eq!(
+            retained_private_network_domains(
+                vec![
+                    "jira.example.com:8443".into(),
+                    "jira.example.com:8443".into(),
+                    "api.example.com:443".into(),
+                    "removed.example.com".into(),
+                ],
+                &allowed
+            ),
+            ["jira.example.com:8443", "api.example.com:443"]
+        );
+        assert!(retained_private_network_domains(allowed.clone(), &[]).is_empty());
+        let mut legacy = serde_json::to_value(&pending).unwrap();
+        let object = legacy.as_object_mut().unwrap();
+        object.remove("private_network_domains");
+        object["pending_domain"]
+            .as_object_mut()
+            .unwrap()
+            .remove("private_network");
+        let legacy: PluginInstance = serde_json::from_value(legacy).unwrap();
+        assert!(legacy.private_network_domains.is_empty());
+        assert!(!legacy.pending_domain.unwrap().private_network);
     }
     #[test]
     fn custom_port_pending_requests_and_grants_survive_restart_and_revocation() {
@@ -1697,6 +1828,7 @@ mod tests {
             domain: "api.example.com:8443".into(),
             run_id: "run-port".into(),
             trigger: "schedule".into(),
+            private_network: false,
         });
         let connection = rusqlite::Connection::open_in_memory().unwrap();
         storage::initialize(&connection).unwrap();
@@ -1707,9 +1839,9 @@ mod tests {
             restored.pending_domain.as_ref().unwrap().domain,
             "api.example.com:8443"
         );
-        assert!(resolve_domain(&mut restored, &package, "stale", true).is_err());
+        assert!(resolve_domain(&mut restored, &package, "stale", true, false).is_err());
         assert_eq!(
-            resolve_domain(&mut restored, &package, "run-port", true).unwrap(),
+            resolve_domain(&mut restored, &package, "run-port", true, false).unwrap(),
             "schedule"
         );
         storage::put(&connection, "instance", "port", &restored).unwrap();
@@ -1718,7 +1850,7 @@ mod tests {
         assert_eq!(restored.allowed_domains, ["api.example.com:8443"]);
         restored.allowed_domains.clear();
         restored.pending_domain = pending.pending_domain.clone();
-        resolve_domain(&mut restored, &package, "run-port", false).unwrap();
+        resolve_domain(&mut restored, &package, "run-port", false, false).unwrap();
         assert!(
             !restored.enabled
                 && restored.allowed_domains.is_empty()

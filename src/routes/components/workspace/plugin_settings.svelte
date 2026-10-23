@@ -93,6 +93,7 @@
   let savedSecrets = $state<string[]>([]);
   let domains = $state<string[]>([]);
   let customDomains = $state<string[]>([]);
+  let privateNetworkDomains = $state<string[]>([]);
   const credentialScopes = $derived(
     editing ? pluginCredentialScopes(editing, config) : [],
   );
@@ -313,6 +314,9 @@
       (domain) =>
         !pkg.domains.some((value) => canonicalPluginDomain(value) === domain),
     );
+    privateNetworkDomains = (instance?.private_network_domains ?? [])
+      .map(canonicalPluginDomain)
+      .filter((domain) => domains.includes(domain));
     enabled = instance?.enabled ?? false;
     interval = instance?.interval_seconds ?? 0;
     consent = !!instance && !instance.needs_review;
@@ -369,6 +373,9 @@
           board_id: Number(boardId),
           config,
           allowed_domains: domains,
+          private_network_domains: privateNetworkDomains.filter((domain) =>
+            domains.includes(domain),
+          ),
           enabled,
           interval_seconds: interval,
         },
@@ -1024,7 +1031,13 @@
                           <Badge
                             variant="outline"
                             class="max-w-full whitespace-normal break-all"
-                            >{domain}</Badge
+                            >{(instance.private_network_domains ?? []).some(
+                              (value) =>
+                                canonicalPluginDomain(value) ===
+                                canonicalPluginDomain(domain),
+                            )
+                              ? m.plugin_private_network_domain({ domain })
+                              : domain}</Badge
                           >
                         </li>
                       {/each}
@@ -1694,6 +1707,36 @@
                       ></Field.Content
                     >
                   </Field.Field>
+                  {#if domains.includes(domain)}
+                    <Field.Field
+                      orientation="horizontal"
+                      class="ps-6"
+                      data-disabled={pending}
+                    >
+                      <Checkbox
+                        id={"plugin-private-network-" + domain}
+                        checked={privateNetworkDomains.includes(domain)}
+                        disabled={pending}
+                        aria-describedby="plugin-permissions-help"
+                        onCheckedChange={(checked) => {
+                          privateNetworkDomains = checked
+                            ? [...privateNetworkDomains, domain]
+                            : privateNetworkDomains.filter(
+                                (value) => value !== domain,
+                              );
+                        }}
+                      />
+                      <Field.Content
+                        ><Field.Label
+                          for={"plugin-private-network-" + domain}
+                          class="break-all font-normal"
+                          >{m.plugin_allow_private_network({
+                            domain,
+                          })}</Field.Label
+                        ></Field.Content
+                      >
+                    </Field.Field>
+                  {/if}
                 {/each}
                 <Field.Field
                   orientation="horizontal"

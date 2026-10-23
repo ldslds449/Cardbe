@@ -1,9 +1,9 @@
 use super::runtime::RuntimeError;
-use crate::link_preview::safety::{public_addresses, safe_url};
+use crate::link_preview::safety::{public_addresses, public_ip, safe_url};
 use reqwest::{redirect::Policy, Client, Response, Url};
 use std::{
     future::Future,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -29,6 +29,8 @@ pub(super) fn url_domain(url: &Url) -> String {
 #[derive(Clone, Default)]
 pub struct HttpPolicy {
     pub allowed_domains: Vec<String>,
+    /// Approved hosts that may resolve to intranet addresses; a subset of `allowed_domains`.
+    pub private_network_domains: Vec<String>,
     pub requested_domains: Vec<String>,
     pub allow_custom_domains: bool,
     pub token: Option<String>,
@@ -115,6 +117,19 @@ pub(crate) fn authorized_url(value: &str, policy: &HttpPolicy) -> Result<Url, Ru
         return Err(RuntimeError::PermissionDenied);
     }
     Ok(url)
+}
+/// Intranet ranges a user may approve per host; loopback, link-local, and other reserved ranges stay blocked.
+fn private_network_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            let [a, b, ..] = ip.octets();
+            ip.is_private() || (a == 100 && (64..=127).contains(&b))
+        }
+        IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
+            Some(ip) => private_network_ip(IpAddr::V4(ip)),
+            None => ip.segments()[0] & 0xfe00 == 0xfc00,
+        },
+    }
 }
 pub(super) fn request_url(value: &str) -> Result<Url, RuntimeError> {
     let url = safe_url(value).ok_or(RuntimeError::PermissionDenied)?;
@@ -313,14 +328,23 @@ async fn get_with<
         ))
         .await?;
         if !public_addresses(&addresses) {
-            return Err(RuntimeError::PermissionDenied);
+            if addresses.is_empty()
+                || !addresses
+                    .iter()
+                    .all(|address| public_ip(address.ip()) || private_network_ip(address.ip()))
+            {
+                return Err(RuntimeError::BlockedAddress);
+            }
+            if !contains_domain(&policy.private_network_domains, &domain) {
+                return Err(RuntimeError::PrivateNetworkRequired(domain));
+            }
         }
         let mut response = request(url, addresses).await?;
         // 304 answers a conditional request and is not a redirect.
         if response.status().is_redirection()
             && response.status() != reqwest::StatusCode::NOT_MODIFIED
         {
-            return Err(RuntimeError::PermissionDenied);
+            return Err(RuntimeError::Redirect);
         }
         let headers = [
             "link",
@@ -1004,6 +1028,107 @@ mod tests {
             .unwrap()
     }
     #[tokio::test]
+    async fn private_network_answers_require_per_host_approval_and_reserved_ranges_stay_blocked() {
+        let resolve = |answer: &'static str| {
+            move |_: (String, u16)| async move { Ok(vec![answer.parse::<SocketAddr>().unwrap()]) }
+        };
+        for answer in [
+            "10.1.2.3:443",
+            "172.16.0.1:443",
+            "192.168.1.10:443",
+            "100.100.1.1:443",
+            "[fd00::1]:443",
+            "[::ffff:10.1.2.3]:443",
+        ] {
+            let result = get_with(
+                "https://api.github.com/search?token=hidden",
+                &policy(),
+                cancel(),
+                deadline(),
+                resolve(answer),
+                |_, _| async { panic!("no HTTP before private network approval") },
+            )
+            .await;
+            assert!(
+                matches!(&result, Err(RuntimeError::PrivateNetworkRequired(domain)) if domain == "api.github.com"),
+                "{answer}"
+            );
+        }
+        let mut granted = policy();
+        granted.private_network_domains = vec!["api.github.com:443".into()];
+        for answer in [
+            "127.0.0.1:443",
+            "169.254.169.254:443",
+            "0.0.0.0:443",
+            "[::1]:443",
+            "[fe80::1]:443",
+        ] {
+            let result = get_with(
+                "https://api.github.com",
+                &granted,
+                cancel(),
+                deadline(),
+                resolve(answer),
+                |_, _| async { panic!("reserved addresses must not reach client") },
+            )
+            .await;
+            assert!(
+                matches!(result, Err(RuntimeError::BlockedAddress)),
+                "{answer}"
+            );
+        }
+        let mut other = granted.clone();
+        other.private_network_domains = vec!["api.github.com:8443".into()];
+        let result = get_with(
+            "https://api.github.com",
+            &other,
+            cancel(),
+            deadline(),
+            resolve("10.1.2.3:443"),
+            |_, _| async { panic!("a grant covers only its exact host and port") },
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(RuntimeError::PrivateNetworkRequired(_))
+        ));
+        let result = get_with(
+            "https://api.github.com",
+            &granted,
+            cancel(),
+            deadline(),
+            |_| async {
+                Ok(vec![
+                    "93.184.216.34:443".parse().unwrap(),
+                    "10.1.2.3:443".parse().unwrap(),
+                ])
+            },
+            |_, addresses| async move {
+                assert_eq!(addresses.len(), 2);
+                Ok(mock_response(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}".to_vec()).await)
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.body, b"{}");
+        let result = get_with(
+            "https://api.github.com",
+            &granted,
+            cancel(),
+            deadline(),
+            resolve("10.1.2.3:443"),
+            |_, _| async {
+                Ok(mock_response(
+                    b"HTTP/1.1 302 Found\r\nLocation: https://sso.example.com/\r\nContent-Length: 0\r\n\r\n"
+                        .to_vec(),
+                )
+                .await)
+            },
+        )
+        .await;
+        assert!(matches!(result, Err(RuntimeError::Redirect)));
+    }
+    #[tokio::test]
     async fn mixed_private_dns_answers_never_reach_request_and_public_addresses_are_pinned() {
         let result = get_with(
             "https://api.github.com",
@@ -1019,7 +1144,7 @@ mod tests {
             |_, _| async { panic!("private DNS must not reach client") },
         )
         .await;
-        assert!(matches!(result, Err(RuntimeError::PermissionDenied)));
+        assert!(matches!(result, Err(RuntimeError::BlockedAddress)));
         let result = get_with(
             "https://api.github.com",
             &policy(),
@@ -1134,10 +1259,14 @@ mod tests {
                 |_, _| async { panic!("unsafe or undeclared hosts cannot send requests") },
             )
             .await;
-            assert!(
-                matches!(result, Err(RuntimeError::PermissionDenied)),
-                "{url}"
-            );
+            if address.starts_with("127.") {
+                assert!(matches!(result, Err(RuntimeError::BlockedAddress)), "{url}");
+            } else {
+                assert!(
+                    matches!(result, Err(RuntimeError::PermissionDenied)),
+                    "{url}"
+                );
+            }
         }
     }
 
@@ -1145,7 +1274,7 @@ mod tests {
     async fn redirects_declared_and_streamed_size_limits_are_rejected() {
         for bytes in [b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\nLocation: http://127.0.0.1/private\r\n\r\n".to_vec(),b"HTTP/1.1 200 OK\r\nContent-Length: 2097153\r\n\r\n".to_vec(),[b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec(),vec![b'x';2097153]].concat()] {
             let result=get_with("https://api.github.com",&policy(),cancel(),deadline(),|_|async {Ok(vec!["93.184.216.34:443".parse().unwrap()])},|_,_|async {Ok(mock_response(bytes).await)}).await;
-            assert!(matches!(result,Err(RuntimeError::PermissionDenied|RuntimeError::ResourceLimit)),"{result:?}");
+            assert!(matches!(result,Err(RuntimeError::Redirect|RuntimeError::ResourceLimit)),"{result:?}");
         }
     }
     #[tokio::test]

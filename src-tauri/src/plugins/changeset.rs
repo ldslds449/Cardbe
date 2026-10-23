@@ -344,6 +344,7 @@ mod persistence_tests {
             config: Default::default(),
             secret_fields: vec![],
             allowed_domains: vec![],
+            private_network_domains: vec![],
             pending_domain: None,
             enabled: true,
             needs_review: false,

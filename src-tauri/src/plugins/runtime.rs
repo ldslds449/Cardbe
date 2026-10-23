@@ -62,6 +62,11 @@ pub enum RuntimeError {
     /// A stored credential cannot be sent as an HTTP header value.
     InvalidCredential,
     AuthorizationRequired(String),
+    /// An approved host resolved to intranet addresses without private-network approval.
+    PrivateNetworkRequired(String),
+    /// DNS answered loopback, link-local, or other reserved addresses.
+    BlockedAddress,
+    Redirect,
     Network,
     ResourceLimit,
     Timeout,
@@ -78,7 +83,10 @@ impl RuntimeError {
             Self::InvalidComponent => "INVALID_COMPONENT",
             Self::PermissionDenied => "PERMISSION_DENIED",
             Self::InvalidCredential => "INVALID_CREDENTIAL",
-            Self::AuthorizationRequired(_) => "PERMISSION_DENIED",
+            Self::AuthorizationRequired(_)
+            | Self::PrivateNetworkRequired(_)
+            | Self::BlockedAddress
+            | Self::Redirect => "PERMISSION_DENIED",
             Self::Network => "NETWORK_FAILED",
             Self::ResourceLimit => "RESOURCE_LIMIT",
             Self::Timeout => "TIMEOUT",
@@ -678,6 +686,7 @@ mod tests {
     fn policy() -> HttpPolicy {
         HttpPolicy {
             allowed_domains: vec!["api.example.com".into()],
+            private_network_domains: vec![],
             requested_domains: vec![],
             allow_custom_domains: false,
             token: None,
