@@ -40,6 +40,8 @@ pub enum DomainError {
     ShareSnapshotInvalid,
     ShareLimitExceeded,
     ShareExpirationInvalid,
+    McpPortUnavailable,
+    McpClientNotFound,
     Internal(String),
 }
 
@@ -96,6 +98,8 @@ impl fmt::Display for DomainError {
             Self::ShareSnapshotInvalid => f.write_str("Invalid share snapshot"),
             Self::ShareLimitExceeded => f.write_str("Share limit exceeded"),
             Self::ShareExpirationInvalid => f.write_str("Invalid share expiration"),
+            Self::McpPortUnavailable => f.write_str("MCP server port is unavailable"),
+            Self::McpClientNotFound => f.write_str("MCP client not found"),
             Self::Internal(source) => f.write_str(source),
         }
     }
@@ -179,6 +183,8 @@ pub enum CommandError {
     PluginUpdateNotNewer,
     PluginUpdateBusy,
     PluginUpdateStale,
+    McpPortUnavailable,
+    McpClientNotFound,
     PluginError {
         plugin_id: String,
         plugin_error: PluginUserError,
@@ -298,6 +304,8 @@ impl From<DomainError> for CommandError {
             DomainError::ShareSnapshotInvalid => Self::ShareSnapshotInvalid,
             DomainError::ShareLimitExceeded => Self::ShareLimitExceeded,
             DomainError::ShareExpirationInvalid => Self::ShareExpirationInvalid,
+            DomainError::McpPortUnavailable => Self::McpPortUnavailable,
+            DomainError::McpClientNotFound => Self::McpClientNotFound,
             DomainError::Internal(source) => Self::internal(source),
         }
     }

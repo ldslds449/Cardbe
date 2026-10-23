@@ -1,16 +1,20 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
+  import * as Tabs from "$lib/components/ui/tabs/index.js";
   import { m } from "$lib/paraglide/messages.js";
   import { language, isLanguagePreference } from "$lib/i18n";
   import ThemeSettings from "./theme_settings.svelte";
   import GlobalShortcutSettings from "./global_shortcut_settings.svelte";
+  import McpServerSettings from "./mcp_server_settings.svelte";
   import { board } from "../../board.svelte";
 
   let { open = $bindable(false) }: { open: boolean } = $props();
   let saving = $state(false);
+  let tab = $state("general");
   async function changeLanguage(value: string) {
     if (!isLanguagePreference(value) || saving) {
       return;
@@ -24,6 +28,51 @@
   }
 </script>
 
+{#snippet scrollable(content: Snippet)}
+  <ScrollArea
+    type="always"
+    class="h-full"
+    scrollbarYClasses="[&_[data-slot=scroll-area-thumb]]:bg-muted-foreground/50"
+  >
+    <div class="grid gap-4 py-1 ps-1 pe-4">{@render content()}</div>
+  </ScrollArea>
+{/snippet}
+
+{#snippet general()}
+  <label for="settings-language" class="text-sm font-medium"
+    >{m.settings_language()}</label
+  >
+  <Select.Root
+    type="single"
+    value={language.preference}
+    onValueChange={changeLanguage}
+    disabled={saving}
+  >
+    <Select.Trigger id="settings-language" class="w-full">
+      {language.preference === "en"
+        ? "English"
+        : language.preference === "zh-TW"
+          ? "繁體中文"
+          : m.settings_language_system()}
+    </Select.Trigger>
+    <Select.Content>
+      <Select.Item value="system">{m.settings_language_system()}</Select.Item>
+      <Select.Item value="en">English</Select.Item>
+      <Select.Item value="zh-TW">繁體中文</Select.Item>
+    </Select.Content>
+  </Select.Root>
+  <Separator />
+  <ThemeSettings />
+{/snippet}
+
+{#snippet shortcuts()}
+  <GlobalShortcutSettings />
+{/snippet}
+
+{#snippet mcp()}
+  <McpServerSettings />
+{/snippet}
+
 <Dialog.Root bind:open>
   <Dialog.Content
     class="flex h-[85dvh] max-h-160 flex-col overflow-hidden sm:max-w-md"
@@ -31,41 +80,24 @@
     <Dialog.Header class="shrink-0"
       ><Dialog.Title>{m.settings_title()}</Dialog.Title></Dialog.Header
     >
-    <ScrollArea
-      type="always"
-      class="min-h-0 flex-1"
-      scrollbarYClasses="[&_[data-slot=scroll-area-thumb]]:bg-muted-foreground/50"
-    >
-      <div class="grid gap-4 py-1 ps-1 pe-4">
-        <label for="settings-language" class="text-sm font-medium"
-          >{m.settings_language()}</label
+    <!-- Inactive panels stay mounted (hidden), so drafts survive tab switches. -->
+    <Tabs.Root bind:value={tab} class="min-h-0 flex-1">
+      <Tabs.List class="w-full shrink-0">
+        <Tabs.Trigger value="general">{m.settings_tab_general()}</Tabs.Trigger>
+        <Tabs.Trigger value="shortcuts"
+          >{m.settings_tab_shortcuts()}</Tabs.Trigger
         >
-        <Select.Root
-          type="single"
-          value={language.preference}
-          onValueChange={changeLanguage}
-          disabled={saving}
-        >
-          <Select.Trigger id="settings-language" class="w-full">
-            {language.preference === "en"
-              ? "English"
-              : language.preference === "zh-TW"
-                ? "繁體中文"
-                : m.settings_language_system()}
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Item value="system"
-              >{m.settings_language_system()}</Select.Item
-            >
-            <Select.Item value="en">English</Select.Item>
-            <Select.Item value="zh-TW">繁體中文</Select.Item>
-          </Select.Content>
-        </Select.Root>
-        <Separator />
-        <ThemeSettings />
-        <Separator />
-        <GlobalShortcutSettings />
-      </div>
-    </ScrollArea>
+        <Tabs.Trigger value="mcp">{m.settings_tab_mcp()}</Tabs.Trigger>
+      </Tabs.List>
+      <Tabs.Content value="general" class="min-h-0"
+        >{@render scrollable(general)}</Tabs.Content
+      >
+      <Tabs.Content value="shortcuts" class="min-h-0"
+        >{@render scrollable(shortcuts)}</Tabs.Content
+      >
+      <Tabs.Content value="mcp" class="min-h-0"
+        >{@render scrollable(mcp)}</Tabs.Content
+      >
+    </Tabs.Root>
   </Dialog.Content>
 </Dialog.Root>

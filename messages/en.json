@@ -2455,5 +2455,80 @@
     }
   ],
   "resource_usage_process_count_unavailable": "Process count unavailable",
-  "error_resource_usage_unavailable": "Resource usage is unavailable."
+  "error_resource_usage_unavailable": "Resource usage is unavailable.",
+  "mcp_title": "MCP server",
+  "mcp_description": "Let AI tools on this computer read and update your boards through the Model Context Protocol. Only apps you add below can connect.",
+  "mcp_enable": "Enable MCP server",
+  "mcp_status_running": "Running",
+  "mcp_status_stopped": "Stopped",
+  "mcp_status_failed": "Stopped unexpectedly",
+  "mcp_start": "Start",
+  "mcp_endpoint": "Server address",
+  "mcp_copy_endpoint": "Copy server address",
+  "mcp_port": "Port",
+  "mcp_port_apply": "Apply",
+  "mcp_port_hint": "Use a port from 1024 to 65535. Only apps on this computer can connect.",
+  "mcp_auto_start": "Start when Cardbe opens",
+  "mcp_clients_title": "Apps",
+  "mcp_clients_empty": "No apps yet. Add one to create its access token.",
+  "mcp_client_add": "Add app",
+  "mcp_client_name_placeholder": "e.g. Claude Code",
+  "mcp_client_boards": "Boards it can access",
+  "mcp_client_write": "Allow adding columns and creating, editing, moving, archiving, and restoring tasks",
+  "mcp_client_access": "{access} · {boards}",
+  "mcp_client_access_read": "Read only",
+  "mcp_client_access_write": "Can make changes",
+  "mcp_client_board_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} board",
+        "countPlural=*": "{countFormatted} boards"
+      }
+    }
+  ],
+  "mcp_client_options_for": "Options for {name}",
+  "mcp_client_remove": "Remove app",
+  "mcp_client_remove_confirm": "Remove {name}? It will no longer be able to connect.",
+  "mcp_token_title": "Access token for {name}",
+  "mcp_token_copy": "Copy token",
+  "mcp_token_regenerate": "Regenerate token",
+  "mcp_token_regenerate_confirm": "The current token for {name} stops working right away. Update the app with the new token.",
+  "mcp_token_saved_hint": "Enter this token in your MCP client. You can copy it again later from this list.",
+  "mcp_token_once_hint": "Copy this token now. Secure storage isn't available on this computer, so it can't be shown again.",
+  "mcp_token_unavailable": "This token can't be shown. Regenerate it to get a new one.",
+  "mcp_copy_configuration": "Copy client configuration",
+  "mcp_copied": "Copied",
+  "mcp_copy_failed": "Couldn't copy",
+  "error_mcp_port_unavailable": "That port is in use or not allowed. Choose another port.",
+  "error_mcp_client_not_found": "This app was already removed.",
+  "settings_tab_general": "General",
+  "settings_tab_shortcuts": "Shortcuts",
+  "settings_tab_mcp": "MCP",
+  "mcp_client_all_boards": "All boards, including ones added later",
+  "mcp_client_all_boards_label": "All boards",
+  "mcp_activity_title": "Recent calls",
+  "mcp_activity_description": "The last 200 tool calls since Cardbe started. Arguments and results aren't recorded.",
+  "mcp_activity_empty": "No calls yet",
+  "mcp_activity_clear": "Clear",
+  "mcp_activity_succeeded": "Succeeded",
+  "mcp_activity_failed": "Failed",
+  "mcp_activity_removed_client": "Removed app",
+  "mcp_activity_unknown_board": "Unknown board",
+  "mcp_activity_duration": [
+    {
+      "declarations": [
+        "input ms",
+        "local msPlural = ms: plural",
+        "local msFormatted = ms: number"
+      ],
+      "selectors": ["msPlural"],
+      "match": { "msPlural=*": "{msFormatted} ms" }
+    }
+  ]
 }

@@ -72,6 +72,10 @@ Desktop bundles are generated under `src-tauri/target/release/bundle/` and are d
 
 The public plugin WIT API is maintained in the [cardbe-plugin-api](https://github.com/ldslds449/cardbe-plugin-api) repository and included as the `src-tauri/plugin-api` submodule. Building the plugin runtime test fixture requires `wasm-tools`; see [AGENTS.md](../AGENTS.md#plugin-runtime) for details.
 
+## MCP server
+
+Cardbe can run an embedded MCP server for local AI tools. It shares its operation layer with plugins; see [MCP server](mcp-server.md) for setup, client configuration, security, and how to add operations.
+
 ## Project structure
 
 ```text
@@ -82,6 +86,8 @@ src/                    SvelteKit frontend
 src-tauri/              Tauri and Rust backend
 |-- plugin-api/         Plugin WIT API (submodule)
 |-- src/commands/       Board, sharing, updates, notifications, and import/export
+|-- src/mcp/            Embedded MCP server and its settings
+|-- src/operations/     Operations shared by MCP and plugins
 |-- src/plugins/        Plugin packages and WebAssembly runtime
 |-- src/models.rs       Data models and schema migration
 `-- src/storage.rs      Local SQLite storage, backups, and recovery

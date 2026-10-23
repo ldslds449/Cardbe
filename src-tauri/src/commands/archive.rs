@@ -163,7 +163,7 @@ pub fn archive_task(
 ) -> Result<(), CommandError> {
     let time = current_time_millis()?;
     update_stored_with_archives_for_board(&state, expected_board_id, |data| {
-        archive_task_in(data, task_id, time)
+        archive_task_in(data, task_id, time).map(|_| ())
     })
     .map_err(CommandError::from)
 }
@@ -185,18 +185,24 @@ pub fn archive_tasks(
     .map_err(CommandError::from)
 }
 
-/// Recurring tasks are replaced in place by their next occurrence.
-fn archive_task_in(data: &mut StoredData, task_id: i64, time: u128) -> Result<(), DomainError> {
+/// Recurring tasks are replaced in place by their next occurrence, whose ID is returned.
+pub(crate) fn archive_task_in(
+    data: &mut StoredData,
+    task_id: i64,
+    time: u128,
+) -> Result<Option<i64>, DomainError> {
     let (column, task_index) = task_position(data, task_id)?;
     let task = data.columns[column].tasks.remove(task_index);
+    let mut next_task_id = None;
     if task.recurrence.is_some() && task.due_time.is_some() {
         let next_id = data.allocate_task_id()?;
         if let Some(next) = next_recurring_task(&task, time, next_id)? {
             data.columns[column].tasks.insert(task_index, next);
+            next_task_id = Some(next_id);
         }
     }
     data.archives.push(Archive { time, task });
-    Ok(())
+    Ok(next_task_id)
 }
 
 #[tauri::command]
@@ -326,15 +332,23 @@ pub fn unarchive_task(
     expected_board_id: i64,
 ) -> Result<(), CommandError> {
     update_stored_with_archives_for_board(&state, expected_board_id, |data| {
-        let column = column_index(data, column_id)?;
-        let archive = data
-            .archives
-            .iter()
-            .position(|archive| archive.task.id == task_id)
-            .ok_or(DomainError::TaskNotFound)?;
-        let archive = data.archives.remove(archive);
-        data.columns[column].tasks.push(archive.task);
-        Ok(())
+        unarchive_task_in(data, column_id, task_id)
     })
     .map_err(CommandError::from)
+}
+
+pub(crate) fn unarchive_task_in(
+    data: &mut StoredData,
+    column_id: i64,
+    task_id: i64,
+) -> Result<(), DomainError> {
+    let column = column_index(data, column_id)?;
+    let archive = data
+        .archives
+        .iter()
+        .position(|archive| archive.task.id == task_id)
+        .ok_or(DomainError::TaskNotFound)?;
+    let archive = data.archives.remove(archive);
+    data.columns[column].tasks.push(archive.task);
+    Ok(())
 }

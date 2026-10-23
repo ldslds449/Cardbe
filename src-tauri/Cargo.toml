@@ -72,6 +72,13 @@ keyring = { version = "3", features = [
   "apple-native",
   "sync-secret-service",
 ] }
+rmcp = { version = "3.7", default-features = false, features = [
+  "server",
+  "transport-streamable-http-server",
+] }
+schemars = "1"
+subtle = "2"
+tokio-util = "0.7"
 
 [profile.dev.package."*"]
 # Skip dependency debug info to shrink PDBs and link time; Cardbe's own crate

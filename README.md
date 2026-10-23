@@ -111,6 +111,7 @@ See [Sharing and privacy](docs/sharing-and-privacy.md) for the details.
 
 - [Development guide](docs/development.md) — setup, scripts, and project structure
 - [Sharing and privacy](docs/sharing-and-privacy.md) — how LAN sharing and shared boards work
+- [MCP server](docs/mcp-server.md) — connect local AI tools to your boards
 - [Plugin API](https://github.com/ldslds449/cardbe-plugin-api) — build your own Cardbe plugin
 
 ## License

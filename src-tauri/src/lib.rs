@@ -8,7 +8,9 @@ mod flow;
 mod global_shortcuts;
 mod link_preview;
 mod loro_board;
+mod mcp;
 mod models;
+mod operations;
 mod plugins;
 mod resource_usage;
 mod search;
@@ -387,6 +389,17 @@ pub fn run() {
             app.manage(share::LanShareState::default());
             app.manage(iroh_share::IrohShareState::default());
             app.manage(notifications::NotificationState::default());
+            app.manage(operations::idempotency::CreatedTasks::default());
+            app.manage(mcp::McpServer::new(
+                std::sync::Arc::new(app.handle().clone()),
+                Some(Box::new({
+                    let app = app.handle().clone();
+                    move || {
+                        use tauri::Emitter;
+                        let _ = app.emit("cardbe:mcp-activity", ());
+                    }
+                })),
+            ));
             let startup_result = storage::load(&app_data_dir)
                 .map_err(|error| {
                     format!(
@@ -420,6 +433,7 @@ pub fn run() {
                         }
                     }
                     notifications::start_scheduler(app.handle().clone());
+                    mcp::restore(app.handle());
                     let iroh_app = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
                         let network = iroh_app.state::<iroh_share::IrohShareState>();
@@ -472,6 +486,16 @@ pub fn run() {
             commands::plugins::cancel_plugin_run,
             commands::plugins::get_plugin_runs,
             commands::plugins::set_plugin_safe_mode,
+            commands::mcp::get_mcp_server,
+            commands::mcp::set_mcp_server,
+            commands::mcp::start_mcp_server,
+            commands::mcp::create_mcp_client,
+            commands::mcp::update_mcp_client,
+            commands::mcp::regenerate_mcp_client_token,
+            commands::mcp::get_mcp_client_token,
+            commands::mcp::delete_mcp_client,
+            commands::mcp::get_mcp_activity,
+            commands::mcp::clear_mcp_activity,
             commands::link_preview::get_link_preview,
             commands::link_preview::get_link_preview_image,
             board::get_columns,

@@ -3,7 +3,12 @@ use super::{
     board,
     runtime::{bindings::cardbe::plugin::types as wit, ExternalTask},
 };
-use crate::{errors::DomainError, models as model, storage::TaskExplorerQuery};
+use crate::{
+    errors::DomainError,
+    models as model,
+    operations::tasks::{self, optional_time},
+    storage::TaskExplorerQuery,
+};
 
 macro_rules! enum_mapping {
     ($native:ty, $guest:ty, $($case:ident),+) => {
@@ -64,25 +69,10 @@ impl From<board::ColumnInfo> for wit::ColumnInfo {
         }
     }
 }
-/// Tasks saved before creation times were recorded stored their creation time
-/// in `start_time`; they have no user-chosen start.
-fn guest_times(t: &model::Task) -> (u128, u128) {
-    if t.created_time == 0 {
-        (0, t.start_time)
-    } else {
-        (t.start_time, t.created_time)
-    }
-}
-fn optional_time(value: u128) -> Result<Option<u64>, DomainError> {
-    (value != 0)
-        .then(|| u64::try_from(value))
-        .transpose()
-        .map_err(|_| DomainError::InvalidArgument)
-}
 impl TryFrom<model::Task> for wit::Task {
     type Error = DomainError;
     fn try_from(t: model::Task) -> Result<Self, Self::Error> {
-        let (start_time, created_time) = guest_times(&t);
+        let (start_time, created_time) = tasks::external_times(&t);
         Ok(Self {
             id: t.id,
             title: t.title,

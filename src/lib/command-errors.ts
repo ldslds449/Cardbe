@@ -53,6 +53,8 @@ const coreMessages = {
   PLUGIN_UPDATE_NOT_NEWER: () => m.plugin_update_not_newer(),
   PLUGIN_UPDATE_BUSY: () => m.plugin_update_busy(),
   PLUGIN_UPDATE_STALE: () => m.plugin_update_stale(),
+  MCP_PORT_UNAVAILABLE: () => m.error_mcp_port_unavailable(),
+  MCP_CLIENT_NOT_FOUND: () => m.error_mcp_client_not_found(),
 };
 
 export type NetworkSettingsField =

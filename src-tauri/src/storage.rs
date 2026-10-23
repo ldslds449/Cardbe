@@ -3083,6 +3083,29 @@ fn write_board_transaction(
     Ok(())
 }
 
+/// Persists a local edit committed outside the open board's Undo history
+/// (plugin changesets and shared operations) and records it for synchronization.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn persist_local_board_change(
+    tx: &Transaction<'_>,
+    board_id: i64,
+    role: BoardRole,
+    before: &StoredData,
+    after: &StoredData,
+    positions: &mut DatabasePositions,
+    peer: &mut crate::loro_board::LocalPeer,
+    include_archives: bool,
+    source: &EventSource,
+) -> StorageResult<()> {
+    persist_board_diff_transaction(tx, board_id, before, after, positions, include_archives)?;
+    if before != after {
+        mark_local_board_change(tx, board_id, role)?;
+        persist_loro_local_delta(tx, board_id, before, after, peer)?;
+        task_events::record(tx, board_id, before, after, source)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn mark_local_board_change(
     tx: &Transaction<'_>,
     board_id: i64,

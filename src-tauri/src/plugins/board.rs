@@ -1,9 +1,17 @@
 //! Board-scoped queries and validated changesets. No guest writes during execution.
-use crate::{board_mutations as mutation, errors::DomainError, models::*, storage::Database};
+use crate::{
+    errors::DomainError,
+    models::*,
+    operations::{
+        columns::{create_column, move_column, update_column},
+        tasks,
+    },
+    storage::Database,
+};
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 fn internal(error: impl std::fmt::Display) -> DomainError {
     DomainError::Internal(error.to_string())
@@ -276,60 +284,6 @@ fn resolve(reference: &Reference, columns: &HashMap<String, i64>) -> Result<i64,
             .ok_or(DomainError::InvalidArgument),
     }
 }
-fn valid_task(task: &Task) -> bool {
-    valid_task_fields(task)
-        && start_within_due(task.start_time, task.due_time, task.due_at_midnight)
-}
-/// Only checks times the guest changes: a date-only due synced from another
-/// time zone is not local midnight here, so round-tripping it must not fail.
-fn valid_task_update(previous: &Task, task: &Task) -> bool {
-    // Legacy tasks expose no start to guests (their start_time is the creation).
-    let previous_start = if previous.created_time == 0 {
-        0
-    } else {
-        previous.start_time
-    };
-    valid_task_fields(task)
-        && ((task.start_time, task.due_time, task.due_at_midnight)
-            == (previous_start, previous.due_time, previous.due_at_midnight)
-            || start_within_due(task.start_time, task.due_time, task.due_at_midnight))
-}
-fn valid_task_fields(task: &Task) -> bool {
-    !task.title.trim().is_empty()
-        && task.title.len() <= 4096
-        && task.description.len() <= 262144
-        && task.color.len() <= 64
-        && task.labels.len() <= 100
-        && task.labels.iter().collect::<HashSet<_>>().len() == task.labels.len()
-        && task
-            .labels
-            .iter()
-            .all(|x| !x.trim().is_empty() && x.len() <= 256)
-        && task.items.len() <= 1000
-        && task
-            .items
-            .iter()
-            .map(|item| &item.id)
-            .collect::<HashSet<_>>()
-            .len()
-            == task.items.len()
-        && task
-            .items
-            .iter()
-            .all(|x| !x.id.is_empty() && x.id.len() <= 128 && x.text.len() <= 4096)
-        && task.start_time <= 8_640_000_000_000_000
-        && task.due_time.is_none_or(|x| x <= 8_640_000_000_000_000)
-        && task
-            .recurrence
-            .as_ref()
-            .is_none_or(|r| r.interval > 0 && r.interval <= 10000)
-}
-/// Mirrors the task dialog: a start may not follow the due time, and a
-/// date-only due date (local midnight) covers its whole local day.
-fn start_within_due(start: u128, due: Option<u128>, due_at_midnight: bool) -> bool {
-    let Some(due) = due else { return true };
-    start == 0 || start <= crate::task_dates::due_limit_millis(due, due_at_midnight)
-}
 pub fn prepare(
     db: &Database,
     instance: super::types::PluginInstance,
@@ -388,16 +342,10 @@ pub fn prepare(
                 sources.insert(incoming.external_key.clone(), change);
             }
             Operation::CreateColumn { key, name, color } => {
-                if key.is_empty()
-                    || key.len() > 128
-                    || ids.contains_key(key)
-                    || name.trim().is_empty()
-                    || name.len() > 4096
-                    || color.len() > 64
-                {
+                if key.is_empty() || key.len() > 128 || ids.contains_key(key) {
                     return Err(DomainError::InvalidArgument);
                 }
-                let id = mutation::add_column(&mut after, name.clone(), color.clone())?;
+                let id = create_column(&mut after, name.clone(), color.clone())?;
                 ids.insert(key.clone(), id);
                 columns.insert(key.clone(), id);
             }
@@ -407,60 +355,48 @@ pub fn prepare(
                 color,
                 sort_order,
             } => {
-                if name.trim().is_empty() || name.len() > 4096 || color.len() > 64 {
-                    return Err(DomainError::InvalidArgument);
-                }
-                let index = mutation::column_index(&after, resolve(column, &columns)?)?;
-                let target = &mut after.columns[index];
-                target.name = name.clone();
-                target.color = color.clone();
+                let index = update_column(
+                    &mut after,
+                    resolve(column, &columns)?,
+                    name.clone(),
+                    color.clone(),
+                )?;
                 // Guests see only the legacy sort; keep rules that it presents.
-                target.set_legacy_sort_order(sort_order.clone());
+                after.columns[index].set_legacy_sort_order(sort_order.clone());
             }
             Operation::MoveColumn { column, before } => {
-                let id = resolve(column, &columns)?;
-                mutation::column_index(&after, id)?;
-                mutation::move_column(
+                move_column(
                     &mut after,
-                    id,
+                    resolve(column, &columns)?,
                     before.as_ref().map(|r| resolve(r, &columns)).transpose()?,
                 )?;
             }
             Operation::CreateTask { key, column, task } => {
-                if key.is_empty() || key.len() > 128 || ids.contains_key(key) || !valid_task(task) {
+                if key.is_empty() || key.len() > 128 || ids.contains_key(key) {
                     return Err(DomainError::InvalidArgument);
                 }
-                let mut task = task.clone();
-                if task.created_time == 0 {
-                    task.created_time = super::types::now() as u128;
-                }
-                let id = mutation::add_task(&mut after, resolve(column, &columns)?, task, None)?;
+                let id = tasks::create_task(
+                    &mut after,
+                    resolve(column, &columns)?,
+                    task.clone(),
+                    super::types::now() as u128,
+                )?;
                 ids.insert(key.clone(), id);
             }
             Operation::UpdateTask { task_id, task } => {
-                let (ci, ti) = mutation::task_position(&after, *task_id)?;
-                if !valid_task_update(&after.columns[ci].tasks[ti], task) {
-                    return Err(DomainError::InvalidArgument);
-                }
-                mutation::update_task(&mut after, *task_id, task.clone())?;
+                tasks::update_task(&mut after, *task_id, task.clone())?;
             }
             Operation::MoveTask {
                 task_id,
                 column,
                 before_task_id,
             } => {
-                let destination = resolve(column, &columns)?;
-                let ci = mutation::column_index(&after, destination)?;
-                if after.columns[ci].sort_order != ColumnSort::Custom {
-                    return Err(DomainError::InvalidArgument);
-                }
-                mutation::task_position(&after, *task_id)?;
-                if *before_task_id == Some(*task_id)
-                    && after.columns[ci].tasks.iter().all(|t| t.id != *task_id)
-                {
-                    return Err(DomainError::InvalidArgument);
-                }
-                mutation::move_task(&mut after, *task_id, destination, *before_task_id)?;
+                tasks::move_task(
+                    &mut after,
+                    *task_id,
+                    resolve(column, &columns)?,
+                    *before_task_id,
+                )?;
             }
         }
     }
@@ -541,35 +477,18 @@ impl Database {
             let mut positions = self
                 .load_board_positions(board_id)
                 .map_err(DomainError::repository)?;
-            crate::storage::persist_board_diff_transaction(
+            crate::storage::persist_local_board_change(
                 &tx,
                 board_id,
+                role,
                 &before,
                 &after,
                 &mut positions,
+                self.loro_peers.entry(board_id).or_default(),
                 true,
+                &crate::task_events::EventSource::plugin(&prepared.instance.id),
             )
             .map_err(DomainError::repository)?;
-            if before != after {
-                crate::storage::mark_local_board_change(&tx, board_id, role)
-                    .map_err(DomainError::repository)?;
-                crate::storage::persist_loro_local_delta(
-                    &tx,
-                    board_id,
-                    &before,
-                    &after,
-                    self.loro_peers.entry(board_id).or_default(),
-                )
-                .map_err(DomainError::repository)?;
-                crate::task_events::record(
-                    &tx,
-                    board_id,
-                    &before,
-                    &after,
-                    &crate::task_events::EventSource::plugin(&prepared.instance.id),
-                )
-                .map_err(DomainError::repository)?;
-            }
             committed_positions = Some(positions);
             committed = Some(after);
         }
@@ -597,87 +516,5 @@ impl Database {
             }
         }
         Ok(committed)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::{Local, TimeZone};
-
-    fn local_ms(y: i32, m: u32, d: u32, h: u32, min: u32) -> u128 {
-        Local
-            .with_ymd_and_hms(y, m, d, h, min, 0)
-            .earliest()
-            .unwrap()
-            .timestamp_millis() as u128
-    }
-
-    #[test]
-    fn start_may_not_follow_due_except_within_a_date_only_due_day() {
-        let due = local_ms(2026, 7, 15, 9, 30);
-        assert!(start_within_due(0, Some(due), false));
-        assert!(start_within_due(due + 1, None, false));
-        assert!(start_within_due(due, Some(due), false));
-        assert!(!start_within_due(due + 1, Some(due), false));
-
-        let date_only = local_ms(2026, 7, 15, 0, 0);
-        let next_day = local_ms(2026, 7, 16, 0, 0);
-        assert!(start_within_due(
-            local_ms(2026, 7, 15, 23, 59),
-            Some(date_only),
-            false
-        ));
-        assert!(start_within_due(next_day - 1, Some(date_only), false));
-        assert!(!start_within_due(next_day, Some(date_only), false));
-        // A chosen 00:00 due is a time, not the whole day.
-        assert!(!start_within_due(date_only + 1, Some(date_only), true));
-
-        let task = Task {
-            title: "Plan".into(),
-            start_time: next_day,
-            due_time: Some(date_only),
-            ..Task::default()
-        };
-        assert!(!valid_task(&task));
-        assert!(valid_task(&Task {
-            start_time: date_only,
-            ..task.clone()
-        }));
-
-        // Unchanged times round-trip even when invalid here; changes are checked.
-        let stored = Task {
-            created_time: 1,
-            ..task.clone()
-        };
-        assert!(valid_task_update(&stored, &task));
-        // Marking the unchanged due as a chosen 00:00 changes its meaning.
-        assert!(!valid_task_update(
-            &stored,
-            &Task {
-                due_at_midnight: true,
-                ..task.clone()
-            }
-        ));
-        assert!(!valid_task_update(
-            &stored,
-            &Task {
-                start_time: next_day + 1,
-                ..task.clone()
-            }
-        ));
-        let legacy = Task {
-            start_time: next_day,
-            created_time: 0,
-            ..task.clone()
-        };
-        assert!(valid_task_update(
-            &legacy,
-            &Task {
-                start_time: 0,
-                ..task.clone()
-            }
-        ));
-        assert!(!valid_task_update(&legacy, &task));
     }
 }

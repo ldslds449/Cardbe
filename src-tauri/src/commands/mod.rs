@@ -9,6 +9,7 @@ pub mod flow;
 pub mod import_export;
 pub mod iroh_share;
 pub mod link_preview;
+pub mod mcp;
 pub mod notes;
 pub mod notifications;
 pub mod plugins;

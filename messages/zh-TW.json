@@ -2185,5 +2185,74 @@
     }
   ],
   "resource_usage_process_count_unavailable": "無法取得行程數量",
-  "error_resource_usage_unavailable": "無法取得資源使用量。"
+  "error_resource_usage_unavailable": "無法取得資源使用量。",
+  "mcp_title": "MCP 伺服器",
+  "mcp_description": "讓這台電腦上的 AI 工具透過 Model Context Protocol 讀取和更新看板。只有下方加入的應用程式可以連線。",
+  "mcp_enable": "啟用 MCP 伺服器",
+  "mcp_status_running": "執行中",
+  "mcp_status_stopped": "已停止",
+  "mcp_status_failed": "意外停止",
+  "mcp_start": "啟動",
+  "mcp_endpoint": "伺服器網址",
+  "mcp_copy_endpoint": "複製伺服器網址",
+  "mcp_port": "連接埠",
+  "mcp_port_apply": "套用",
+  "mcp_port_hint": "請使用 1024 到 65535 之間的連接埠。只有這台電腦上的應用程式可以連線。",
+  "mcp_auto_start": "開啟 Cardbe 時自動啟動",
+  "mcp_clients_title": "應用程式",
+  "mcp_clients_empty": "尚未加入應用程式。加入後會產生專屬的存取權杖。",
+  "mcp_client_add": "加入應用程式",
+  "mcp_client_name_placeholder": "例如 Claude Code",
+  "mcp_client_boards": "可存取的看板",
+  "mcp_client_write": "允許新增欄位，以及新增、編輯、移動、封存及還原任務",
+  "mcp_client_access": "{access}・{boards}",
+  "mcp_client_access_read": "唯讀",
+  "mcp_client_access_write": "可修改",
+  "mcp_client_board_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個看板"
+      }
+    }
+  ],
+  "mcp_client_options_for": "「{name}」的選項",
+  "mcp_client_remove": "移除應用程式",
+  "mcp_client_remove_confirm": "要移除「{name}」嗎？移除後就無法再連線。",
+  "mcp_token_title": "「{name}」的存取權杖",
+  "mcp_token_copy": "複製權杖",
+  "mcp_token_regenerate": "重新產生權杖",
+  "mcp_token_regenerate_confirm": "「{name}」目前的權杖會立即失效，請在該應用程式中改用新的權杖。",
+  "mcp_token_saved_hint": "請在 MCP 用戶端中填入這個權杖。之後也能從清單再次複製。",
+  "mcp_token_once_hint": "請現在複製這個權杖。這台電腦無法使用安全儲存區，之後無法再次顯示。",
+  "mcp_token_unavailable": "無法顯示這個權杖。請重新產生新的權杖。",
+  "mcp_copy_configuration": "複製用戶端設定",
+  "mcp_copied": "已複製",
+  "mcp_copy_failed": "無法複製",
+  "error_mcp_port_unavailable": "這個連接埠已被使用或不允許使用，請改用其他連接埠。",
+  "error_mcp_client_not_found": "這個應用程式已被移除。",
+  "settings_tab_general": "一般",
+  "settings_tab_shortcuts": "快捷鍵",
+  "settings_tab_mcp": "MCP",
+  "mcp_client_all_boards": "所有看板（包含之後新增的）",
+  "mcp_client_all_boards_label": "所有看板",
+  "mcp_activity_title": "最近的呼叫",
+  "mcp_activity_description": "Cardbe 啟動後最近 200 次工具呼叫，不會記錄參數和結果。",
+  "mcp_activity_empty": "尚無呼叫紀錄",
+  "mcp_activity_clear": "清除",
+  "mcp_activity_succeeded": "成功",
+  "mcp_activity_failed": "失敗",
+  "mcp_activity_removed_client": "已移除的應用程式",
+  "mcp_activity_unknown_board": "未知的看板",
+  "mcp_activity_duration": [
+    {
+      "declarations": [
+        "input ms",
+        "local msPlural = ms: plural",
+        "local msFormatted = ms: number"
+      ],
+      "selectors": ["msPlural"],
+      "match": { "msPlural=*": "{msFormatted} 毫秒" }
+    }
+  ]
 }
