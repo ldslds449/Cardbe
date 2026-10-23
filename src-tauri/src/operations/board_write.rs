@@ -13,7 +13,7 @@ fn internal(error: impl std::fmt::Display) -> DomainError {
 
 /// Reads the board fresh from SQLite under the application lock, applies
 /// `change`, and notifies listeners when anything was saved.
-pub(super) fn commit<R>(
+pub(crate) fn commit<R>(
     host: &dyn OperationHost,
     board_id: i64,
     change: impl FnOnce(&mut StoredData) -> Result<R, DomainError>,

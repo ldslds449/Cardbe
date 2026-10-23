@@ -1,7 +1,7 @@
 //! Shared operation layer for external callers. The MCP server lists and runs
 //! operations through this registry; plugin changesets apply the same
 //! validated column and task mutations (`columns`, `tasks`) and persistence (`board_write`).
-mod board_write;
+pub(crate) mod board_write;
 pub(crate) mod columns;
 mod dto;
 mod handlers;
