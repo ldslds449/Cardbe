@@ -62,8 +62,11 @@ interface AllTaskPageSerialized {
   items: Array<{
     board_id: number;
     board_name: string;
+    column_id: number | null;
     column_name: string | null;
     archived_at: number | null;
+    done: boolean;
+    waiting_count: number;
     task: TaskSummarySerialized;
   }>;
   next_cursor: string | null;
@@ -72,8 +75,13 @@ interface AllTaskPageSerialized {
 export interface AllTaskItem {
   board_id: number;
   board_name: string;
+  column_id?: string;
   column_name: string | undefined;
   archived_at: Date | undefined;
+  /** In its board's done column. */
+  done?: boolean;
+  /** Open tasks of its board that it still waits on. */
+  waiting_count?: number;
   task: TaskSummary;
 }
 
@@ -489,9 +497,15 @@ export abstract class BoardStoreBase {
         const items = data.items.map((item) => ({
           board_id: item.board_id,
           board_name: item.board_name,
+          column_id:
+            item.column_id === null || item.column_id === undefined
+              ? undefined
+              : `column_${item.column_id}`,
           column_name: item.column_name ?? undefined,
           archived_at:
             item.archived_at === null ? undefined : new Date(item.archived_at),
+          done: item.done,
+          waiting_count: item.waiting_count,
           task: deserialize_task_summary(item.task),
         }));
         this.all_task_items = reset

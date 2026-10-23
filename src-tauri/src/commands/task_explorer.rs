@@ -7,13 +7,17 @@ use crate::{
 use tauri::Manager;
 
 const TASK_EXPLORER_PAGE_SIZE: usize = 50;
+const MAX_LABEL_FILTERS: usize = 100;
 
 #[derive(serde::Serialize)]
 pub struct AllTaskListItem {
     pub board_id: i64,
     pub board_name: String,
+    pub column_id: Option<i64>,
     pub column_name: Option<String>,
     pub archived_at: Option<u128>,
+    pub done: bool,
+    pub waiting_count: i64,
     pub task: TaskSummary,
 }
 
@@ -39,13 +43,27 @@ pub async fn list_all_tasks(
         return Err(CommandError::InvalidArgument);
     }
     if !["all", "active", "overdue", "recurring", "archived"].contains(&filter.status.as_str())
-        || !["due", "title", "column", "archived", "priority"].contains(&filter.sort.as_str())
+        || !["due", "title", "column", "archived", "priority", "created"]
+            .contains(&filter.sort.as_str())
         || !["all", "due", "none"].contains(&filter.due.as_str())
         || filter.priorities.as_ref().is_some_and(|priorities| {
             priorities.len() > 5
                 || priorities.iter().any(|priority| {
                     !["none", "low", "medium", "high", "urgent"].contains(&priority.as_str())
                 })
+        })
+        || filter.completion.as_ref().is_some_and(|states| {
+            states.len() > 3
+                || states
+                    .iter()
+                    .any(|state| !["open", "done", "archived"].contains(&state.as_str()))
+        })
+        || filter
+            .labels
+            .as_ref()
+            .is_some_and(|labels| labels.len() > MAX_LABEL_FILTERS)
+        || filter.waiting.as_ref().is_some_and(|waiting| {
+            !["waiting", "not_waiting", "waited_on"].contains(&waiting.as_str())
         })
     {
         return Err(CommandError::InvalidArgument);
@@ -76,8 +94,11 @@ pub async fn list_all_tasks(
         .map(|row| AllTaskListItem {
             board_id: row.board_id,
             board_name: row.board_name,
+            column_id: row.column_id,
             column_name: row.column_name,
             archived_at: row.archived_at,
+            done: row.done,
+            waiting_count: row.waiting_count,
             task: row.task,
         })
         .collect::<Vec<_>>();

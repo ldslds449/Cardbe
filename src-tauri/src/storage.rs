@@ -33,8 +33,13 @@ type IrohInviteSummaryRecord = (String, i64, IrohPermission, bool, String, Strin
 pub(crate) struct AllTaskRow {
     pub board_id: i64,
     pub board_name: String,
+    pub column_id: Option<i64>,
     pub column_name: Option<String>,
     pub archived_at: Option<u128>,
+    /// Whether the task is in its board's done column.
+    pub done: bool,
+    /// Open tasks of its board that the task still waits on.
+    pub waiting_count: i64,
     pub task: TaskSummary,
 }
 
@@ -54,14 +59,38 @@ pub struct TaskExplorerQuery {
     pub now: i64,
     /// Priorities to keep, with `none` for tasks without one; `None` keeps all.
     pub priorities: Option<Vec<String>>,
+    /// `open`, `done` (in the done column) and `archived` tasks to keep;
+    /// `None` keeps all. Applies on top of `status`.
+    pub completion: Option<Vec<String>>,
+    /// Keeps tasks with any of these labels.
+    pub labels: Option<Vec<String>>,
+    /// `waiting` keeps active tasks that wait on an open task, `not_waiting`
+    /// the rest, and `waited_on` tasks that an open task waits on.
+    pub waiting: Option<String>,
+    /// Keeps only recurring tasks, or only the others.
+    pub recurring: Option<bool>,
     pub search_options: Option<crate::search::SearchOptions>,
+}
+
+impl TaskExplorerQuery {
+    /// The filters added for smart views, passed to SQL as one JSON object.
+    fn extra_filters(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(&serde_json::json!({
+            "completion": self.completion,
+            "labels": self.labels,
+            "waiting": self.waiting,
+            "recurring": self.recurring,
+        }))
+    }
 }
 
 // Shared eligibility is applied before either engine selects its Top K.
 const TASK_SEARCH_CTE: &str = "WITH tasks AS (
              SELECT s.rowid AS search_id, s.board_id, b.name AS board_name, c.name AS column_name,
                     t.column_id, s.archived, s.task_id, a.archived_at,
-                    CASE WHEN s.archived=0 THEN t.payload ELSE a.payload END AS payload
+                    CASE WHEN s.archived=0 THEN t.payload ELSE a.payload END AS payload,
+                    (SELECT d.id FROM cardbe_columns d WHERE d.board_id=s.board_id AND d.done=1
+                     ORDER BY d.position, d.id LIMIT 1) AS done_column_id
              FROM cardbe_task_search s
              JOIN cardbe_boards b ON b.id=s.board_id
              LEFT JOIN cardbe_tasks t
@@ -79,7 +108,15 @@ const TASK_SEARCH_CTE: &str = "WITH tasks AS (
                       COALESCE(json_extract(payload, '$.priority'), 'none') AS priority
                FROM tasks
              )
-             , eligible AS (SELECT * FROM summaries
+             , classified AS (SELECT *,
+               CASE WHEN archived=1 THEN 'archived' WHEN column_id=done_column_id THEN 'done'
+                    ELSE 'open' END AS completion,
+               CASE WHEN archived=1 THEN 0 ELSE (
+                 SELECT COUNT(*) FROM json_each(e.payload, '$.blocked_by') w
+                 JOIN cardbe_tasks bt ON bt.board_id=e.board_id AND bt.id=w.value
+                 WHERE bt.column_id IS NOT e.done_column_id) END AS waiting_count
+             FROM summaries e)
+             , eligible AS (SELECT * FROM classified c
              WHERE (?3 IS NULL OR column_id=?3)
                AND (CASE ?4
                  WHEN 'active' THEN archived=0
@@ -94,6 +131,21 @@ const TASK_SEARCH_CTE: &str = "WITH tasks AS (
                AND (archived=0 OR ((?9 IS NULL OR CAST(archived_at AS INTEGER)>=?9)
                                  AND (?10 IS NULL OR CAST(archived_at AS INTEGER)<?10)))
                AND (?12 IS NULL OR priority IN (SELECT value FROM json_each(?12)))
+               AND (json_extract(?13, '$.completion') IS NULL
+                    OR completion IN (SELECT value FROM json_each(?13, '$.completion')))
+               AND (json_extract(?13, '$.labels') IS NULL OR EXISTS (
+                 SELECT 1 FROM json_each(c.payload, '$.labels') l
+                 WHERE l.value IN (SELECT value FROM json_each(?13, '$.labels'))))
+               AND (json_extract(?13, '$.recurring') IS NULL
+                    OR (recurrence IS NOT NULL)=json_extract(?13, '$.recurring'))
+               AND (CASE json_extract(?13, '$.waiting')
+                 WHEN 'waiting' THEN waiting_count>0
+                 WHEN 'not_waiting' THEN waiting_count=0
+                 WHEN 'waited_on' THEN completion='open' AND EXISTS (
+                   SELECT 1 FROM cardbe_tasks wt, json_each(wt.payload, '$.blocked_by') w
+                   WHERE wt.board_id=c.board_id AND w.value=c.task_id
+                     AND wt.column_id IS NOT c.done_column_id)
+                 ELSE 1 END)
 )";
 
 fn search_params(filter: &TaskExplorerQuery) -> StorageResult<Vec<rusqlite::types::Value>> {
@@ -127,6 +179,7 @@ fn search_params(filter: &TaskExplorerQuery) -> StorageResult<Vec<rusqlite::type
             .transpose()?
             .map(Value::Text)
             .unwrap_or(Value::Null),
+        Value::Text(filter.extra_filters()?),
     ])
 }
 
@@ -158,13 +211,13 @@ fn hybrid_search(
         format!(
             "{TASK_SEARCH_CTE} SELECT e.search_id,e.title FROM eligible e
             JOIN cardbe_task_search s ON s.rowid=e.search_id
-            WHERE instr(lower(s.body),lower(?13))>0 ORDER BY e.search_id LIMIT ?14"
+            WHERE instr(lower(s.body),lower(?14))>0 ORDER BY e.search_id LIMIT ?15"
         )
     } else {
         format!(
             "{TASK_SEARCH_CTE} SELECT e.search_id,e.title FROM cardbe_task_fts
             JOIN eligible e ON e.search_id=cardbe_task_fts.rowid
-            WHERE cardbe_task_fts MATCH ?13 ORDER BY bm25(cardbe_task_fts),e.search_id LIMIT ?14"
+            WHERE cardbe_task_fts MATCH ?14 ORDER BY bm25(cardbe_task_fts),e.search_id LIMIT ?15"
         )
     };
     let mut statement = connection.prepare(&sql)?;
@@ -2453,19 +2506,22 @@ impl Database {
         };
         let sql = format!(
             "{TASK_SEARCH_CTE}
-             SELECT board_id, board_name, column_name, archived_at, payload
+             SELECT board_id, board_name, column_name, archived_at, payload,
+                    column_id, completion='done', waiting_count
              FROM eligible
              WHERE (?1 IS NULL OR search_id IN (SELECT value FROM json_each(?1)))
              ORDER BY
-               CASE WHEN ?13='priority' THEN CASE priority
+               CASE WHEN ?14='priority' THEN CASE priority
                  WHEN 'urgent' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2
                  WHEN 'low' THEN 1 ELSE 0 END END DESC,
-               CASE WHEN ?13 IN ('due','priority') THEN due_time IS NULL END,
-               CASE WHEN ?13 IN ('due','priority') THEN due_time END,
-               CASE WHEN ?13='archived' THEN CAST(archived_at AS INTEGER) END DESC,
-               CASE WHEN ?13='column' THEN column_name END COLLATE NOCASE,
+               CASE WHEN ?14 IN ('due','priority') THEN due_time IS NULL END,
+               CASE WHEN ?14 IN ('due','priority') THEN due_time END,
+               CASE WHEN ?14='archived' THEN CAST(archived_at AS INTEGER) END DESC,
+               CASE WHEN ?14='column' THEN column_name END COLLATE NOCASE,
+               CASE WHEN ?14='created' THEN
+                 CAST(json_extract(payload, '$.created_time') AS INTEGER) END DESC,
                title COLLATE NOCASE, board_id, archived, task_id
-             LIMIT ?14 OFFSET ?15",
+             LIMIT ?15 OFFSET ?16",
         );
         let mut statement = self.connection.prepare(&sql)?;
         let rows = statement
@@ -2491,6 +2547,7 @@ impl Database {
                         .as_ref()
                         .map(serde_json::to_string)
                         .transpose()?,
+                    filter.extra_filters()?,
                     filter.sort,
                     i64::try_from(limit)?,
                     offset,
@@ -2521,8 +2578,11 @@ impl Database {
                     Ok(AllTaskRow {
                         board_id,
                         board_name,
+                        column_id: row.get(5)?,
                         column_name,
                         archived_at,
+                        done: row.get(6)?,
+                        waiting_count: row.get(7)?,
                         task: TaskSummary::from(&task),
                     })
                 },
@@ -4248,6 +4308,146 @@ mod tests {
             ..filtered
         };
         assert_eq!(ids(&searched), vec![2, 5]);
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn task_explorer_filters_by_completion_labels_waiting_and_recurrence() {
+        let dir = test_dir("task-explorer-smart-filters");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let task = |id: i64, labels: &[&str], blocked_by: &[i64]| Task {
+            id,
+            title: format!("Task {id}"),
+            labels: labels.iter().map(|label| label.to_string()).collect(),
+            blocked_by: blocked_by.to_vec(),
+            created_time: 1_000 + id as u128,
+            ..Task::default()
+        };
+        let column = |id: i64, done: bool, tasks: Vec<Task>| Column {
+            id,
+            name: format!("Column {id}"),
+            color: String::new(),
+            sort_order: Default::default(),
+            sort_rules: Vec::new(),
+            done,
+            tasks,
+        };
+        let data = StoredData {
+            columns: vec![
+                column(
+                    1,
+                    false,
+                    vec![
+                        // Waits on an open task and on a done one.
+                        task(1, &["工作"], &[2, 3]),
+                        task(2, &["home"], &[]),
+                        Task {
+                            recurrence: Some(crate::models::Recurrence {
+                                frequency: crate::models::RecurrenceFrequency::Daily,
+                                interval: 1,
+                            }),
+                            ..task(4, &[], &[3, 9])
+                        },
+                    ],
+                ),
+                column(2, true, vec![task(3, &["工作", "home"], &[])]),
+            ],
+            archives: vec![Archive {
+                time: 5,
+                task: task(5, &["工作"], &[2]),
+            }],
+            ..StoredData::default()
+        };
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &data)
+            .unwrap();
+        let rows = |filter: TaskExplorerQuery| {
+            loaded
+                .database
+                .list_all_task_page(
+                    &TaskExplorerQuery {
+                        status: "all".into(),
+                        sort: "title".into(),
+                        ..filter
+                    },
+                    0,
+                    10,
+                )
+                .unwrap()
+        };
+        let ids = |filter: TaskExplorerQuery| {
+            rows(filter)
+                .iter()
+                .map(|row| row.task.id)
+                .collect::<Vec<_>>()
+        };
+
+        let all = rows(TaskExplorerQuery::default());
+        let row = |id: i64| all.iter().find(|row| row.task.id == id).unwrap();
+        assert!(row(3).done && !row(1).done && !row(5).done);
+        assert_eq!(row(1).waiting_count, 1);
+        assert_eq!(row(3).column_id, Some(2));
+        assert_eq!(row(5).column_id, None);
+        // References to done, missing and archived tasks never block.
+        assert_eq!(row(4).waiting_count, 0);
+        assert_eq!(row(5).waiting_count, 0);
+
+        let completion = |states: &[&str]| TaskExplorerQuery {
+            completion: Some(states.iter().map(|state| state.to_string()).collect()),
+            ..Default::default()
+        };
+        assert_eq!(ids(completion(&["open"])), vec![1, 2, 4]);
+        assert_eq!(ids(completion(&["done", "archived"])), vec![3, 5]);
+        assert_eq!(
+            ids(TaskExplorerQuery {
+                labels: Some(vec!["工作".into()]),
+                ..completion(&["open", "done"])
+            }),
+            vec![1, 3]
+        );
+        let waiting = |value: &str| TaskExplorerQuery {
+            waiting: Some(value.into()),
+            ..Default::default()
+        };
+        assert_eq!(ids(waiting("waiting")), vec![1]);
+        assert_eq!(ids(waiting("not_waiting")), vec![2, 3, 4, 5]);
+        // Only open tasks that open tasks wait on; the archived task does not count.
+        assert_eq!(ids(waiting("waited_on")), vec![2]);
+        let recurring = |value: bool| TaskExplorerQuery {
+            recurring: Some(value),
+            ..Default::default()
+        };
+        assert_eq!(ids(recurring(true)), vec![4]);
+        assert_eq!(ids(recurring(false)), vec![1, 2, 3, 5]);
+
+        // Searches apply the same filters before ranking.
+        assert_eq!(
+            ids(TaskExplorerQuery {
+                query: "Task".into(),
+                ..waiting("waited_on")
+            }),
+            vec![2]
+        );
+        let newest = loaded
+            .database
+            .list_all_task_page(
+                &TaskExplorerQuery {
+                    status: "active".into(),
+                    sort: "created".into(),
+                    ..Default::default()
+                },
+                0,
+                10,
+            )
+            .unwrap();
+        assert_eq!(
+            newest.iter().map(|row| row.task.id).collect::<Vec<_>>(),
+            vec![4, 3, 2, 1]
+        );
         drop(loaded);
         fs::remove_dir_all(dir).unwrap();
     }
