@@ -84,7 +84,39 @@ impl AppData {
             archives_loaded,
         };
         data.refresh_labels();
+        data.forget_deleted_muted_columns();
         Ok(data)
+    }
+
+    /// Forget muted columns that were deleted here or by other members of a
+    /// shared board. Deleting a column cannot do this itself, because undoing
+    /// the deletion keeps the current settings; at startup no undo history
+    /// can restore a column.
+    fn forget_deleted_muted_columns(&mut self) {
+        if self.stored.settings.notify_muted_columns.is_empty() {
+            return;
+        }
+        let columns = match self.database.column_ids() {
+            Ok(columns) => columns,
+            Err(error) => {
+                log::warn!(target: "notifications", "Could not read columns to forget deleted muted columns: {error}");
+                return;
+            }
+        };
+        let mut muted = self.stored.settings.notify_muted_columns.clone();
+        muted.retain(|board_id, column_ids| {
+            column_ids.retain(|column_id| columns.contains(&(*board_id, *column_id)));
+            !column_ids.is_empty()
+        });
+        if muted == self.stored.settings.notify_muted_columns {
+            return;
+        }
+        if let Err(error) = update_locked(self, |data| {
+            data.settings.notify_muted_columns = muted;
+            Ok(())
+        }) {
+            log::warn!(target: "notifications", "Could not forget deleted muted columns: {error}");
+        }
     }
 
     /// Install board contents that changed outside the local undo history.
@@ -373,6 +405,58 @@ mod tests {
         let mut database = Database::open(dir.join("data.sqlite3")).unwrap();
         database.initialize_boards(&stored).unwrap();
         AppData::new(stored, database, Vec::new(), true).unwrap()
+    }
+
+    #[test]
+    fn startup_forgets_muted_columns_that_no_longer_exist() {
+        let dir = std::env::temp_dir().join(format!(
+            "cardbe-muted-columns-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let column = |id| Column {
+            id,
+            name: format!("Column {id}"),
+            color: String::new(),
+            sort_order: Default::default(),
+            sort_rules: Vec::new(),
+            tasks: Vec::new(),
+        };
+        let stored = StoredData {
+            columns: vec![column(10), column(11)],
+            ..StoredData::default()
+        };
+        let app = app_data(&dir, stored);
+        let board_id = app.active_board_id;
+        drop(app);
+
+        let mut database = Database::open(dir.join("data.sqlite3")).unwrap();
+        let before = database.load_board(board_id).unwrap();
+        let mut stored = before.clone();
+        stored.settings.notify_muted_columns = std::collections::BTreeMap::from([
+            (board_id, BTreeSet::from([10, 99])),
+            (board_id + 1, BTreeSet::from([10])),
+        ]);
+        database.persist_diff(&before, &stored).unwrap();
+        let app = AppData::new(stored, database, Vec::new(), true).unwrap();
+
+        let expected = std::collections::BTreeMap::from([(board_id, BTreeSet::from([10]))]);
+        assert_eq!(app.stored.settings.notify_muted_columns, expected);
+        assert!(app.undo_history.is_empty());
+        assert_eq!(
+            app.database
+                .read_board(board_id)
+                .unwrap()
+                .settings
+                .notify_muted_columns,
+            expected
+        );
+        drop(app);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

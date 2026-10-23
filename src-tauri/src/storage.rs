@@ -1393,6 +1393,17 @@ impl Database {
         )?;
         Ok(())
     }
+    /// Every existing column as `(board ID, column ID)`.
+    pub fn column_ids(&self) -> StorageResult<std::collections::HashSet<(i64, i64)>> {
+        let mut stmt = self
+            .connection
+            .prepare("SELECT board_id,id FROM cardbe_columns")?;
+        let ids = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        Ok(ids)
+    }
+
     /// Unarchived tasks with a due time in `[from, to)`, for due notifications.
     pub fn tasks_due_between(&self, from: u128, to: u128) -> StorageResult<Vec<DueTask>> {
         let bound = |time: u128| i64::try_from(time).unwrap_or(i64::MAX);
