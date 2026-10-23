@@ -1,5 +1,6 @@
 mod board_mutations;
 mod commands;
+mod completion;
 #[cfg(desktop)]
 mod desktop;
 mod errors;
@@ -520,6 +521,9 @@ pub fn run() {
             board::move_tasks_to_board,
             board::set_tasks_pinned,
             board::set_tasks_priority,
+            board::set_done_column,
+            board::complete_tasks,
+            board::reopen_tasks,
             board::add_task,
             board::add_task_to_board,
             board::delete_task,
@@ -564,8 +568,6 @@ pub fn run() {
             notifications::get_task_detail,
             commands::resource_usage::get_resource_usage,
             commands::task_events::get_task_events,
-            commands::task_events::get_done_columns,
-            commands::task_events::set_done_columns,
             task_explorer::list_all_tasks,
             notes::get_notes,
             notes::create_note,

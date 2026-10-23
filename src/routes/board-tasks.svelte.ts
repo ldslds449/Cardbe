@@ -4,6 +4,7 @@ import { logger } from "$lib/logger";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 import {
+  done_column,
   get_column_id,
   set_column_id,
   type Column,
@@ -513,6 +514,72 @@ export abstract class TaskBoardStore extends IrohBoardStore {
             : m.task_unpinned_count({ count }),
         ),
       "task.pin_batch.failed",
+    );
+  }
+
+  /**
+   * Moves tasks to the done column, or archives them when the board has none.
+   * The backend stamps completion times and continues recurring tasks.
+   */
+  complete_tasks(task_ids: string[]): Promise<boolean> {
+    const done = done_column(this.columns);
+    return this.run_task_batch(
+      task_ids,
+      (selected) => {
+        const open = new Set(
+          [...selected].filter(
+            (task_id) => !done?.tasks.some((task) => task.id === task_id),
+          ),
+        );
+        const moved = this.remove_tasks(open);
+        if (done) {
+          done.tasks.push(...moved);
+          this.keep_pinned_tasks_first(done);
+        }
+      },
+      (taskIds, expectedBoardId) =>
+        invoke<void>("complete_tasks", { taskIds, expectedBoardId }),
+      (count) => {
+        this.get_columns();
+        this.refresh_archives_if_loaded();
+        this.show_success_with_undo(m.task_completed_count({ count }));
+      },
+      "task.complete_batch.failed",
+    );
+  }
+
+  /** Moves done tasks back to an open column the user chose. */
+  reopen_tasks(task_ids: string[], column_id: string): Promise<boolean> {
+    const destination = this.columns.find((column) => column.id === column_id);
+    if (!destination || destination.done) {
+      return Promise.resolve(false);
+    }
+    const done = done_column(this.columns);
+    return this.run_task_batch(
+      task_ids,
+      (selected) => {
+        // Open tasks stay where they are, as in the backend.
+        const reopened = new Set(
+          [...selected].filter((task_id) =>
+            done?.tasks.some((task) => task.id === task_id),
+          ),
+        );
+        // Removing replaces each column's array, so take the tasks out first.
+        const moved = this.remove_tasks(reopened);
+        destination.tasks.push(...moved);
+        this.keep_pinned_tasks_first(destination);
+      },
+      (taskIds, expectedBoardId) =>
+        invoke<void>("reopen_tasks", {
+          taskIds,
+          columnId: get_column_id(column_id),
+          expectedBoardId,
+        }),
+      (count) => {
+        this.get_columns();
+        this.show_success_with_undo(m.task_reopened_count({ count }));
+      },
+      "task.reopen_batch.failed",
     );
   }
 
@@ -1035,6 +1102,44 @@ export abstract class TaskBoardStore extends IrohBoardStore {
         })
         .catch((e: unknown) => {
           logger.error("column.create.failed", e);
+          if (generation !== board.board_generation) {
+            return;
+          }
+          toast.error(translateCommandError(e));
+        });
+    });
+  }
+
+  /** Makes `column_id` the only done column, or clears it with `null`. */
+  set_done_column(column_id: string | null) {
+    const board = this;
+    const expectedBoardId = this.active_board_id;
+    const generation = this.board_generation;
+    if (expectedBoardId === null) {
+      return;
+    }
+    addMission(async () => {
+      return invoke<void>("set_done_column", {
+        columnId: column_id === null ? null : get_column_id(column_id),
+        expectedBoardId,
+      })
+        .then(() => {
+          if (generation !== board.board_generation) {
+            return;
+          }
+          // Completion times and continued recurring tasks come from the backend.
+          board.get_columns();
+          const column = board.columns.find(
+            (candidate) => candidate.id === column_id,
+          );
+          board.show_success_with_undo(
+            column
+              ? m.column_done_set({ name: column.name })
+              : m.column_done_cleared(),
+          );
+        })
+        .catch((e: unknown) => {
+          logger.error("column.done.failed", e);
           if (generation !== board.board_generation) {
             return;
           }

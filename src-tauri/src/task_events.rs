@@ -172,55 +172,9 @@ pub fn initialize(tx: &Transaction<'_>) -> rusqlite::Result<()> {
          CREATE INDEX IF NOT EXISTS cardbe_task_events_by_op ON cardbe_task_events(op_id);
          CREATE INDEX IF NOT EXISTS cardbe_task_events_by_board_task
             ON cardbe_task_events(board_id,task_id,id);
-         CREATE TABLE IF NOT EXISTS cardbe_done_columns(
-            board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,
-            column_id INTEGER NOT NULL, PRIMARY KEY(board_id,column_id));",
+         -- Unreleased device-local done columns, replaced by the synced column flag.
+         DROP TABLE IF EXISTS cardbe_done_columns;",
     )
-}
-
-/// Columns this device counts as done in lifecycle statistics. Like the log,
-/// the choice is device-local; deleted columns are left out.
-pub fn done_columns(connection: &Connection, board_id: i64) -> EventResult<Vec<i64>> {
-    let mut statement = connection.prepare(
-        "SELECT d.column_id FROM cardbe_done_columns d
-         JOIN cardbe_columns c ON c.board_id=d.board_id AND c.id=d.column_id
-         WHERE d.board_id=?1 ORDER BY c.position",
-    )?;
-    let ids = statement
-        .query_map([board_id], |row| row.get(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(ids)
-}
-
-/// Replaces the done columns, ignoring ids that are not columns of the board.
-pub fn set_done_columns(
-    tx: &Transaction<'_>,
-    board_id: i64,
-    column_ids: &[i64],
-) -> EventResult<Vec<i64>> {
-    tx.execute(
-        "DELETE FROM cardbe_done_columns WHERE board_id=?1",
-        [board_id],
-    )?;
-    let mut statement = tx.prepare(
-        "INSERT OR IGNORE INTO cardbe_done_columns(board_id,column_id)
-         SELECT board_id,id FROM cardbe_columns WHERE board_id=?1 AND id=?2",
-    )?;
-    for id in column_ids {
-        statement.execute(params![board_id, id])?;
-    }
-    done_columns(tx, board_id)
-}
-
-/// Forgets done columns that were deleted, so a later column reusing the id
-/// does not inherit the choice.
-pub fn prune_done_columns(tx: &Transaction<'_>, board_id: i64) -> EventResult<()> {
-    tx.execute(
-        "DELETE FROM cardbe_done_columns WHERE board_id=?1 AND column_id NOT IN
-           (SELECT id FROM cardbe_columns WHERE board_id=?1)",
-        [board_id],
-    )?;
-    Ok(())
 }
 
 /// Records how tasks moved between `before` and `after`. Returns the new
@@ -252,16 +206,11 @@ pub fn record_transfer(
 }
 
 /// Marks that the board's task ids were replaced, for example by an import.
-/// Column ids may now mean other columns, so done columns are cleared too.
 pub fn record_reset(
     tx: &Transaction<'_>,
     board_id: i64,
     source: &EventSource,
 ) -> EventResult<Option<i64>> {
-    tx.execute(
-        "DELETE FROM cardbe_done_columns WHERE board_id=?1",
-        [board_id],
-    )?;
     let reset = Change {
         task_id: 0,
         kind: EventKind::BoardReset,
@@ -478,6 +427,7 @@ mod tests {
                     color: String::new(),
                     sort_order: Default::default(),
                     sort_rules: Vec::new(),
+                    done: false,
                     tasks: tasks.iter().map(|id| task(*id)).collect(),
                 })
                 .collect(),

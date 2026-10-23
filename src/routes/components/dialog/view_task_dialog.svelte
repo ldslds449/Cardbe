@@ -14,6 +14,7 @@
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
   import GaugeIcon from "@lucide/svelte/icons/gauge";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
 
   import {
     priority_label,
@@ -238,6 +239,18 @@
       </div>
       <p class="text-sm text-muted-foreground">
         {formatDate(task.created_time)}
+      </p>
+    </div>
+  {/if}
+
+  {#if task.completed_at}
+    <div>
+      <div class="flex items-center gap-2 text-sm font-medium mb-1">
+        <CircleCheckIcon class="size-4" />
+        <span>{m.task_completed_time()}</span>
+      </div>
+      <p class="text-sm text-muted-foreground">
+        {formatDate(task.completed_at)}
       </p>
     </div>
   {/if}

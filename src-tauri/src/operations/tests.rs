@@ -45,6 +45,7 @@ fn column(id: i64, name: &str, tasks: Vec<Task>) -> Column {
         color: String::new(),
         sort_order: ColumnSort::Custom,
         sort_rules: Vec::new(),
+        done: false,
         tasks,
     }
 }
@@ -456,6 +457,42 @@ fn moves_respect_custom_order_and_search_finds_unicode_text() {
     .unwrap();
     assert_eq!(listed["columns"][0]["name"], "待辦 😀");
     assert_eq!(listed["columns"][0]["sort_order"], "custom");
+}
+
+#[test]
+fn moves_into_the_done_column_complete_tasks() {
+    let host = TestHost::new();
+    {
+        let mut app = host.app.lock().unwrap();
+        let mut data = app.database.read_board_complete(host.board_id).unwrap();
+        crate::completion::set_done_column(&mut data, Some(2)).unwrap();
+        app.database
+            .replace_board_as_local_edit(host.board_id, &data)
+            .unwrap();
+        app.load_active_board(host.board_id).unwrap();
+    }
+    let writer = context("writer", &[host.board_id], true);
+    let task = |app: &AppData| app.stored.columns[1].tasks.first().cloned();
+    call(
+        &host,
+        &writer,
+        "task.move",
+        json!({"board_id": host.board_id, "task_id": 10, "column_id": 2}),
+    )
+    .unwrap();
+    assert!(task(&host.app.lock().unwrap())
+        .unwrap()
+        .completed_at
+        .is_some());
+    call(
+        &host,
+        &writer,
+        "task.move",
+        json!({"board_id": host.board_id, "task_id": 10, "column_id": 1}),
+    )
+    .unwrap();
+    let app = host.app.lock().unwrap();
+    assert_eq!(app.stored.columns[0].tasks[0].completed_at, None);
 }
 
 #[test]

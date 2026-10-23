@@ -273,6 +273,7 @@ mod tests {
                     color: String::new(),
                     sort_order: ColumnSort::Custom,
                     sort_rules: Vec::new(),
+                    done: false,
                     tasks: vec![],
                 },
                 Column {
@@ -281,6 +282,7 @@ mod tests {
                     color: String::new(),
                     sort_order: ColumnSort::Custom,
                     sort_rules: Vec::new(),
+                    done: false,
                     tasks: vec![],
                 },
             ],
@@ -405,6 +407,7 @@ mod persistence_tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: vec![],
             }],
             ..Default::default()

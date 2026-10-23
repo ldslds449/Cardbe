@@ -7,6 +7,8 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import ArchiveIcon from "@lucide/svelte/icons/archive";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
+  import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
   import ColumnsIcon from "@lucide/svelte/icons/columns-3";
   import GaugeIcon from "@lucide/svelte/icons/gauge";
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
@@ -28,6 +30,12 @@
     onMove: (column_id: string) => void;
     onPin: (pinned: boolean) => void;
     onSetPriority: (priority: TaskPriority | undefined) => void;
+    /** Whether the selection has tasks outside or inside the done column. */
+    has_open: boolean;
+    has_done: boolean;
+    onComplete: () => void;
+    /** Asks where to move the done tasks back to. */
+    onReopen: () => void;
     onLoadFlowTabs: () => Promise<FlowTab[] | null>;
     onAddToFlow: (tab: FlowTab) => void;
     onArchive: () => void;
@@ -42,6 +50,10 @@
     onMove,
     onPin,
     onSetPriority,
+    has_open,
+    has_done,
+    onComplete,
+    onReopen,
     onLoadFlowTabs,
     onAddToFlow,
     onArchive,
@@ -188,6 +200,30 @@
     </DropdownMenu.Content>
   </DropdownMenu.Root>
 
+  {#if has_open}
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      class="rounded-full"
+      aria-label={m.task_complete()}
+      title={m.task_complete()}
+      onclick={onComplete}
+    >
+      <CircleCheckIcon />
+    </Button>
+  {/if}
+  {#if has_done}
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      class="rounded-full"
+      aria-label={m.task_reopen_action()}
+      title={m.task_reopen_action()}
+      onclick={onReopen}
+    >
+      <RotateCcwIcon />
+    </Button>
+  {/if}
   <Button
     variant="ghost"
     size="icon-sm"

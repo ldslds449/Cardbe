@@ -17,6 +17,7 @@
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
   import PencilIcon from "@lucide/svelte/icons/pencil";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import ArchiveIcon from "@lucide/svelte/icons/archive";
@@ -32,7 +33,7 @@
   import { onMount } from "svelte";
   import { DragDropProvider } from "@dnd-kit-svelte/svelte";
 
-  import type { Column } from "../../type/column.svelte";
+  import { done_column, type Column } from "../../type/column.svelte";
   import type { Archive } from "../../type/archive.svelte";
   import type { Task } from "../../type/task.svelte";
   import { display_task_color } from "../../utils/task-color";
@@ -94,6 +95,7 @@
     onExportTask?: (task: Task) => void;
     onAddTask?: (date: Date) => void;
     onArchiveTask?: (task: Task) => void;
+    onCompleteTask?: (task: Task) => void;
     onUnarchiveTask?: (column_id: string, task_id: string) => void;
     onDeleteTask?: (task: Task) => void;
     onRescheduleTask?: (task: Task, dates: TaskDates) => void;
@@ -119,6 +121,7 @@
     onExportTask = () => {},
     onAddTask = () => {},
     onArchiveTask = () => {},
+    onCompleteTask,
     onUnarchiveTask = () => {},
     onDeleteTask = () => {},
     onRescheduleTask = () => {},
@@ -1138,6 +1141,12 @@
       <PencilIcon />
       {m.task_edit_action()}
     </Item>
+    {#if onCompleteTask && entry.column !== done_column(columns)}
+      <Item onclick={() => onCompleteTask(entry.task)}>
+        <CircleCheckIcon />
+        {m.task_complete()}
+      </Item>
+    {/if}
     <Item onclick={() => onDuplicateTask(entry.task)}>
       <CopyIcon />
       {m.task_duplicate_action()}

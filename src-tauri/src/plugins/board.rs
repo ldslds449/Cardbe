@@ -24,7 +24,7 @@ pub fn version(db: &Database, board: i64) -> Result<String, DomainError> {
     let mut hash = Sha256::new();
     for sql in [
         "SELECT json_array(name) FROM cardbe_boards WHERE id=?1",
-        "SELECT json_array(id,name,color,sort_order,sort_rules,position) FROM cardbe_columns WHERE board_id=?1 ORDER BY id",
+        "SELECT json_array(id,name,color,sort_order,sort_rules,position,done) FROM cardbe_columns WHERE board_id=?1 ORDER BY id",
         "SELECT json_array(id,column_id,position,payload) FROM cardbe_tasks WHERE board_id=?1 ORDER BY id",
         "SELECT json_array(task_id,archived_at,position,payload) FROM cardbe_archives WHERE board_id=?1 ORDER BY task_id",
         "SELECT json_array(key,value) FROM cardbe_board_metadata WHERE board_id=?1 AND key='label_recency'",
@@ -113,6 +113,36 @@ impl Reader {
             .into_iter()
             .next()
             .ok_or(DomainError::ColumnNotFound)
+    }
+    /// The first flagged column, as in `StoredData::done_column_id`.
+    pub fn done_column(&self) -> Result<Option<i64>, DomainError> {
+        self.db
+            .connection
+            .query_row(
+                "SELECT id FROM cardbe_columns WHERE board_id=?1 AND done=1 ORDER BY position,id LIMIT 1",
+                [self.board_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(internal)
+    }
+    /// When the task entered the done column, or its archive time when it was
+    /// completed by archiving.
+    pub fn completed_time(&self, id: i64, archived: bool) -> Result<Option<u128>, DomainError> {
+        let info = self.get_task(id, archived)?;
+        if info.task.completed_at.is_some() || !archived {
+            return Ok(info.task.completed_at);
+        }
+        let time: String = self
+            .db
+            .connection
+            .query_row(
+                "SELECT archived_at FROM cardbe_archives WHERE board_id=?1 AND task_id=?2",
+                params![self.board_id, id],
+                |r| r.get(0),
+            )
+            .map_err(internal)?;
+        Ok(time.parse().ok())
     }
     pub fn get_task(&self, id: i64, archived: bool) -> Result<TaskInfo, DomainError> {
         let task = if archived {
@@ -413,6 +443,7 @@ pub fn prepare(
                 // Guests cannot see or set fields outside the plugin API.
                 let task = Task {
                     priority: previous.priority,
+                    completed_at: previous.completed_at,
                     ..task.clone()
                 };
                 tasks::update_task(&mut after, *task_id, task)?;
@@ -446,6 +477,12 @@ pub fn prepare(
         {
             source_updated += 1;
         }
+    }
+    if has_board_operations {
+        let before = db
+            .read_board_complete(instance.board_id)
+            .map_err(DomainError::repository)?;
+        crate::completion::reconcile(&before, &mut after, super::types::now() as u128)?;
     }
     after.keep_pinned_tasks_first();
     if serde_json::to_vec(&after.columns).map_err(internal)?.len() > 8 * 1024 * 1024 {

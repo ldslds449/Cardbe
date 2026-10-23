@@ -18,11 +18,13 @@
   } from "../dnd/activation";
   import { drag_plugins } from "../dnd/plugins";
   import type { Task } from "../../type/task.svelte";
+  import { done_column } from "../../type/column.svelte";
   import CardColumn from "../task/card_column.svelte";
   import { layout_widths } from "../../layout-widths.svelte";
   import CardItem from "../task/card_item.svelte";
   import { LazyMount } from "../../utils/lazy-mount.svelte";
   import TaskSelectionBar from "../task/task_selection_bar.svelte";
+  import ChooseColumnDialog from "../dialog/choose_column_dialog.svelte";
   import { task_matches_search } from "../calendar/calendar";
   import {
     active_sort_rules,
@@ -137,6 +139,26 @@
     ),
   );
   const selected_task_ids = $derived(selected_tasks.map((task) => task.id));
+  const done_column_id = $derived(done_column(board.columns)?.id);
+  const open_columns = $derived(
+    board.columns.filter((column) => column.id !== done_column_id),
+  );
+  // Done tasks waiting for the user to choose where they reopen.
+  let reopen_request = $state<{ task_ids: string[]; title?: string } | null>(
+    null,
+  );
+  let reopen_open = $state(false);
+  function ask_to_reopen(task_ids: string[], title?: string) {
+    reopen_request = { task_ids, title };
+    reopen_open = true;
+  }
+  const done_task_ids = $derived(
+    new Set(
+      board.columns
+        .find((column) => column.id === done_column_id)
+        ?.tasks.map((task) => task.id) ?? [],
+    ),
+  );
   const selecting = $derived(selected_task_ids.length > 0);
 
   $effect(() => {
@@ -430,6 +452,9 @@
           onUpdateColumnName={(name) => board.update_column(column.id, name)}
           onUpdateSort={(sort_rules) =>
             board.update_column(column.id, column.name, sort_rules)}
+          done={column.id === done_column_id}
+          onToggleDone={(done) =>
+            board.set_done_column(done ? column.id : null)}
           onAddTask={() => onAddTask(column_idx)}
           onImportTask={() => onImportTask(column.id)}
           onArchiveAllTasks={() => board.archive_all_tasks(column.id)}
@@ -496,6 +521,9 @@
                 onAddToFlow={(tab) => void board.add_task_to_flow(task.id, tab)}
                 onSetPriority={(priority) =>
                   void board.set_tasks_priority([task.id], priority)}
+                done={column.id === done_column_id}
+                onComplete={() => void board.complete_tasks([task.id])}
+                onReopen={() => ask_to_reopen([task.id], task.title)}
                 selected={selected_ids.has(task.id)}
                 {selecting}
                 onSelect={read_only
@@ -523,6 +551,16 @@
       onPin={(pinned) => void board.set_tasks_pinned(selected_task_ids, pinned)}
       onSetPriority={(priority) =>
         void board.set_tasks_priority(selected_task_ids, priority)}
+      has_open={selected_tasks.some((task) => !done_task_ids.has(task.id))}
+      has_done={selected_tasks.some((task) => done_task_ids.has(task.id))}
+      onComplete={() =>
+        run_selection_action((task_ids) => board.complete_tasks(task_ids))}
+      onReopen={() =>
+        ask_to_reopen(
+          selected_tasks
+            .filter((task) => done_task_ids.has(task.id))
+            .map((task) => task.id),
+        )}
       onLoadFlowTabs={() => board.get_flow_tabs()}
       onAddToFlow={(tab) =>
         void board.add_tasks_to_flow(selected_task_ids, tab)}
@@ -538,3 +576,27 @@
     />
   {/if}
 {/if}
+
+<ChooseColumnDialog
+  bind:open={reopen_open}
+  title={m.task_reopen()}
+  description={reopen_request?.title !== undefined
+    ? m.task_reopen_description({
+        name: reopen_request.title || m.task_untitled(),
+      })
+    : m.task_reopen_selected_description({
+        count: reopen_request?.task_ids.length ?? 0,
+      })}
+  confirm_label={m.task_reopen()}
+  columns={open_columns}
+  onConfirm={(column_id) => {
+    const request = reopen_request;
+    if (request) {
+      // The selection's done tasks leave it, like other selection actions.
+      if (request.title === undefined) {
+        clear_selection();
+      }
+      void board.reopen_tasks(request.task_ids, column_id);
+    }
+  }}
+/>

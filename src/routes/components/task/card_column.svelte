@@ -18,6 +18,7 @@
   import ClipboardPasteIcon from "@lucide/svelte/icons/clipboard-paste";
   import SquareCheckIcon from "@lucide/svelte/icons/square-check";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
 
   import EditableLabel from "../editable_label.svelte";
   import ColumnSortDialog from "../dialog/column_sort_dialog.svelte";
@@ -51,6 +52,9 @@
     read_only?: boolean;
     notify_muted?: boolean;
     onToggleNotifyMuted?: (muted: boolean) => void;
+    /** Whether this is the board's done column. */
+    done?: boolean;
+    onToggleDone?: (done: boolean) => void;
   }
 
   let {
@@ -70,6 +74,8 @@
     read_only = false,
     notify_muted = false,
     onToggleNotifyMuted,
+    done = false,
+    onToggleDone,
   }: CardColumnProps = $props();
 
   const { ref, isDragging } = useSortable({
@@ -149,6 +155,16 @@
             >
               {formatNumber(numberTasks)}
             </Badge>
+            {#if done}
+              <Badge
+                variant="outline"
+                class="mr-1 shrink-0 gap-1 font-normal text-muted-foreground"
+                title={m.column_done_hint()}
+              >
+                <CircleCheckIcon class="size-3" aria-hidden="true" />
+                {m.column_done_badge()}
+              </Badge>
+            {/if}
             {#if notify_muted}
               <span
                 class="mr-1 inline-flex shrink-0 text-muted-foreground"
@@ -246,6 +262,21 @@
             <ArrowUpDownIcon />
             {m.column_sort_open()}
           </ContextMenu.Item>
+          {#if onToggleDone}
+            <ContextMenu.Item onclick={() => onToggleDone(!done)}>
+              <CircleCheckIcon />
+              <div class="flex flex-col">
+                <span
+                  >{done
+                    ? m.column_done_unset()
+                    : m.column_done_set_action()}</span
+                >
+                <span class="text-xs text-muted-foreground"
+                  >{m.column_done_hint()}</span
+                >
+              </div>
+            </ContextMenu.Item>
+          {/if}
         {/if}
         {#if onToggleNotifyMuted}
           <ContextMenu.CheckboxItem

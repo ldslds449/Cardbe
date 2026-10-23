@@ -254,6 +254,7 @@ fn column_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Column> {
         sort_order: row.get(3)?,
         // Unreadable rules fall back to the legacy sort order.
         sort_rules: serde_json::from_str(&sort_rules).unwrap_or_default(),
+        done: row.get(5)?,
         tasks: Vec::new(),
     };
     column.reconcile_sort();
@@ -1433,9 +1434,11 @@ impl Database {
     pub fn tasks_due_between(&self, from: u128, to: u128) -> StorageResult<Vec<DueTask>> {
         let bound = |time: u128| i64::try_from(time).unwrap_or(i64::MAX);
         let mut stmt = self.connection.prepare(
+            // Tasks in a done column are completed and need no reminder.
             "SELECT t.board_id,b.name,t.column_id,t.payload
              FROM cardbe_tasks t JOIN cardbe_boards b ON b.id=t.board_id
-             WHERE json_extract(t.payload,'$.due_time')>=?1
+             JOIN cardbe_columns c ON c.board_id=t.board_id AND c.id=t.column_id
+             WHERE c.done=0 AND json_extract(t.payload,'$.due_time')>=?1
                AND json_extract(t.payload,'$.due_time')<?2
              ORDER BY t.board_id,t.column_id,t.position,t.id",
         )?;
@@ -1647,6 +1650,8 @@ impl Database {
             }
             target.columns[column].tasks.push(task);
         }
+        let now = crate::commands::archive::current_time_millis()?;
+        crate::completion::reconcile(&before_target, &mut target, now)?;
         target.keep_pinned_tasks_first();
         let tx = self.connection.transaction()?;
         for (id, before, after) in [
@@ -2077,7 +2082,8 @@ impl Database {
         let mut stored = StoredData::default();
 
         let mut columns = self.connection.prepare(
-            "SELECT id, name, color, sort_order, sort_rules FROM columns ORDER BY position, id",
+            // Legacy single-board columns predate the done flag.
+            "SELECT id, name, color, sort_order, sort_rules, 0 FROM columns ORDER BY position, id",
         )?;
         stored.columns = columns
             .query_map([], column_from_row)?
@@ -2186,7 +2192,7 @@ impl Database {
         tx.execute_batch(
             "CREATE TABLE IF NOT EXISTS cardbe_global_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS cardbe_boards(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,shared_role TEXT NOT NULL DEFAULT 'owner',sync_status TEXT NOT NULL DEFAULT 'local',sync_revision INTEGER NOT NULL DEFAULT 0);
-             CREATE TABLE IF NOT EXISTS cardbe_columns(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,id INTEGER NOT NULL,name TEXT NOT NULL,color TEXT NOT NULL,sort_order TEXT NOT NULL,position INTEGER NOT NULL,sort_rules TEXT NOT NULL DEFAULT '[]',PRIMARY KEY(board_id,id));
+             CREATE TABLE IF NOT EXISTS cardbe_columns(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,id INTEGER NOT NULL,name TEXT NOT NULL,color TEXT NOT NULL,sort_order TEXT NOT NULL,position INTEGER NOT NULL,sort_rules TEXT NOT NULL DEFAULT '[]',done INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(board_id,id));
              CREATE TABLE IF NOT EXISTS cardbe_tasks(board_id INTEGER NOT NULL,id INTEGER NOT NULL,column_id INTEGER NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,id),FOREIGN KEY(board_id,column_id) REFERENCES cardbe_columns(board_id,id) ON DELETE CASCADE);
              CREATE INDEX IF NOT EXISTS cardbe_tasks_by_board_column_position ON cardbe_tasks(board_id,column_id,position);
              CREATE TABLE IF NOT EXISTS cardbe_archives(board_id INTEGER NOT NULL REFERENCES cardbe_boards(id) ON DELETE CASCADE,task_id INTEGER NOT NULL,archived_at TEXT NOT NULL,position INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(board_id,task_id));
@@ -2212,6 +2218,7 @@ impl Database {
             "ALTER TABLE cardbe_iroh_invites ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE cardbe_iroh_conflicts ADD COLUMN loro_update BLOB",
             "ALTER TABLE cardbe_columns ADD COLUMN sort_rules TEXT NOT NULL DEFAULT '[]'",
+            "ALTER TABLE cardbe_columns ADD COLUMN done INTEGER NOT NULL DEFAULT 0",
         ] {
             let _ = tx.execute(sql, []);
         }
@@ -2301,7 +2308,7 @@ impl Database {
 
     fn load_board_data(&self, board_id: i64, include_archives: bool) -> StorageResult<StoredData> {
         let mut stored = StoredData::default();
-        let mut stmt=self.connection.prepare("SELECT id,name,color,sort_order,sort_rules FROM cardbe_columns WHERE board_id=?1 ORDER BY position,id")?;
+        let mut stmt=self.connection.prepare("SELECT id,name,color,sort_order,sort_rules,done FROM cardbe_columns WHERE board_id=?1 ORDER BY position,id")?;
         stored.columns = stmt
             .query_map([board_id], column_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -2537,21 +2544,6 @@ impl Database {
         after_id: Option<i64>,
     ) -> StorageResult<Vec<task_events::TaskEvent>> {
         task_events::list(&self.connection, board_id, None, after_id)
-    }
-
-    pub fn done_columns(&self, board_id: i64) -> StorageResult<Vec<i64>> {
-        task_events::done_columns(&self.connection, board_id)
-    }
-
-    pub fn set_done_columns(
-        &mut self,
-        board_id: i64,
-        column_ids: &[i64],
-    ) -> StorageResult<Vec<i64>> {
-        let tx = self.connection.transaction()?;
-        let ids = task_events::set_done_columns(&tx, board_id, column_ids)?;
-        tx.commit()?;
-        Ok(ids)
     }
 
     pub fn load_task(&self, board_id: i64, task_id: i64) -> StorageResult<Option<Task>> {
@@ -2870,8 +2862,9 @@ pub(crate) fn persist_board_diff_transaction(
                 || o.color != c.color
                 || o.sort_order != c.sort_order
                 || o.sort_rules != c.sort_rules
+                || o.done != c.done
         }) {
-            tx.execute("INSERT INTO cardbe_columns(board_id,id,name,color,sort_order,sort_rules,position) VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(board_id,id) DO UPDATE SET name=excluded.name,color=excluded.color,sort_order=excluded.sort_order,sort_rules=excluded.sort_rules,position=excluded.position",params![board_id,id,c.name,c.color,c.sort_order,serde_json::to_string(&c.sort_rules)?,pos])?;
+            tx.execute("INSERT INTO cardbe_columns(board_id,id,name,color,sort_order,sort_rules,position,done) VALUES(?1,?2,?3,?4,?5,?6,?7,?8) ON CONFLICT(board_id,id) DO UPDATE SET name=excluded.name,color=excluded.color,sort_order=excluded.sort_order,sort_rules=excluded.sort_rules,position=excluded.position,done=excluded.done",params![board_id,id,c.name,c.color,c.sort_order,serde_json::to_string(&c.sort_rules)?,pos,c.done])?;
             stats.columns_changed += 1;
         }
     }
@@ -2922,7 +2915,6 @@ pub(crate) fn persist_board_diff_transaction(
         }
     }
     crate::flow::prune(tx, board_id)?;
-    task_events::prune_done_columns(tx, board_id)?;
     positions.columns = column_positions;
     positions.tasks = task_positions;
     Ok(stats)
@@ -4145,6 +4137,7 @@ mod tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: [
                     (1, at(13, 0), false),
                     (2, at(14, 0), false),
@@ -4196,6 +4189,7 @@ mod tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: [
                     (1, None, Some(5)),
                     (2, Some(Low), None),
@@ -4271,6 +4265,7 @@ mod tests {
                     color: String::new(),
                     sort_order: Default::default(),
                     sort_rules: Vec::new(),
+                    done: false,
                     tasks: (1..=60)
                         .map(|id| Task {
                             id,
@@ -4436,6 +4431,7 @@ mod tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: vec![Task {
                     id: 2,
                     title: "Write release notes".into(),
@@ -4507,6 +4503,7 @@ mod tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: vec![
                     task(1, "Alpha", ""),
                     task(2, "Alpha beta", ""),
@@ -4751,6 +4748,7 @@ mod tests {
                     color: String::new(),
                     sort_order: Default::default(),
                     sort_rules: Vec::new(),
+                    done: false,
                     tasks: vec![],
                 }],
                 ..Default::default()
@@ -4828,6 +4826,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![],
         });
         owner
@@ -4983,6 +4982,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 2,
                 title: "Before".into(),
@@ -5081,6 +5081,7 @@ mod tests {
                     color: String::new(),
                     sort_order: Default::default(),
                     sort_rules: Vec::new(),
+                    done: false,
                     tasks: Vec::new(),
                 })
                 .collect(),
@@ -5138,6 +5139,7 @@ mod tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: Vec::new(),
             }],
             ..StoredData::default()
@@ -5415,6 +5417,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![
                 Task {
                     id: 2,
@@ -5599,6 +5602,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks,
         };
         let task = |id| Task {
@@ -5744,6 +5748,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 1,
                 title: "Remove me".into(),
@@ -5806,6 +5811,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 500,
                 title: "Shared task".into(),
@@ -5902,6 +5908,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![],
         });
         after.next_column_id = 2;
@@ -5941,6 +5948,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![],
         });
         let mut remote = StoredData::default();
@@ -5950,6 +5958,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![],
         });
         let local_doc =
@@ -6120,6 +6129,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![],
         });
         let local_doc =
@@ -6143,6 +6153,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![],
         });
         let remote_doc =
@@ -6247,12 +6258,23 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![
                 task(1, Some(100)),
                 task(2, Some(200)),
                 task(3, None),
                 task(4, Some(99)),
             ],
+        });
+        // Completed tasks are not reminded.
+        data.columns.push(Column {
+            id: 6,
+            name: "Done".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            sort_rules: Vec::new(),
+            done: true,
+            tasks: vec![task(7, Some(150))],
         });
         data.archives.push(crate::models::Archive {
             time: 1,
@@ -6277,6 +6299,7 @@ mod tests {
         );
 
         // Tasks received from other members of a shared board notify too.
+        data.columns.truncate(1);
         data.columns[0].tasks = vec![task(9, Some(150))];
         data.archives.clear();
         loaded
@@ -6361,6 +6384,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::DueDateDesc,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 0,
                 title: "Migrated".into(),
@@ -6401,6 +6425,7 @@ mod tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: Vec::new(),
             }],
             next_column_id: 1,
@@ -6430,6 +6455,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: Vec::new(),
         });
         stored.next_column_id = 1;
@@ -6458,6 +6484,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: Vec::new(),
         });
         stored.next_column_id = 1;
@@ -6515,6 +6542,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![
                 Task {
                     id: 0,
@@ -6555,6 +6583,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: (0..5)
                 .map(|id| Task {
                     id,
@@ -6656,6 +6685,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: Vec::new(),
         });
         second
@@ -6707,6 +6737,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 0,
                 title: "Safe".into(),
@@ -6747,6 +6778,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: Vec::new(),
         });
         write_document(&backup_path(&dir.join("data.json")), &stored).unwrap();
@@ -6792,6 +6824,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 0,
                 title: "Only first".into(),
@@ -6813,6 +6846,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 0,
                 title: "Only second".into(),
@@ -6987,6 +7021,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks,
         };
         let data = StoredData {
@@ -7094,6 +7129,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![task.clone()],
         });
         data.next_column_id = 1;
@@ -7161,6 +7197,45 @@ mod tests {
     }
 
     #[test]
+    fn done_columns_and_completion_times_persist() {
+        let dir = test_dir("done-column");
+        fs::create_dir_all(&dir).unwrap();
+        let mut loaded = load(&dir).unwrap();
+        let board_id = loaded.database.active_board_id();
+        let mut data = StoredData::default();
+        data.columns.push(Column {
+            id: 1,
+            name: "Done".into(),
+            color: String::new(),
+            sort_order: Default::default(),
+            sort_rules: Vec::new(),
+            done: true,
+            tasks: vec![Task {
+                id: 2,
+                completed_at: Some(1_800_000_000_000),
+                ..Task::default()
+            }],
+        });
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &data)
+            .unwrap();
+        let read = loaded.database.read_board_complete(board_id).unwrap();
+        assert_eq!(read.columns, data.columns);
+
+        data.columns[0].done = false;
+        data.columns[0].tasks[0].completed_at = None;
+        loaded
+            .database
+            .replace_board_as_local_edit(board_id, &data)
+            .unwrap();
+        let read = loaded.database.read_board_complete(board_id).unwrap();
+        assert_eq!(read.columns, data.columns);
+        drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn replace_all_boards_round_trips_same_logical_ids_and_global_data() {
         let dir = test_dir("all-board-round-trip");
         fs::create_dir_all(&dir).unwrap();
@@ -7173,6 +7248,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 0,
                 title: "First task".into(),

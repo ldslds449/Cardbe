@@ -32,6 +32,8 @@ export interface Column {
   color: string;
   /** Display order only; `tasks` keeps the manual order. */
   sort_rules: SortRule[];
+  /** Tasks in the board's done column are completed; at most one counts. */
+  done?: boolean;
   tasks: Task[];
 }
 
@@ -40,7 +42,13 @@ export interface ColumnSerialized {
   name: string;
   color: string;
   sort_rules?: SortRule[];
+  done?: boolean;
   tasks: TaskSerialized[];
+}
+
+/** The board's done column: the first flagged one, as in the backend. */
+export function done_column(columns: Column[]): Column | undefined {
+  return columns.find((column) => column.done);
 }
 
 export function create_column(
@@ -78,6 +86,7 @@ export function deserialize_column(data: ColumnSerialized): Column {
     name: data.name,
     color: data.color,
     sort_rules: data.sort_rules ?? [],
+    ...(data.done ? { done: true } : {}),
     tasks: data.tasks.map((t) => {
       return deserialize_task(t);
     }),

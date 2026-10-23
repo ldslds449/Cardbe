@@ -25,6 +25,7 @@ impl Fixture {
                 color: String::new(),
                 sort_order: ColumnSort::Custom,
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: (10..261)
                     .map(|id| Task {
                         id,
@@ -278,6 +279,7 @@ fn scoped_queries_page_full_unicode_tasks_and_reject_foreign_filters() {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 10,
                 title: "Foreign".into(),

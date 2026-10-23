@@ -46,6 +46,8 @@ fn commit_locked<R>(
         .map_err(DomainError::repository)?;
     let mut after = before.clone();
     let result = change(&mut after)?;
+    let now = crate::commands::archive::current_time_millis()?;
+    crate::completion::reconcile(&before, &mut after, now)?;
     after.keep_pinned_tasks_first();
     if serde_json::to_vec(&after.columns).map_err(internal)?.len() > 8 * 1024 * 1024 {
         return Err(DomainError::InvalidArgument);

@@ -407,6 +407,7 @@ fn conflict_permission_refresh_preserves_local_edits_and_allows_editor_rebase() 
         color: String::new(),
         sort_order: Default::default(),
         sort_rules: Vec::new(),
+        done: false,
         tasks: Vec::new(),
     });
     let doc = crate::loro_board::apply_local_delta(None, &StoredData::default(), &base).unwrap();

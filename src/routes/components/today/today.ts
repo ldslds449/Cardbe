@@ -1,4 +1,4 @@
-import type { Column } from "../../type/column.svelte";
+import { done_column, type Column } from "../../type/column.svelte";
 import type { Task } from "../../type/task.svelte";
 import { task_matches_search } from "../calendar/calendar";
 import { due_limit } from "../../utils/task-date-range";
@@ -39,7 +39,12 @@ export function build_today_groups(
     now.getDate() + 1,
   ).getTime();
 
+  const done = done_column(columns);
   for (const column of columns) {
+    // Completed tasks need no more attention.
+    if (column === done) {
+      continue;
+    }
     for (const task of column.tasks) {
       if (!task_matches_search(task, search_text, search_task_ids)) {
         continue;

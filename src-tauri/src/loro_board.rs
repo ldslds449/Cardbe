@@ -202,6 +202,7 @@ fn write_task(map: &LoroMap, task: &Task, archive_time: Option<u128>) -> Result<
     set_field(map, "items", &task.items)?;
     set_field(map, "recurrence", &task.recurrence)?;
     set_field(map, "priority", &task.priority)?;
+    set_field(map, "completed_at", &task.completed_at)?;
     set_field(map, "pinned", &task.pinned)?;
     set_field(map, "archive_time", &archive_time)
 }
@@ -302,6 +303,7 @@ pub(crate) fn apply_local_delta_with_peer(
         set_field(&map, "color", &column.color)?;
         set_field(&map, "sort_order", &column.sort_order)?;
         set_field(&map, "sort_rules", &column.sort_rules)?;
+        set_field(&map, "done", &column.done)?;
         let mut order = Vec::new();
         for task in &column.tasks {
             let task_node = match task_nodes.get(&task.id) {
@@ -453,6 +455,7 @@ fn task_from_map(id: i64, map: &serde_json::Value) -> Result<Task, String> {
         items: field(map, "items")?,
         recurrence: field(map, "recurrence")?,
         priority: optional_field(map, "priority")?,
+        completed_at: optional_field(map, "completed_at")?,
         pinned: if map.get("pinned").is_some() {
             field(map, "pinned")?
         } else {
@@ -495,6 +498,7 @@ pub fn project(update: &[u8]) -> Result<StoredData, String> {
                     color: field(map, "color")?,
                     sort_order: field(map, "sort_order")?,
                     sort_rules: optional_field(map, "sort_rules")?,
+                    done: optional_field(map, "done")?,
                     tasks: Vec::new(),
                 };
                 // Older peers write only `sort_order`.
@@ -701,6 +705,7 @@ mod tests {
                 color: String::new(),
                 sort_order: ColumnSort::Custom,
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: vec![Task {
                     id: 2,
                     ..Task::default()
@@ -778,6 +783,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 2,
                 start_time: 1_800_000_000_000,
@@ -807,6 +813,43 @@ mod tests {
         assert_eq!(task.start_time, 1_600_000_000_000);
         assert_eq!(task.created_time, 0);
         assert_eq!(task.priority, None);
+        assert_eq!(task.completed_at, None);
+    }
+
+    #[test]
+    fn done_columns_and_completion_times_round_trip() {
+        let mut data = StoredData::default();
+        data.columns.push(Column {
+            id: 1,
+            name: "Done".into(),
+            color: String::new(),
+            sort_order: ColumnSort::Custom,
+            sort_rules: Vec::new(),
+            done: true,
+            tasks: vec![Task {
+                id: 2,
+                completed_at: Some(1_800_000_000_000),
+                ..Task::default()
+            }],
+        });
+        let update = apply_local_delta(None, &StoredData::default(), &data).unwrap();
+        assert_eq!(project(&update).unwrap().columns, data.columns);
+
+        let mut reopened = data.clone();
+        reopened.columns[0].done = false;
+        reopened.columns[0].tasks[0].completed_at = None;
+        let update = apply_local_delta(Some(&update), &data, &reopened).unwrap();
+        assert_eq!(project(&update).unwrap().columns, reopened.columns);
+
+        // Older peers write neither field, which reads as open and not done.
+        let doc = doc_from_update(Some(&update)).unwrap();
+        let map = doc
+            .get_map("cardbe.columns")
+            .ensure_mergeable_map("1")
+            .unwrap();
+        map.delete("done").unwrap();
+        let update = doc.export(ExportMode::Snapshot).unwrap();
+        assert!(!project(&update).unwrap().columns[0].done);
     }
 
     #[test]
@@ -824,6 +867,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: Vec::new(),
         };
         column.set_sort_rules(vec![
@@ -859,6 +903,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 2,
                 ..Task::default()
@@ -891,6 +936,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 11,
                 title: "left".into(),
@@ -904,6 +950,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 22,
                 title: "right".into(),
@@ -933,6 +980,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: Vec::new(),
         });
         let initial = apply_local_delta(None, &StoredData::default(), &base).unwrap();
@@ -968,6 +1016,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 2,
                 title: "Before".into(),
@@ -998,6 +1047,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 2,
                 title: "Before".into(),
@@ -1033,6 +1083,7 @@ mod tests {
                     color: String::new(),
                     sort_order: ColumnSort::Custom,
                     sort_rules: Vec::new(),
+                    done: false,
                     tasks: vec![
                         Task {
                             id: 11,
@@ -1050,6 +1101,7 @@ mod tests {
                     color: String::new(),
                     sort_order: ColumnSort::Custom,
                     sort_rules: Vec::new(),
+                    done: false,
                     tasks: vec![Task {
                         id: 21,
                         ..Task::default()
@@ -1096,6 +1148,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 2,
                 description: "hello world".into(),
@@ -1125,6 +1178,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 2,
                 title: "Before".into(),
@@ -1203,6 +1257,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 2,
                 title: "private-token-ccae8f7c".into(),

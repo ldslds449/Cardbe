@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { get_column_id } from "../../type/column.svelte";
 import { get_task_id } from "../../type/task.svelte";
 
 /** Keep aligned with `EventOrigin` in `src-tauri/src/task_events.rs`. */
@@ -110,24 +109,4 @@ export function task_history(events: TaskEvent[], task_id: string) {
       entries.length > 0 &&
       ["created", "transferred_in"].includes(entries[0].kind),
   };
-}
-
-/** Columns of the active board that this device counts as done. */
-export async function load_done_columns(
-  expectedBoardId: number,
-): Promise<string[]> {
-  const ids = await invoke<number[]>("get_done_columns", { expectedBoardId });
-  return ids.map((id) => `column_${id}`);
-}
-
-/** Saves the done columns and returns the ones the backend kept. */
-export async function save_done_columns(
-  expectedBoardId: number,
-  columnIds: string[],
-): Promise<string[]> {
-  const ids = await invoke<number[]>("set_done_columns", {
-    expectedBoardId,
-    columnIds: columnIds.map((id) => get_column_id(id)),
-  });
-  return ids.map((id) => `column_${id}`);
 }

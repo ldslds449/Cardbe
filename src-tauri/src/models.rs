@@ -163,6 +163,11 @@ pub struct Task {
     /// Omitted when unset so tasks without a priority keep their stored shape.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priority: Option<TaskPriority>,
+    /// When the task entered the board's done column, in milliseconds since
+    /// the Unix epoch. Derived from its position by `completion::reconcile`;
+    /// an archived task outside the done column completed at its archive time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<u128>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -218,6 +223,7 @@ impl Default for Task {
             items: Vec::new(),
             recurrence: None,
             priority: None,
+            completed_at: None,
         }
     }
 }
@@ -316,6 +322,10 @@ pub struct Column {
     /// Display order only: tasks keep their manual order in storage.
     #[serde(default)]
     pub sort_rules: Vec<SortRule>,
+    /// Tasks in the board's done column are completed. Only the first flagged
+    /// column counts; see `StoredData::done_column_id`. Omitted when false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub done: bool,
     #[serde(default)]
     pub tasks: Vec<Task>,
 }
@@ -554,6 +564,14 @@ impl Default for StoredData {
 impl StoredData {
     /// Stored task order is the manual order. Sort rules only change how a
     /// column is displayed, so storage just keeps pinned tasks first.
+    /// The done column. Concurrent edits may flag several; the first one counts.
+    pub fn done_column_id(&self) -> Option<i64> {
+        self.columns
+            .iter()
+            .find(|column| column.done)
+            .map(|column| column.id)
+    }
+
     pub fn keep_pinned_tasks_first(&mut self) {
         for column in &mut self.columns {
             column
@@ -824,6 +842,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: (1..=3)
                 .map(|id| Task {
                     id,
@@ -861,6 +880,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules,
+            done: false,
             tasks: Vec::new(),
         }
     }

@@ -292,6 +292,10 @@ fn update_locked_with_events<R, E: From<String>>(
 ) -> Result<R, E> {
     let mut candidate = guard.stored.clone();
     let result = change(&mut candidate)?;
+    let now = crate::commands::archive::current_time_millis()
+        .map_err(|error| E::from(error.to_string()))?;
+    crate::completion::reconcile(&guard.stored, &mut candidate, now)
+        .map_err(|error| E::from(error.to_string()))?;
     candidate.keep_pinned_tasks_first();
     let board_changed = candidate.columns != guard.stored.columns
         || candidate.archives != guard.stored.archives
@@ -435,6 +439,59 @@ mod tests {
     }
 
     #[test]
+    fn local_writes_complete_tasks_in_the_done_column_and_undo_reopens_them() {
+        let dir = std::env::temp_dir().join(format!(
+            "cardbe-done-column-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let column = |id, done, tasks| Column {
+            id,
+            name: format!("Column {id}"),
+            color: String::new(),
+            sort_order: Default::default(),
+            sort_rules: Vec::new(),
+            done,
+            tasks,
+        };
+        let stored = StoredData {
+            columns: vec![
+                column(
+                    1,
+                    false,
+                    vec![Task {
+                        id: 3,
+                        ..Task::default()
+                    }],
+                ),
+                column(2, true, vec![]),
+            ],
+            ..StoredData::default()
+        };
+        let mut app = app_data(&dir, stored);
+        let board_id = app.active_board_id;
+        update_locked(&mut app, |data| {
+            crate::board_mutations::move_task(data, 3, 2, None).map_err(|e| e.to_string())
+        })
+        .unwrap();
+        let completed = app.stored.columns[1].tasks[0].completed_at;
+        assert!(completed.is_some());
+        assert_eq!(
+            app.database.read_board_complete(board_id).unwrap().columns,
+            app.stored.columns
+        );
+
+        assert!(!undo_locked(&mut app, board_id).unwrap());
+        assert_eq!(app.stored.columns[0].tasks[0].completed_at, None);
+        drop(app);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn startup_forgets_muted_columns_that_no_longer_exist() {
         let dir = std::env::temp_dir().join(format!(
             "cardbe-muted-columns-{}-{}",
@@ -451,6 +508,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: Vec::new(),
         };
         let stored = StoredData {
@@ -506,6 +564,7 @@ mod tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: Vec::new(),
             });
             Err("Rejected change".to_string())
@@ -536,6 +595,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: Vec::new(),
         });
         let mut app = app_data(&dir, stored);
@@ -614,6 +674,7 @@ mod tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: Vec::new(),
             });
             Ok(())
@@ -670,6 +731,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: Vec::new(),
         };
         let events = |app: &AppData| {
@@ -781,39 +843,6 @@ mod tests {
             logged[5..]
         );
 
-        // Done columns are device-local settings outside the log and Undo.
-        let undo_depth = app.undo_history.len();
-        assert_eq!(
-            app.database
-                .set_done_columns(board_id, &[2, 99, 2])
-                .unwrap(),
-            [2]
-        );
-        assert_eq!(app.undo_history.len(), undo_depth);
-        update_locked(&mut app, |data| {
-            data.columns.pop();
-            Ok(())
-        })
-        .unwrap();
-        // A new column reusing a deleted id is not done.
-        update_locked(&mut app, |data| {
-            data.columns.push(column(2));
-            Ok(())
-        })
-        .unwrap();
-        assert!(app.database.done_columns(board_id).unwrap().is_empty());
-        // A reset gives column ids new meanings, so the choice is cleared.
-        app.database.set_done_columns(board_id, &[1]).unwrap();
-        update_locked_with_events(
-            &mut app,
-            EventWrite::Reset(EventSource::local()),
-            |data: &mut StoredData| -> Result<(), String> {
-                data.columns[0].name = "Imported".into();
-                Ok(())
-            },
-        )
-        .unwrap();
-        assert!(app.database.done_columns(board_id).unwrap().is_empty());
         drop(app);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -853,6 +882,7 @@ mod tests {
                 color: String::new(),
                 sort_order: Default::default(),
                 sort_rules: Vec::new(),
+                done: false,
                 tasks: Vec::new(),
             });
             Ok(())
@@ -884,6 +914,7 @@ mod tests {
             color: String::new(),
             sort_order: Default::default(),
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task {
                 id: 1,
                 title: "Labelled".into(),

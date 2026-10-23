@@ -40,6 +40,7 @@ pub(crate) fn add_column(
         color,
         sort_order: ColumnSort::Custom,
         sort_rules: Vec::new(),
+        done: false,
         tasks: Vec::new(),
     });
     Ok(id)
@@ -247,6 +248,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks: vec![Task { id: 2, ..task }],
         });
         data
@@ -263,6 +265,7 @@ mod tests {
             color: String::new(),
             sort_order: ColumnSort::Custom,
             sort_rules: Vec::new(),
+            done: false,
             tasks,
         };
         StoredData {

@@ -241,6 +241,7 @@
   "task_start_time": "開始時間",
   "task_due_time": "到期時間",
   "task_created_time": "建立時間",
+  "task_completed_time": "完成時間",
   "task_history": "歷程",
   "task_history_loading": "正在載入歷程…",
   "task_history_empty": "尚未記錄到任何動態。",
@@ -382,6 +383,34 @@
       }
     }
   ],
+  "task_completed_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已完成 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "task_reopened_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已重新開啟 {countFormatted} 個任務"
+      }
+    }
+  ],
+  "task_complete": "標為完成",
+  "task_reopen": "重新開啟",
+  "task_reopen_action": "重新開啟…",
+  "task_reopen_description": "選擇要把「{name}」移回哪一欄。",
+  "task_reopen_selected_description": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "選擇要把 {countFormatted} 個已完成的任務移回哪一欄。"
+      }
+    }
+  ],
   "task_restored": "已還原任務",
   "task_updated": "已更新任務",
   "task_add_error": "無法新增任務",
@@ -399,6 +428,12 @@
   "task_template_delete_error": "無法刪除範本",
   "column_added": "已新增欄位",
   "column_updated": "已更新欄位",
+  "column_done_hint": "移到這欄的任務算已完成",
+  "column_done_badge": "完成",
+  "column_done_set_action": "設為完成欄",
+  "column_done_unset": "取消完成欄",
+  "column_done_set": "已將「{name}」設為完成欄，移到這裡的任務會算完成",
+  "column_done_cleared": "已取消完成欄",
   "column_deleted": "已刪除欄位",
   "column_add_error": "無法新增欄位",
   "column_update_error": "無法更新欄位",
@@ -1427,6 +1462,8 @@
   "statistics_yearly": "年度概覽",
   "statistics_lifecycle": "任務生命週期",
   "statistics_lifecycle_description": "這個看板上的任務從建立到完成的狀況。封存或移到完成欄的任務算是完成。",
+  "statistics_done_column_named": "任務移到「{name}」或封存時算完成。",
+  "statistics_done_column_none": "任務封存時算完成。可以在欄位選單把某一欄設為完成欄。",
   "statistics_range": "時間範圍",
   "statistics_range_days": [
     {
@@ -1511,17 +1548,6 @@
   "statistics_label": "標籤",
   "statistics_median_time": "時間中位數",
   "statistics_by_label_description": "所選期間完成的任務，以及目前逾期的未完成任務。有多個標籤的任務會在每個標籤各算一次。",
-  "statistics_done_columns": "完成欄",
-  "statistics_done_columns_none": "只算封存",
-  "statistics_done_columns_selected": [
-    {
-      "declarations": ["input count", "local countFormatted = count: number"],
-      "match": {
-        "count=*": "{countFormatted} 個完成欄"
-      }
-    }
-  ],
-  "statistics_done_columns_hint": "任務移到這些欄位也算完成。這項設定只套用在這台裝置。",
   "statistics_column_flow": "欄位流動",
   "statistics_column_flow_description": "每天各欄的任務數，以及從圖表第一天起累計封存的任務",
   "statistics_recorded_since": "這台裝置自 {date} 起記錄任務移動。",

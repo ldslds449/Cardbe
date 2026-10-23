@@ -75,7 +75,8 @@ export function done_since(effective: TaskEvent[], done: Set<string>) {
 
 /**
  * Completions for the lifecycle overview: archived tasks, and tasks in done
- * columns with a known arrival. `active` leaves done columns out.
+ * columns with a known arrival. Stored completion times come first, then the
+ * device-local log. `active` leaves done columns out.
  */
 export function completions(
   archives: Archive[],
@@ -85,12 +86,13 @@ export function completions(
 ) {
   const completed: Archive[] = archives.map((archive) => ({
     task: archive.task,
-    time: since.get(archive.task.id) ?? archive.time,
+    time:
+      archive.task.completed_at ?? since.get(archive.task.id) ?? archive.time,
   }));
   for (const column of columns) {
     if (done.has(column.id)) {
       for (const task of column.tasks) {
-        const time = since.get(task.id);
+        const time = task.completed_at ?? since.get(task.id);
         if (time) {
           completed.push({ task, time });
         }

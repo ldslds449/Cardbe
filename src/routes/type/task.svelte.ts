@@ -66,6 +66,11 @@ export interface Task {
   items: TaskItem[];
   recurrence: Recurrence | undefined;
   priority?: TaskPriority;
+  /**
+   * When the task entered the board's done column. The backend derives it
+   * from the task's position; archived tasks completed when archived.
+   */
+  completed_at?: Date;
 }
 
 export interface TaskSerialized {
@@ -83,6 +88,7 @@ export interface TaskSerialized {
   items?: TaskItem[];
   recurrence?: Recurrence;
   priority?: TaskPriority;
+  completed_at?: number;
 }
 
 export interface TaskSummary {
@@ -172,6 +178,7 @@ export function reset_task(task: Task): void {
   task.items = [];
   task.recurrence = undefined;
   task.priority = undefined;
+  task.completed_at = undefined;
   task.pinned = false;
 }
 
@@ -241,6 +248,8 @@ export function serialize_task(task: Task): TaskSerialized {
     items: task.items,
     recurrence: task.recurrence,
     ...priority_field(task),
+    // Sent back unchanged so edits keep the original completion time.
+    ...(task.completed_at ? { completed_at: task.completed_at.getTime() } : {}),
     pinned: task.pinned ?? false,
   };
 }
@@ -291,6 +300,7 @@ export function deserialize_task(data: TaskSerialized): Task {
     items: (data.items ?? []).map((item) => ({ ...item })),
     recurrence: data.recurrence ? { ...data.recurrence } : undefined,
     ...priority_field(data),
+    ...(data.completed_at ? { completed_at: new Date(data.completed_at) } : {}),
     pinned: data.pinned ?? false,
   };
   set_task_id(t, data.id);

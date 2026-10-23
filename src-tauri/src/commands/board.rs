@@ -2,7 +2,10 @@ use crate::board_mutations::{column_index, task_position};
 use crate::errors::CommandError;
 use crate::{
     models::{Column, ColumnSort, SortRule, Task},
-    state::{lock_app, undo_last_change_for_board, update_stored_for_board, SharedAppData},
+    state::{
+        lock_app, undo_last_change_for_board, update_stored_for_board,
+        update_stored_with_archives_for_board, SharedAppData,
+    },
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Manager, State};
@@ -288,7 +291,10 @@ pub(crate) fn add_task_to_board_locked(
     for label in &task.labels {
         data.touch_label(label.clone());
     }
+    let before = data.clone();
     data.columns[column].tasks.push(task);
+    let now = crate::commands::archive::current_time_millis()?;
+    crate::completion::reconcile(&before, &mut data, now)?;
     let ((revision, status), event_op) = guard
         .database
         .replace_board_as_local_edit_recorded(board_id, &data)
@@ -382,6 +388,48 @@ pub fn set_tasks_priority(
 }
 
 #[tauri::command]
+pub fn set_done_column(
+    state: State<'_, SharedAppData>,
+    column_id: Option<i64>,
+    expected_board_id: i64,
+) -> Result<(), CommandError> {
+    update_stored_for_board(&state, expected_board_id, |data| {
+        crate::completion::set_done_column(data, column_id)
+    })
+    .map_err(CommandError::from)
+}
+
+/// Moves tasks to the done column, or archives them when there is none.
+#[tauri::command]
+pub fn complete_tasks(
+    state: State<'_, SharedAppData>,
+    task_ids: Vec<i64>,
+    expected_board_id: i64,
+) -> Result<(), CommandError> {
+    let task_ids = crate::board_mutations::unique_task_ids(task_ids)?;
+    let now = crate::commands::archive::current_time_millis()?;
+    update_stored_with_archives_for_board(&state, expected_board_id, |data| {
+        crate::completion::complete_tasks(data, &task_ids, now)
+    })
+    .map_err(CommandError::from)
+}
+
+/// Moves done or archived tasks to an open column chosen by the user.
+#[tauri::command]
+pub fn reopen_tasks(
+    state: State<'_, SharedAppData>,
+    task_ids: Vec<i64>,
+    column_id: i64,
+    expected_board_id: i64,
+) -> Result<(), CommandError> {
+    let task_ids = crate::board_mutations::unique_task_ids(task_ids)?;
+    update_stored_with_archives_for_board(&state, expected_board_id, |data| {
+        crate::completion::reopen_tasks(data, &task_ids, column_id)
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
 pub fn update_task(
     state: State<'_, SharedAppData>,
     task_id: i64,
@@ -429,6 +477,7 @@ pub(crate) fn add_column_to_board_locked(
         color: String::new(),
         sort_order: ColumnSort::Custom,
         sort_rules: Vec::new(),
+        done: false,
         tasks: Vec::new(),
     });
     let ((revision, status), event_op) = guard

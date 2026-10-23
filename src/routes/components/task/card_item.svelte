@@ -24,6 +24,8 @@
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import GaugeIcon from "@lucide/svelte/icons/gauge";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
+  import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
   import SquareCheckIcon from "@lucide/svelte/icons/square-check";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import MoveTaskDialog from "../dialog/move_task_dialog.svelte";
@@ -72,6 +74,11 @@
     onLoadFlowTabs?: () => Promise<FlowTab[] | null>;
     onAddToFlow?: (tab: FlowTab) => void;
     onSetPriority?: (priority: TaskPriority | undefined) => void;
+    /** Whether the card is in the board's done column. */
+    done?: boolean;
+    onComplete?: () => void;
+    /** Asks where to move a done task back to. */
+    onReopen?: () => void;
     selected?: boolean;
     selecting?: boolean;
     onSelect?: (event: MouseEvent | null) => void;
@@ -100,6 +107,9 @@
     onLoadFlowTabs,
     onAddToFlow,
     onSetPriority,
+    done = false,
+    onComplete,
+    onReopen,
     selected = false,
     selecting = false,
     onSelect,
@@ -469,6 +479,22 @@
           <Item onclick={onFloatTask}>
             <PictureInPicture2Icon />
             {m.task_float_on_desktop()}
+          </Item>
+        {/if}
+        {#if done && onReopen}
+          <Item onclick={onReopen}>
+            <RotateCcwIcon />
+            {m.task_reopen_action()}
+          </Item>
+        {:else if !done && onComplete}
+          <Item
+            onclick={() => {
+              prevent_menu_focus_restore = true;
+              onComplete();
+            }}
+          >
+            <CircleCheckIcon />
+            {m.task_complete()}
           </Item>
         {/if}
         {#if onSetPriority}

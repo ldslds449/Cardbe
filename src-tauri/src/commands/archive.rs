@@ -9,7 +9,7 @@ use crate::{
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
-fn current_time_millis() -> Result<u128, DomainError> {
+pub(crate) fn current_time_millis() -> Result<u128, DomainError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())

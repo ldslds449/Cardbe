@@ -268,6 +268,19 @@ impl bindings::cardbe::plugin::board::Host for HostState {
             self.read(|reader| reader.get_task(id, archived).map(|info| info.task.priority))?;
         Ok(priority.map(Into::into))
     }
+    fn get_done_column(
+        &mut self,
+    ) -> Result<Option<i64>, bindings::cardbe::plugin::board::HostError> {
+        Ok(self.read(|reader| reader.done_column())?.1)
+    }
+    fn get_task_completed_time(
+        &mut self,
+        id: i64,
+        archived: bool,
+    ) -> Result<Option<u64>, bindings::cardbe::plugin::board::HostError> {
+        let (_, time) = self.read(|reader| reader.completed_time(id, archived))?;
+        Ok(time.and_then(|time| u64::try_from(time).ok()))
+    }
     fn set_task_priority(
         &mut self,
         task: bindings::cardbe::plugin::types::TaskReference,
@@ -759,7 +772,7 @@ mod tests {
         ));
     }
     #[tokio::test(flavor = "multi_thread")]
-    async fn task_priorities_are_read_and_staged_after_the_returned_changeset() {
+    async fn priority_and_completion_functions_cross_the_component_boundary() {
         tokio::task::spawn_blocking(|| {
             use crate::models::TaskPriority::{High, Low, Medium, Urgent};
             let dir = std::env::temp_dir().join(format!(
@@ -788,6 +801,7 @@ mod tests {
                             color: String::new(),
                             sort_order: Default::default(),
                             sort_rules: Vec::new(),
+                            done: false,
                             tasks: vec![task(10, "A", High), task(11, "B", Medium)],
                         }],
                         ..Default::default()
@@ -841,6 +855,47 @@ mod tests {
             let changeset = output.changeset.unwrap();
             assert_eq!(changeset.operations.len(), 200);
             assert_eq!(changeset.version, output.snapshot_version);
+
+            // Completion reads the done column and stored or archive times.
+            let mut stored = loaded.database.read_board_complete(board_id).unwrap();
+            stored.columns[0].done = false;
+            stored.columns.push(crate::models::Column {
+                id: 2,
+                name: "Done".into(),
+                color: String::new(),
+                sort_order: Default::default(),
+                sort_rules: Vec::new(),
+                done: true,
+                tasks: vec![crate::models::Task {
+                    completed_at: Some(1_800_000_000_000),
+                    ..task(11, "Done", Low)
+                }],
+            });
+            stored.columns[0].tasks.retain(|task| task.id != 11);
+            stored.archives = vec![
+                crate::models::Archive {
+                    time: 1_700_000_000_000,
+                    task: task(20, "Archived", Low),
+                },
+                crate::models::Archive {
+                    time: 1_700_000_000_000,
+                    task: crate::models::Task {
+                        completed_at: Some(1_600_000_000_000),
+                        ..task(21, "Done then archived", Low)
+                    },
+                },
+            ];
+            loaded
+                .database
+                .replace_board_as_local_edit(board_id, &stored)
+                .unwrap();
+            let output = execute("completion");
+            assert_eq!(
+                output.cursor.as_deref(),
+                Some(
+                    "Some(2) [None, Some(1800000000000), Some(1700000000000), Some(1600000000000)]"
+                )
+            );
 
             // Source reports are deduplicated by key and applied after the returned tasks.
             let output = execute("source-priority");
@@ -940,7 +995,7 @@ mod tests {
                 ..Default::default()
             };
             loaded.database.replace_board_as_local_edit(board_id, &crate::models::StoredData {
-                columns: vec![crate::models::Column { id: 1, name: "Existing".into(), color: String::new(), sort_order: Default::default(), sort_rules: Vec::new(), tasks: vec![task.clone()] }],
+                columns: vec![crate::models::Column { id: 1, name: "Existing".into(), color: String::new(), sort_order: Default::default(), sort_rules: Vec::new(), done: false, tasks: vec![task.clone()] }],
                 ..Default::default()
             }).unwrap();
             let bytes = std::fs::read(

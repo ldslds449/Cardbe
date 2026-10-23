@@ -265,6 +265,7 @@
   "task_start_time": "Start Time",
   "task_due_time": "Due Time",
   "task_created_time": "Created",
+  "task_completed_time": "Completed",
   "task_history": "Activity",
   "task_history_loading": "Loading activity...",
   "task_history_empty": "No activity recorded yet.",
@@ -469,6 +470,52 @@
       }
     }
   ],
+  "task_completed_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task completed",
+        "countPlural=*": "{countFormatted} tasks completed"
+      }
+    }
+  ],
+  "task_reopened_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} task reopened",
+        "countPlural=*": "{countFormatted} tasks reopened"
+      }
+    }
+  ],
+  "task_complete": "Mark complete",
+  "task_reopen": "Reopen",
+  "task_reopen_action": "Reopen…",
+  "task_reopen_description": "Choose where to move “{name}” back to.",
+  "task_reopen_selected_description": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Choose where to move {countFormatted} done task back to.",
+        "countPlural=*": "Choose where to move {countFormatted} done tasks back to."
+      }
+    }
+  ],
   "task_restored": "Task restored",
   "task_updated": "Task updated",
   "task_add_error": "Couldn't add task",
@@ -486,6 +533,12 @@
   "task_template_delete_error": "Couldn't delete template",
   "column_added": "Column added",
   "column_updated": "Column updated",
+  "column_done_hint": "Tasks moved here count as completed",
+  "column_done_badge": "Done",
+  "column_done_set_action": "Set as done column",
+  "column_done_unset": "Remove done column",
+  "column_done_set": "“{name}” is now the done column. Tasks moved there count as completed.",
+  "column_done_cleared": "Done column removed",
   "column_deleted": "Column deleted",
   "column_add_error": "Couldn't add column",
   "column_update_error": "Couldn't update column",
@@ -1622,6 +1675,8 @@
   "statistics_yearly": "Yearly overview",
   "statistics_lifecycle": "Task lifecycle",
   "statistics_lifecycle_description": "From creation to completion, for tasks on this board. Tasks count as completed when archived or moved to a done column.",
+  "statistics_done_column_named": "Tasks count as done when they reach “{name}” or are archived.",
+  "statistics_done_column_none": "Tasks count as done when archived. Choose a done column from a column's menu.",
   "statistics_range": "Time range",
   "statistics_range_days": [
     {
@@ -1733,23 +1788,6 @@
   "statistics_label": "Label",
   "statistics_median_time": "Median time",
   "statistics_by_label_description": "Completed tasks in the selected range and active tasks overdue now. A task with several labels counts under each.",
-  "statistics_done_columns": "Done columns",
-  "statistics_done_columns_none": "Archive only",
-  "statistics_done_columns_selected": [
-    {
-      "declarations": [
-        "input count",
-        "local countFormatted = count: number",
-        "local countPlural = count: plural"
-      ],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{countFormatted} done column",
-        "countPlural=*": "{countFormatted} done columns"
-      }
-    }
-  ],
-  "statistics_done_columns_hint": "Tasks also count as done when they reach these columns. This setting applies only to this device.",
   "statistics_column_flow": "Column flow",
   "statistics_column_flow_description": "Tasks in each column by day, and a running total of tasks archived since the first day shown",
   "statistics_recorded_since": "Moves are recorded on this device since {date}.",

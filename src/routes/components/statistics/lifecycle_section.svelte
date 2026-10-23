@@ -6,10 +6,9 @@
   import * as Table from "$lib/components/ui/table/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { untrack } from "svelte";
-  import { toast } from "svelte-sonner";
   import { translateCommandError } from "$lib/command-errors";
   import type { Archive } from "../../type/archive.svelte";
-  import type { Column } from "../../type/column.svelte";
+  import { done_column, type Column } from "../../type/column.svelte";
   import type { Task } from "../../type/task.svelte";
   import {
     lifecycle_ranges,
@@ -23,12 +22,7 @@
     current_events,
     done_since,
   } from "./lifecycle-flow";
-  import {
-    load_done_columns,
-    load_task_events,
-    save_done_columns,
-    type TaskEvent,
-  } from "./task-events";
+  import { load_task_events, type TaskEvent } from "./task-events";
   import CumulativeFlowChart from "./cumulative_flow_chart.svelte";
 
   let {
@@ -59,9 +53,7 @@
   );
   // The structured error is kept so its message follows language changes.
   let log = $state<
-    | { board_id: number; events: TaskEvent[]; done: string[] }
-    | { error: unknown }
-    | null
+    { board_id: number; events: TaskEvent[] } | { error: unknown } | null
   >(null);
   $effect(() => {
     const id = board_id;
@@ -71,14 +63,12 @@
     }
     let current = true;
     log = null;
-    load_done_columns(id)
-      .then((done) =>
-        load_task_events(id).then((events) => {
-          if (current) {
-            log = { board_id: id, events: since_reset(events), done };
-          }
-        }),
-      )
+    load_task_events(id)
+      .then((events) => {
+        if (current) {
+          log = { board_id: id, events: since_reset(events) };
+        }
+      })
       .catch((error: unknown) => {
         if (current) {
           log = { error };
@@ -114,12 +104,9 @@
     return reset > 0 ? events.slice(reset) : events;
   }
   const loaded = $derived(log && "events" in log ? log : null);
-  const done_ids = $derived(
-    (loaded?.done ?? []).filter((id) =>
-      columns.some((column) => column.id === id),
-    ),
-  );
-  const done = $derived(new Set(done_ids));
+  // The board's done column, set from the column menu.
+  const done_target = $derived(done_column(columns));
+  const done = $derived(new Set(done_target ? [done_target.id] : []));
   const recorded = $derived(current_events(loaded?.events ?? []));
   const completed = $derived(
     completions(archives, columns, done, done_since(recorded.effective, done)),
@@ -141,38 +128,6 @@
     ),
   );
 
-  // Columns still being created have no stored id yet.
-  const is_stored_column = (id: string) => /^column_\d+$/.test(id);
-
-  async function change_done_columns(value: string[]) {
-    if (!loaded) {
-      return;
-    }
-    const previous = loaded.done;
-    const target = loaded.board_id;
-    loaded.done = value.filter(is_stored_column);
-    try {
-      const saved = await save_done_columns(target, loaded.done);
-      if (log && "events" in log && log.board_id === target) {
-        log.done = saved;
-      }
-    } catch (error) {
-      if (log && "events" in log && log.board_id === target) {
-        log.done = previous;
-      }
-      toast.error(translateCommandError(error));
-    }
-  }
-
-  function done_label(ids: string[]) {
-    if (ids.length === 0) {
-      return m.statistics_done_columns_none();
-    }
-    return ids.length === 1
-      ? (columns.find((column) => column.id === ids[0])?.name ??
-          m.statistics_done_columns_selected({ count: 1 }))
-      : m.statistics_done_columns_selected({ count: ids.length });
-  }
   const weekly_max = $derived(
     Math.max(1, ...lifecycle.weekly.flatMap((w) => [w.created, w.completed])),
   );
@@ -226,39 +181,13 @@
       <p class="text-sm text-muted-foreground">
         {m.statistics_lifecycle_description()}
       </p>
+      <p class="text-xs text-muted-foreground">
+        {done_target
+          ? m.statistics_done_column_named({ name: done_target.name })
+          : m.statistics_done_column_none()}
+      </p>
     </div>
     <div class="flex flex-wrap gap-2">
-      <Select.Root
-        type="multiple"
-        value={done_ids}
-        onValueChange={(value) => void change_done_columns(value)}
-        disabled={!loaded}
-      >
-        <Select.Trigger
-          class="w-auto max-w-64 min-w-44"
-          aria-label={m.statistics_done_columns()}
-          title={m.statistics_done_columns_hint()}
-          ><span class="truncate"
-            ><span class="text-muted-foreground"
-              >{m.statistics_done_columns()}</span
-            >
-            {done_label(done_ids)}</span
-          ></Select.Trigger
-        >
-        <Select.Content>
-          <Select.Group>
-            <Select.GroupHeading
-              class="max-w-64 font-normal text-muted-foreground"
-              >{m.statistics_done_columns_hint()}</Select.GroupHeading
-            >
-            {#each columns.filter( (column) => is_stored_column(column.id) ) as column (column.id)}
-              <Select.Item value={column.id} label={column.name}
-                >{column.name}</Select.Item
-              >
-            {/each}
-          </Select.Group>
-        </Select.Content>
-      </Select.Root>
       <Select.Root type="single" bind:value={range}>
         <Select.Trigger class="w-36" aria-label={m.statistics_range()}
           >{range_label(range)}</Select.Trigger

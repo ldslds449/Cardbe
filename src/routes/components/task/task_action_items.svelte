@@ -6,12 +6,14 @@
   import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import ArchiveIcon from "@lucide/svelte/icons/archive";
+  import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import TrashIcon from "@lucide/svelte/icons/trash-2";
 
   let {
     context = false,
     onView,
     onEdit,
+    onComplete,
     onArchive,
     onDelete,
     extra,
@@ -20,6 +22,8 @@
     context?: boolean;
     onView: () => void;
     onEdit?: () => void;
+    /** Moves the task to the done column, or archives it without one. */
+    onComplete?: () => void;
     onArchive?: () => void;
     onDelete?: () => void;
     extra?: Snippet;
@@ -33,6 +37,9 @@
 
 <Item onclick={onView}><FullscreenIcon />{m.task_view_details()}</Item>
 {#if onEdit}<Item onclick={onEdit}><PencilIcon />{m.task_edit_action()}</Item
+  >{/if}
+{#if onComplete}<Item onSelect={onComplete}
+    ><CircleCheckIcon />{m.task_complete()}</Item
   >{/if}
 {@render extra?.()}
 {#if onArchive}<Item onSelect={onArchive}

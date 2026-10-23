@@ -46,6 +46,7 @@
     onExportTask?: (task: Task) => void;
     onAddTask?: (date: Date) => void;
     onArchiveTask?: (task: Task) => void;
+    onCompleteTask?: (task: Task) => void;
     onDeleteTask?: (task: Task) => void;
     read_only?: boolean;
   }
@@ -61,6 +62,7 @@
     onExportTask = () => {},
     onAddTask = () => {},
     onArchiveTask = () => {},
+    onCompleteTask,
     onDeleteTask = () => {},
     read_only = false,
   }: TodayViewProps = $props();
@@ -258,6 +260,12 @@
     {context}
     onView={() => onViewTask(entry.task)}
     onEdit={read_only ? undefined : () => onEditTask(entry.task)}
+    onComplete={read_only || !onCompleteTask
+      ? undefined
+      : () => {
+          archive_focus_restore_target = entry.task.id;
+          onCompleteTask(entry.task);
+        }}
     onArchive={read_only
       ? undefined
       : () => {

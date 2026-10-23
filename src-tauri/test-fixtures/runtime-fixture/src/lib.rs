@@ -293,6 +293,26 @@ mod fixture {
                         Err(board::HostError::ResourceLimit)
                     ));
                 }
+                "completion" => {
+                    use cardbe::plugin::board;
+                    let failure = |_| PluginError {
+                        code: "QUERY_FAILED".into(),
+                        retry_after_seconds: None,
+                    };
+                    // Reported through the cursor so the host test can check reads.
+                    let done = board::get_done_column().map_err(failure)?;
+                    let times = [(10, false), (11, false), (20, true), (21, true)]
+                        .map(|(id, archived)| board::get_task_completed_time(id, archived));
+                    let times = times
+                        .into_iter()
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(failure)?;
+                    return Ok(RunOutput {
+                        tasks: vec![],
+                        changeset: None,
+                        cursor: Some(format!("{done:?} {times:?}")),
+                    });
+                }
                 "source-priority" => {
                     use cardbe::plugin::{board, types::*};
                     assert!(matches!(

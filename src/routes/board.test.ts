@@ -1476,6 +1476,65 @@ describe("pending task operations", () => {
     });
   });
 
+  it("completes tasks into the done column, or archives without one", async () => {
+    // Keep the optimistic board; the refreshed columns come from the backend.
+    invoke_mock.mockImplementation((command: string) =>
+      command === "get_columns"
+        ? new Promise(() => {})
+        : Promise.resolve(undefined),
+    );
+    const store = create_store(2);
+    store.columns[1].done = true;
+    store.columns[0].tasks = [
+      create_task("task_1", "One"),
+      create_task("task_2", "Two"),
+    ];
+    store.columns[1].tasks = [create_task("task_3", "Done")];
+
+    const completed = store.complete_tasks(["task_2", "task_3"]);
+    expect(store.columns[0].tasks.map((task) => task.id)).toEqual(["task_1"]);
+    expect(store.columns[1].tasks.map((task) => task.id)).toEqual([
+      "task_3",
+      "task_2",
+    ]);
+    await expect(completed).resolves.toBe(true);
+    expect(invoke_mock).toHaveBeenCalledWith("complete_tasks", {
+      taskIds: [2, 3],
+      expectedBoardId: 7,
+    });
+
+    store.columns[1].done = false;
+    void store.complete_tasks(["task_1"]);
+    expect(store.columns[0].tasks).toEqual([]);
+  });
+
+  it("reopens only done tasks in an open column", async () => {
+    invoke_mock.mockImplementation((command: string) =>
+      command === "get_columns"
+        ? new Promise(() => {})
+        : Promise.resolve(undefined),
+    );
+    const store = create_store(2);
+    store.columns[1].done = true;
+    store.columns[0].tasks = [create_task("task_1", "Open")];
+    store.columns[1].tasks = [create_task("task_2", "Done")];
+
+    await expect(store.reopen_tasks(["task_2"], "column_2")).resolves.toBe(
+      false,
+    );
+    const reopened = store.reopen_tasks(["task_1", "task_2"], "column_1");
+    expect(store.columns[0].tasks.map((task) => task.id)).toEqual([
+      "task_1",
+      "task_2",
+    ]);
+    await expect(reopened).resolves.toBe(true);
+    expect(invoke_mock).toHaveBeenCalledWith("reopen_tasks", {
+      taskIds: [1, 2],
+      columnId: 1,
+      expectedBoardId: 7,
+    });
+  });
+
   it("moves selected tasks to another board with one command", async () => {
     invoke_mock.mockResolvedValue([]);
     const store = create_store();

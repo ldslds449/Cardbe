@@ -143,6 +143,8 @@ impl From<wit::Task> for model::Task {
             }),
             // The plugin API has no priority; updates keep the stored one.
             priority: None,
+            // Derived from the task's position by the host.
+            completed_at: None,
         }
     }
 }
@@ -305,6 +307,7 @@ mod tests {
             }),
             // Not part of the plugin API; see `plugins::board` for updates.
             priority: None,
+            completed_at: None,
         };
         let guest = wit::Task::try_from(task.clone()).unwrap();
         assert_eq!(

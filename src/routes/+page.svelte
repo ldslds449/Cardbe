@@ -1439,6 +1439,7 @@
                 onExportTask={share_task}
                 onAddTask={open_add_task_for_date}
                 onArchiveTask={(task) => board.archive_task(task.id)}
+                onCompleteTask={(task) => void board.complete_tasks([task.id])}
                 onDeleteTask={(task) => board.delete_task(task.id)}
                 read_only={active_board_read_only}
               />
@@ -1463,6 +1464,7 @@
                 onExportTask={share_task}
                 onAddTask={open_add_task_for_date}
                 onArchiveTask={(task) => board.archive_task(task.id)}
+                onCompleteTask={(task) => void board.complete_tasks([task.id])}
                 onUnarchiveTask={(column_id, task_id) =>
                   board.unarchive_task(column_id, task_id)}
                 onDeleteTask={(task) => board.delete_task(task.id)}

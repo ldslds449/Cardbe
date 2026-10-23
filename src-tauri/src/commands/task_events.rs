@@ -27,37 +27,3 @@ pub fn get_task_events(
     };
     events.map_err(CommandError::repository)
 }
-
-/// Columns of the current board this device counts as done.
-#[tauri::command]
-pub fn get_done_columns(
-    state: State<'_, SharedAppData>,
-    expected_board_id: i64,
-) -> Result<Vec<i64>, CommandError> {
-    let guard = lock_app(&state)?;
-    if guard.active_board_id != expected_board_id {
-        return Err(CommandError::StaleBoardRequest);
-    }
-    guard
-        .database
-        .done_columns(expected_board_id)
-        .map_err(CommandError::repository)
-}
-
-/// A device-local statistics choice, so viewers may set it and it stays out
-/// of synchronization and Undo. Returns the stored columns.
-#[tauri::command]
-pub fn set_done_columns(
-    state: State<'_, SharedAppData>,
-    expected_board_id: i64,
-    column_ids: Vec<i64>,
-) -> Result<Vec<i64>, CommandError> {
-    let mut guard = lock_app(&state)?;
-    if guard.active_board_id != expected_board_id {
-        return Err(CommandError::StaleBoardRequest);
-    }
-    guard
-        .database
-        .set_done_columns(expected_board_id, &column_ids)
-        .map_err(CommandError::repository)
-}

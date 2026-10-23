@@ -15,6 +15,22 @@ function make_column(): Column {
 }
 
 describe("build_today_groups", () => {
+  it("leaves out the done column", () => {
+    const open = make_column();
+    open.tasks = [create_task("task_1", "Open")];
+    const done = {
+      ...make_column(),
+      id: "column_2",
+      done: true,
+      tasks: [
+        create_task("task_2", "Done", "", "", undefined, new Date(2026, 6, 24)),
+      ],
+    };
+    const groups = build_today_groups([open, done], new Date(2026, 6, 25), "");
+    expect(today_task_count(groups)).toBe(1);
+    expect(groups.unscheduled[0].task.title).toBe("Open");
+  });
+
   it("groups tasks by their due time", () => {
     const column = make_column();
     column.tasks = [
