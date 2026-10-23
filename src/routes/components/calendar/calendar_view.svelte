@@ -27,6 +27,8 @@
   import SlidersHorizontalIcon from "@lucide/svelte/icons/sliders-horizontal";
   import Share2Icon from "@lucide/svelte/icons/share-2";
   import DownloadIcon from "@lucide/svelte/icons/download";
+  import FoldVerticalIcon from "@lucide/svelte/icons/fold-vertical";
+  import UnfoldVerticalIcon from "@lucide/svelte/icons/unfold-vertical";
   import { onMount } from "svelte";
   import { DragDropProvider } from "@dnd-kit-svelte/svelte";
 
@@ -80,6 +82,9 @@
     view_mode?: CalendarViewMode;
     show_archived?: boolean;
     show_recurring_previews?: boolean;
+    /** Grows each week to show every entry instead of a "+N" button. */
+    expand_all?: boolean;
+    onExpandAllChange?: (expanded: boolean) => void;
     onViewTask?: (task: Task) => void;
     onViewArchivedTask?: (task: Task) => void;
     onEditTask?: (task: Task) => void;
@@ -103,6 +108,8 @@
     view_mode = $bindable("month"),
     show_archived = $bindable(false),
     show_recurring_previews = $bindable(true),
+    expand_all = $bindable(false),
+    onExpandAllChange,
     onViewTask = () => {},
     onViewArchivedTask = () => {},
     onEditTask = () => {},
@@ -164,6 +171,7 @@
   let span_grab: { id: string; day: number } | null = null;
   let drop_preview = $state<CalendarDropPreview | null>(null);
   let weeks_height = $state(0);
+  let weekday_height = $state(0);
   // Day key of the open "+N" list; choosing a task closes it so the list
   // does not stay above the dialog it opens.
   let overflow_day = $state<string | null>(null);
@@ -668,12 +676,14 @@
   }
 
   let visible_lanes = $derived.by(() => {
+    if (expand_all) {
+      return Number.POSITIVE_INFINITY;
+    }
     // Until the grid is measured, lay out one lane instead of every entry:
     // mounting all of a large board's entries first takes minutes.
     if (weeks_height <= 0) {
       return 1;
     }
-    const week_count = view_mode === "month" ? 6 : 1;
     const week_height = (weeks_height - (week_count - 1)) / week_count;
     const rem = root_font_size();
     return Math.max(
@@ -717,6 +727,16 @@
       0,
     ),
   );
+  let week_count = $derived(view_mode === "month" ? 6 : 1);
+  let calendar_height = $derived(
+    `max(calc(100vh - 12rem), ${view_mode === "month" ? 36 : 18}rem)`,
+  );
+  // Expanded weeks keep their collapsed height and grow only to fit more
+  // lanes: the frame less its borders, the weekday row, and its gap.
+  let expanded_week_min_height = $derived(
+    `calc((${calendar_height} - ${weekday_height}px - 3px) / ${week_count})`,
+  );
+
   let enabled_display_option_count = $derived(
     Number(show_recurring_previews) + Number(show_archived),
   );
@@ -851,6 +871,29 @@
           onclick={() => set_view_mode("week")}>{m.calendar_week()}</Button
         >
       </div>
+      <Button
+        variant={expand_all ? "secondary" : "outline"}
+        size="sm"
+        class="gap-1.5"
+        aria-pressed={expand_all}
+        aria-label={m.calendar_expand_all()}
+        title={m.calendar_expand_all()}
+        onclick={() => {
+          close_overflow();
+          if (onExpandAllChange) {
+            onExpandAllChange(!expand_all);
+          } else {
+            expand_all = !expand_all;
+          }
+        }}
+      >
+        {#if expand_all}
+          <FoldVerticalIcon class="size-3.5" />
+        {:else}
+          <UnfoldVerticalIcon class="size-3.5" />
+        {/if}
+        {m.calendar_expand_all_short()}
+      </Button>
       {#if !read_only}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
@@ -895,9 +938,9 @@
   >
     <div
       class="flex flex-none flex-col gap-px overflow-hidden rounded-xl border bg-border shadow-sm"
-      style={`height: max(calc(100vh - 12rem), ${view_mode === "month" ? 36 : 18}rem);`}
+      style={`${expand_all ? "min-height" : "height"}: ${calendar_height};`}
     >
-      <div class="grid grid-cols-7 gap-px">
+      <div class="grid grid-cols-7 gap-px" bind:clientHeight={weekday_height}>
         {#each weekdays as weekday}
           <div
             class="bg-muted/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
@@ -907,8 +950,10 @@
         {/each}
       </div>
 
+      <!-- Week borders instead of gaps: gaps between fractional-height weeks
+      can render 2px wide under display scaling. -->
       <div
-        class="flex min-h-0 flex-1 flex-col gap-px"
+        class="flex min-h-0 flex-1 flex-col"
         bind:clientHeight={weeks_height}
       >
         {#each calendar.weeks as week (week.key)}
@@ -918,12 +963,16 @@
             ...ghosts.map((ghost) => ghost.lane + 1),
           )}
           <div
-            class="grid min-h-0 flex-1 basis-0 grid-cols-7 gap-x-px overflow-hidden"
+            class={`grid grid-cols-7 gap-x-px overflow-hidden not-first:border-t ${
+              expand_all ? "flex-auto" : "min-h-0 flex-1 basis-0"
+            }`}
             style={`grid-template-rows: auto${
               lane_count > 0
                 ? ` repeat(${lane_count}, var(--calendar-lane-height))`
                 : ""
-            } minmax(0, 1fr); --calendar-lane-height: ${LANE_HEIGHT_REM}rem;`}
+            } minmax(0, 1fr); --calendar-lane-height: ${LANE_HEIGHT_REM}rem;${
+              expand_all ? ` min-height: ${expanded_week_min_height};` : ""
+            }`}
           >
             {#each week.days as day, day_index (day.key)}
               {@const day_entries = week.entries[day_index]}

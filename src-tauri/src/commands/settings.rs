@@ -120,6 +120,29 @@ pub fn set_task_expand_mode(
 }
 
 #[tauri::command]
+pub fn set_calendar_expand_all(
+    state: State<'_, SharedAppData>,
+    board_id: i64,
+    expanded: bool,
+) -> Result<(), CommandError> {
+    // A view preference, so viewers of shared boards may change it too.
+    if !lock_app(&state)?
+        .boards
+        .iter()
+        .any(|board| board.id == board_id)
+    {
+        return Err(crate::errors::DomainError::BoardNotFound.into());
+    }
+    update_stored(&state, |data| {
+        data.settings
+            .board_calendar_expand_all
+            .insert(board_id, expanded);
+        Ok(())
+    })
+    .map_err(CommandError::from)
+}
+
+#[tauri::command]
 pub fn get_iroh_network_settings(
     state: State<'_, SharedAppData>,
 ) -> Result<IrohNetworkSettings, CommandError> {

@@ -1130,6 +1130,31 @@ describe("Undo scope and shared Task Explorer updates", () => {
     expect(store.task_expand_mode).toBe(false);
   });
 
+  it("persists the calendar layout and restores it when saving fails", async () => {
+    const store = create_store();
+    store.can_undo = false;
+    vi.mocked(toast.error).mockClear();
+    invoke_mock.mockResolvedValue(undefined);
+    await store.set_calendar_expand_all(true);
+    expect(invoke_mock).toHaveBeenCalledWith("set_calendar_expand_all", {
+      boardId: 7,
+      expanded: true,
+    });
+    expect(store.calendar_expand_all).toBe(true);
+    expect(store.can_undo).toBe(false);
+
+    invoke_mock.mockRejectedValueOnce({ code: "INTERNAL_ERROR" });
+    await store.set_calendar_expand_all(false);
+    expect(store.calendar_expand_all).toBe(true);
+    expect(toast.error).toHaveBeenCalled();
+
+    // Other boards keep their own layout.
+    store.active_board_id = 9;
+    expect(store.calendar_expand_all).toBe(false);
+    store.active_board_id = 7;
+    expect(store.calendar_expand_all).toBe(true);
+  });
+
   it("saves the reminder time and restores it when saving fails", async () => {
     const store = create_store();
     vi.mocked(toast.error).mockClear();

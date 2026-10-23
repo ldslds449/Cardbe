@@ -1450,6 +1450,9 @@
                 bind:view_mode={calendar_view_mode}
                 bind:show_archived={calendar_show_archived}
                 bind:show_recurring_previews={calendar_show_recurring_previews}
+                expand_all={board.calendar_expand_all}
+                onExpandAllChange={(expanded) =>
+                  void board.set_calendar_expand_all(expanded)}
                 onViewTask={view_task_by_id}
                 onViewArchivedTask={view_archived_task}
                 onEditTask={edit_task_by_id}

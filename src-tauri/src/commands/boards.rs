@@ -142,6 +142,7 @@ pub fn delete_board(state: State<'_, SharedAppData>, board_id: i64) -> Result<i6
     // deleted, so a failure here only leaves unused entries.
     if let Err(error) = crate::state::update_stored(&state, |data| {
         data.settings.board_task_expand_modes.remove(&board_id);
+        data.settings.board_calendar_expand_all.remove(&board_id);
         data.settings.notify_muted_columns.remove(&board_id);
         Ok(())
     }) {

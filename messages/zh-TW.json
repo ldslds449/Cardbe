@@ -612,6 +612,8 @@
   "calendar_items": "行事曆項目",
   "calendar_show_recurring": "顯示重複任務預覽",
   "calendar_show_archived": "顯示已封存任務",
+  "calendar_expand_all": "展開所有任務",
+  "calendar_expand_all_short": "全部展開",
   "calendar_add_hint": "按兩下空白處以新增任務",
   "calendar_previous_month": "上個月",
   "calendar_next_month": "下個月",

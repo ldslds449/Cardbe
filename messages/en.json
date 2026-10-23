@@ -728,6 +728,8 @@
   "calendar_items": "Calendar items",
   "calendar_show_recurring": "Show recurring previews",
   "calendar_show_archived": "Show archived tasks",
+  "calendar_expand_all": "Expand all tasks",
+  "calendar_expand_all_short": "Expand all",
   "calendar_add_hint": "Double-click empty space to add a task",
   "calendar_previous_month": "Previous month",
   "calendar_next_month": "Next month",

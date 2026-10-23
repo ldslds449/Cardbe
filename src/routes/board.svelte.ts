@@ -48,6 +48,17 @@ export class BoardStore extends TaskBoardStore {
       this.default_task_expand_mode
     );
   }
+  // Device-local calendar layout per board that shows every task instead of
+  // "+N".
+  private board_calendar_expand_all = $state<Record<number, boolean>>({});
+  get calendar_expand_all() {
+    const board_id = this.active_board_id;
+    return (
+      (board_id === null
+        ? undefined
+        : this.board_calendar_expand_all[board_id]) ?? false
+    );
+  }
   // Device-local columns that send no due notifications, keyed by board ID.
   private notify_muted_columns = $state<Record<number, number[]>>({});
   is_column_notify_muted(column_id: string) {
@@ -114,6 +125,7 @@ export class BoardStore extends TaskBoardStore {
         notify_reminder_minutes?: number;
         task_expand_mode?: boolean;
         board_task_expand_modes?: Record<string, boolean>;
+        board_calendar_expand_all?: Record<string, boolean>;
         notify_muted_columns?: Record<string, number[]>;
         iroh_network?: { enabled: boolean };
         language?: LanguagePreference;
@@ -122,6 +134,7 @@ export class BoardStore extends TaskBoardStore {
       this.notify_reminder_minutes = settings.notify_reminder_minutes ?? 0;
       this.default_task_expand_mode = settings.task_expand_mode ?? true;
       this.board_task_expand_modes = settings.board_task_expand_modes ?? {};
+      this.board_calendar_expand_all = settings.board_calendar_expand_all ?? {};
       this.notify_muted_columns = settings.notify_muted_columns ?? {};
       this.iroh_enabled = settings.iroh_network?.enabled ?? false;
       applyLanguagePreference(settings.language);
@@ -231,6 +244,35 @@ export class BoardStore extends TaskBoardStore {
         delete this.board_task_expand_modes[board_id];
       } else {
         this.board_task_expand_modes[board_id] = previous;
+      }
+    }
+  }
+
+  async set_calendar_expand_all(expanded: boolean) {
+    const board_id = this.active_board_id;
+    if (board_id === null) {
+      return;
+    }
+    const previous = this.board_calendar_expand_all[board_id];
+    this.board_calendar_expand_all[board_id] = expanded;
+    const saved = await addMission(async () => {
+      try {
+        await invoke<void>("set_calendar_expand_all", {
+          boardId: board_id,
+          expanded,
+        });
+        return true;
+      } catch (error) {
+        logger.error("settings.calendar_expand_save.failed", error);
+        toast.error(translateCommandError(error));
+        return false;
+      }
+    });
+    if (!saved && this.board_calendar_expand_all[board_id] === expanded) {
+      if (previous === undefined) {
+        delete this.board_calendar_expand_all[board_id];
+      } else {
+        this.board_calendar_expand_all[board_id] = previous;
       }
     }
   }

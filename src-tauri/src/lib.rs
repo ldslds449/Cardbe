@@ -547,6 +547,7 @@ pub fn run() {
             settings::get_settings,
             settings::set_notify_enabled,
             settings::set_task_expand_mode,
+            settings::set_calendar_expand_all,
             settings::set_column_notify_muted,
             settings::set_notify_reminder,
             settings::get_iroh_network_settings,

@@ -387,6 +387,10 @@ pub struct Settings {
     /// Device-local task detail visibility, keyed by board ID.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub board_task_expand_modes: BTreeMap<i64, bool>,
+    /// Device-local calendar layouts that show every task instead of "+N",
+    /// keyed by board ID.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub board_calendar_expand_all: BTreeMap<i64, bool>,
     /// Device-local columns whose tasks never send due notifications, keyed
     /// by board ID.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -470,6 +474,7 @@ impl Default for Settings {
             global_shortcuts_enabled: true,
             task_expand_mode: true,
             board_task_expand_modes: BTreeMap::new(),
+            board_calendar_expand_all: BTreeMap::new(),
             notify_muted_columns: BTreeMap::new(),
             global_shortcuts: GlobalShortcutSettings::default(),
             iroh_network: IrohNetworkSettings::default(),
@@ -742,6 +747,17 @@ mod tests {
         assert!(settings.notify_enabled);
         assert!(settings.global_shortcuts_enabled);
         assert!(settings.task_expand_mode);
+        assert!(settings.board_calendar_expand_all.is_empty());
+    }
+
+    #[test]
+    fn calendar_expand_all_roundtrips() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"board_calendar_expand_all":{"7":true}}"#).unwrap();
+        assert_eq!(settings.board_calendar_expand_all.get(&7), Some(&true));
+        let restored: Settings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert_eq!(restored, settings);
     }
 
     #[test]
