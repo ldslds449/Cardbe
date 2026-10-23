@@ -123,6 +123,27 @@
   "task_priority_high": "High",
   "task_priority_urgent": "Urgent",
   "task_priority_value": "Priority: {level}",
+  "task_blockers": "Waits for",
+  "task_blockers_add": "Add card",
+  "task_blockers_remove": "Remove “{name}”",
+  "task_blockers_description": "Cards on this board to finish first. This card stops waiting once they're done or archived.",
+  "task_blockers_help": "About waiting on cards",
+  "task_waiting_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Waiting on {countFormatted} card",
+        "countPlural=*": "Waiting on {countFormatted} cards"
+      }
+    }
+  ],
+  "task_waiting_on": "Waiting for",
+  "task_waited_on_by": "Cards waiting on this",
   "task_label": "Label",
   "task_label_add": "Add Label",
   "task_label_help": "Label format help",

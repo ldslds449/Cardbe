@@ -1303,6 +1303,7 @@
         card_reference_options={board.columns.flatMap((column) =>
           column.tasks.map((task) => ({ task, column_name: column.name })),
         )}
+        columns={board.columns}
         dialog_title={dialog_title()}
         submit_button_text={dialog_button_text()}
         auto_focus_title={creating_task}
@@ -1325,6 +1326,7 @@
         bind:open={view_task_dialog_open}
         task={view_task}
         onEdit={active_board_read_only ? undefined : view_task_edit_callback}
+        onViewTask={(task) => view_task_by_id(task)}
         history={board.active_board_id === null
           ? undefined
           : { board_id: board.active_board_id, columns: board.columns }}

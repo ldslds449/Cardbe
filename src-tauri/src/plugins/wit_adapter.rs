@@ -145,6 +145,7 @@ impl From<wit::Task> for model::Task {
             priority: None,
             // Derived from the task's position by the host.
             completed_at: None,
+            blocked_by: Vec::new(),
         }
     }
 }
@@ -308,6 +309,7 @@ mod tests {
             // Not part of the plugin API; see `plugins::board` for updates.
             priority: None,
             completed_at: None,
+            blocked_by: Vec::new(),
         };
         let guest = wit::Task::try_from(task.clone()).unwrap();
         assert_eq!(

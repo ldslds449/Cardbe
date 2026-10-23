@@ -444,6 +444,7 @@ pub fn prepare(
                 let task = Task {
                     priority: previous.priority,
                     completed_at: previous.completed_at,
+                    blocked_by: previous.blocked_by.clone(),
                     ..task.clone()
                 };
                 tasks::update_task(&mut after, *task_id, task)?;

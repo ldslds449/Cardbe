@@ -203,6 +203,7 @@ fn write_task(map: &LoroMap, task: &Task, archive_time: Option<u128>) -> Result<
     set_field(map, "recurrence", &task.recurrence)?;
     set_field(map, "priority", &task.priority)?;
     set_field(map, "completed_at", &task.completed_at)?;
+    set_field(map, "blocked_by", &task.blocked_by)?;
     set_field(map, "pinned", &task.pinned)?;
     set_field(map, "archive_time", &archive_time)
 }
@@ -456,6 +457,7 @@ fn task_from_map(id: i64, map: &serde_json::Value) -> Result<Task, String> {
         recurrence: field(map, "recurrence")?,
         priority: optional_field(map, "priority")?,
         completed_at: optional_field(map, "completed_at")?,
+        blocked_by: optional_field(map, "blocked_by")?,
         pinned: if map.get("pinned").is_some() {
             field(map, "pinned")?
         } else {
@@ -817,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    fn done_columns_and_completion_times_round_trip() {
+    fn done_columns_completion_times_and_blockers_round_trip() {
         let mut data = StoredData::default();
         data.columns.push(Column {
             id: 1,
@@ -829,6 +831,7 @@ mod tests {
             tasks: vec![Task {
                 id: 2,
                 completed_at: Some(1_800_000_000_000),
+                blocked_by: vec![3, 4],
                 ..Task::default()
             }],
         });
@@ -838,6 +841,7 @@ mod tests {
         let mut reopened = data.clone();
         reopened.columns[0].done = false;
         reopened.columns[0].tasks[0].completed_at = None;
+        reopened.columns[0].tasks[0].blocked_by.clear();
         let update = apply_local_delta(Some(&update), &data, &reopened).unwrap();
         assert_eq!(project(&update).unwrap().columns, reopened.columns);
 

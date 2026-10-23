@@ -56,6 +56,8 @@
   import DateTimePicker from "../date_time_picker.svelte";
   import { is_valid_date_range } from "../../utils/task-date-range";
   import SortableChecklistItem from "../task/sortable_checklist_item.svelte";
+  import TaskBlockersField from "../task/task_blockers_field.svelte";
+  import type { Column } from "../../type/column.svelte";
   import ResizeHandle from "../resize_handle.svelte";
   import Markdown from "../markdown.svelte";
   import MarkdownOutlineMenu from "../markdown_outline_menu.svelte";
@@ -80,6 +82,7 @@
     task = $bindable(create_task()),
     label_suggestions = [],
     card_reference_options = [],
+    columns = [],
     dialog_title,
     submit_button_text,
     auto_focus_title = false,
@@ -95,6 +98,8 @@
     task: Task;
     label_suggestions?: string[];
     card_reference_options?: CardReferenceOption[];
+    /** The board's columns, for choosing the tasks this one waits on. */
+    columns?: Column[];
     dialog_title: string;
     submit_button_text: string;
     auto_focus_title?: boolean;
@@ -993,6 +998,13 @@
       </Select.Content>
     </Select.Root>
   </Field.Field>
+  {#if columns.length > 0 && !show_template_name}
+    <TaskBlockersField
+      task_id={task.id}
+      bind:blocked_by={task.blocked_by}
+      {columns}
+    />
+  {/if}
   <Field.Field>
     <div class="flex items-center gap-1.5">
       <Field.FieldLabel for="label">{m.task_label()}</Field.FieldLabel>

@@ -159,6 +159,14 @@
         ?.tasks.map((task) => task.id) ?? [],
     ),
   );
+  const open_task_ids = $derived(
+    new Set(
+      open_columns.flatMap((column) => column.tasks.map((task) => task.id)),
+    ),
+  );
+  function waiting_count(task: Task): number {
+    return (task.blocked_by ?? []).filter((id) => open_task_ids.has(id)).length;
+  }
   const selecting = $derived(selected_task_ids.length > 0);
 
   $effect(() => {
@@ -524,6 +532,9 @@
                 done={column.id === done_column_id}
                 onComplete={() => void board.complete_tasks([task.id])}
                 onReopen={() => ask_to_reopen([task.id], task.title)}
+                waiting_count={column.id === done_column_id
+                  ? 0
+                  : waiting_count(task)}
                 selected={selected_ids.has(task.id)}
                 {selecting}
                 onSelect={read_only

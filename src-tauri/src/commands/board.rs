@@ -287,6 +287,7 @@ pub(crate) fn add_task_to_board_locked(
     let column = column_index(&data, column_id)?;
     let id = data.allocate_task_id()?;
     task.id = id;
+    crate::blocking::validate(&data, id, &[], &task.blocked_by)?;
     stamp_created_time(&mut task);
     for label in &task.labels {
         data.touch_label(label.clone());

@@ -1645,6 +1645,8 @@ impl Database {
         }
         for mut task in moved {
             task.id = target.allocate_task_id()?;
+            // Tasks only wait on tasks of their own board.
+            task.blocked_by.clear();
             for label in &task.labels {
                 target.touch_label(label.clone());
             }
@@ -7026,7 +7028,16 @@ mod tests {
         };
         let data = StoredData {
             columns: vec![
-                column(0, vec![task(0, "A"), task(1, "B")]),
+                column(
+                    0,
+                    vec![
+                        Task {
+                            blocked_by: vec![1],
+                            ..task(0, "A")
+                        },
+                        task(1, "B"),
+                    ],
+                ),
                 column(1, vec![task(2, "C")]),
             ],
             next_column_id: 2,
@@ -7068,6 +7079,8 @@ mod tests {
             titles(&moved.columns),
             vec![vec!["A", "B"], vec!["C", "A", "C"]]
         );
+        // Waiting on a task of the source board means nothing on the target.
+        assert!(moved.columns[1].tasks[1].blocked_by.is_empty());
         let new_ids = [moved.columns[1].tasks[1].id, moved.columns[1].tasks[2].id];
         assert!(new_ids[0] != new_ids[1] && new_ids.iter().all(|id| *id > 2));
         use crate::task_events::EventKind::{TransferredIn, TransferredOut};

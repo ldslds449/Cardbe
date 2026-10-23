@@ -1,3 +1,4 @@
+mod blocking;
 mod board_mutations;
 mod commands;
 mod completion;

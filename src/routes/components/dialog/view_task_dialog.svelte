@@ -15,6 +15,8 @@
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
   import GaugeIcon from "@lucide/svelte/icons/gauge";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
+  import HourglassIcon from "@lucide/svelte/icons/hourglass";
+  import ListTodoIcon from "@lucide/svelte/icons/list-todo";
 
   import {
     priority_label,
@@ -31,6 +33,7 @@
   import ChecklistDisplay from "../task/checklist_display.svelte";
   import LabelBadge from "../label_badge.svelte";
   import ResizeHandle from "../resize_handle.svelte";
+  import { open_blockers, waiting_tasks } from "../../utils/blocking";
   import {
     layout_widths,
     task_dialog_is_split,
@@ -41,11 +44,14 @@
     open = $bindable(false),
     task,
     onEdit,
+    onViewTask,
     history,
   }: {
     open: boolean;
     task: Task | null;
     onEdit?: () => void;
+    /** Opens a related task, such as one this task waits on. */
+    onViewTask?: (task: Task) => void;
     /** The board holding `task`; omit for tasks without history, such as templates. */
     history?: { board_id: number; columns: Column[] };
   } = $props();
@@ -255,6 +261,19 @@
     </div>
   {/if}
 
+  {#if history}
+    {@render related_tasks(
+      m.task_waiting_on(),
+      HourglassIcon,
+      open_blockers(task, history.columns),
+    )}
+    {@render related_tasks(
+      m.task_waited_on_by(),
+      ListTodoIcon,
+      waiting_tasks(task, history.columns),
+    )}
+  {/if}
+
   {#if task.labels && task.labels.length > 0}
     <div>
       <div class="flex items-center gap-2 text-sm font-medium mb-2">
@@ -284,6 +303,42 @@
       task_id={task.id}
       columns={history.columns}
     />
+  {/if}
+{/snippet}
+
+{#snippet related_tasks(
+  title: string,
+  Icon: typeof HourglassIcon,
+  tasks: Task[],
+)}
+  {#if tasks.length > 0}
+    <div>
+      <div class="flex items-center gap-2 text-sm font-medium mb-1">
+        <Icon class="size-4" />
+        <span>{title}</span>
+      </div>
+      <ul class="space-y-0.5">
+        {#each tasks as related (related.id)}
+          <li>
+            {#if onViewTask}
+              <Button
+                variant="link"
+                class="h-auto max-w-full justify-start p-0 text-sm font-normal"
+                onclick={() => onViewTask(related)}
+              >
+                <span class="truncate"
+                  >{related.title || m.task_untitled()}</span
+                >
+              </Button>
+            {:else}
+              <span class="block truncate text-sm text-muted-foreground"
+                >{related.title || m.task_untitled()}</span
+              >
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </div>
   {/if}
 {/snippet}
 

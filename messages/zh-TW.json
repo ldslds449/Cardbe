@@ -117,6 +117,21 @@
   "task_priority_high": "高",
   "task_priority_urgent": "緊急",
   "task_priority_value": "優先度：{level}",
+  "task_blockers": "需先完成",
+  "task_blockers_add": "新增卡片",
+  "task_blockers_remove": "移除「{name}」",
+  "task_blockers_description": "這個看板上要先做完的卡片。它們完成或封存後，就不用再等。",
+  "task_blockers_help": "需先完成說明",
+  "task_waiting_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "等待 {countFormatted} 張卡片"
+      }
+    }
+  ],
+  "task_waiting_on": "正在等待",
+  "task_waited_on_by": "等這張完成的卡片",
   "task_label": "標籤",
   "task_label_add": "新增標籤",
   "task_label_help": "標籤格式說明",

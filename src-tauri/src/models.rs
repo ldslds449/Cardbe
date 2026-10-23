@@ -168,6 +168,9 @@ pub struct Task {
     /// an archived task outside the done column completed at its archive time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<u128>,
+    /// Tasks of the same board this one waits on; see `crate::blocking`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocked_by: Vec<i64>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -224,6 +227,7 @@ impl Default for Task {
             recurrence: None,
             priority: None,
             completed_at: None,
+            blocked_by: Vec::new(),
         }
     }
 }

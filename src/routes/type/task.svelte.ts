@@ -71,6 +71,8 @@ export interface Task {
    * from the task's position; archived tasks completed when archived.
    */
   completed_at?: Date;
+  /** Tasks of the same board this one waits on; see `utils/blocking`. */
+  blocked_by?: string[];
 }
 
 export interface TaskSerialized {
@@ -89,6 +91,7 @@ export interface TaskSerialized {
   recurrence?: Recurrence;
   priority?: TaskPriority;
   completed_at?: number;
+  blocked_by?: number[];
 }
 
 export interface TaskSummary {
@@ -179,6 +182,7 @@ export function reset_task(task: Task): void {
   task.recurrence = undefined;
   task.priority = undefined;
   task.completed_at = undefined;
+  task.blocked_by = undefined;
   task.pinned = false;
 }
 
@@ -188,6 +192,7 @@ export function clone_task(task: Task): Task {
     labels: [...task.labels],
     items: task.items.map((item) => ({ ...item })),
     recurrence: task.recurrence ? { ...task.recurrence } : undefined,
+    blocked_by: task.blocked_by ? [...task.blocked_by] : undefined,
   };
 }
 
@@ -216,6 +221,7 @@ export function task_from_template(task: Task): Task {
     completed: false,
   }));
   result.recurrence = undefined;
+  result.blocked_by = undefined;
   result.pinned = false;
   return result;
 }
@@ -250,6 +256,9 @@ export function serialize_task(task: Task): TaskSerialized {
     ...priority_field(task),
     // Sent back unchanged so edits keep the original completion time.
     ...(task.completed_at ? { completed_at: task.completed_at.getTime() } : {}),
+    ...(task.blocked_by?.length
+      ? { blocked_by: task.blocked_by.map(get_task_id) }
+      : {}),
     pinned: task.pinned ?? false,
   };
 }
@@ -301,6 +310,9 @@ export function deserialize_task(data: TaskSerialized): Task {
     recurrence: data.recurrence ? { ...data.recurrence } : undefined,
     ...priority_field(data),
     ...(data.completed_at ? { completed_at: new Date(data.completed_at) } : {}),
+    ...(data.blocked_by?.length
+      ? { blocked_by: data.blocked_by.map((id) => `task_${id}`) }
+      : {}),
     pinned: data.pinned ?? false,
   };
   set_task_id(t, data.id);

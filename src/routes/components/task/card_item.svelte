@@ -14,6 +14,7 @@
   import ChevronUpIcon from "@lucide/svelte/icons/chevron-up";
   import ClockIcon from "@lucide/svelte/icons/clock";
   import CopyIcon from "@lucide/svelte/icons/copy";
+  import HourglassIcon from "@lucide/svelte/icons/hourglass";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
@@ -79,6 +80,8 @@
     onComplete?: () => void;
     /** Asks where to move a done task back to. */
     onReopen?: () => void;
+    /** Open tasks of the board this one still waits on. */
+    waiting_count?: number;
     selected?: boolean;
     selecting?: boolean;
     onSelect?: (event: MouseEvent | null) => void;
@@ -110,6 +113,7 @@
     done = false,
     onComplete,
     onReopen,
+    waiting_count = 0,
     selected = false,
     selecting = false,
     onSelect,
@@ -258,8 +262,9 @@
           {/if}
           {task.title}
         </Card.Title>
-        <!-- Priority leads, the due date (with its repeat) follows, and the
-             description size comes last as secondary information. -->
+        <!-- Priority leads, then the tasks it waits on and the due date (with
+             its repeat); the description size comes last as secondary
+             information. -->
         <Card.Description class="flex flex-wrap items-center gap-x-2 gap-y-1">
           {#if read_only && task.pinned}
             <span
@@ -270,6 +275,18 @@
           {/if}
           {#if task.priority}
             <PriorityIndicator priority={task.priority} />
+          {/if}
+          {#if waiting_count > 0}
+            <span
+              class="inline-flex items-center gap-1 text-xs text-muted-foreground"
+              title={m.task_waiting_count({ count: waiting_count })}
+            >
+              <HourglassIcon class="size-3.5 shrink-0" />
+              <span aria-hidden="true">{formatNumber(waiting_count)}</span>
+              <span class="sr-only"
+                >{m.task_waiting_count({ count: waiting_count })}</span
+              >
+            </span>
           {/if}
           {#if due_metadata != undefined}
             <span

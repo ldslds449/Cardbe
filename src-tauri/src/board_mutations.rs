@@ -203,6 +203,7 @@ pub(crate) fn add_task(
     };
     let id = data.allocate_task_id()?;
     task.id = id;
+    crate::blocking::validate(data, id, &[], &task.blocked_by)?;
     for label in &task.labels {
         data.touch_label(label.clone());
     }
@@ -218,6 +219,7 @@ pub(crate) fn update_task(
     let (column, index) = task_position(data, task_id)?;
     let previous = &data.columns[column].tasks[index];
     let previous_labels = previous.labels.clone();
+    crate::blocking::validate(data, task_id, &previous.blocked_by, &task.blocked_by)?;
     // Creation time is immutable once known; legacy tasks may receive one here.
     // Legacy tasks stored their creation time in start_time, so callers that
     // omit it (plugins) must not leave a new start time read as the creation.
