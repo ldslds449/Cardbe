@@ -37,6 +37,7 @@
   import type { Task } from "../../type/task.svelte";
   import { display_task_color } from "../../utils/task-color";
   import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
+  import PriorityIndicator from "../task/priority_indicator.svelte";
   import UnarchiveTaskDialog from "../archive/unarchive_task_dialog.svelte";
   import CalendarDayDropZone from "./calendar_day_drop_zone.svelte";
   import { drag_plugins } from "../dnd/plugins";
@@ -1227,6 +1228,9 @@
               >{time_label}</span
             >
           {/if}
+          {#if entry.task.priority}
+            <PriorityIndicator priority={entry.task.priority} compact />
+          {/if}
           <span class={`min-w-0 flex-1 truncate ${task_title_class(entry)}`}
             >{entry.task.title}</span
           >
@@ -1292,6 +1296,9 @@
               class="h-3.5 w-1 shrink-0 rounded-full"
               style={`background-color: ${entry_color(entry)}`}
             ></span>
+          {/if}
+          {#if entry.task.priority}
+            <PriorityIndicator priority={entry.task.priority} compact />
           {/if}
           <span class={`min-w-0 shrink truncate ${task_title_class(entry)}`}
             >{entry.task.title}</span
@@ -1521,6 +1528,9 @@
             class="h-3.5 w-1 shrink-0 rounded-full"
             style={`background-color: ${entry_color(entry)}`}
           ></span>
+        {/if}
+        {#if entry.task.priority}
+          <PriorityIndicator priority={entry.task.priority} compact />
         {/if}
         <span class="flex min-w-0 flex-1 flex-col">
           <span class={`truncate ${task_title_class(entry)}`}

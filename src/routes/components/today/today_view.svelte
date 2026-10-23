@@ -28,6 +28,7 @@
   import { LazyMount } from "../../utils/lazy-mount.svelte";
   import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
   import LabelBadge from "../label_badge.svelte";
+  import PriorityIndicator from "../task/priority_indicator.svelte";
   import {
     build_today_groups,
     today_task_count,
@@ -174,6 +175,9 @@
               <span
                 class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
               >
+                {#if entry.task.priority}
+                  <PriorityIndicator priority={entry.task.priority} />
+                {/if}
                 <span
                   class={`inline-flex items-center gap-1 ${
                     tone === "overdue"

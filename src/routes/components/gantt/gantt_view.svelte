@@ -25,6 +25,7 @@
   import { display_task_color } from "../../utils/task-color";
   import TaskActionItems from "../task/task_action_items.svelte";
   import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
+  import PriorityIndicator from "../task/priority_indicator.svelte";
   import UnarchiveTaskDialog from "../archive/unarchive_task_dialog.svelte";
   import {
     calendar_drop_dates,
@@ -975,6 +976,9 @@
             class="h-4 w-1 shrink-0 rounded-full"
             style={`background-color: ${color}`}
           ></span>
+          {#if entry.task.priority}
+            <PriorityIndicator priority={entry.task.priority} compact />
+          {/if}
           <span
             class={`min-w-0 flex-1 truncate ${entry.archived ? "text-muted-foreground line-through" : "font-medium"}`}
             >{entry.task.title}</span

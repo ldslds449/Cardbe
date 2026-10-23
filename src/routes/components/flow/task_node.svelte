@@ -8,6 +8,7 @@
   import * as ContextMenu from "$lib/components/ui/context-menu";
   import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
   import ChecklistSummary from "../task/checklist_summary.svelte";
+  import PriorityIndicator from "../task/priority_indicator.svelte";
   import { formatDate } from "$lib/i18n";
   import * as m from "$lib/paraglide/messages";
   import XIcon from "@lucide/svelte/icons/x";
@@ -40,6 +41,9 @@
     <div
       class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
     >
+      {#if data.task.priority}<PriorityIndicator
+          priority={data.task.priority}
+        />{/if}
       {#if !data.archived}<Badge variant="secondary" class="max-w-full truncate"
           >{data.column}</Badge
         >{/if}
