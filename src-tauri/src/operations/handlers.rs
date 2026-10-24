@@ -119,7 +119,7 @@ impl Operation for ListColumns {
     }
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateColumnInput {
     pub board_id: i64,
@@ -129,6 +129,12 @@ pub struct CreateColumnInput {
     /// Insert before this column; omitted appends at the end.
     #[serde(default)]
     pub before_column_id: Option<i64>,
+    /// Retrying with the same key and arguments returns the column the first
+    /// call created instead of creating another. Keys (1 to 128 bytes) are
+    /// remembered for a day while Cardbe runs; other arguments with a used
+    /// key are rejected.
+    #[serde(default, skip_serializing)]
+    pub idempotency_key: Option<String>,
 }
 
 pub struct CreateColumn;
@@ -144,18 +150,50 @@ impl Operation for CreateColumn {
     }
     fn run(
         host: &dyn OperationHost,
-        _: &OperationContext,
-        input: CreateColumnInput,
+        context: &OperationContext,
+        mut input: CreateColumnInput,
     ) -> Result<dto::ColumnResult, DomainError> {
-        commit(host, input.board_id, |data| {
-            let id = columns::create_column(data, input.name.trim().to_owned(), input.color)?;
-            mutation::move_column(data, id, input.before_column_id)?;
-            let column = &data.columns[mutation::column_index(data, id)?];
-            Ok(dto::ColumnResult {
-                column: dto::Column::new(column, data.done_column_id()),
-            })
-        })
+        let Some(key) = input.idempotency_key.take() else {
+            return create_column(host, input).map(|(result, _)| result);
+        };
+        let fingerprint = idempotency::fingerprint(&input)?;
+        let board_id = input.board_id;
+        match host.creations()?.once(
+            &context.caller,
+            Self::NAME,
+            &key,
+            board_id,
+            fingerprint,
+            || create_column(host, input),
+        )? {
+            Recorded::New(result) => Ok(result),
+            // The column may have been changed or deleted since.
+            Recorded::Existing { board_id, id } => {
+                let reader = reader(host, board_id)?;
+                let done_column = reader.done_column()?;
+                Ok(dto::ColumnResult {
+                    column: dto::Column::from_info(reader.get_column(id)?, done_column),
+                })
+            }
+        }
     }
+}
+
+fn create_column(
+    host: &dyn OperationHost,
+    input: CreateColumnInput,
+) -> Result<(dto::ColumnResult, i64), DomainError> {
+    commit(host, input.board_id, |data| {
+        let id = columns::create_column(data, input.name.trim().to_owned(), input.color)?;
+        mutation::move_column(data, id, input.before_column_id)?;
+        let column = &data.columns[mutation::column_index(data, id)?];
+        Ok((
+            dto::ColumnResult {
+                column: dto::Column::new(column, data.done_column_id()),
+            },
+            id,
+        ))
+    })
 }
 
 /// Omitted fields keep their values.
@@ -294,15 +332,19 @@ impl Operation for ListTasks {
             status: input.status.as_filter().into(),
             ..TaskExplorerQuery::default()
         };
-        let tasks = reader(host, input.board_id)?
-            .list_tasks(filter, input.offset, input.limit)?
-            .into_iter()
-            .map(dto::Task::try_from)
-            .collect::<Result<_, _>>()?;
+        let (tasks, has_more) =
+            reader(host, input.board_id)?.list_task_page(filter, input.offset, input.limit)?;
         Ok(dto::TaskPage {
-            tasks,
+            tasks: tasks
+                .into_iter()
+                .map(dto::Task::try_from)
+                .collect::<Result<_, _>>()?,
             offset: input.offset,
             limit: input.limit,
+            // Offsets are u32, so a page beyond them cannot be requested.
+            next_offset: has_more
+                .then(|| input.offset.checked_add(input.limit))
+                .flatten(),
         })
     }
 }
@@ -401,17 +443,20 @@ impl Operation for CreateTask {
         };
         let fingerprint = idempotency::fingerprint(&input)?;
         let board_id = input.board_id;
-        match host
-            .created_tasks()?
-            .once(&context.caller, &key, board_id, fingerprint, || {
-                create_task(host, input)
-            })? {
+        match host.creations()?.once(
+            &context.caller,
+            Self::NAME,
+            &key,
+            board_id,
+            fingerprint,
+            || create_task(host, input),
+        )? {
             Recorded::New(result) => Ok(result),
             // The task may have been archived since.
-            Recorded::Existing { board_id, task_id } => {
+            Recorded::Existing { board_id, id } => {
                 let reader = reader(host, board_id)?;
-                let task = match reader.get_task(task_id, false) {
-                    Err(DomainError::TaskNotFound) => reader.get_task(task_id, true)?,
+                let task = match reader.get_task(id, false) {
+                    Err(DomainError::TaskNotFound) => reader.get_task(id, true)?,
                     task => task?,
                 };
                 Ok(dto::TaskResult {

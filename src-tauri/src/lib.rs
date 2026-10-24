@@ -392,7 +392,7 @@ pub fn run() {
             app.manage(share::LanShareState::default());
             app.manage(iroh_share::IrohShareState::default());
             app.manage(notifications::NotificationState::default());
-            app.manage(operations::idempotency::CreatedTasks::default());
+            app.manage(operations::idempotency::Creations::default());
             app.manage(mcp::McpServer::new(
                 std::sync::Arc::new(app.handle().clone()),
                 Some(Box::new({

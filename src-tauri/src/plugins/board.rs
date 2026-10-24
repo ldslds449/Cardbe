@@ -175,10 +175,20 @@ impl Reader {
     }
     pub fn list_tasks(
         &self,
-        mut filter: crate::storage::TaskExplorerQuery,
+        filter: crate::storage::TaskExplorerQuery,
         offset: u32,
         limit: u32,
     ) -> Result<Vec<TaskInfo>, DomainError> {
+        self.list_task_page(filter, offset, limit)
+            .map(|(tasks, _)| tasks)
+    }
+    /// Like `list_tasks`, also reporting whether more tasks follow the page.
+    pub fn list_task_page(
+        &self,
+        mut filter: crate::storage::TaskExplorerQuery,
+        offset: u32,
+        limit: u32,
+    ) -> Result<(Vec<TaskInfo>, bool), DomainError> {
         if !(1..=100).contains(&limit)
             || filter.board_ids.is_some()
             || filter.query.len() > 4096
@@ -199,12 +209,18 @@ impl Reader {
         }
         filter.board_ids = Some(vec![self.board_id]);
         filter.now = self.now;
-        self.db
-            .list_all_task_page(&filter, offset.into(), limit as usize)
-            .map_err(DomainError::repository)?
+        // One extra row tells whether another page follows.
+        let mut rows = self
+            .db
+            .list_all_task_page(&filter, offset.into(), limit as usize + 1)
+            .map_err(DomainError::repository)?;
+        let has_more = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
+        let tasks = rows
             .into_iter()
             .map(|r| self.get_task(r.task.id, r.archived_at.is_some()))
-            .collect()
+            .collect::<Result<_, _>>()?;
+        Ok((tasks, has_more))
     }
 }
 

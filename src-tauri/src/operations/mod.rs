@@ -72,7 +72,7 @@ impl OperationContext {
 /// supply their own state and change notifications.
 pub trait OperationHost: Send + Sync {
     fn app_data(&self) -> Result<&SharedAppData, DomainError>;
-    fn created_tasks(&self) -> Result<&idempotency::CreatedTasks, DomainError>;
+    fn creations(&self) -> Result<&idempotency::Creations, DomainError>;
     fn board_changed(&self, board_id: i64);
 }
 
@@ -82,8 +82,8 @@ impl OperationHost for tauri::AppHandle {
             .map(|state| state.inner())
             .ok_or_else(|| "Application data unavailable".into())
     }
-    fn created_tasks(&self) -> Result<&idempotency::CreatedTasks, DomainError> {
-        self.try_state::<idempotency::CreatedTasks>()
+    fn creations(&self) -> Result<&idempotency::Creations, DomainError> {
+        self.try_state::<idempotency::Creations>()
             .map(|state| state.inner())
             .ok_or_else(|| "Idempotency keys unavailable".into())
     }

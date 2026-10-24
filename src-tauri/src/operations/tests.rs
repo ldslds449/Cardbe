@@ -9,7 +9,7 @@ pub(crate) struct TestHost {
     pub changed: Mutex<Vec<i64>>,
     pub board_id: i64,
     pub other_board_id: i64,
-    pub created: idempotency::CreatedTasks,
+    pub created: idempotency::Creations,
     // Declared last so the database closes before the directory is removed.
     _dir: TempDir,
 }
@@ -30,7 +30,7 @@ impl OperationHost for TestHost {
     fn app_data(&self) -> Result<&SharedAppData, DomainError> {
         Ok(&self.app)
     }
-    fn created_tasks(&self) -> Result<&idempotency::CreatedTasks, DomainError> {
+    fn creations(&self) -> Result<&idempotency::Creations, DomainError> {
         Ok(&self.created)
     }
     fn board_changed(&self, board_id: i64) {
@@ -1011,4 +1011,89 @@ fn idempotency_keys_return_the_first_task_for_the_same_caller() {
             Err(OperationError::InvalidInput)
         ));
     }
+}
+
+#[test]
+fn idempotency_keys_return_the_first_column_per_tool() {
+    let host = TestHost::new();
+    let writer = context("writer", &[host.board_id], true);
+    let create = |name: &str| {
+        call(
+            &host,
+            &writer,
+            "column.create",
+            json!({"board_id": host.board_id, "name": name, "idempotency_key": "retry-1"}),
+        )
+    };
+    let first = create("Review").unwrap();
+    let id = first["column"]["id"].as_i64().unwrap();
+    // A retry sees the column as it is now.
+    call(
+        &host,
+        &writer,
+        "column.update",
+        json!({"board_id": host.board_id, "column_id": id, "name": "Renamed"}),
+    )
+    .unwrap();
+    let retried = create("Review").unwrap();
+    assert_eq!(retried["column"]["id"], id);
+    assert_eq!(retried["column"]["name"], "Renamed");
+    assert!(matches!(
+        create("Different"),
+        Err(OperationError::InvalidInput)
+    ));
+    // The same key with another tool is independent.
+    call(
+        &host,
+        &writer,
+        "task.create",
+        json!({"board_id": host.board_id, "column_id": 2, "title": "Task",
+               "idempotency_key": "retry-1"}),
+    )
+    .unwrap();
+    let columns = host.app.lock().unwrap().stored.columns.clone();
+    assert_eq!(
+        columns
+            .iter()
+            .filter(|column| column.name == "Renamed" || column.name == "Review")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn task_pages_report_the_next_offset() {
+    let host = TestHost::new();
+    let reader = context("reader", &[host.board_id], false);
+    let page = |offset: u32, limit: u32| {
+        call(
+            &host,
+            &reader,
+            "task.list",
+            json!({"board_id": host.board_id, "offset": offset, "limit": limit}),
+        )
+        .unwrap()
+    };
+    let first = page(0, 1);
+    assert_eq!(first["tasks"].as_array().unwrap().len(), 1);
+    assert_eq!(first["next_offset"], 1);
+    let last = page(1, 1);
+    assert_eq!(last["tasks"].as_array().unwrap().len(), 1);
+    assert!(last.get("next_offset").is_none());
+    assert!(page(0, 2).get("next_offset").is_none());
+    assert!(page(2, 1)["tasks"].as_array().unwrap().is_empty());
+    // The largest page still reports a following one.
+    let filled = context("writer", &[host.board_id], true);
+    for index in 0..100 {
+        call(
+            &host,
+            &filled,
+            "task.create",
+            json!({"board_id": host.board_id, "column_id": 2, "title": format!("Task {index}")}),
+        )
+        .unwrap();
+    }
+    let full = page(0, 100);
+    assert_eq!(full["tasks"].as_array().unwrap().len(), 100);
+    assert_eq!(full["next_offset"], 100);
 }

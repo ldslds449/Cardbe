@@ -321,6 +321,9 @@ pub struct TaskPage {
     pub tasks: Vec<Task>,
     pub offset: u32,
     pub limit: u32,
+    /// Offset of the next page; absent on the last page.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<u32>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
