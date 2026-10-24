@@ -194,7 +194,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <ContextMenu.Trigger
     data-task-card
-    class="group relative max-w-full select-none overflow-hidden"
+    class="group relative max-w-full select-none overflow-hidden outline-none"
     {@attach ref}
     {@attach attach}
     ondblclick={read_only || selecting ? undefined : onViewTask}
@@ -203,7 +203,9 @@
       data-task-card-surface
       data-selected={selected || undefined}
       class={cn(
-        "relative my-1 w-full gap-2 border-2 py-3 transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground/40 hover:shadow-sm",
+        // Dragging makes the wrapper focusable; its square outline is
+        // replaced by the rounded card's border.
+        "relative my-1 w-full gap-2 border-2 py-3 transition-[border-color,box-shadow] duration-150 hover:border-muted-foreground/40 hover:shadow-sm group-focus-visible:border-ring",
         read_only && "cursor-pointer",
         selected && "border-primary bg-primary/5 hover:border-primary",
       )}

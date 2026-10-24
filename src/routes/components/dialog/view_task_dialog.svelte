@@ -45,6 +45,7 @@
   } = $props();
 
   let viewport_width = $state(globalThis.innerWidth ?? Infinity);
+  let dialog_content_ref = $state<HTMLDivElement | null>(null);
   const split_layout = $derived(
     task_dialog_is_split(layout_widths.view_dialog_width, viewport_width),
   );
@@ -80,8 +81,15 @@
 
 <Dialog.Root bind:open>
   <Dialog.Content
+    bind:ref={dialog_content_ref}
     class="pb-0 outline-none sm:max-w-[calc(100%-2rem)]"
     style="width: {layout_widths.view_dialog_width}px"
+    onOpenAutoFocus={(event) => {
+      // The first focusable element is the width handle, so focus the dialog
+      // itself, as the task editor does.
+      event.preventDefault();
+      dialog_content_ref?.focus();
+    }}
   >
     {#each ["start", "end"] as const as edge (edge)}
       <ResizeHandle
