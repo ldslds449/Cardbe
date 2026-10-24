@@ -32,9 +32,11 @@
   import { group_focus_items } from "../components/focus/focus-groups";
   import { load_focus_results } from "../components/focus/focus-results";
 
-  // Board edits in the main window send no change notifications, so a light
-  // periodic read keeps the list current, as in floating tasks.
-  const REFRESH_INTERVAL_MS = 5000;
+  // Writes announce themselves with `cardbe:data-changed`. Due-date filters
+  // and groups depend on the time, so the list also reloads each minute.
+  const CLOCK_INTERVAL_MS = 60_000;
+  // One edit can write several times; reload once after the burst.
+  const RELOAD_DELAY_MS = 100;
   // A glanceable list; the full view stays in the main window.
   const PAGE_SIZE = 100;
 
@@ -52,6 +54,9 @@
   let now = $state(new Date());
   let busy_ids = $state(new Set<string>());
   let load_generation = 0;
+  // Unchanged reads keep the rendered list, so writes elsewhere do not
+  // re-render it.
+  let loaded_snapshot = "";
 
   const groups = $derived(
     view ? group_focus_items(items, view.group, now) : [],
@@ -97,10 +102,19 @@
       if (generation !== load_generation) {
         return;
       }
-      view = found;
-      boards = state.boards;
-      items = page.items;
-      has_more = page.next_cursor !== null;
+      const snapshot = JSON.stringify([
+        found,
+        state.boards,
+        page.items,
+        page.next_cursor !== null,
+      ]);
+      if (snapshot !== loaded_snapshot) {
+        loaded_snapshot = snapshot;
+        view = found;
+        boards = state.boards;
+        items = page.items;
+        has_more = page.next_cursor !== null;
+      }
       now = loaded_at;
       error = null;
     } catch (caught) {
@@ -172,16 +186,22 @@
       return;
     }
     void load();
-    const timer = window.setInterval(() => void load(), REFRESH_INTERVAL_MS);
+    const clock = window.setInterval(() => void load(), CLOCK_INTERVAL_MS);
     const handle_focus = () => void load();
     window.addEventListener("focus", handle_focus);
+    let reload_timer: number | undefined;
+    const reload_soon = () => {
+      window.clearTimeout(reload_timer);
+      reload_timer = window.setTimeout(() => void load(), RELOAD_DELAY_MS);
+    };
     const unlisteners = [
-      listen("cardbe:data-changed", () => void load()),
-      listen("cardbe:focuses-changed", () => void load()),
+      listen("cardbe:data-changed", reload_soon),
+      listen("cardbe:focuses-changed", reload_soon),
     ];
     return () => {
       void context_menu?.close();
-      window.clearInterval(timer);
+      window.clearInterval(clock);
+      window.clearTimeout(reload_timer);
       window.removeEventListener("focus", handle_focus);
       for (const unlisten of unlisteners) {
         void unlisten.then((stop) => stop());

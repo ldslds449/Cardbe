@@ -24,7 +24,11 @@ pub async fn get_link_preview(
         }
     }
     let mut preview = link_preview::preview(normalized).await;
-    lock_app(&state)?.database.cache_link_preview(&preview)?;
+    let mut guard = lock_app(&state)?;
+    let cached = guard.database.cache_link_preview(&preview);
+    guard.forget_writes();
+    cached?;
+    drop(guard);
     preview.url = url;
     Ok(preview)
 }

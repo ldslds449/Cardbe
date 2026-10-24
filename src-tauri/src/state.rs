@@ -7,8 +7,9 @@ use crate::{
 use std::{
     collections::{BTreeSet, HashSet, VecDeque},
     fmt,
+    ops::{Deref, DerefMut},
     path::PathBuf,
-    sync::{Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard},
 };
 use tauri::State;
 
@@ -21,6 +22,8 @@ pub struct AppData {
     pub database: Database,
     pub recovery_messages: Vec<String>,
     pub archives_loaded: bool,
+    /// Announces writes to `database` when the state lock is released.
+    pub on_data_changed: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 /// Board contents before a local change, with the task event operation the
@@ -123,8 +126,50 @@ impl From<AppLockPoisoned> for CommandError {
     }
 }
 
-pub fn lock_app(state: &SharedAppData) -> Result<MutexGuard<'_, AppData>, AppLockPoisoned> {
-    state.lock().map_err(|_| AppLockPoisoned)
+pub fn lock_app(state: &SharedAppData) -> Result<AppGuard<'_>, AppLockPoisoned> {
+    let guard = state.lock().map_err(|_| AppLockPoisoned)?;
+    let changes = guard.database.connection.total_changes();
+    Ok(AppGuard { guard, changes })
+}
+
+/// The locked application state. Other windows reload when it is released if
+/// anything was written through its connection, so no write path has to
+/// remember to announce itself.
+pub struct AppGuard<'a> {
+    guard: MutexGuard<'a, AppData>,
+    changes: u64,
+}
+
+impl AppGuard<'_> {
+    /// Leaves the writes made so far unannounced, for caches no window shows.
+    pub fn forget_writes(&mut self) {
+        self.changes = self.guard.database.connection.total_changes();
+    }
+}
+
+impl Deref for AppGuard<'_> {
+    type Target = AppData;
+
+    fn deref(&self) -> &AppData {
+        &self.guard
+    }
+}
+
+impl DerefMut for AppGuard<'_> {
+    fn deref_mut(&mut self) -> &mut AppData {
+        &mut self.guard
+    }
+}
+
+impl Drop for AppGuard<'_> {
+    fn drop(&mut self) {
+        if self.guard.database.connection.total_changes() == self.changes {
+            return;
+        }
+        if let Some(notify) = &self.guard.on_data_changed {
+            notify();
+        }
+    }
 }
 
 impl AppData {
@@ -145,6 +190,7 @@ impl AppData {
             database,
             recovery_messages,
             archives_loaded,
+            on_data_changed: None,
         };
         data.refresh_labels();
         data.forget_deleted_muted_columns();
@@ -477,6 +523,53 @@ mod tests {
         let mut database = Database::open(dir.join("data.sqlite3")).unwrap();
         database.initialize_boards(&stored).unwrap();
         AppData::new(stored, database, Vec::new(), true).unwrap()
+    }
+
+    #[test]
+    fn releasing_the_state_announces_only_writes() {
+        let dir = std::env::temp_dir().join(format!(
+            "cardbe-data-changed-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let mut app = app_data(&dir, StoredData::default());
+        let announced = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = announced.clone();
+        app.on_data_changed = Some(Arc::new(move || {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }));
+        let state = Mutex::new(app);
+        let count = || announced.load(std::sync::atomic::Ordering::SeqCst);
+
+        drop(lock_app(&state).unwrap().database.boards().unwrap());
+        assert_eq!(count(), 0);
+
+        let mut guard = lock_app(&state).unwrap();
+        update_locked(&mut guard, |data| {
+            data.label_recency = vec!["changed".into()];
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(count(), 0, "announced before the lock was released");
+        drop(guard);
+        assert_eq!(count(), 1);
+
+        let mut guard = lock_app(&state).unwrap();
+        update_locked(&mut guard, |data| {
+            data.label_recency = vec!["cached".into()];
+            Ok(())
+        })
+        .unwrap();
+        guard.forget_writes();
+        drop(guard);
+        assert_eq!(count(), 1);
+
+        drop(state);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

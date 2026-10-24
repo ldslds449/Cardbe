@@ -475,7 +475,6 @@
 
   onMount(() => {
     let disposed = false;
-    let device_request_timer: number | undefined;
     void invoke<unknown>("get_startup_error")
       .then((error) => {
         if (disposed) {
@@ -490,10 +489,6 @@
           return;
         }
         void refresh_device_requests();
-        device_request_timer = window.setInterval(
-          () => void refresh_device_requests(),
-          5000,
-        );
         void board.init().then(async () => {
           if (disposed) {
             return;
@@ -644,6 +639,8 @@
     const data_changed_listener = listen<{ kind?: string; boardId?: number }>(
       "cardbe:data-changed",
       (event) => {
+        // Device requests arrive like any other write.
+        void refresh_device_requests();
         if (
           event.payload.kind !== "task" ||
           !Number.isInteger(event.payload.boardId)
@@ -714,9 +711,6 @@
     });
     return () => {
       disposed = true;
-      if (device_request_timer !== undefined) {
-        window.clearInterval(device_request_timer);
-      }
       window.clearTimeout(update_check_timeout);
       window.clearInterval(update_check_interval);
       void data_changed_listener.then((unlisten) => unlisten());

@@ -465,6 +465,8 @@ pub(super) async fn ensure_host(
                                 .map_err(|e| e.to_string())? {
                                 Some(IrohDeviceStatus::Approved) => Ok(invite),
                                 Some(IrohDeviceStatus::Pending) => {
+                                    // The owner's toolbar counts waiting devices.
+                                    let _ = app_handle.emit("cardbe:data-changed", serde_json::json!({}));
                                     error_code = Some(SnapshotErrorCode::ApprovalRequired);
                                     Err(
                                         "Waiting for owner approval. Ask the owner to approve this device, then try again."
@@ -533,6 +535,7 @@ pub(super) async fn ensure_host(
                     ) {
                         log::warn!(target: "iroh", "Could not notify the app about a remote board update: {error}");
                     }
+                    let _ = app_handle.emit("cardbe:data-changed", serde_json::json!({}));
                 }
                 let bytes = match serde_json::to_vec(&response) {
                     Ok(bytes) if bytes.len() <= MAX_MESSAGE => bytes,

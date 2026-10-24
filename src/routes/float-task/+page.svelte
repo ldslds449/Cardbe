@@ -43,9 +43,11 @@
     boards: Array<{ id: number; name: string }>;
   }
 
-  // Board data has no change notifications, so a light periodic read keeps
-  // the reminder current alongside focus and quick-add change events.
-  const REFRESH_INTERVAL_MS = 5000;
+  // Writes announce themselves with `cardbe:data-changed`; only the relative
+  // due label needs a clock.
+  const CLOCK_INTERVAL_MS = 60_000;
+  // One edit can write several times; reload once after the burst.
+  const RELOAD_DELAY_MS = 100;
 
   const params = new URLSearchParams(window.location.search);
   const ref = {
@@ -62,6 +64,9 @@
   let error = $state<CommandError | null>(null);
   let now = $state(new Date());
   let load_generation = 0;
+  // Unchanged reads keep the rendered content, so writes elsewhere do not
+  // re-render the description.
+  let loaded_snapshot = "";
 
   // Content scales through the root font size: text, spacing and icons all
   // use rem, so the layout stays intact inside the fixed-size window.
@@ -237,11 +242,16 @@
           break;
         }
       }
-      board_name =
+      const next_board_name =
         state.boards.find((board) => board.id === ref.boardId)?.name ?? "";
-      task = found?.task ?? null;
-      column_name = found?.column ?? "";
-      missing = found === null;
+      const snapshot = JSON.stringify([next_board_name, found]);
+      if (snapshot !== loaded_snapshot) {
+        loaded_snapshot = snapshot;
+        board_name = next_board_name;
+        task = found?.task ?? null;
+        column_name = found?.column ?? "";
+        missing = found === null;
+      }
       error = null;
     } catch (caught) {
       if (generation !== load_generation) {
@@ -249,6 +259,7 @@
       }
       const parsed = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
       if (parsed.code === "BOARD_NOT_FOUND") {
+        loaded_snapshot = "";
         task = null;
         missing = true;
         error = null;
@@ -291,10 +302,17 @@
       return;
     }
     void load();
-    const timer = window.setInterval(() => void load(), REFRESH_INTERVAL_MS);
+    const clock = window.setInterval(
+      () => (now = new Date()),
+      CLOCK_INTERVAL_MS,
+    );
     const handle_focus = () => void load();
     window.addEventListener("focus", handle_focus);
-    const data_changed = listen("cardbe:data-changed", () => void load());
+    let reload_timer: number | undefined;
+    const data_changed = listen("cardbe:data-changed", () => {
+      window.clearTimeout(reload_timer);
+      reload_timer = window.setTimeout(() => void load(), RELOAD_DELAY_MS);
+    });
     // Non-passive so Ctrl + wheel can zoom instead of scrolling.
     const handle_wheel = (event: WheelEvent) => {
       if (!event.ctrlKey || event.deltaY === 0) {
@@ -308,7 +326,8 @@
       void context_menu?.close();
       window.removeEventListener("wheel", handle_wheel);
       window.clearTimeout(zoom_indicator_timer);
-      window.clearInterval(timer);
+      window.clearInterval(clock);
+      window.clearTimeout(reload_timer);
       window.removeEventListener("focus", handle_focus);
       void data_changed.then((unlisten) => unlisten());
     };

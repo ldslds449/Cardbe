@@ -415,13 +415,18 @@ pub fn run() {
                         log::warn!(target: "storage", "Application data recovery: {message}");
                     }
                     let database_path = loaded.database.path().to_path_buf();
-                    let data = AppData::new(
+                    let mut data = AppData::new(
                         loaded.stored,
                         loaded.database,
                         loaded.recovery_messages,
                         loaded.archives_loaded,
                     )
                     .map_err(|error| format!("{error}\n\nDatabase: {}", database_path.display()))?;
+                    let handle = app.handle().clone();
+                    data.on_data_changed = Some(std::sync::Arc::new(move || {
+                        use tauri::Emitter;
+                        let _ = handle.emit("cardbe:data-changed", serde_json::json!({}));
+                    }));
                     Ok((data, database_path))
                 });
             let startup_status = match startup_result {
