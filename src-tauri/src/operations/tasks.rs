@@ -99,7 +99,8 @@ pub(crate) fn update_task(
     mutation::update_task(data, task_id, task)
 }
 
-/// Positions are meaningful only in custom-ordered columns.
+/// Like a drag in the app, a move into a column with sort rules is allowed:
+/// the position sets the manual order kept beneath the display sort.
 pub(crate) fn move_task(
     data: &mut StoredData,
     task_id: i64,
@@ -107,9 +108,6 @@ pub(crate) fn move_task(
     before_task_id: Option<i64>,
 ) -> Result<(), DomainError> {
     let column = mutation::column_index(data, column_id)?;
-    if data.columns[column].sort_order != ColumnSort::Custom {
-        return Err(DomainError::InvalidArgument);
-    }
     mutation::task_position(data, task_id)?;
     if before_task_id == Some(task_id) && data.columns[column].tasks.iter().all(|t| t.id != task_id)
     {

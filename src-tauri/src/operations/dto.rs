@@ -41,13 +41,93 @@ pub struct BoardList {
     pub hidden_board_count: usize,
 }
 
+/// Summary of `sort_rules` for older clients: `custom` covers every sort
+/// other than a single due-date rule.
 #[derive(Clone, Copy, Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ColumnSort {
-    /// Tasks keep their manual order and accept moves to a position.
     Custom,
     DueDateAsc,
     DueDateDesc,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SortField {
+    DueTime,
+    StartTime,
+    CreatedTime,
+    Title,
+    ChecklistProgress,
+    Priority,
+}
+
+impl SortField {
+    const ALL: [Self; 6] = [
+        Self::DueTime,
+        Self::StartTime,
+        Self::CreatedTime,
+        Self::Title,
+        Self::ChecklistProgress,
+        Self::Priority,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::DueTime => "due_time",
+            Self::StartTime => "start_time",
+            Self::CreatedTime => "created_time",
+            Self::Title => "title",
+            Self::ChecklistProgress => "checklist_progress",
+            Self::Priority => "priority",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SortRule {
+    pub field: SortField,
+    pub direction: SortDirection,
+}
+
+impl From<SortRule> for models::SortRule {
+    fn from(rule: SortRule) -> Self {
+        Self {
+            field: rule.field.name().into(),
+            direction: match rule.direction {
+                SortDirection::Asc => models::SortDirection::Asc,
+                SortDirection::Desc => models::SortDirection::Desc,
+            },
+        }
+    }
+}
+
+/// Rules saved by newer versions with fields this one does not know are
+/// left out, as the app ignores them when sorting.
+fn known_sort_rules(rules: &[models::SortRule]) -> Vec<SortRule> {
+    rules
+        .iter()
+        .filter_map(|rule| {
+            let field = SortField::ALL
+                .into_iter()
+                .find(|field| field.name() == rule.field)?;
+            Some(SortRule {
+                field,
+                direction: match rule.direction {
+                    models::SortDirection::Asc => SortDirection::Asc,
+                    models::SortDirection::Desc => SortDirection::Desc,
+                },
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -56,6 +136,9 @@ pub struct Column {
     pub name: String,
     pub color: String,
     pub sort_order: ColumnSort,
+    /// Display order, most significant rule first, after pinned tasks; empty
+    /// shows tasks in their manual order.
+    pub sort_rules: Vec<SortRule>,
     /// Whether this is the board's done column; tasks in it are completed.
     /// A board has at most one.
     pub done: bool,
@@ -77,6 +160,7 @@ impl Column {
     pub fn from_info(column: board_view::ColumnInfo, done_column: Option<i64>) -> Self {
         Self {
             sort_order: (&column.sort_order).into(),
+            sort_rules: known_sort_rules(&column.sort_rules),
             done: Some(column.id) == done_column,
             id: column.id,
             name: column.name,
@@ -90,6 +174,7 @@ impl Column {
             name: column.name.clone(),
             color: column.color.clone(),
             sort_order: (&column.sort_order).into(),
+            sort_rules: known_sort_rules(&column.sort_rules),
             done: Some(column.id) == done_column,
         }
     }

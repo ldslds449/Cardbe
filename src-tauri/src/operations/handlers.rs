@@ -210,13 +210,17 @@ pub struct UpdateColumnInput {
     /// completed; `false` leaves the board without one if it was.
     #[serde(default)]
     pub done: Option<bool>,
+    /// Replaces the display order: at most three distinct fields, most
+    /// significant first. `[]` shows tasks in their manual order.
+    #[serde(default)]
+    pub sort_rules: Option<Vec<dto::SortRule>>,
 }
 
 pub struct UpdateColumn;
 impl Operation for UpdateColumn {
     const NAME: &'static str = "column.update";
     const DESCRIPTION: &'static str =
-        "Rename or recolor a column, or make it the board's done column. Its sort order is unchanged.";
+        "Rename, recolor, or re-sort a column, or make it the board's done column.";
     const ACCESS: Access = Access::Write;
     type Input = UpdateColumnInput;
     type Output = dto::ColumnResult;
@@ -235,6 +239,13 @@ impl Operation for UpdateColumn {
                 .map_or_else(|| current.name.clone(), |name| name.trim().to_owned());
             let color = input.color.unwrap_or_else(|| current.color.clone());
             let index = columns::update_column(data, input.column_id, name, color)?;
+            if let Some(rules) = input.sort_rules {
+                let rules: Vec<models::SortRule> = rules.into_iter().map(Into::into).collect();
+                if !models::valid_sort_rules(&rules) {
+                    return Err(DomainError::InvalidArgument);
+                }
+                data.columns[index].set_sort_rules(rules);
+            }
             match input.done {
                 Some(true) => completion::set_done_column(data, Some(input.column_id))?,
                 Some(false) if data.done_column_id() == Some(input.column_id) => {
@@ -611,7 +622,8 @@ impl Operation for UpdateTask {
 pub struct MoveTaskInput {
     pub board_id: i64,
     pub task_id: i64,
-    /// Destination column; it must use custom ordering.
+    /// Destination column. A column with sort rules displays tasks sorted;
+    /// the position still sets the manual order shown without them.
     pub column_id: i64,
     /// Place the task before this task; omit to place it last.
     #[serde(default)]

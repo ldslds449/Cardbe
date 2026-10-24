@@ -47,6 +47,7 @@ pub struct ColumnInfo {
     pub name: String,
     pub color: String,
     pub sort_order: ColumnSort,
+    pub sort_rules: Vec<SortRule>,
     pub position: i64,
 }
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -87,7 +88,7 @@ impl Reader {
     }
     fn columns(&self, id: Option<i64>) -> Result<Vec<ColumnInfo>, DomainError> {
         let mut stmt = self.db.connection.prepare(
-            "SELECT id,name,color,sort_order,position FROM cardbe_columns WHERE board_id=?1 AND (?2 IS NULL OR id=?2) ORDER BY position,id"
+            "SELECT id,name,color,sort_order,position,sort_rules FROM cardbe_columns WHERE board_id=?1 AND (?2 IS NULL OR id=?2) ORDER BY position,id"
         ).map_err(internal)?;
         let rows = stmt
             .query_map(params![self.board_id, id], |r| {
@@ -98,6 +99,7 @@ impl Reader {
                     color: r.get(2)?,
                     sort_order: r.get(3)?,
                     position: r.get(4)?,
+                    sort_rules: serde_json::from_str(&r.get::<_, String>(5)?).unwrap_or_default(),
                 })
             })
             .map_err(internal)?

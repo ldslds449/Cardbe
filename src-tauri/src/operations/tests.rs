@@ -857,6 +857,81 @@ fn read_only_shared_boards_reject_writes_from_any_caller() {
 }
 
 #[test]
+fn columns_take_sort_rules_and_still_accept_moved_tasks() {
+    let host = TestHost::new();
+    let writer = context("writer", &[host.board_id], true);
+    let board = host.board_id;
+    let sort = |rules: serde_json::Value| {
+        call(
+            &host,
+            &writer,
+            "column.update",
+            json!({"board_id": board, "column_id": 2, "sort_rules": rules}),
+        )
+    };
+    let sorted = sort(json!([
+        {"field": "priority", "direction": "desc"},
+        {"field": "title", "direction": "asc"}
+    ]))
+    .unwrap();
+    assert_eq!(sorted["column"]["sort_order"], "custom");
+    assert_eq!(sorted["column"]["sort_rules"][0]["field"], "priority");
+    assert_eq!(sorted["column"]["sort_rules"][1]["direction"], "asc");
+    // Only the given fields change.
+    assert_eq!(sorted["column"]["name"], "Done");
+    let due = sort(json!([{"field": "due_time", "direction": "asc"}])).unwrap();
+    assert_eq!(due["column"]["sort_order"], "due_date_asc");
+    let listed = call(&host, &writer, "column.list", json!({"board_id": board})).unwrap();
+    assert_eq!(listed["columns"][1]["sort_rules"][0]["field"], "due_time");
+    for invalid in [
+        json!([{"field": "effort", "direction": "asc"}]),
+        json!([{"field": "title", "direction": "asc"}, {"field": "title", "direction": "desc"}]),
+        json!([
+            {"field": "due_time", "direction": "asc"},
+            {"field": "start_time", "direction": "asc"},
+            {"field": "created_time", "direction": "asc"},
+            {"field": "title", "direction": "asc"}
+        ]),
+    ] {
+        assert!(matches!(sort(invalid), Err(OperationError::InvalidInput)));
+    }
+    assert_eq!(
+        host.app.lock().unwrap().stored.columns[1].sort_order,
+        ColumnSort::DueDateAsc
+    );
+
+    // Like a drag, a move into a sorted column keeps the given manual order.
+    call(
+        &host,
+        &writer,
+        "task.move",
+        json!({"board_id": board, "task_id": 10, "column_id": 2}),
+    )
+    .unwrap();
+    let moved = call(
+        &host,
+        &writer,
+        "task.move",
+        json!({"board_id": board, "task_id": 11, "column_id": 2, "before_task_id": 10}),
+    )
+    .unwrap();
+    assert_eq!(moved["task"]["column_id"], 2);
+    let ids: Vec<_> = host.app.lock().unwrap().stored.columns[1]
+        .tasks
+        .iter()
+        .map(|task| task.id)
+        .collect();
+    assert_eq!(ids, vec![11, 10]);
+
+    let manual = sort(json!([])).unwrap();
+    assert_eq!(manual["column"]["sort_order"], "custom");
+    assert!(manual["column"]["sort_rules"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn columns_update_only_given_fields_and_move_in_place() {
     let host = TestHost::new();
     let writer = context("writer", &[host.board_id], true);
