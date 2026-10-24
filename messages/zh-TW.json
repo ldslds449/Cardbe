@@ -1630,7 +1630,7 @@
   "backup_restore_revoked_error": "還原失敗。現有的區域網路分享連結已撤銷，但看板資料尚未被取代。",
   "backup_restore_error": "無法還原所有資料",
   "app_loading": "Cardbe 正在載入",
-  "tray_toggle_floating_tasks": "顯示／隱藏浮動任務",
+  "tray_toggle_floating_tasks": "顯示／隱藏浮動視窗",
   "settings_shortcuts_title": "全域快捷鍵",
   "settings_shortcuts_description": "在任何程式中都能使用。點一下快捷鍵即可修改，按 Esc 取消。",
   "settings_shortcuts_paused": "全域快捷鍵已關閉，開啟後才能在其他程式中使用。",
@@ -2382,5 +2382,10 @@
   "smart_view_task_actions": "「{name}」的操作",
   "smart_view_open_board": "前往看板",
   "board_drawer_title": "看板與 Smart View",
-  "board_drawer_search": "搜尋看板或 Smart View"
+  "board_drawer_search": "搜尋看板或 Smart View",
+  "smart_view_float_on_desktop": "釘選到桌面",
+  "smart_view_float_close": "關閉浮動 Smart View",
+  "smart_view_float_hint": "拖曳移動，點兩下在 Cardbe 中開啟，按右鍵顯示更多選項",
+  "smart_view_float_show_all": "在 Cardbe 中查看全部",
+  "error_smart_view_not_found": "這個 Smart View 已不存在。"
 }

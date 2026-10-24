@@ -12,6 +12,7 @@ const coreMessages = {
   RELATIONSHIP_DUPLICATE: () => m.error_relationship_duplicate(),
   RELATIONSHIP_NOT_FOUND: () => m.error_relationship_not_found(),
   FLOW_TAB_NOT_FOUND: () => m.error_flow_tab_not_found(),
+  SMART_VIEW_NOT_FOUND: () => m.error_smart_view_not_found(),
   LAST_FLOW_TAB_REQUIRED: () => m.error_last_flow_tab_required(),
   INVALID_ARGUMENT: () => m.error_invalid_argument(),
   INVALID_IMPORT: () => m.error_invalid_import(),

@@ -22,6 +22,7 @@
   import HourglassIcon from "@lucide/svelte/icons/hourglass";
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import PencilIcon from "@lucide/svelte/icons/pencil";
+  import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
   import SearchXIcon from "@lucide/svelte/icons/search-x";
@@ -35,18 +36,17 @@
     type ColumnSerialized,
   } from "../../type/column.svelte";
   import {
-    deserialize_task_summary,
     get_task_id,
     is_task_priority,
     TASK_PRIORITIES,
     type TaskPriority,
-    type TaskSummarySerialized,
   } from "../../type/task.svelte";
-  import { smart_view_query, type SmartView } from "../../type/smart-view";
+  import type { SmartView } from "../../type/smart-view";
   import ChooseColumnDialog from "../dialog/choose_column_dialog.svelte";
   import PriorityIndicator from "../task/priority_indicator.svelte";
   import { due_label, due_label_class } from "../task/due-label";
   import { group_smart_view_items } from "./smart-view-groups";
+  import { load_smart_view_results } from "./smart-view-results";
 
   const PAGE_SIZE = 100;
 
@@ -55,6 +55,7 @@
     boards,
     paused = false,
     onEdit,
+    onFloat,
     onOpenTask,
     onOpenBoard,
   }: {
@@ -63,23 +64,10 @@
     /** Set while a dialog opened from this page may still change tasks. */
     paused?: boolean;
     onEdit: () => void;
+    onFloat?: () => void;
     onOpenTask: (item: AllTaskItem) => void;
     onOpenBoard: (board_id: number) => void;
   } = $props();
-
-  interface PageSerialized {
-    items: Array<{
-      board_id: number;
-      board_name: string;
-      column_id: number | null;
-      column_name: string | null;
-      archived_at: number | null;
-      done: boolean;
-      waiting_count: number;
-      task: TaskSummarySerialized;
-    }>;
-    next_cursor: string | null;
-  }
 
   let items = $state<AllTaskItem[]>([]);
   let cursor = $state<string | null>(null);
@@ -116,27 +104,16 @@
     loading = true;
     failed = false;
     try {
-      const page = await invoke<PageSerialized>("list_all_tasks", {
-        cursor: reset ? null : cursor,
-        filter: smart_view_query(view, now),
-        limit: PAGE_SIZE,
-      });
+      const page = await load_smart_view_results(
+        view,
+        now,
+        reset ? null : cursor,
+        PAGE_SIZE,
+      );
       if (current !== request) {
         return;
       }
-      const loaded = page.items.map((item) => ({
-        board_id: item.board_id,
-        board_name: item.board_name,
-        column_id:
-          item.column_id === null ? undefined : `column_${item.column_id}`,
-        column_name: item.column_name ?? undefined,
-        archived_at:
-          item.archived_at === null ? undefined : new Date(item.archived_at),
-        done: item.done,
-        waiting_count: item.waiting_count,
-        task: deserialize_task_summary(item.task),
-      }));
-      items = reset ? loaded : [...items, ...loaded];
+      items = reset ? page.items : [...items, ...page.items];
       cursor = page.next_cursor;
     } catch (error) {
       if (current === request) {
@@ -273,6 +250,17 @@
     >
       <RefreshCwIcon />
     </Button>
+    {#if onFloat}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={m.smart_view_float_on_desktop()}
+        title={m.smart_view_float_on_desktop()}
+        onclick={onFloat}
+      >
+        <PictureInPicture2Icon />
+      </Button>
+    {/if}
     <Button variant="outline" size="sm" onclick={onEdit}>
       <PencilIcon />
       {m.common_edit()}

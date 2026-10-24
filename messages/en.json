@@ -1882,7 +1882,7 @@
   "backup_restore_revoked_error": "Restore failed. Existing LAN share links were already revoked; your boards were not replaced.",
   "backup_restore_error": "Couldn't restore everything",
   "app_loading": "Cardbe is loading",
-  "tray_toggle_floating_tasks": "Show/Hide Floating Tasks",
+  "tray_toggle_floating_tasks": "Show/Hide Floating Windows",
   "settings_shortcuts_title": "Global shortcuts",
   "settings_shortcuts_description": "Works from any app. Click a shortcut to change it, or press Esc to cancel.",
   "settings_shortcuts_paused": "Global shortcuts are off. Turn them on to use them from other apps.",
@@ -2685,5 +2685,10 @@
   "smart_view_task_actions": "Actions for “{name}”",
   "smart_view_open_board": "Open board",
   "board_drawer_title": "Boards and smart views",
-  "board_drawer_search": "Search boards and views"
+  "board_drawer_search": "Search boards and views",
+  "smart_view_float_on_desktop": "Float on Desktop",
+  "smart_view_float_close": "Close floating smart view",
+  "smart_view_float_hint": "Drag to move, double-click to open in Cardbe, right-click for more options",
+  "smart_view_float_show_all": "Show all in Cardbe",
+  "error_smart_view_not_found": "This smart view no longer exists."
 }

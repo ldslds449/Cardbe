@@ -4,6 +4,7 @@
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
   import PencilIcon from "@lucide/svelte/icons/pencil";
+  import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import SearchIcon from "@lucide/svelte/icons/search";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
@@ -41,6 +42,7 @@
     onOpenSmartView,
     onCreateSmartView,
     onEditSmartView,
+    onFloatSmartView,
     onDeleteSmartView,
   }: {
     boards: BoardItem[];
@@ -57,6 +59,7 @@
     onOpenSmartView: (id: string) => void;
     onCreateSmartView: () => void;
     onEditSmartView: (id: string) => void;
+    onFloatSmartView: (id: string) => void;
     onDeleteSmartView: (id: string) => Promise<boolean>;
   } = $props();
 
@@ -269,6 +272,11 @@
                         }}
                         ><PencilIcon />
                         {m.common_edit()}</ContextMenu.Item
+                      >
+                      <ContextMenu.Item
+                        onclick={() => onFloatSmartView(view.id)}
+                        ><PictureInPicture2Icon />
+                        {m.smart_view_float_on_desktop()}</ContextMenu.Item
                       ><ContextMenu.Separator />
                       <ContextMenu.Item
                         variant="destructive"

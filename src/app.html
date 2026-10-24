@@ -13,8 +13,8 @@
     <link rel="stylesheet" href="%sveltekit.assets%/themes.css" />
     <script>
       (() => {
-        // Floating task windows are small, so they use a minimal loader.
-        if (document.location?.pathname.startsWith("/float-task")) {
+        // Floating windows are small, so they use a minimal loader.
+        if (document.location?.pathname.startsWith("/float-")) {
           document.documentElement.dataset.startup = "compact";
         }
         const ids = [

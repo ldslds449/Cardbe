@@ -34,6 +34,11 @@ export class SmartViewStore {
     }
   }
 
+  /** Resolves once every change so far has been saved or rolled back. */
+  settled(): Promise<void> {
+    return this.saving;
+  }
+
   find(id: string): SmartView | undefined {
     return this.views.find((view) => view.id === id);
   }

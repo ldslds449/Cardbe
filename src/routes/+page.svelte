@@ -5,6 +5,10 @@
   import { m } from "$lib/paraglide/messages.js";
   import { logger } from "$lib/logger";
   import { restore_floating_tasks } from "$lib/floating-tasks";
+  import {
+    open_floating_smart_view,
+    restore_floating_smart_views,
+  } from "$lib/floating-smart-views";
   import { onMount, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -151,6 +155,19 @@
     }
     active_smart_view_id = view.id;
     return true;
+  }
+
+  async function float_smart_view(id: string) {
+    // A new or just edited view must be saved before its window reads it.
+    await smart_views.settled();
+    if (!smart_views.find(id)) {
+      return;
+    }
+    try {
+      await open_floating_smart_view(id);
+    } catch (error) {
+      toast.error(translateCommandError(error));
+    }
   }
 
   async function delete_smart_view(id: string): Promise<boolean> {
@@ -484,6 +501,7 @@
           }
           void smart_views.load();
           void restore_floating_tasks();
+          void restore_floating_smart_views();
           restore_managed_share_state(
             board.boards.length === 1 ? board.boards[0].id : undefined,
           );
@@ -661,6 +679,22 @@
         }
       },
     );
+    const open_smart_view_listener = listen<{ id?: string }>(
+      "cardbe:open-smart-view",
+      async (event) => {
+        const { id } = event.payload;
+        if (typeof id !== "string") {
+          return;
+        }
+        // Views load after the board, possibly after this request.
+        if (!smart_views.loaded) {
+          await smart_views.load();
+        }
+        if (smart_views.find(id)) {
+          active_smart_view_id = id;
+        }
+      },
+    );
     const iroh_remote_push_listener = listen<{
       board_id: number;
       revision: number;
@@ -680,6 +714,7 @@
       void data_changed_listener.then((unlisten) => unlisten());
       void iroh_remote_push_listener.then((unlisten) => unlisten());
       void open_task_listener.then((unlisten) => unlisten());
+      void open_smart_view_listener.then((unlisten) => unlisten());
       document.removeEventListener("keydown", handle_shortcut);
       window.removeEventListener("cardbe:open-card", handle_open_card);
       window.removeEventListener(
@@ -1165,6 +1200,7 @@
       onOpenSmartView={(id) => (active_smart_view_id = id)}
       onCreateSmartView={() => edit_smart_view(null)}
       onEditSmartView={(id) => edit_smart_view(smart_views.find(id) ?? null)}
+      onFloatSmartView={(id) => void float_smart_view(id)}
       onDeleteSmartView={delete_smart_view}
     />
     <SmartViewDialog
@@ -1244,6 +1280,7 @@
           boards={board.boards}
           paused={task_dialog_open || view_task_dialog_open}
           onEdit={() => edit_smart_view(active_smart_view)}
+          onFloat={() => void float_smart_view(active_smart_view.id)}
           onOpenTask={(item) => void open_smart_view_task(item)}
           onOpenBoard={open_board}
         />

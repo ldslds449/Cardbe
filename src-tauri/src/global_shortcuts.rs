@@ -130,7 +130,7 @@ impl Default for ShortcutRegistry {
             menu_labels: [
                 "New Task".into(),
                 "New Note".into(),
-                "Show/Hide Floating Tasks".into(),
+                "Show/Hide Floating Windows".into(),
                 "Show Cardbe".into(),
             ],
         }))

@@ -576,6 +576,8 @@ pub fn run() {
             commands::smart_views::complete_board_tasks,
             commands::smart_views::reopen_board_tasks,
             commands::smart_views::set_board_tasks_priority,
+            commands::smart_views::open_floating_smart_view,
+            commands::smart_views::open_smart_view_in_main_window,
             notes::get_notes,
             notes::create_note,
             notes::create_quick_note,

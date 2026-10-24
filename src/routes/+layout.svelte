@@ -102,7 +102,7 @@
       document.getElementById("app-startup")?.classList.add("is-ready");
     const waits_for_workspace =
       window.location.pathname === "/" ||
-      window.location.pathname.startsWith("/float-task");
+      window.location.pathname.startsWith("/float-");
     if (waits_for_workspace) {
       window.addEventListener("cardbe:workspace-ready", dismiss_startup, {
         once: true,

@@ -11,6 +11,12 @@ use crate::models::ShortcutAction;
 use crate::state::{lock_app, SharedAppData};
 
 const FLOATING_TASK_LABEL_PREFIX: &str = "float-task-";
+const FLOATING_SMART_VIEW_LABEL_PREFIX: &str = "float-view-";
+
+fn is_floating_window(label: &str) -> bool {
+    label.starts_with(FLOATING_TASK_LABEL_PREFIX)
+        || label.starts_with(FLOATING_SMART_VIEW_LABEL_PREFIX)
+}
 
 fn run_shortcut_action<R: Runtime>(app: &AppHandle<R>, action: ShortcutAction) {
     match action {
@@ -243,13 +249,54 @@ pub fn open_floating_task_window<R: Runtime>(
     .map(|_| ())
 }
 
-/// Hides every floating task while any is visible; otherwise shows them all.
-/// Hidden windows stay open, so they are still restored on the next launch.
+/// Smart view IDs may hold any characters, while window labels allow only a
+/// few, so the label and URL carry the ID's UTF-8 bytes in hex.
+fn floating_smart_view_label(id: &str) -> String {
+    format!("{FLOATING_SMART_VIEW_LABEL_PREFIX}{}", hex_id(id))
+}
+
+fn hex_id(id: &str) -> String {
+    id.bytes().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Opens one always-on-top window listing a smart view's tasks, or focuses
+/// the existing one. Like floating tasks, its position and size are restored
+/// by label.
+pub fn open_floating_smart_view_window<R: Runtime>(
+    app: &AppHandle<R>,
+    id: &str,
+) -> tauri::Result<()> {
+    let label = floating_smart_view_label(id);
+    if let Some(window) = app.get_webview_window(&label) {
+        window.unminimize()?;
+        window.show()?;
+        return window.set_focus();
+    }
+    WebviewWindowBuilder::new(
+        app,
+        label,
+        WebviewUrl::App(format!("float-view?view={}", hex_id(id)).into()),
+    )
+    .title("Cardbe")
+    .inner_size(320.0, 360.0)
+    .min_inner_size(220.0, 120.0)
+    .decorations(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .maximizable(false)
+    .minimizable(false)
+    .build()
+    .map(|_| ())
+}
+
+/// Hides every floating window while any is visible; otherwise shows them
+/// all. Hidden windows stay open, so they are still restored on the next
+/// launch.
 fn toggle_floating_task_windows<R: Runtime>(app: &AppHandle<R>) {
     let windows: Vec<_> = app
         .webview_windows()
         .into_iter()
-        .filter(|(label, _)| label.starts_with(FLOATING_TASK_LABEL_PREFIX))
+        .filter(|(label, _)| is_floating_window(label))
         .map(|(_, window)| window)
         .collect();
     let hide = windows
@@ -283,12 +330,28 @@ pub fn open_task_in_main_window<R: Runtime>(
     )
 }
 
+#[derive(Clone, serde::Serialize)]
+struct OpenSmartViewRequest<'a> {
+    id: &'a str,
+}
+
+pub fn open_smart_view_in_main_window<R: Runtime>(
+    app: &AppHandle<R>,
+    id: &str,
+) -> tauri::Result<()> {
+    show_main_window(app);
+    app.emit_to(
+        "main",
+        "cardbe:open-smart-view",
+        OpenSmartViewRequest { id },
+    )
+}
+
 pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {
     match event {
-        // Floating reminders close for real; the main and quick-add windows
+        // Floating windows close for real; the main and quick-add windows
         // stay alive in the background.
-        WindowEvent::CloseRequested { .. }
-            if window.label().starts_with(FLOATING_TASK_LABEL_PREFIX) => {}
+        WindowEvent::CloseRequested { .. } if is_floating_window(window.label()) => {}
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             if let Err(error) = window.hide() {
@@ -309,13 +372,17 @@ mod tests {
     #[test]
     fn floating_task_labels_match_the_capability_pattern() {
         assert_eq!(super::floating_task_label(12, 34), "float-task-12-34");
+        // Any ID becomes a label of allowed characters.
+        assert_eq!(
+            super::floating_smart_view_label("a/ 視"),
+            "float-view-612f20e8a696"
+        );
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
-        assert!(capability["windows"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|window| window == "float-task-*"));
+        let windows = capability["windows"].as_array().unwrap();
+        for pattern in ["float-task-*", "float-view-*"] {
+            assert!(windows.iter().any(|window| window == pattern));
+        }
     }
 
     #[test]

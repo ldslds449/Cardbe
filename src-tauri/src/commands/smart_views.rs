@@ -5,7 +5,7 @@ use crate::{
     smart_views::{self, SmartView},
     state::{lock_app, update_stored_with_archives_for_board, SharedAppData},
 };
-use tauri::{Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// `None` until views were first saved.
 #[tauri::command]
@@ -19,11 +19,61 @@ pub fn get_smart_views(
 /// Replaces the saved views, in display order.
 #[tauri::command]
 pub fn set_smart_views(
+    app: AppHandle,
     state: State<'_, SharedAppData>,
     views: Vec<SmartView>,
 ) -> Result<(), CommandError> {
-    let guard = lock_app(&state)?;
-    smart_views::save(&guard.database.connection, &views).map_err(CommandError::from)
+    {
+        let guard = lock_app(&state)?;
+        smart_views::save(&guard.database.connection, &views).map_err(CommandError::from)?;
+    }
+    // Floating views follow renames, filter changes, and deletion.
+    if let Err(error) = app.emit(SMART_VIEWS_CHANGED_EVENT, ()) {
+        log::warn!(target: "smart_views", "Could not announce saved smart views: {error}");
+    }
+    Ok(())
+}
+
+const SMART_VIEWS_CHANGED_EVENT: &str = "cardbe:smart-views-changed";
+
+fn ensure_view_exists(state: &State<'_, SharedAppData>, id: &str) -> Result<(), CommandError> {
+    let guard = lock_app(state)?;
+    let views = smart_views::load(&guard.database.connection).map_err(CommandError::from)?;
+    views
+        .unwrap_or_default()
+        .iter()
+        .any(|view| view.id == id)
+        .then_some(())
+        .ok_or(CommandError::SmartViewNotFound)
+}
+
+// Async so that window creation does not deadlock the Windows event loop.
+#[tauri::command]
+pub async fn open_floating_smart_view(
+    app: AppHandle,
+    state: State<'_, SharedAppData>,
+    id: String,
+) -> Result<(), CommandError> {
+    ensure_view_exists(&state, &id)?;
+    #[cfg(desktop)]
+    crate::desktop::open_floating_smart_view_window(&app, &id).map_err(CommandError::internal)?;
+    #[cfg(not(desktop))]
+    let _ = app;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_smart_view_in_main_window(
+    app: AppHandle,
+    state: State<'_, SharedAppData>,
+    id: String,
+) -> Result<(), CommandError> {
+    ensure_view_exists(&state, &id)?;
+    #[cfg(desktop)]
+    crate::desktop::open_smart_view_in_main_window(&app, &id).map_err(CommandError::internal)?;
+    #[cfg(not(desktop))]
+    let _ = app;
+    Ok(())
 }
 
 /// Changes a board from a smart view, which may show any board. Changes to

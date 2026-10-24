@@ -108,7 +108,7 @@ describe("core messages", () => {
             ? [
                 "新增任務",
                 "新增筆記",
-                "顯示／隱藏浮動任務",
+                "顯示／隱藏浮動視窗",
                 "啟用全域快捷鍵",
                 "顯示 Cardbe",
                 "結束 Cardbe",
@@ -116,7 +116,7 @@ describe("core messages", () => {
             : [
                 "New Task",
                 "New Note",
-                "Show/Hide Floating Tasks",
+                "Show/Hide Floating Windows",
                 "Enable global shortcuts",
                 "Show Cardbe",
                 "Quit Cardbe",
