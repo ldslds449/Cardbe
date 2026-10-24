@@ -495,6 +495,8 @@
       ) {
         forget_shares?.();
         reset_board_scoped_ui();
+        // The backup replaced the Focuses too.
+        void focuses.load();
       }
     } catch (error) {
       logger.error("backup.restore_share_revoke.failed", error);
