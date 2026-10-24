@@ -41,7 +41,6 @@
     focus_from_explorer,
     is_builtin_focus,
     MAX_FOCUSES,
-    TODAY_FOCUS_ID,
     type ExplorerConditions,
     type Focus,
   } from "./type/focus";
@@ -143,9 +142,9 @@
   // all-task explorer
   let all_task_open = $state(false);
 
-  // Focuses, shown in place of the active board; the app opens on Today.
+  // Focuses, shown in place of the active board; the app opens on the board.
   const focuses = new FocusStore();
-  let active_focus_id = $state<string | null>(TODAY_FOCUS_ID);
+  let active_focus_id = $state<string | null>(null);
   const active_focus = $derived(
     active_focus_id === null ? undefined : focuses.find(active_focus_id),
   );

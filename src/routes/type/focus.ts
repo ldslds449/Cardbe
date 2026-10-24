@@ -55,12 +55,12 @@ export const MAX_FOCUS_NAME_LENGTH = 100;
  */
 export const TODAY_FOCUS_ID = "builtin.today";
 
-/** Open tasks of every board, grouped from overdue to undated. */
+/** Open tasks of every board that are overdue or due today. */
 export function today_focus(): Focus {
   return {
     id: TODAY_FOCUS_ID,
     name: m.workspace_today(),
-    filter: create_focus_filter(),
+    filter: { ...create_focus_filter(), due: "by_today" },
     sort: "due",
     group: "due",
   };

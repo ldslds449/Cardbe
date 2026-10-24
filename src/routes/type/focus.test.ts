@@ -79,7 +79,7 @@ describe("Focuses", () => {
     expect(create_focus("New").filter.completion).toEqual(["open"]);
   });
 
-  it("defines Today as open tasks of every board grouped by due date", () => {
+  it("defines Today as overdue and due-today open tasks of every board", () => {
     const today = today_focus();
     expect(today.id).toBe(TODAY_FOCUS_ID);
     expect(is_builtin_focus(today.id)).toBe(true);
@@ -88,7 +88,9 @@ describe("Focuses", () => {
     expect(focus_query(today, now)).toMatchObject({
       board_ids: null,
       completion: ["open"],
-      due: "all",
+      due: "due",
+      due_start: null,
+      due_end: day(1),
     });
   });
 
