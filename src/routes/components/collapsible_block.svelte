@@ -28,6 +28,9 @@
   const content_height = $derived(content_size?.[0]?.blockSize ?? 0);
   const overflowing = $derived(content_height > max_height + 1);
   const clipped = $derived(!expanded && overflowing);
+  // Also cap content before its first measurement, so a remounted card (such
+  // as one dragged into another column) never starts at its full height.
+  const capped = $derived(!expanded && (!content_size || overflowing));
 </script>
 
 <div class={cn("min-w-0", className)}>
@@ -37,7 +40,7 @@
       clipped &&
         "[mask-image:linear-gradient(to_bottom,black_65%,transparent)]",
     )}
-    style:max-height={clipped ? `${max_height}px` : undefined}
+    style:max-height={capped ? `${max_height}px` : undefined}
   >
     <div bind:borderBoxSize={content_size}>
       {@render children()}
