@@ -1163,6 +1163,26 @@ describe("Undo scope and shared Task Explorer updates", () => {
     expect(store.task_expand_mode).toBe(false);
   });
 
+  it("applies the default task expansion to every board", async () => {
+    const store = create_store();
+    vi.mocked(toast.error).mockClear();
+    invoke_mock.mockResolvedValue(undefined);
+    await store.set_task_expand_mode(false);
+    store.task_expansion.toggle(9, "1");
+    await store.set_default_task_expand_mode(true);
+    expect(invoke_mock).toHaveBeenCalledWith("set_default_task_expand_mode", {
+      expanded: true,
+    });
+    expect(store.task_expand_mode).toBe(true);
+    expect(store.task_expansion.is_expanded(9, "1")).toBe(false);
+
+    invoke_mock.mockRejectedValueOnce({ code: "INTERNAL_ERROR" });
+    await store.set_default_task_expand_mode(false);
+    expect(store.default_task_expand_mode).toBe(true);
+    expect(store.task_expand_mode).toBe(true);
+    expect(toast.error).toHaveBeenCalled();
+  });
+
   it("persists the calendar layout and restores it when saving fails", async () => {
     const store = create_store();
     store.can_undo = false;

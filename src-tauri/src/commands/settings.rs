@@ -119,6 +119,24 @@ pub fn set_task_expand_mode(
     .map_err(CommandError::from)
 }
 
+fn apply_default_task_expand_mode(settings: &mut Settings, expanded: bool) {
+    // The default replaces per-board choices so every board shows it at once.
+    settings.task_expand_mode = expanded;
+    settings.board_task_expand_modes.clear();
+}
+
+#[tauri::command]
+pub fn set_default_task_expand_mode(
+    state: State<'_, SharedAppData>,
+    expanded: bool,
+) -> Result<(), CommandError> {
+    update_stored(&state, |data| {
+        apply_default_task_expand_mode(&mut data.settings, expanded);
+        Ok(())
+    })
+    .map_err(CommandError::from)
+}
+
 #[tauri::command]
 pub fn set_calendar_expand_all(
     state: State<'_, SharedAppData>,
@@ -356,6 +374,16 @@ mod theme_tests {
         let restored: crate::models::Settings =
             serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
         assert_eq!(restored, settings);
+    }
+
+    #[test]
+    fn default_task_expand_mode_replaces_board_choices() {
+        let mut settings = crate::models::Settings::default();
+        settings.board_task_expand_modes.insert(7, true);
+        settings.board_task_expand_modes.insert(9, false);
+        super::apply_default_task_expand_mode(&mut settings, false);
+        assert!(!settings.task_expand_mode);
+        assert!(settings.board_task_expand_modes.is_empty());
     }
 }
 

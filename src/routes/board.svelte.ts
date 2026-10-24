@@ -36,8 +36,8 @@ export interface ImportCandidate {
 export class BoardStore extends TaskBoardStore {
   notify_enabled = $state(false);
   // Device-local detail visibility per board; boards without a saved choice
-  // use the older single setting.
-  private default_task_expand_mode = $state(true);
+  // use the default.
+  default_task_expand_mode = $state(true);
   private board_task_expand_modes = $state<Record<number, boolean>>({});
   get task_expand_mode() {
     const board_id = this.active_board_id;
@@ -245,6 +245,30 @@ export class BoardStore extends TaskBoardStore {
       } else {
         this.board_task_expand_modes[board_id] = previous;
       }
+    }
+  }
+
+  async set_default_task_expand_mode(expanded: boolean) {
+    const previous = {
+      expanded: this.default_task_expand_mode,
+      boards: this.board_task_expand_modes,
+    };
+    this.default_task_expand_mode = expanded;
+    this.board_task_expand_modes = {};
+    this.task_expansion.clear_all();
+    const saved = await addMission(async () => {
+      try {
+        await invoke<void>("set_default_task_expand_mode", { expanded });
+        return true;
+      } catch (error) {
+        logger.error("settings.task_expand_save.failed", error);
+        toast.error(translateCommandError(error));
+        return false;
+      }
+    });
+    if (!saved && this.default_task_expand_mode === expanded) {
+      this.default_task_expand_mode = previous.expanded;
+      this.board_task_expand_modes = previous.boards;
     }
   }
 

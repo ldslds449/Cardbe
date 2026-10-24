@@ -73,6 +73,14 @@ export class TaskExpansionState {
     this.persist();
   }
 
+  clear_all() {
+    if (Object.keys(this.expanded).length === 0) {
+      return;
+    }
+    this.expanded = {};
+    this.persist();
+  }
+
   private set_board(board_id: number, task_ids: string[]) {
     if (task_ids.length > 0) {
       this.expanded[board_id] = task_ids;
