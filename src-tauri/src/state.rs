@@ -1,11 +1,11 @@
 use crate::errors::{CommandError, DomainError, ShareError};
 use crate::{
-    models::{Board, BoardRole, StoredData},
+    models::{Archive, Board, BoardRole, Column, StoredData, TaskTemplate},
     storage::{self, Database, EventWrite},
     task_events::EventSource,
 };
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::{BTreeSet, HashSet, VecDeque},
     fmt,
     path::PathBuf,
     sync::{Mutex, MutexGuard},
@@ -16,7 +16,7 @@ pub struct AppData {
     pub stored: StoredData,
     pub boards: Vec<Board>,
     pub active_board_id: i64,
-    pub undo_history: Vec<UndoEntry>,
+    pub undo_history: VecDeque<UndoEntry>,
     pub labels: BTreeSet<String>,
     pub database: Database,
     pub recovery_messages: Vec<String>,
@@ -25,16 +25,61 @@ pub struct AppData {
 
 /// Board contents before a local change, with the task event operation the
 /// change recorded so undoing it can name that operation.
+///
+/// Entries are undone newest first, and changes outside the history clear it,
+/// so archives and templates the change left alone equal the current ones
+/// when the entry is undone and are not kept. Settings are never undone.
 #[derive(Clone, Debug, PartialEq)]
 pub struct UndoEntry {
-    pub data: StoredData,
+    pub columns: Vec<Column>,
+    pub archives: Option<Vec<Archive>>,
+    pub templates: Option<Vec<TaskTemplate>>,
+    pub label_recency: Vec<String>,
+    pub next_column_id: i64,
+    pub next_task_id: i64,
+    pub next_template_id: i64,
     pub event_op: Option<i64>,
+}
+
+impl UndoEntry {
+    fn new(previous: StoredData, current: &StoredData, event_op: Option<i64>) -> Self {
+        Self {
+            columns: previous.columns,
+            archives: (previous.archives != current.archives).then_some(previous.archives),
+            templates: (previous.templates != current.templates).then_some(previous.templates),
+            label_recency: previous.label_recency,
+            next_column_id: previous.next_column_id,
+            next_task_id: previous.next_task_id,
+            next_template_id: previous.next_template_id,
+            event_op,
+        }
+    }
+
+    fn restore(self, current: &StoredData) -> StoredData {
+        StoredData {
+            schema_version: current.schema_version,
+            columns: self.columns,
+            archives: self.archives.unwrap_or_else(|| current.archives.clone()),
+            templates: self.templates.unwrap_or_else(|| current.templates.clone()),
+            settings: current.settings.clone(),
+            label_recency: self.label_recency,
+            next_column_id: self.next_column_id,
+            next_task_id: self.next_task_id,
+            next_template_id: self.next_template_id,
+        }
+    }
 }
 
 impl From<StoredData> for UndoEntry {
     fn from(data: StoredData) -> Self {
         Self {
-            data,
+            columns: data.columns,
+            archives: Some(data.archives),
+            templates: Some(data.templates),
+            label_recency: data.label_recency,
+            next_column_id: data.next_column_id,
+            next_task_id: data.next_task_id,
+            next_template_id: data.next_template_id,
             event_op: None,
         }
     }
@@ -95,7 +140,7 @@ impl AppData {
             stored,
             boards,
             active_board_id,
-            undo_history: Vec::new(),
+            undo_history: VecDeque::new(),
             labels: BTreeSet::new(),
             database,
             recovery_messages,
@@ -317,13 +362,12 @@ fn update_locked_with_events<R, E: From<String>>(
 }
 
 impl AppData {
+    /// Records `previous` once `stored` holds the changed contents.
     pub(crate) fn record_board_undo(&mut self, previous: StoredData, event_op: Option<i64>) {
-        self.undo_history.push(UndoEntry {
-            data: previous,
-            event_op,
-        });
+        let entry = UndoEntry::new(previous, &self.stored, event_op);
+        self.undo_history.push_back(entry);
         if self.undo_history.len() > 50 {
-            self.undo_history.remove(0);
+            self.undo_history.pop_front();
         }
     }
 }
@@ -373,10 +417,8 @@ fn ensure_archives_loaded_locked(guard: &mut AppData) -> Result<(), String> {
         .database
         .load_archives()
         .map_err(|error| error.to_string())?;
-    guard.stored.archives = archives.clone();
-    for entry in &mut guard.undo_history {
-        entry.data.archives = archives.clone();
-    }
+    // Undo entries without archives take these loaded ones.
+    guard.stored.archives = archives;
     guard.archives_loaded = true;
     Ok(())
 }
@@ -394,29 +436,28 @@ fn undo_locked(guard: &mut AppData, expected_board_id: i64) -> Result<bool, Doma
         return Err(DomainError::StaleBoardRequest);
     }
     ensure_board_can_edit(guard)?;
-    let UndoEntry {
-        data: mut previous,
-        event_op,
-    } = guard
+    let entry = guard
         .undo_history
-        .last()
-        .cloned()
+        .pop_back()
         .ok_or(DomainError::NothingToUndo)?;
-    previous.settings = guard.stored.settings.clone();
+    let event_op = entry.event_op;
+    let previous = entry.restore(&guard.stored);
 
     let archives_loaded = guard.archives_loaded;
     let AppData {
         database, stored, ..
     } = &mut *guard;
-    database
-        .persist_diff_with_events(
-            stored,
-            &previous,
-            archives_loaded,
-            EventWrite::Record(EventSource::undo(event_op)),
-        )
-        .map_err(|error| error.to_string())?;
-    guard.undo_history.pop();
+    if let Err(error) = database.persist_diff_with_events(
+        stored,
+        &previous,
+        archives_loaded,
+        EventWrite::Record(EventSource::undo(event_op)),
+    ) {
+        // The change stays undoable.
+        let entry = UndoEntry::new(previous, &guard.stored, event_op);
+        guard.undo_history.push_back(entry);
+        return Err(error.to_string().into());
+    }
     guard.stored = previous;
     refresh_active_board_summary(guard)?;
     guard.refresh_labels();
@@ -426,7 +467,7 @@ fn undo_locked(guard: &mut AppData, expected_board_id: i64) -> Result<bool, Doma
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Archive, Column, Task};
+    use crate::models::Task;
     use std::{
         fs,
         time::{SystemTime, UNIX_EPOCH},
@@ -682,7 +723,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(app.undo_history.len(), 1);
-        assert!(app.undo_history[0].data.columns.is_empty());
+        assert!(app.undo_history[0].columns.is_empty());
+        assert_eq!(app.undo_history[0].archives, None);
+        assert_eq!(app.undo_history[0].templates, None);
         update_locked(&mut app, |data| {
             data.settings.notify_enabled = !data.settings.notify_enabled;
             data.settings.theme = Some("morandi-dark-blue".into());
@@ -707,6 +750,54 @@ mod tests {
             app.database.read_board_complete(board_id).unwrap().settings,
             settings
         );
+        drop(app);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn undo_entries_keep_only_the_archives_a_change_replaced() {
+        let dir = std::env::temp_dir().join(format!(
+            "cardbe-undo-archives-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let stored = StoredData {
+            columns: vec![Column {
+                id: 1,
+                name: "Todo".into(),
+                color: String::new(),
+                sort_order: Default::default(),
+                sort_rules: Vec::new(),
+                done: false,
+                tasks: vec![Task {
+                    id: 1,
+                    ..Task::default()
+                }],
+            }],
+            next_task_id: 2,
+            ..StoredData::default()
+        };
+        let mut app = app_data(&dir, stored);
+        let board_id = app.active_board_id;
+        update_locked(&mut app, |data| {
+            let task = data.columns[0].tasks.remove(0);
+            data.archives.push(Archive { time: 1, task });
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(app.undo_history[0].archives, Some(Vec::new()));
+        assert_eq!(app.undo_history[0].templates, None);
+
+        assert!(!undo_locked(&mut app, board_id).unwrap());
+        assert!(app.stored.archives.is_empty());
+        assert_eq!(app.stored.columns[0].tasks[0].id, 1);
+        let persisted = app.database.read_board_complete(board_id).unwrap();
+        assert!(persisted.archives.is_empty());
+        assert_eq!(persisted.columns, app.stored.columns);
         drop(app);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -848,7 +939,7 @@ mod tests {
     }
 
     #[test]
-    fn loading_archives_hydrates_existing_undo_snapshots() {
+    fn undo_after_loading_archives_keeps_them() {
         let dir = std::env::temp_dir().join(format!(
             "cardbe-lazy-undo-{}-{}",
             std::process::id(),
@@ -891,7 +982,14 @@ mod tests {
 
         ensure_archives_loaded_locked(&mut app).unwrap();
         assert_eq!(app.stored.archives, vec![archive.clone()]);
-        assert_eq!(app.undo_history[0].data.archives, vec![archive]);
+        let board_id = app.active_board_id;
+        assert!(!undo_locked(&mut app, board_id).unwrap());
+        assert!(app.stored.columns.is_empty());
+        assert_eq!(app.stored.archives, vec![archive.clone()]);
+        assert_eq!(
+            app.database.read_board_complete(board_id).unwrap().archives,
+            vec![archive]
+        );
         drop(app);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -935,7 +1033,7 @@ mod tests {
         database.initialize_boards(&persisted).unwrap();
         let board_id = database.active_board_id();
         let mut app = AppData::new(StoredData::default(), database, Vec::new(), false).unwrap();
-        app.undo_history.push(StoredData::default().into());
+        app.undo_history.push_back(StoredData::default().into());
 
         app.load_active_board(board_id).unwrap();
 

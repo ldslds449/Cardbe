@@ -238,7 +238,7 @@ fn writes_install_into_the_open_board_without_entering_undo() {
         .lock()
         .unwrap()
         .undo_history
-        .push(StoredData::default().into());
+        .push_back(StoredData::default().into());
     let writer = context("writer", &[host.board_id], true);
     call(
         &host,
