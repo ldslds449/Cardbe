@@ -3,31 +3,31 @@ import type { Task } from "../../type/task.svelte";
 import { task_matches_search } from "../calendar/calendar";
 import { due_limit } from "../../utils/task-date-range";
 
-export interface FocusTask {
+export interface TodayTask {
   task: Task;
   column: Column;
 }
 
-export interface FocusGroups {
-  overdue: FocusTask[];
-  today: FocusTask[];
-  upcoming: FocusTask[];
-  unscheduled: FocusTask[];
+export interface TodayGroups {
+  overdue: TodayTask[];
+  today: TodayTask[];
+  upcoming: TodayTask[];
+  unscheduled: TodayTask[];
 }
 
-function sort_by_due_time(left: FocusTask, right: FocusTask): number {
+function sort_by_due_time(left: TodayTask, right: TodayTask): number {
   return (
     (left.task.due_time?.getTime() ?? 0) - (right.task.due_time?.getTime() ?? 0)
   );
 }
 
-export function build_focus_groups(
+export function build_today_groups(
   columns: Column[],
   now: Date,
   search_text: string,
   search_task_ids?: ReadonlySet<string> | null,
-): FocusGroups {
-  const groups: FocusGroups = {
+): TodayGroups {
+  const groups: TodayGroups = {
     overdue: [],
     today: [],
     upcoming: [],
@@ -67,7 +67,7 @@ export function build_focus_groups(
   return groups;
 }
 
-export function focus_task_count(groups: FocusGroups): number {
+export function today_task_count(groups: TodayGroups): number {
   return (
     groups.overdue.length +
     groups.today.length +

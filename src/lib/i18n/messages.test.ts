@@ -291,13 +291,13 @@ describe("core messages", () => {
     );
   });
   it("uses complete natural messages for focus and filtering", () => {
-    expect(m.focus_today_clear({}, { locale: "zh-TW" })).toBe(
+    expect(m.today_all_done({}, { locale: "zh-TW" })).toBe(
       "今天的待辦事項都處理好了。",
     );
-    expect(m.focus_attention({ count: 1 }, { locale: "en" })).toBe(
+    expect(m.today_attention({ count: 1 }, { locale: "en" })).toBe(
       "1 task needs your attention.",
     );
-    expect(m.focus_attention({ count: 2 }, { locale: "en" })).toBe(
+    expect(m.today_attention({ count: 2 }, { locale: "en" })).toBe(
       "2 tasks need your attention.",
     );
     expect(m.explorer_loaded({ count: 1234 }, { locale: "zh-TW" })).toBe(

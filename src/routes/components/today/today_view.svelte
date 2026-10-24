@@ -29,12 +29,12 @@
   import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
   import LabelBadge from "../label_badge.svelte";
   import {
-    build_focus_groups,
-    focus_task_count,
-    type FocusTask,
-  } from "./focus";
+    build_today_groups,
+    today_task_count,
+    type TodayTask,
+  } from "./today";
 
-  interface FocusViewProps {
+  interface TodayViewProps {
     columns: Column[];
     search_text?: string;
     search_task_ids?: ReadonlySet<string> | null;
@@ -62,16 +62,16 @@
     onArchiveTask = () => {},
     onDeleteTask = () => {},
     read_only = false,
-  }: FocusViewProps = $props();
+  }: TodayViewProps = $props();
 
   let now = $state(new Date());
   let delete_confirm_open = $state(false);
   let delete_target = $state<Task | null>(null);
   let archive_focus_restore_target: string | null = null;
   let groups = $derived(
-    build_focus_groups(columns, now, search_text, search_task_ids),
+    build_today_groups(columns, now, search_text, search_task_ids),
   );
-  let total_count = $derived(focus_task_count(groups));
+  let total_count = $derived(today_task_count(groups));
   let attention_count = $derived(groups.overdue.length + groups.today.length);
 
   // Each row mounts two menus; rows beyond the first few per section are
@@ -121,7 +121,7 @@
       : date;
   }
 
-  function restore_menu_focus(event: Event, entry: FocusTask) {
+  function restore_menu_focus(event: Event, entry: TodayTask) {
     if (archive_focus_restore_target === entry.task.id) {
       event.preventDefault();
     }
@@ -141,7 +141,7 @@
   }
 </script>
 
-{#snippet task_row(entry: FocusTask, tone: "overdue" | "today" | "normal")}
+{#snippet task_row(entry: TodayTask, tone: "overdue" | "today" | "normal")}
   <ContextMenu.Root>
     <ContextMenu.Trigger>
       {#snippet child({ props })}
@@ -248,7 +248,7 @@
   </ContextMenu.Root>
 {/snippet}
 
-{#snippet menu_items(entry: FocusTask, context: boolean)}
+{#snippet menu_items(entry: TodayTask, context: boolean)}
   {@const Item = context ? ContextMenu.Item : DropdownMenu.Item}
   <TaskActionItems
     {context}
@@ -284,7 +284,7 @@
 {#snippet group_section(
   title: string,
   description: string,
-  entries: FocusTask[],
+  entries: TodayTask[],
   tone: "overdue" | "today" | "normal",
 )}
   <section class="rounded-xl border bg-muted/20 p-4" aria-label={title}>
@@ -329,13 +329,13 @@
       <div
         class="flex min-h-24 items-center justify-center rounded-lg border border-dashed bg-background/60 px-4 text-center text-sm text-muted-foreground"
       >
-        {m.focus_nothing()}
+        {m.today_nothing()}
       </div>
     {/if}
   </section>
 {/snippet}
 
-<div class="mx-auto w-full max-w-6xl space-y-5 p-1" aria-label={m.focus_view()}>
+<div class="mx-auto w-full max-w-6xl space-y-5 p-1" aria-label={m.today_view()}>
   <header
     class="overflow-hidden rounded-2xl border bg-background p-5 shadow-sm"
   >
@@ -357,9 +357,9 @@
           </h1>
           <p class="mt-1 text-sm text-muted-foreground">
             {#if attention_count === 0}
-              {m.focus_today_clear()}
+              {m.today_all_done()}
             {:else}
-              {m.focus_attention({ count: attention_count })}
+              {m.today_attention({ count: attention_count })}
             {/if}
           </p>
         </div>
@@ -383,13 +383,13 @@
         <div class="text-2xl font-semibold tabular-nums">
           {formatNumber(groups.upcoming.length)}
         </div>
-        <div class="text-xs text-muted-foreground">{m.focus_upcoming()}</div>
+        <div class="text-xs text-muted-foreground">{m.today_upcoming()}</div>
       </div>
       <div class="rounded-lg border bg-background/80 p-3">
         <div class="text-2xl font-semibold tabular-nums">
           {formatNumber(total_count)}
         </div>
-        <div class="text-xs text-muted-foreground">{m.focus_visible()}</div>
+        <div class="text-xs text-muted-foreground">{m.today_visible()}</div>
       </div>
     </div>
   </header>
@@ -401,17 +401,17 @@
         <Empty.Title
           >{search_text.trim()
             ? m.explorer_no_matching()
-            : m.focus_clear()}</Empty.Title
+            : m.today_clear()}</Empty.Title
         >
         <Empty.Description>
-          {search_text.trim() ? m.focus_try_search() : m.focus_empty()}
+          {search_text.trim() ? m.today_try_search() : m.today_empty()}
         </Empty.Description>
       </Empty.Header>
       {#if !search_text.trim()}
         <Empty.Content>
           {#if !read_only}
             <Button onclick={() => onAddTask(new Date(now))}
-              >{m.focus_add()}</Button
+              >{m.today_add()}</Button
             >
           {/if}
         </Empty.Content>
@@ -422,27 +422,27 @@
       <div class="space-y-5">
         {@render group_section(
           m.workspace_today(),
-          m.focus_today_help(),
+          m.today_due_help(),
           groups.today,
           "today",
         )}
         {@render group_section(
           m.explorer_overdue(),
-          m.focus_overdue_help(),
+          m.today_overdue_help(),
           groups.overdue,
           "overdue",
         )}
       </div>
       <div class="space-y-5">
         {@render group_section(
-          m.focus_upcoming(),
-          m.focus_upcoming_help(),
+          m.today_upcoming(),
+          m.today_upcoming_help(),
           groups.upcoming,
           "normal",
         )}
         {@render group_section(
-          m.focus_unscheduled(),
-          m.focus_unscheduled_help(),
+          m.today_unscheduled(),
+          m.today_unscheduled_help(),
           groups.unscheduled,
           "normal",
         )}

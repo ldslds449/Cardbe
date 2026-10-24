@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { Column } from "../../type/column.svelte";
 import { create_task } from "../../type/task.svelte";
-import { build_focus_groups, focus_task_count } from "./focus";
+import { build_today_groups, today_task_count } from "./today";
 
 function make_column(): Column {
   return {
@@ -14,7 +14,7 @@ function make_column(): Column {
   };
 }
 
-describe("build_focus_groups", () => {
+describe("build_today_groups", () => {
   it("groups tasks by their due time", () => {
     const column = make_column();
     column.tasks = [
@@ -53,7 +53,7 @@ describe("build_focus_groups", () => {
       create_task("task_5", "Someday"),
     ];
 
-    const groups = build_focus_groups([column], new Date(2026, 6, 25, 16), "");
+    const groups = build_today_groups([column], new Date(2026, 6, 25, 16), "");
 
     expect(groups.overdue.map(({ task }) => task.title)).toEqual([
       "Yesterday",
@@ -64,7 +64,7 @@ describe("build_focus_groups", () => {
     expect(groups.unscheduled.map(({ task }) => task.title)).toEqual([
       "Someday",
     ]);
-    expect(focus_task_count(groups)).toBe(5);
+    expect(today_task_count(groups)).toBe(5);
   });
 
   it("keeps a date-only due date in today until the day ends", () => {
@@ -81,7 +81,7 @@ describe("build_focus_groups", () => {
       create_task("task_2", "Today", "", "", undefined, new Date(2026, 6, 25)),
     ];
 
-    const groups = build_focus_groups(
+    const groups = build_today_groups(
       [column],
       new Date(2026, 6, 25, 23, 59),
       "",
@@ -106,7 +106,7 @@ describe("build_focus_groups", () => {
       create_task("task_2", "Buy groceries"),
     ];
 
-    const groups = build_focus_groups(
+    const groups = build_today_groups(
       [column],
       new Date(2026, 6, 25),
       "RELEASE",
@@ -116,7 +116,7 @@ describe("build_focus_groups", () => {
     expect(groups.today.map(({ task }) => task.title)).toEqual([
       "Write release notes",
     ]);
-    expect(focus_task_count(groups)).toBe(1);
+    expect(today_task_count(groups)).toBe(1);
   });
 
   it("sorts dated groups by due time", () => {
@@ -140,7 +140,7 @@ describe("build_focus_groups", () => {
       ),
     ];
 
-    const groups = build_focus_groups([column], new Date(2026, 6, 25, 8), "");
+    const groups = build_today_groups([column], new Date(2026, 6, 25, 8), "");
 
     expect(groups.today.map(({ task }) => task.title)).toEqual([
       "Earlier",

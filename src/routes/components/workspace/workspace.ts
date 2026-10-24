@@ -1,5 +1,5 @@
 export type WorkspaceView =
-  | "focus"
+  | "today"
   | "board"
   | "calendar"
   | "gantt"

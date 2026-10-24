@@ -46,7 +46,7 @@
   import GanttView from "./components/gantt/gantt_view.svelte";
   import type { GanttScale } from "./components/gantt/gantt";
   import type { TaskDates } from "./utils/task-date-range";
-  import FocusView from "./components/focus/focus_view.svelte";
+  import TodayView from "./components/today/today_view.svelte";
   import NotePanel from "./components/note/note_panel.svelte";
   import CardReferencePreview from "./components/card_reference_preview.svelte";
   import IrohRemovalNotice from "./components/share/iroh_removal_notice.svelte";
@@ -74,8 +74,8 @@
   import { board, type ImportCandidate } from "./board.svelte";
 
   // menubar state
-  let active_view = $state<WorkspaceView>("focus");
-  let selected_view = $state<WorkspaceView>("focus");
+  let active_view = $state<WorkspaceView>("today");
+  let selected_view = $state<WorkspaceView>("today");
   $effect(() => {
     if (
       active_view === "statistics" &&
@@ -1427,8 +1427,8 @@
                   {m.board_search_retry()}
                 </Button>
               </div>
-            {:else if active_view === "focus"}
-              <FocusView
+            {:else if active_view === "today"}
+              <TodayView
                 columns={board.columns}
                 {search_text}
                 search_task_ids={board.search_task_ids}

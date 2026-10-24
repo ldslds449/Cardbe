@@ -39,7 +39,7 @@
       icon: typeof SparklesIcon;
     }[]
   >([
-    { id: "focus", label: m.workspace_today(), icon: SparklesIcon },
+    { id: "today", label: m.workspace_today(), icon: SparklesIcon },
     { id: "board", label: m.board_title(), icon: Columns3Icon },
     { id: "calendar", label: m.workspace_calendar(), icon: CalendarDaysIcon },
     { id: "gantt", label: m.workspace_gantt(), icon: ChartGanttIcon },

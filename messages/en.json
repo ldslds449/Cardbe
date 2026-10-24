@@ -803,21 +803,21 @@
       }
     }
   ],
-  "focus_nothing": "Nothing here",
-  "focus_view": "Today focus view",
-  "focus_clear": "All clear",
-  "focus_today_clear": "You're clear for today.",
-  "focus_upcoming": "Upcoming",
-  "focus_visible": "Visible tasks",
-  "focus_try_search": "Try another search.",
-  "focus_empty": "There are no active tasks in your workspace.",
-  "focus_add": "Add today's first task",
-  "focus_today_help": "Tasks due before the day ends",
-  "focus_overdue_help": "Past due tasks that need a decision",
-  "focus_upcoming_help": "Everything scheduled after today",
-  "focus_unscheduled": "No schedule",
-  "focus_unscheduled_help": "Tasks waiting for a due date",
-  "focus_attention": [
+  "today_nothing": "Nothing here",
+  "today_view": "Today overview",
+  "today_clear": "All clear",
+  "today_all_done": "You're clear for today.",
+  "today_upcoming": "Upcoming",
+  "today_visible": "Visible tasks",
+  "today_try_search": "Try another search.",
+  "today_empty": "There are no active tasks in your workspace.",
+  "today_add": "Add today's first task",
+  "today_due_help": "Tasks due before the day ends",
+  "today_overdue_help": "Past due tasks that need a decision",
+  "today_upcoming_help": "Everything scheduled after today",
+  "today_unscheduled": "No schedule",
+  "today_unscheduled_help": "Tasks waiting for a due date",
+  "today_attention": [
     {
       "declarations": [
         "input count",

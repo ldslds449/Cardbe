@@ -677,21 +677,21 @@
       }
     }
   ],
-  "focus_nothing": "目前沒有待辦事項",
-  "focus_view": "今日重點檢視",
-  "focus_clear": "目前沒有待辦事項",
-  "focus_today_clear": "今天的待辦事項都處理好了。",
-  "focus_upcoming": "即將到期",
-  "focus_visible": "顯示的任務",
-  "focus_try_search": "請嘗試其他搜尋條件。",
-  "focus_empty": "工作區目前沒有待辦任務。",
-  "focus_add": "新增今天的第一個任務",
-  "focus_today_help": "今天結束前到期的任務",
-  "focus_overdue_help": "已超過到期時間，等待處理的任務",
-  "focus_upcoming_help": "今天之後到期的任務",
-  "focus_unscheduled": "未排程",
-  "focus_unscheduled_help": "尚未設定到期日的任務",
-  "focus_attention": [
+  "today_nothing": "目前沒有待辦事項",
+  "today_view": "今日重點檢視",
+  "today_clear": "目前沒有待辦事項",
+  "today_all_done": "今天的待辦事項都處理好了。",
+  "today_upcoming": "即將到期",
+  "today_visible": "顯示的任務",
+  "today_try_search": "請嘗試其他搜尋條件。",
+  "today_empty": "工作區目前沒有待辦任務。",
+  "today_add": "新增今天的第一個任務",
+  "today_due_help": "今天結束前到期的任務",
+  "today_overdue_help": "已超過到期時間，等待處理的任務",
+  "today_upcoming_help": "今天之後到期的任務",
+  "today_unscheduled": "未排程",
+  "today_unscheduled_help": "尚未設定到期日的任務",
+  "today_attention": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],
       "match": {
