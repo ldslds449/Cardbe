@@ -857,6 +857,146 @@ fn read_only_shared_boards_reject_writes_from_any_caller() {
 }
 
 #[test]
+fn task_search_filters_across_granted_boards() {
+    let host = TestHost::new();
+    let (board, other) = (host.board_id, host.other_board_id);
+    let writer = context("writer", &[board, other], true);
+    let create = |board_id: i64, arguments: serde_json::Value| {
+        let mut arguments = arguments;
+        arguments["board_id"] = board_id.into();
+        call(&host, &writer, "task.create", arguments).unwrap()["task"]["id"]
+            .as_i64()
+            .unwrap()
+    };
+    let day = 24 * 60 * 60 * 1000u64;
+    let now = crate::plugins::types::now() as u64;
+    let urgent = create(
+        other,
+        json!({"column_id": 1, "title": "季度 urgent 🚨", "priority": "urgent",
+               "labels": ["ops"], "due_time": now - day}),
+    );
+    let later = create(
+        board,
+        json!({"column_id": 1, "title": "Plan later", "priority": "low",
+               "due_time": now + 3 * day, "blocked_by": [10]}),
+    );
+    let ids = |page: &serde_json::Value| {
+        page["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|task| {
+                (
+                    task["board_id"].as_i64().unwrap(),
+                    task["id"].as_i64().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let search = |context: &OperationContext, arguments: serde_json::Value| {
+        call(&host, context, "task.search", arguments)
+    };
+
+    // Every readable board, earliest due first, undated tasks last.
+    let all = search(&writer, json!({})).unwrap();
+    assert_eq!(
+        ids(&all),
+        vec![(other, urgent), (board, later), (board, 11), (board, 10)]
+    );
+    assert_eq!(all["tasks"][0]["column_id"], 1);
+    assert_eq!(all["tasks"][0]["labels"][0], "ops");
+
+    let found = |arguments| ids(&search(&writer, arguments).unwrap());
+    assert_eq!(
+        found(json!({"query": "季度"})),
+        vec![(other, urgent), (board, 10)]
+    );
+    assert_eq!(
+        found(json!({"priorities": ["urgent", "high"]})),
+        vec![(other, urgent)]
+    );
+    assert_eq!(found(json!({"labels": ["ops"]})), vec![(other, urgent)]);
+    assert_eq!(found(json!({"overdue": true})), vec![(other, urgent)]);
+    assert_eq!(found(json!({"waiting": "waiting"})), vec![(board, later)]);
+    assert_eq!(found(json!({"waiting": "waited_on"})), vec![(board, 10)]);
+    assert_eq!(
+        found(json!({"has_due": false})),
+        vec![(board, 11), (board, 10)]
+    );
+    assert_eq!(
+        found(json!({"due_from": now, "due_before": now + 7 * day})),
+        vec![(board, later)]
+    );
+    assert_eq!(
+        found(json!({"board_ids": [board], "sort": "priority"}))[0],
+        (board, later)
+    );
+    assert_eq!(
+        found(json!({"board_ids": [other, other]})),
+        vec![(other, urgent)]
+    );
+
+    // Archived tasks are left out unless asked for.
+    call(
+        &host,
+        &writer,
+        "task.archive",
+        json!({"board_id": board, "task_id": 11}),
+    )
+    .unwrap();
+    assert!(!found(json!({})).contains(&(board, 11)));
+    let archived = search(&writer, json!({"completion": ["archived"]})).unwrap();
+    assert_eq!(ids(&archived), vec![(board, 11)]);
+    assert_eq!(archived["tasks"][0]["archived"], true);
+    assert!(archived["tasks"][0]["column_id"].is_null());
+
+    let page = search(&writer, json!({"limit": 2})).unwrap();
+    assert_eq!(page["next_offset"], 2);
+    let rest = search(&writer, json!({"offset": 2, "limit": 2})).unwrap();
+    assert_eq!(ids(&rest), vec![(board, 10)]);
+    assert!(rest.get("next_offset").is_none());
+
+    // A client sees only its granted boards and cannot name others.
+    let reader = context("reader", &[board], false);
+    assert!(ids(&search(&reader, json!({})).unwrap())
+        .iter()
+        .all(|(board_id, _)| *board_id == board));
+    assert!(matches!(
+        search(&reader, json!({"board_ids": [other]})),
+        Err(OperationError::PermissionDenied)
+    ));
+    let everything = OperationContext::new(
+        Caller::Mcp {
+            client_id: "all".into(),
+        },
+        Grants {
+            all_boards: true,
+            boards: Default::default(),
+            write: false,
+        },
+    );
+    assert_eq!(
+        domain(search(&everything, json!({"board_ids": [999]})).unwrap_err())["code"],
+        "BOARD_NOT_FOUND"
+    );
+
+    for invalid in [
+        json!({"completion": []}),
+        json!({"limit": 0}),
+        json!({"limit": 101}),
+        json!({"priorities": ["critical"]}),
+        json!({"labels": vec!["x"; 101]}),
+        json!({"query": "x".repeat(4097)}),
+        json!({"board_id": board}),
+    ] {
+        assert!(matches!(
+            search(&writer, invalid),
+            Err(OperationError::InvalidInput)
+        ));
+    }
+}
+
+#[test]
 fn columns_take_sort_rules_and_still_accept_moved_tasks() {
     let host = TestHost::new();
     let writer = context("writer", &[host.board_id], true);

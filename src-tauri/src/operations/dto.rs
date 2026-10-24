@@ -441,6 +441,98 @@ impl TaskStatus {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Completion {
+    Open,
+    /// In the board's done column.
+    Done,
+    Archived,
+}
+
+impl Completion {
+    pub fn as_filter(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Done => "done",
+            Self::Archived => "archived",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PriorityFilter {
+    /// Tasks without a priority.
+    None,
+    Low,
+    Medium,
+    High,
+    Urgent,
+}
+
+impl PriorityFilter {
+    pub fn as_filter(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Urgent => "urgent",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WaitingFilter {
+    /// Active tasks that wait on an open task.
+    Waiting,
+    NotWaiting,
+    /// Open tasks that an open task waits on.
+    WaitedOn,
+}
+
+impl WaitingFilter {
+    pub fn as_filter(self) -> &'static str {
+        match self {
+            Self::Waiting => "waiting",
+            Self::NotWaiting => "not_waiting",
+            Self::WaitedOn => "waited_on",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskSort {
+    /// Earliest due first, tasks without one last.
+    #[default]
+    Due,
+    /// Most important first, then by due time.
+    Priority,
+    /// Newest first.
+    Created,
+    Title,
+    /// By column name.
+    Column,
+    /// Most recently archived first.
+    Archived,
+}
+
+impl TaskSort {
+    pub fn as_filter(self) -> &'static str {
+        match self {
+            Self::Due => "due",
+            Self::Priority => "priority",
+            Self::Created => "created",
+            Self::Title => "title",
+            Self::Column => "column",
+            Self::Archived => "archived",
+        }
+    }
+}
+
 /// Distinguishes an omitted field from an explicit `null` that clears it.
 pub fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     deserializer: D,

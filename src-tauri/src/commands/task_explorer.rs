@@ -7,7 +7,7 @@ use crate::{
 use tauri::Manager;
 
 const TASK_EXPLORER_PAGE_SIZE: usize = 50;
-const MAX_LABEL_FILTERS: usize = 100;
+pub(crate) const MAX_LABEL_FILTERS: usize = 100;
 
 #[derive(serde::Serialize)]
 pub struct AllTaskListItem {

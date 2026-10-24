@@ -174,13 +174,14 @@ fn execute<O: Operation>(
     serde_json::to_value(output).map_err(|error| DomainError::Internal(error.to_string()).into())
 }
 
-pub static OPERATIONS: [OperationSpec; 14] = [
+pub static OPERATIONS: [OperationSpec; 15] = [
     spec::<handlers::ListBoards>(),
     spec::<handlers::ListColumns>(),
     spec::<handlers::CreateColumn>(),
     spec::<handlers::UpdateColumn>(),
     spec::<handlers::MoveColumn>(),
     spec::<handlers::ListTasks>(),
+    spec::<handlers::SearchTasks>(),
     spec::<handlers::GetTask>(),
     spec::<handlers::CreateTask>(),
     spec::<handlers::UpdateTask>(),

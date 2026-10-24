@@ -10,6 +10,7 @@ use super::{
 use crate::{
     board_mutations as mutation,
     commands::archive::{archive_task_in, unarchive_task_in},
+    commands::task_explorer::MAX_LABEL_FILTERS,
     completion,
     errors::DomainError,
     models::{self, StoredData},
@@ -325,7 +326,8 @@ pub struct ListTasksInput {
 pub struct ListTasks;
 impl Operation for ListTasks {
     const NAME: &'static str = "task.list";
-    const DESCRIPTION: &'static str = "Search or page through a board's tasks.";
+    const DESCRIPTION: &'static str =
+        "Search or page through one board's tasks; task.search filters across boards.";
     const ACCESS: Access = Access::Read;
     type Input = ListTasksInput;
     type Output = dto::TaskPage;
@@ -353,6 +355,164 @@ impl Operation for ListTasks {
             offset: input.offset,
             limit: input.limit,
             // Offsets are u32, so a page beyond them cannot be requested.
+            next_offset: has_more
+                .then(|| input.offset.checked_add(input.limit))
+                .flatten(),
+        })
+    }
+}
+
+fn default_completion() -> Vec<dto::Completion> {
+    vec![dto::Completion::Open, dto::Completion::Done]
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SearchTasksInput {
+    /// Boards to search; omitted searches every board this client may read.
+    #[serde(default)]
+    pub board_ids: Option<Vec<i64>>,
+    /// Matches titles, descriptions, labels and checklist text; empty lists all.
+    #[serde(default)]
+    pub query: String,
+    /// Defaults to open and done tasks; add `archived` to include archived ones.
+    #[serde(default = "default_completion")]
+    pub completion: Vec<dto::Completion>,
+    /// Active tasks past their due time only.
+    #[serde(default)]
+    pub overdue: bool,
+    /// Omitted or empty keeps every priority.
+    #[serde(default)]
+    pub priorities: Vec<dto::PriorityFilter>,
+    /// Tasks with any of these labels, at most 100; empty keeps all.
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub waiting: Option<dto::WaitingFilter>,
+    /// `true` keeps only recurring tasks, `false` only the others.
+    #[serde(default)]
+    pub recurring: Option<bool>,
+    /// `true` keeps tasks with a due time, `false` those without.
+    #[serde(default)]
+    pub has_due: Option<bool>,
+    /// Unix epoch milliseconds; tasks due at or after this time.
+    #[serde(default)]
+    pub due_from: Option<u64>,
+    /// Unix epoch milliseconds; tasks due before this time.
+    #[serde(default)]
+    pub due_before: Option<u64>,
+    #[serde(default)]
+    pub sort: dto::TaskSort,
+    #[serde(default)]
+    pub offset: u32,
+    /// 1 to 100.
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+
+pub struct SearchTasks;
+impl Operation for SearchTasks {
+    const NAME: &'static str = "task.search";
+    const DESCRIPTION: &'static str = "Search tasks across boards by text, completion, priority, labels, waiting, recurrence and due time.";
+    const ACCESS: Access = Access::Read;
+    type Input = SearchTasksInput;
+    type Output = dto::TaskPage;
+    fn board(_: &SearchTasksInput) -> Option<i64> {
+        None
+    }
+    fn run(
+        host: &dyn OperationHost,
+        context: &OperationContext,
+        input: SearchTasksInput,
+    ) -> Result<dto::TaskPage, DomainError> {
+        let due_time = |time: Option<u64>| {
+            time.map(i64::try_from)
+                .transpose()
+                .map_err(|_| DomainError::InvalidArgument)
+        };
+        if !(1..=100).contains(&input.limit)
+            || input.query.len() > 4096
+            || input.completion.is_empty()
+            || input.labels.len() > MAX_LABEL_FILTERS
+        {
+            return Err(DomainError::InvalidArgument);
+        }
+        let database =
+            Database::open_search_reader(database_path(host)?).map_err(DomainError::repository)?;
+        let existing: Vec<i64> = database
+            .boards()
+            .map_err(DomainError::repository)?
+            .into_iter()
+            .map(|board| board.id)
+            .collect();
+        let board_ids = match input.board_ids {
+            None => existing
+                .into_iter()
+                .filter(|&id| context.grants.allows(id, Access::Read))
+                .collect(),
+            Some(mut ids) => {
+                for &id in &ids {
+                    if !context.grants.allows(id, Access::Read) {
+                        return Err(DomainError::PermissionDenied);
+                    }
+                    if !existing.contains(&id) {
+                        return Err(DomainError::BoardNotFound);
+                    }
+                }
+                ids.sort_unstable();
+                ids.dedup();
+                ids
+            }
+        };
+        let list = |values: Vec<&'static str>| {
+            (!values.is_empty()).then(|| values.into_iter().map(String::from).collect())
+        };
+        let filter = TaskExplorerQuery {
+            query: input.query,
+            board_ids: Some(board_ids),
+            status: if input.overdue { "overdue" } else { "all" }.into(),
+            sort: input.sort.as_filter().into(),
+            due: match input.has_due {
+                None => "all",
+                Some(true) => "due",
+                Some(false) => "none",
+            }
+            .into(),
+            due_start: due_time(input.due_from)?,
+            due_end: due_time(input.due_before)?,
+            now: crate::plugins::types::now(),
+            priorities: list(input.priorities.iter().map(|p| p.as_filter()).collect()),
+            completion: list(input.completion.iter().map(|c| c.as_filter()).collect()),
+            labels: (!input.labels.is_empty()).then_some(input.labels),
+            waiting: input.waiting.map(|waiting| waiting.as_filter().into()),
+            recurring: input.recurring,
+            ..TaskExplorerQuery::default()
+        };
+        let limit = input.limit as usize;
+        // One extra row tells whether another page follows.
+        let rows = database
+            .list_all_task_page(&filter, input.offset.into(), limit + 1)
+            .map_err(DomainError::repository)?;
+        let has_more = rows.len() > limit;
+        let mut tasks = Vec::with_capacity(limit);
+        for row in rows.into_iter().take(limit) {
+            let archived = row.archived_at.is_some();
+            let task = if archived {
+                database.load_archive_task(row.board_id, row.task.id)
+            } else {
+                database.load_task(row.board_id, row.task.id)
+            }
+            .map_err(DomainError::repository)?;
+            // The search reads its own snapshot; a task changed since is
+            // skipped rather than failing the page.
+            if let Some(task) = task {
+                tasks.push(dto::Task::new(row.board_id, row.column_id, archived, task)?);
+            }
+        }
+        Ok(dto::TaskPage {
+            tasks,
+            offset: input.offset,
+            limit: input.limit,
             next_offset: has_more
                 .then(|| input.offset.checked_add(input.limit))
                 .flatten(),
