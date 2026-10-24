@@ -161,6 +161,53 @@ impl TryFrom<board::TaskInfo> for wit::TaskInfo {
         })
     }
 }
+/// Applies a `list-tasks-filtered` filter (API 1.3.0) to a query.
+pub fn apply_task_filter(query: &mut TaskExplorerQuery, filter: wit::TaskFilter) {
+    let list = |values: Vec<&str>| {
+        (!values.is_empty()).then(|| values.into_iter().map(String::from).collect())
+    };
+    query.completion = list(
+        filter
+            .completion
+            .iter()
+            .map(|state| match state {
+                wit::TaskCompletion::Open => "open",
+                wit::TaskCompletion::Done => "done",
+                wit::TaskCompletion::Archived => "archived",
+            })
+            .collect(),
+    );
+    query.priorities = list(
+        filter
+            .priorities
+            .iter()
+            .map(|priority| match priority {
+                None => "none",
+                Some(wit::TaskPriority::Low) => "low",
+                Some(wit::TaskPriority::Medium) => "medium",
+                Some(wit::TaskPriority::High) => "high",
+                Some(wit::TaskPriority::Urgent) => "urgent",
+            })
+            .collect(),
+    );
+    query.labels = (!filter.labels.is_empty()).then_some(filter.labels);
+    query.waiting = filter.waiting.map(|waiting| {
+        match waiting {
+            wit::WaitingFilter::Waiting => "waiting",
+            wit::WaitingFilter::NotWaiting => "not_waiting",
+            wit::WaitingFilter::WaitedOn => "waited_on",
+        }
+        .into()
+    });
+    query.recurring = filter.recurring;
+    if let Some(sort) = filter.sort {
+        query.sort = match sort {
+            wit::TaskSortExtra::Priority => "priority",
+            wit::TaskSortExtra::Created => "created",
+        }
+        .into();
+    }
+}
 impl From<wit::TaskQuery> for TaskExplorerQuery {
     fn from(q: wit::TaskQuery) -> Self {
         Self {

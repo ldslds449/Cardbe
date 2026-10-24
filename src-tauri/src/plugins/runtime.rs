@@ -123,14 +123,15 @@ struct HostState {
     request_bytes: usize,
     response_bytes: usize,
     failure: Option<RuntimeError>,
-    /// `set-task-priority` calls, applied after the returned changeset.
-    priorities: Vec<super::board::Operation>,
+    /// `set-task-priority`, `set-task-blocked-by`, `archive-task` and
+    /// `restore-task` calls, applied in call order after the returned changeset.
+    staged: Vec<super::board::Operation>,
     /// `set-external-task-priority` reports; the last call per key wins.
     source_priorities: std::collections::BTreeMap<String, Option<crate::models::TaskPriority>>,
     #[cfg(test)]
     fixtures: Option<std::collections::VecDeque<bindings::cardbe::plugin::types::HttpResponse>>,
 }
-const MAX_STAGED_PRIORITIES: usize = 200;
+const MAX_STAGED: usize = 200;
 const MAX_SOURCE_PRIORITIES: usize = 2000;
 fn query_error(error: crate::errors::DomainError) -> bindings::cardbe::plugin::board::HostError {
     use crate::errors::DomainError;
@@ -144,7 +145,36 @@ fn query_error(error: crate::errors::DomainError) -> bindings::cardbe::plugin::b
         _ => HostError::InternalError,
     }
 }
+/// A staged write may reference a create-task or create-column key.
+fn valid_key(key: &str) -> bool {
+    !key.is_empty() && key.len() <= 128
+}
+fn valid_task_reference(task: &bindings::cardbe::plugin::types::TaskReference) -> bool {
+    !matches!(task, bindings::cardbe::plugin::types::TaskReference::Temporary(key) if !valid_key(key))
+}
 impl HostState {
+    /// Queues a write applied after the returned changeset.
+    fn stage(
+        &mut self,
+        valid: bool,
+        operation: super::board::Operation,
+    ) -> Result<(), bindings::cardbe::plugin::board::HostError> {
+        use bindings::cardbe::plugin::board::HostError;
+        if self.reader.is_none() {
+            return Err(HostError::PermissionDenied);
+        }
+        if !valid {
+            return Err(HostError::InvalidArgument);
+        }
+        if self.staged.len() >= MAX_STAGED
+            || self.cancel.load(Ordering::Acquire)
+            || Instant::now() >= self.deadline
+        {
+            return Err(HostError::ResourceLimit);
+        }
+        self.staged.push(operation);
+        Ok(())
+    }
     fn read<T: Serialize>(
         &mut self,
         query: impl FnOnce(&super::board::Reader) -> Result<T, crate::errors::DomainError>,
@@ -286,25 +316,13 @@ impl bindings::cardbe::plugin::board::Host for HostState {
         task: bindings::cardbe::plugin::types::TaskReference,
         priority: Option<bindings::cardbe::plugin::types::TaskPriority>,
     ) -> Result<(), bindings::cardbe::plugin::board::HostError> {
-        use bindings::cardbe::plugin::{board::HostError, types::TaskReference};
-        if self.reader.is_none() {
-            return Err(HostError::PermissionDenied);
-        }
-        if matches!(&task, TaskReference::Temporary(key) if key.is_empty() || key.len() > 128) {
-            return Err(HostError::InvalidArgument);
-        }
-        if self.priorities.len() >= MAX_STAGED_PRIORITIES
-            || self.cancel.load(Ordering::Acquire)
-            || Instant::now() >= self.deadline
-        {
-            return Err(HostError::ResourceLimit);
-        }
-        self.priorities
-            .push(super::board::Operation::SetTaskPriority {
+        self.stage(
+            valid_task_reference(&task),
+            super::board::Operation::SetTaskPriority {
                 task: task.into(),
                 priority: priority.map(Into::into),
-            });
-        Ok(())
+            },
+        )
     }
     fn set_external_task_priority(
         &mut self,
@@ -328,6 +346,81 @@ impl bindings::cardbe::plugin::board::Host for HostState {
         self.source_priorities
             .insert(external_key, priority.map(Into::into));
         Ok(())
+    }
+    fn list_tasks_filtered(
+        &mut self,
+        request: bindings::cardbe::plugin::types::TaskQuery,
+        filter: bindings::cardbe::plugin::types::TaskFilter,
+    ) -> Result<bindings::cardbe::plugin::types::TaskPage, bindings::cardbe::plugin::board::HostError>
+    {
+        let offset = request.offset;
+        let limit = request.limit;
+        let mut query = request.into();
+        super::wit_adapter::apply_task_filter(&mut query, filter);
+        let (version, tasks) = self.read(|reader| reader.list_tasks(query, offset, limit))?;
+        Ok(bindings::cardbe::plugin::types::TaskPage {
+            version,
+            offset,
+            limit,
+            tasks: tasks
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, _>>()
+                .map_err(query_error)?,
+        })
+    }
+    fn get_task_blocked_by(
+        &mut self,
+        id: i64,
+        archived: bool,
+    ) -> Result<Vec<i64>, bindings::cardbe::plugin::board::HostError> {
+        Ok(self
+            .read(|reader| {
+                reader
+                    .get_task(id, archived)
+                    .map(|info| info.task.blocked_by)
+            })?
+            .1)
+    }
+    fn set_task_blocked_by(
+        &mut self,
+        task: bindings::cardbe::plugin::types::TaskReference,
+        blocked_by: Vec<bindings::cardbe::plugin::types::TaskReference>,
+    ) -> Result<(), bindings::cardbe::plugin::board::HostError> {
+        let valid = valid_task_reference(&task)
+            && blocked_by.len() <= crate::blocking::MAX_BLOCKERS
+            && blocked_by.iter().all(valid_task_reference);
+        self.stage(
+            valid,
+            super::board::Operation::SetTaskBlockedBy {
+                task: task.into(),
+                blocked_by: blocked_by.into_iter().map(Into::into).collect(),
+            },
+        )
+    }
+    fn archive_task(
+        &mut self,
+        task: bindings::cardbe::plugin::types::TaskReference,
+    ) -> Result<(), bindings::cardbe::plugin::board::HostError> {
+        self.stage(
+            valid_task_reference(&task),
+            super::board::Operation::ArchiveTask { task: task.into() },
+        )
+    }
+    fn restore_task(
+        &mut self,
+        id: i64,
+        column: bindings::cardbe::plugin::types::ColumnReference,
+    ) -> Result<(), bindings::cardbe::plugin::board::HostError> {
+        use bindings::cardbe::plugin::types::ColumnReference;
+        let valid = !matches!(&column, ColumnReference::Temporary(key) if !valid_key(key));
+        self.stage(
+            valid,
+            super::board::Operation::RestoreTask {
+                task_id: id,
+                column: column.into(),
+            },
+        )
     }
 }
 impl bindings::cardbe::plugin::types::Host for HostState {}
@@ -575,7 +668,7 @@ fn execute_inner(
         request_bytes: 0,
         response_bytes: 0,
         failure: None,
-        priorities: vec![],
+        staged: vec![],
         source_priorities: Default::default(),
         #[cfg(test)]
         fixtures: fixtures.map(std::collections::VecDeque::from),
@@ -661,7 +754,7 @@ fn execute_inner(
             return Err(RuntimeError::ResourceLimit);
         }
         let mut general: Option<super::board::ChangeSet> = changeset.changeset.map(Into::into);
-        let mut priorities = std::mem::take(&mut store.data_mut().priorities);
+        let mut priorities = std::mem::take(&mut store.data_mut().staged);
         priorities.extend(
             std::mem::take(&mut store.data_mut().source_priorities)
                 .into_iter()
@@ -1063,6 +1156,156 @@ mod tests {
         .await
         .unwrap();
     }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn api_1_3_filters_waits_and_archives_cross_the_component_boundary() {
+        tokio::task::spawn_blocking(|| {
+            use crate::models::{Archive, Column, Recurrence, StoredData, Task, TaskPriority};
+            let dir = std::env::temp_dir().join(format!(
+                "cardbe-plugin-api-1-3-{}",
+                super::super::types::id()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut loaded = crate::storage::load(&dir).unwrap();
+            loaded.database.initialize_plugins().unwrap();
+            let path = loaded.database.path().to_owned();
+            let board_id = loaded.database.active_board_id();
+            let task = |id, title: &str| Task {
+                id,
+                title: title.into(),
+                ..Default::default()
+            };
+            let day = 24 * 60 * 60 * 1000;
+            loaded
+                .database
+                .replace_board_as_local_edit(
+                    board_id,
+                    &StoredData {
+                        columns: vec![Column {
+                            id: 1,
+                            name: "Todo".into(),
+                            color: String::new(),
+                            sort_order: Default::default(),
+                            sort_rules: Vec::new(),
+                            done: false,
+                            tasks: vec![
+                                Task {
+                                    priority: Some(TaskPriority::High),
+                                    labels: vec!["ops".into()],
+                                    ..task(10, "A")
+                                },
+                                Task {
+                                    priority: Some(TaskPriority::Low),
+                                    due_time: Some(super::super::types::now() as u128 + day),
+                                    recurrence: Some(Recurrence {
+                                        frequency: crate::models::RecurrenceFrequency::Daily,
+                                        interval: 1,
+                                    }),
+                                    ..task(11, "B")
+                                },
+                                Task {
+                                    priority: Some(TaskPriority::Urgent),
+                                    blocked_by: vec![10],
+                                    ..task(12, "C")
+                                },
+                            ],
+                        }],
+                        archives: vec![Archive {
+                            time: 1,
+                            task: task(20, "Old"),
+                        }],
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            let bytes = component("runtime-fixture");
+            let execute = |mode: &str| {
+                let mut context = input(mode);
+                context.board_scope = Some((path.clone(), board_id));
+                execute_inner(
+                    &bytes,
+                    context,
+                    policy(),
+                    Arc::new(AtomicBool::new(false)),
+                    None,
+                    Duration::from_secs(10),
+                    &mut Vec::new(),
+                )
+                .unwrap()
+            };
+            let instance = || -> super::super::types::PluginInstance {
+                serde_json::from_value(serde_json::json!({
+                    "id":"instance","plugin_id":"fixture","name":"Fixture","board_id":board_id,
+                    "config":{},"allowed_domains":[],"enabled":true,"interval_seconds":0,"failures":0,
+                }))
+                .unwrap()
+            };
+
+            let output = execute("api-1-3");
+            // Filtered queries; then the stored blocked-by list of task 12.
+            assert_eq!(
+                output.cursor.as_deref(),
+                Some("[[10, 20], [10], [20], [11], [12], [12, 10, 11, 20], [10]]")
+            );
+            let operations = &output.changeset.as_ref().unwrap().operations;
+            assert_eq!(operations.len(), 5);
+            let prepared = super::super::board::prepare_output(
+                &loaded.database,
+                instance(),
+                "run".into(),
+                &output,
+            )
+            .unwrap();
+            assert!(prepared.archives_changed);
+            let tasks = &prepared.after.columns[0].tasks;
+            let find = |title: &str| tasks.iter().find(|task| task.title == title).unwrap();
+            assert_eq!(find("New").blocked_by, vec![10]);
+            assert!(find("C").blocked_by.is_empty());
+            assert!(find("Old").blocked_by.is_empty());
+            // The recurring task continues with its next occurrence.
+            let next = find("B");
+            assert_ne!(next.id, 11);
+            assert_eq!(next.priority, Some(TaskPriority::Low));
+            let archived: Vec<_> = prepared
+                .after
+                .archives
+                .iter()
+                .map(|archive| archive.task.id)
+                .collect();
+            assert_eq!(archived, vec![11]);
+
+            // Archive changes persist with the rest of the changeset.
+            let run: super::super::types::PluginRun = serde_json::from_value(serde_json::json!({
+                "id":"run","instance_id":"instance","trigger":"manual","started_at":0,
+                "status":"running","logs":[],"created":0,"updated":0,
+            }))
+            .unwrap();
+            super::super::storage::put(loaded.database.plugin_connection(), "instance", "instance", &instance()).unwrap();
+            super::super::storage::put(loaded.database.plugin_connection(), "run", "run", &run).unwrap();
+            loaded.database.commit_changeset(&prepared).unwrap();
+            let stored = loaded.database.read_board_complete(board_id).unwrap();
+            let archived: Vec<_> = stored.archives.iter().map(|archive| archive.task.id).collect();
+            assert_eq!(archived, vec![11]);
+            assert!(stored.columns[0].tasks.iter().any(|task| task.id == 20));
+            assert!(stored.columns[0].tasks.iter().all(|task| task.id != 11));
+
+            // A staged write that breaks validation rejects the whole changeset.
+            let output = execute("blocked-cycle");
+            assert!(matches!(
+                super::super::board::prepare_output(
+                    &loaded.database,
+                    instance(),
+                    "run".into(),
+                    &output
+                ),
+                Err(crate::errors::DomainError::InvalidArgument)
+            ));
+
+            drop(loaded);
+            std::fs::remove_dir_all(dir).unwrap();
+        })
+        .await
+        .unwrap();
+    }
     #[test]
     fn fixture_component_imports_only_cardbe_and_exports_run() {
         let engine = Engine::default();
@@ -1073,9 +1316,9 @@ mod tests {
         assert_eq!(
             imports,
             [
-                "cardbe:plugin/board@1.2.0",
-                "cardbe:plugin/host@1.2.0",
-                "cardbe:plugin/types@1.2.0"
+                "cardbe:plugin/board@1.3.0",
+                "cardbe:plugin/host@1.3.0",
+                "cardbe:plugin/types@1.3.0"
             ]
         );
         let exports: Vec<_> = ty.exports(&engine).map(|(name, _)| name).collect();
@@ -1096,6 +1339,7 @@ mod tests {
         assert!(linkable(&host("1.0.0", "log")));
         assert!(linkable(&host("1.1.0", "log")));
         assert!(linkable(&host("1.2.0", "log")));
+        assert!(linkable(&host("1.3.0", "log")));
         assert!(!linkable(&host("2.0.0", "log")));
         assert!(!linkable(&host("1.0.0", "missing")));
     }

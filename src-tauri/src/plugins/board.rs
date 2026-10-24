@@ -200,9 +200,16 @@ impl Reader {
             )
             || !matches!(
                 filter.sort.as_str(),
-                "" | "title" | "due" | "column" | "archived"
+                "" | "title" | "due" | "column" | "archived" | "priority" | "created"
             )
             || !matches!(filter.due.as_str(), "" | "none" | "due")
+            // `list-tasks-filtered` (API 1.3.0) conditions; the WIT enums
+            // already restrict their values.
+            || filter.priorities.as_ref().is_some_and(|p| p.len() > 5)
+            || filter.completion.as_ref().is_some_and(|c| c.len() > 3)
+            || filter.labels.as_ref().is_some_and(|labels| {
+                labels.len() > crate::commands::task_explorer::MAX_LABEL_FILTERS
+            })
             || filter
                 .search_options
                 .is_some_and(|options| !options.valid())
@@ -280,6 +287,20 @@ pub enum Operation {
         external_key: String,
         priority: Option<TaskPriority>,
     },
+    /// Staged through `set-task-blocked-by` (API 1.3.0).
+    SetTaskBlockedBy {
+        task: Reference,
+        blocked_by: Vec<Reference>,
+    },
+    /// Staged through `archive-task` (API 1.2.0).
+    ArchiveTask {
+        task: Reference,
+    },
+    /// Staged through `restore-task` (API 1.2.0).
+    RestoreTask {
+        task_id: i64,
+        column: Reference,
+    },
 }
 impl Operation {
     /// Source operations merge against current ownership instead of the run snapshot.
@@ -304,6 +325,9 @@ pub struct PreparedChangeSet {
     pub(crate) sources: HashMap<String, super::changeset::SourceChange>,
     pub cursor: Option<Option<String>>,
     pub has_board_operations: bool,
+    /// Whether `after.archives` holds the archives to commit; otherwise the
+    /// current archives are kept.
+    pub archives_changed: bool,
     pub created: usize,
     pub updated: usize,
 }
@@ -391,6 +415,7 @@ pub fn prepare(
     let mut source_updated = 0;
     let mut counted = HashSet::new();
     let mut reported = Vec::new();
+    let mut archives_changed = false;
     for op in &changeset.operations {
         match op {
             Operation::UpsertExternalTask { task, column } => {
@@ -487,6 +512,34 @@ pub fn prepare(
                 external_key,
                 priority,
             } => reported.push((external_key, *priority)),
+            Operation::SetTaskBlockedBy { task, blocked_by } => {
+                let blocked_by = blocked_by
+                    .iter()
+                    .map(|reference| resolve(reference, &tasks))
+                    .collect::<Result<_, _>>()?;
+                crate::board_mutations::set_task_blocked_by(
+                    &mut after,
+                    resolve(task, &tasks)?,
+                    blocked_by,
+                )?;
+            }
+            Operation::ArchiveTask { task } => {
+                // A recurring task's next occurrence is not counted as created.
+                crate::commands::archive::archive_task_in(
+                    &mut after,
+                    resolve(task, &tasks)?,
+                    super::types::now() as u128,
+                )?;
+                archives_changed = true;
+            }
+            Operation::RestoreTask { task_id, column } => {
+                crate::commands::archive::unarchive_task_in(
+                    &mut after,
+                    resolve(column, &columns)?,
+                    *task_id,
+                )?;
+                archives_changed = true;
+            }
         }
     }
     for (key, priority) in reported {
@@ -508,10 +561,16 @@ pub fn prepare(
         return Err(DomainError::InvalidArgument);
     }
     let general_created = ids.len();
-    // Only the mutable projection is retained; archives and settings are read fresh at commit.
+    // Only the mutable projection is retained; settings are read fresh at
+    // commit, and archives too unless this changeset changed them.
     let after = StoredData {
         columns: after.columns,
         label_recency: after.label_recency,
+        archives: if archives_changed {
+            after.archives
+        } else {
+            Vec::new()
+        },
         ..StoredData::default()
     };
     Ok(PreparedChangeSet {
@@ -521,6 +580,7 @@ pub fn prepare(
         after,
         sources,
         has_board_operations,
+        archives_changed,
         cursor: None,
         created: general_created + source_created,
         updated: general_count - general_created + source_updated,
@@ -575,7 +635,11 @@ impl Database {
             let mut after = before.clone();
             after.columns = prepared.after.columns.clone();
             after.label_recency = prepared.after.label_recency.clone();
-            // Archives, templates, settings and metadata remain the current values.
+            // The snapshot version covers archives, so prepared archives are
+            // still current. Templates, settings and metadata stay as they are.
+            if prepared.archives_changed {
+                after.archives = prepared.after.archives.clone();
+            }
             let mut positions = self
                 .load_board_positions(board_id)
                 .map_err(DomainError::repository)?;

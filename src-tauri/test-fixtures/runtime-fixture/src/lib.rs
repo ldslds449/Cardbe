@@ -347,6 +347,142 @@ mod fixture {
                         cursor: None,
                     });
                 }
+                "api-1-3" => {
+                    use cardbe::plugin::{board, types::*};
+                    let failure = |_| PluginError {
+                        code: "QUERY_FAILED".into(),
+                        retry_after_seconds: None,
+                    };
+                    let query = TaskQuery {
+                        query: String::new(),
+                        column_id: None,
+                        status: TaskStatus::All,
+                        sort: TaskSort::Title,
+                        due: DueFilter::All,
+                        due_start: None,
+                        due_end: None,
+                        archive_start: None,
+                        archive_end: None,
+                        search_options: None,
+                        offset: 0,
+                        limit: 10,
+                    };
+                    let filter = TaskFilter {
+                        completion: vec![],
+                        priorities: vec![],
+                        labels: vec![],
+                        waiting: None,
+                        recurring: None,
+                        sort: None,
+                    };
+                    let ids = |filter: TaskFilter| {
+                        board::list_tasks_filtered(&query, &filter).map(|page| {
+                            page.tasks
+                                .iter()
+                                .map(|info| info.task.id)
+                                .collect::<Vec<_>>()
+                        })
+                    };
+                    // Reported through the cursor so the host test can check reads.
+                    let reads = [
+                        ids(TaskFilter {
+                            priorities: vec![Some(TaskPriority::High), None],
+                            ..filter.clone()
+                        }),
+                        ids(TaskFilter {
+                            labels: vec!["ops".into()],
+                            ..filter.clone()
+                        }),
+                        ids(TaskFilter {
+                            completion: vec![TaskCompletion::Archived],
+                            ..filter.clone()
+                        }),
+                        ids(TaskFilter {
+                            recurring: Some(true),
+                            ..filter.clone()
+                        }),
+                        ids(TaskFilter {
+                            waiting: Some(WaitingFilter::Waiting),
+                            ..filter.clone()
+                        }),
+                        ids(TaskFilter {
+                            sort: Some(TaskSortExtra::Priority),
+                            ..filter.clone()
+                        }),
+                        board::get_task_blocked_by(12, false),
+                    ]
+                    .into_iter()
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(failure)?;
+                    assert!(matches!(
+                        board::list_tasks_filtered(
+                            &query,
+                            &TaskFilter {
+                                labels: vec![String::new(); 101],
+                                ..filter.clone()
+                            }
+                        ),
+                        Err(board::HostError::InvalidArgument)
+                    ));
+                    assert!(matches!(
+                        board::set_task_blocked_by(&TaskReference::Temporary(String::new()), &[]),
+                        Err(board::HostError::InvalidArgument)
+                    ));
+                    assert!(matches!(
+                        board::set_task_blocked_by(
+                            &TaskReference::Id(10),
+                            &vec![TaskReference::Id(11); 51]
+                        ),
+                        Err(board::HostError::InvalidArgument)
+                    ));
+                    assert!(matches!(
+                        board::restore_task(20, &ColumnReference::Temporary(String::new())),
+                        Err(board::HostError::InvalidArgument)
+                    ));
+                    // Applied in call order after the returned operations.
+                    board::set_task_blocked_by(
+                        &TaskReference::Temporary("new".into()),
+                        &[TaskReference::Id(10)],
+                    )
+                    .map_err(failure)?;
+                    board::set_task_blocked_by(&TaskReference::Id(12), &[]).map_err(failure)?;
+                    board::archive_task(&TaskReference::Id(11)).map_err(failure)?;
+                    board::restore_task(20, &ColumnReference::Id(1)).map_err(failure)?;
+                    return Ok(RunOutput {
+                        tasks: vec![],
+                        changeset: Some(Changeset {
+                            version: context.board_version,
+                            operations: vec![Operation::CreateTask(CreateTask {
+                                key: "new".into(),
+                                column: ColumnReference::Id(1),
+                                task: Task {
+                                    id: 0,
+                                    title: "New".into(),
+                                    description: String::new(),
+                                    pinned: false,
+                                    color: String::new(),
+                                    start_time: None,
+                                    due_time: None,
+                                    created_time: None,
+                                    start_at_midnight: false,
+                                    due_at_midnight: false,
+                                    labels: vec![],
+                                    items: vec![],
+                                    recurrence: None,
+                                },
+                            })],
+                        }),
+                        cursor: Some(format!("{reads:?}")),
+                    });
+                }
+                "blocked-cycle" => {
+                    use cardbe::plugin::{board, types::*};
+                    // Once 12 waits on 10, 10 may not wait on 12.
+                    board::set_task_blocked_by(&TaskReference::Id(12), &[TaskReference::Id(10)])
+                        .unwrap();
+                    board::set_task_blocked_by(&TaskReference::Id(10), &[TaskReference::Id(12)])
+                        .unwrap();
+                }
                 "logs-error" => {
                     cardbe::plugin::host::log("ALLOWED_LOG", 3);
                     return Err(PluginError {

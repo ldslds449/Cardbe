@@ -183,6 +183,23 @@ pub(crate) fn set_tasks_priority(
     Ok(())
 }
 
+/// Replaces the tasks `task_id` waits on, validated like a local edit.
+pub(crate) fn set_task_blocked_by(
+    data: &mut StoredData,
+    task_id: i64,
+    blocked_by: Vec<i64>,
+) -> Result<(), DomainError> {
+    let (column, index) = task_position(data, task_id)?;
+    crate::blocking::validate(
+        data,
+        task_id,
+        &data.columns[column].tasks[index].blocked_by,
+        &blocked_by,
+    )?;
+    data.columns[column].tasks[index].blocked_by = blocked_by;
+    Ok(())
+}
+
 pub(crate) fn add_task(
     data: &mut StoredData,
     column_id: i64,
