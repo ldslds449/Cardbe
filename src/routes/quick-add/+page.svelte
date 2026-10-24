@@ -17,7 +17,7 @@
   import { onMount, tick } from "svelte";
   import {
     display_shortcut,
-    type GlobalShortcutStatus,
+    type GlobalShortcutOverview,
   } from "$lib/global-shortcuts";
 
   import CheckIcon from "@lucide/svelte/icons/check";
@@ -54,9 +54,9 @@
 
   function load_shortcut() {
     const action = mode === "task" ? "quick_task" : "quick_note";
-    void invoke<GlobalShortcutStatus[]>("get_global_shortcuts")
-      .then((statuses) => {
-        const configured = statuses.find(
+    void invoke<GlobalShortcutOverview>("get_global_shortcuts")
+      .then((overview) => {
+        const configured = overview.shortcuts.find(
           (status) => status.action === action,
         )?.shortcut;
         shortcut = configured ? display_shortcut(configured) : null;
