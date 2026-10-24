@@ -11,11 +11,11 @@ use crate::models::ShortcutAction;
 use crate::state::{lock_app, SharedAppData};
 
 const FLOATING_TASK_LABEL_PREFIX: &str = "float-task-";
-const FLOATING_SMART_VIEW_LABEL_PREFIX: &str = "float-view-";
+const FLOATING_FOCUS_LABEL_PREFIX: &str = "float-focus-";
 
 fn is_floating_window(label: &str) -> bool {
     label.starts_with(FLOATING_TASK_LABEL_PREFIX)
-        || label.starts_with(FLOATING_SMART_VIEW_LABEL_PREFIX)
+        || label.starts_with(FLOATING_FOCUS_LABEL_PREFIX)
 }
 
 fn run_shortcut_action<R: Runtime>(app: &AppHandle<R>, action: ShortcutAction) {
@@ -249,24 +249,24 @@ pub fn open_floating_task_window<R: Runtime>(
     .map(|_| ())
 }
 
-/// Smart view IDs may hold any characters, while window labels allow only a
+/// Focus IDs may hold any characters, while window labels allow only a
 /// few, so the label and URL carry the ID's UTF-8 bytes in hex.
-fn floating_smart_view_label(id: &str) -> String {
-    format!("{FLOATING_SMART_VIEW_LABEL_PREFIX}{}", hex_id(id))
+fn floating_focus_label(id: &str) -> String {
+    format!("{FLOATING_FOCUS_LABEL_PREFIX}{}", hex_id(id))
 }
 
 fn hex_id(id: &str) -> String {
     id.bytes().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// Opens one always-on-top window listing a smart view's tasks, or focuses
+/// Opens one always-on-top window listing a Focus's tasks, or focuses
 /// the existing one. Like floating tasks, its position and size are restored
 /// by label.
-pub fn open_floating_smart_view_window<R: Runtime>(
+pub fn open_floating_focus_window<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
 ) -> tauri::Result<()> {
-    let label = floating_smart_view_label(id);
+    let label = floating_focus_label(id);
     if let Some(window) = app.get_webview_window(&label) {
         window.unminimize()?;
         window.show()?;
@@ -275,7 +275,7 @@ pub fn open_floating_smart_view_window<R: Runtime>(
     WebviewWindowBuilder::new(
         app,
         label,
-        WebviewUrl::App(format!("float-view?view={}", hex_id(id)).into()),
+        WebviewUrl::App(format!("float-focus?focus={}", hex_id(id)).into()),
     )
     .title("Cardbe")
     .inner_size(320.0, 360.0)
@@ -331,19 +331,19 @@ pub fn open_task_in_main_window<R: Runtime>(
 }
 
 #[derive(Clone, serde::Serialize)]
-struct OpenSmartViewRequest<'a> {
+struct OpenFocusRequest<'a> {
     id: &'a str,
 }
 
-pub fn open_smart_view_in_main_window<R: Runtime>(
+pub fn open_focus_in_main_window<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
 ) -> tauri::Result<()> {
     show_main_window(app);
     app.emit_to(
         "main",
-        "cardbe:open-smart-view",
-        OpenSmartViewRequest { id },
+        "cardbe:open-focus",
+        OpenFocusRequest { id },
     )
 }
 
@@ -374,13 +374,13 @@ mod tests {
         assert_eq!(super::floating_task_label(12, 34), "float-task-12-34");
         // Any ID becomes a label of allowed characters.
         assert_eq!(
-            super::floating_smart_view_label("a/ 視"),
-            "float-view-612f20e8a696"
+            super::floating_focus_label("a/ 視"),
+            "float-focus-612f20e8a696"
         );
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
         let windows = capability["windows"].as_array().unwrap();
-        for pattern in ["float-task-*", "float-view-*"] {
+        for pattern in ["float-task-*", "float-focus-*"] {
             assert!(windows.iter().any(|window| window == pattern));
         }
     }

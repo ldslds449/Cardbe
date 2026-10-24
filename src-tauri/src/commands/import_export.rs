@@ -66,10 +66,10 @@ pub fn export_all_boards(state: State<'_, SharedAppData>) -> Result<String, Comm
         .iter()
         .position(|board| board.id == active_board_id)
         .unwrap_or(0);
-    let mut smart_views =
-        crate::smart_views::load(&guard.database.connection).map_err(CommandError::from)?;
-    if let Some(views) = &mut smart_views {
-        crate::smart_views::map_boards(views, |id| {
+    let mut focuses =
+        crate::focuses::load(&guard.database.connection).map_err(CommandError::from)?;
+    if let Some(views) = &mut focuses {
+        crate::focuses::map_boards(views, |id| {
             guard
                 .boards
                 .iter()
@@ -83,7 +83,7 @@ pub fn export_all_boards(state: State<'_, SharedAppData>) -> Result<String, Comm
         active_board_index,
         settings: guard.stored.settings.clone(),
         notes,
-        smart_views,
+        focuses,
     })
     .map_err(CommandError::internal)
 }
@@ -107,7 +107,7 @@ fn parse_all_boards_backup(json_data: &str) -> Result<AllBoardsExport, CommandEr
     if backup.notes.iter().any(|note| !note_ids.insert(note.id)) {
         return Err(CommandError::InvalidImport);
     }
-    if let Some(views) = &backup.smart_views {
+    if let Some(views) = &backup.focuses {
         let board_count = backup.boards.len() as i64;
         let positions_valid = views.iter().all(|view| {
             view.filter
@@ -116,7 +116,7 @@ fn parse_all_boards_backup(json_data: &str) -> Result<AllBoardsExport, CommandEr
                 .flatten()
                 .all(|index| (0..board_count).contains(index))
         });
-        if crate::smart_views::validate(views).is_err() || !positions_valid {
+        if crate::focuses::validate(views).is_err() || !positions_valid {
             return Err(CommandError::InvalidImport);
         }
     }
@@ -168,7 +168,7 @@ pub fn import_all_boards(
             backup.active_board_index,
             &backup.notes,
             &backup.settings,
-            backup.smart_views.as_deref(),
+            backup.focuses.as_deref(),
         )
         .map_err(CommandError::repository)?;
     guard.boards = boards;
@@ -267,7 +267,7 @@ mod tests {
             active_board_index: 0,
             settings: Default::default(),
             notes: vec![],
-            smart_views: None,
+            focuses: None,
         })
         .unwrap()
     }
@@ -312,21 +312,21 @@ mod tests {
             Err(CommandError::InvalidImport)
         ));
         value["active_board_index"] = 0.into();
-        // Smart view board filters refer to positions in the backup.
-        value["smart_views"] =
+        // Focus board filters refer to positions in the backup.
+        value["focuses"] =
             serde_json::json!([{"id":"a","name":"Mine","filter":{"board_ids":[0]}}]);
         assert!(parse_all_boards_backup(&value.to_string()).is_ok());
-        value["smart_views"][0]["filter"]["board_ids"] = serde_json::json!([1]);
+        value["focuses"][0]["filter"]["board_ids"] = serde_json::json!([1]);
         assert!(matches!(
             parse_all_boards_backup(&value.to_string()),
             Err(CommandError::InvalidImport)
         ));
-        value["smart_views"] = serde_json::json!([{"id":"a","name":" "}]);
+        value["focuses"] = serde_json::json!([{"id":"a","name":" "}]);
         assert!(matches!(
             parse_all_boards_backup(&value.to_string()),
             Err(CommandError::InvalidImport)
         ));
-        value.as_object_mut().unwrap().remove("smart_views");
+        value.as_object_mut().unwrap().remove("focuses");
         value["schema_version"] = 2.into();
         assert!(matches!(
             parse_all_boards_backup(&value.to_string()),

@@ -129,7 +129,7 @@ pub enum CommandError {
     RelationshipNotFound,
     FlowTabNotFound,
     LastFlowTabRequired,
-    SmartViewNotFound,
+    FocusNotFound,
     InvalidArgument,
     NetworkSettingsInvalid {
         field: NetworkSettingsField,

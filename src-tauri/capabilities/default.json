@@ -7,7 +7,7 @@
     "quick-task",
     "quick-note",
     "float-task-*",
-    "float-view-*"
+    "float-focus-*"
   ],
   "permissions": [
     "core:default",

@@ -2,12 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { parseCommandError } from "$lib/command-errors";
 import { logger } from "$lib/logger";
 
-// Like floating tasks, floating smart views are a device-local convenience
+// Like floating tasks, floating Focuses are a device-local convenience
 // kept in WebView storage. Window position and size are restored by the
 // window-state plugin per label.
-const STORAGE_KEY = "cardbe.floating-smart-views";
+const STORAGE_KEY = "cardbe.floating-focuses";
 
-export function read_floating_smart_views(): string[] {
+export function read_floating_focuses(): string[] {
   try {
     const parsed: unknown = JSON.parse(
       window.localStorage.getItem(STORAGE_KEY) ?? "[]",
@@ -24,46 +24,46 @@ export function read_floating_smart_views(): string[] {
   }
 }
 
-function write_floating_smart_views(ids: string[]) {
+function write_floating_focuses(ids: string[]) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
   } catch (error) {
-    logger.warn("floating_smart_view.storage_write.failed", error);
+    logger.warn("floating_focus.storage_write.failed", error);
   }
 }
 
-export function forget_floating_smart_view(id: string) {
-  write_floating_smart_views(
-    read_floating_smart_views().filter((candidate) => candidate !== id),
+export function forget_floating_focus(id: string) {
+  write_floating_focuses(
+    read_floating_focuses().filter((candidate) => candidate !== id),
   );
 }
 
 /** Opens (or focuses) the floating window and remembers it for next launch. */
-export async function open_floating_smart_view(id: string) {
-  await invoke("open_floating_smart_view", { id });
-  const ids = read_floating_smart_views();
+export async function open_floating_focus(id: string) {
+  await invoke("open_floating_focus", { id });
+  const ids = read_floating_focuses();
   if (!ids.includes(id)) {
-    write_floating_smart_views([...ids, id]);
+    write_floating_focuses([...ids, id]);
   }
 }
 
 /** Reopens remembered windows, dropping views that no longer exist. */
-export async function restore_floating_smart_views() {
-  for (const id of read_floating_smart_views()) {
+export async function restore_floating_focuses() {
+  for (const id of read_floating_focuses()) {
     try {
-      await invoke("open_floating_smart_view", { id });
+      await invoke("open_floating_focus", { id });
     } catch (error) {
-      if (parseCommandError(error)?.code === "SMART_VIEW_NOT_FOUND") {
-        forget_floating_smart_view(id);
+      if (parseCommandError(error)?.code === "FOCUS_NOT_FOUND") {
+        forget_floating_focus(id);
       } else {
-        logger.warn("floating_smart_view.restore.failed", error);
+        logger.warn("floating_focus.restore.failed", error);
       }
     }
   }
 }
 
 /** Reads the view ID that the backend encodes as UTF-8 hex in the URL. */
-export function decode_floating_smart_view_id(hex: string | null) {
+export function decode_floating_focus_id(hex: string | null) {
   if (!hex || hex.length % 2 !== 0 || !/^[0-9a-f]+$/.test(hex)) {
     return null;
   }

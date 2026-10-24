@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { AllTaskItem } from "../../board-base.svelte";
-import { smart_view_query, type SmartView } from "../../type/smart-view";
+import { focus_query, type Focus } from "../../type/focus";
 import {
   deserialize_task_summary,
   type TaskSummarySerialized,
@@ -21,21 +21,21 @@ interface PageSerialized {
   next_cursor: string | null;
 }
 
-export interface SmartViewResults {
+export interface FocusResults {
   items: AllTaskItem[];
   next_cursor: string | null;
 }
 
 /** Reads one page of a view's tasks, with relative dates taken at `now`. */
-export async function load_smart_view_results(
-  view: SmartView,
+export async function load_focus_results(
+  view: Focus,
   now: Date,
   cursor: string | null,
   limit: number,
-): Promise<SmartViewResults> {
+): Promise<FocusResults> {
   const page = await invoke<PageSerialized>("list_all_tasks", {
     cursor,
-    filter: smart_view_query(view, now),
+    filter: focus_query(view, now),
     limit,
   });
   return {

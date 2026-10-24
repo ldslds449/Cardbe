@@ -2,27 +2,23 @@ import { translateCommandError } from "$lib/command-errors";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 
-import {
-  clone_smart_view,
-  starter_smart_views,
-  type SmartView,
-} from "./type/smart-view";
+import { clone_focus, starter_focuses, type Focus } from "./type/focus";
 
 /**
- * The saved smart views. Changes apply immediately and roll back when the
+ * The saved Focuses. Changes apply immediately and roll back when the
  * backend rejects them.
  */
-export class SmartViewStore {
-  views = $state<SmartView[]>([]);
+export class FocusStore {
+  views = $state<Focus[]>([]);
   loaded = $state(false);
   private saving: Promise<void> = Promise.resolve();
 
   async load(): Promise<void> {
     try {
-      const views = await invoke<SmartView[] | null>("get_smart_views");
+      const views = await invoke<Focus[] | null>("get_focuses");
       if (views === null) {
         // First use: offer starter views and keep them like any other.
-        this.views = starter_smart_views();
+        this.views = starter_focuses();
         await this.persist(this.views, []);
       } else {
         this.views = views;
@@ -39,18 +35,18 @@ export class SmartViewStore {
     return this.saving;
   }
 
-  find(id: string): SmartView | undefined {
+  find(id: string): Focus | undefined {
     return this.views.find((view) => view.id === id);
   }
 
-  save(view: SmartView): Promise<boolean> {
+  save(view: Focus): Promise<boolean> {
     const previous = this.views;
     const index = previous.findIndex((candidate) => candidate.id === view.id);
     const next =
       index < 0
-        ? [...previous, clone_smart_view(view)]
+        ? [...previous, clone_focus(view)]
         : previous.map((candidate, i) =>
-            i === index ? clone_smart_view(view) : candidate,
+            i === index ? clone_focus(view) : candidate,
           );
     return this.replace(next, previous);
   }
@@ -75,15 +71,15 @@ export class SmartViewStore {
     return this.replace(next, previous);
   }
 
-  private replace(next: SmartView[], previous: SmartView[]): Promise<boolean> {
+  private replace(next: Focus[], previous: Focus[]): Promise<boolean> {
     this.views = next;
     return this.persist(next, previous);
   }
 
   // Saves run in order so a slow earlier save cannot overwrite a later one.
-  private persist(next: SmartView[], previous: SmartView[]): Promise<boolean> {
+  private persist(next: Focus[], previous: Focus[]): Promise<boolean> {
     const result = this.saving.then(() =>
-      invoke("set_smart_views", { views: $state.snapshot(next) }).then(
+      invoke("set_focuses", { views: $state.snapshot(next) }).then(
         () => true,
         (error) => {
           if (this.views === next) {

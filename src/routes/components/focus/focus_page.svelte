@@ -41,12 +41,12 @@
     TASK_PRIORITIES,
     type TaskPriority,
   } from "../../type/task.svelte";
-  import type { SmartView } from "../../type/smart-view";
+  import type { Focus } from "../../type/focus";
   import ChooseColumnDialog from "../dialog/choose_column_dialog.svelte";
   import PriorityIndicator from "../task/priority_indicator.svelte";
   import { due_label, due_label_class } from "../task/due-label";
-  import { group_smart_view_items } from "./smart-view-groups";
-  import { load_smart_view_results } from "./smart-view-results";
+  import { group_focus_items } from "./focus-groups";
+  import { load_focus_results } from "./focus-results";
 
   const PAGE_SIZE = 100;
 
@@ -59,7 +59,7 @@
     onOpenTask,
     onOpenBoard,
   }: {
-    view: SmartView;
+    view: Focus;
     boards: { id: number; shared_role: BoardRole }[];
     /** Set while a dialog opened from this page may still change tasks. */
     paused?: boolean;
@@ -77,7 +77,7 @@
   let request = 0;
   let busy_ids = $state(new Set<string>());
 
-  let groups = $derived(group_smart_view_items(items, view.group, now));
+  let groups = $derived(group_focus_items(items, view.group, now));
   let view_key = $derived(JSON.stringify(view));
 
   // Reopening asks where the tasks go, among their board's open columns.
@@ -104,7 +104,7 @@
     loading = true;
     failed = false;
     try {
-      const page = await load_smart_view_results(
+      const page = await load_focus_results(
         view,
         now,
         reset ? null : cursor,
@@ -117,7 +117,7 @@
       cursor = page.next_cursor;
     } catch (error) {
       if (current === request) {
-        logger.error("smart_view.load.failed", error);
+        logger.error("focus.load.failed", error);
         failed = true;
       }
     } finally {
@@ -218,7 +218,7 @@
   }
 
   function location(item: AllTaskItem) {
-    return m.smart_view_location({
+    return m.focus_location({
       board: item.board_name,
       column: item.archived_at
         ? m.explorer_archived()
@@ -243,8 +243,8 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label={m.smart_view_refresh()}
-      title={m.smart_view_refresh()}
+      aria-label={m.focus_refresh()}
+      title={m.focus_refresh()}
       disabled={loading}
       onclick={refresh}
     >
@@ -254,8 +254,8 @@
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label={m.smart_view_float_on_desktop()}
-        title={m.smart_view_float_on_desktop()}
+        aria-label={m.focus_float_on_desktop()}
+        title={m.focus_float_on_desktop()}
         onclick={onFloat}
       >
         <PictureInPicture2Icon />
@@ -273,7 +273,7 @@
         <Empty.Root>
           <Empty.Header>
             <Empty.Media variant="icon"><CircleAlertIcon /></Empty.Media>
-            <Empty.Title>{m.smart_view_load_error()}</Empty.Title>
+            <Empty.Title>{m.focus_load_error()}</Empty.Title>
           </Empty.Header>
           <Empty.Content>
             <Button onclick={refresh}>{m.common_retry()}</Button>
@@ -282,16 +282,14 @@
       {:else if loading && items.length === 0}
         <div class="flex justify-center py-16" role="status">
           <Spinner />
-          <span class="sr-only">{m.smart_view_loading()}</span>
+          <span class="sr-only">{m.focus_loading()}</span>
         </div>
       {:else if items.length === 0}
         <Empty.Root>
           <Empty.Header>
             <Empty.Media variant="icon"><SearchXIcon /></Empty.Media>
-            <Empty.Title>{m.smart_view_empty()}</Empty.Title>
-            <Empty.Description
-              >{m.smart_view_empty_description()}</Empty.Description
-            >
+            <Empty.Title>{m.focus_empty()}</Empty.Title>
+            <Empty.Description>{m.focus_empty_description()}</Empty.Description>
           </Empty.Header>
           <Empty.Content>
             <Button variant="outline" onclick={onEdit}>
@@ -408,7 +406,7 @@
                             {...props}
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={m.smart_view_task_actions({
+                            aria-label={m.focus_task_actions({
                               name: item.task.title || m.task_untitled(),
                             })}
                           >
@@ -448,7 +446,7 @@
                           onclick={() => onOpenBoard(item.board_id)}
                         >
                           <LayoutDashboardIcon />
-                          {m.smart_view_open_board()}
+                          {m.focus_open_board()}
                         </DropdownMenu.Item>
                       </DropdownMenu.Content>
                     </DropdownMenu.Root>
@@ -462,8 +460,7 @@
               <Button
                 variant="outline"
                 disabled={loading}
-                onclick={() => void load(false)}
-                >{m.smart_view_load_more()}</Button
+                onclick={() => void load(false)}>{m.focus_load_more()}</Button
               >
             </div>
           {/if}

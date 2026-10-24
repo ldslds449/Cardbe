@@ -2,10 +2,10 @@ import { m } from "$lib/paraglide/messages.js";
 
 import type { AllTaskItem } from "../../board-base.svelte";
 import { priority_label, TASK_PRIORITIES } from "../../type/task.svelte";
-import type { SmartViewGroup } from "../../type/smart-view";
+import type { FocusGroup } from "../../type/focus";
 import { due_limit } from "../../utils/task-date-range";
 
-export interface SmartViewGroupItems {
+export interface FocusGroupItems {
   key: string;
   /** Null for the single group of an ungrouped view. */
   label: string | null;
@@ -47,15 +47,15 @@ function due_bucket_label(bucket: DueBucket): string {
  * from most to least important, due dates from overdue to undated. Items keep
  * the view's sort order within each group.
  */
-export function group_smart_view_items(
+export function group_focus_items(
   items: AllTaskItem[],
-  group: SmartViewGroup,
+  group: FocusGroup,
   now: Date,
-): SmartViewGroupItems[] {
+): FocusGroupItems[] {
   if (group === "none") {
     return items.length > 0 ? [{ key: "all", label: null, items }] : [];
   }
-  const groups = new Map<string, SmartViewGroupItems>();
+  const groups = new Map<string, FocusGroupItems>();
   const add = (key: string, label: string, item: AllTaskItem) => {
     let entry = groups.get(key);
     if (!entry) {

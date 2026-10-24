@@ -51,7 +51,7 @@
   import VirtualList from "../virtual_list.svelte";
   import PriorityIndicator from "./priority_indicator.svelte";
 
-  type SmartView = "all" | "active" | "overdue" | "recurring" | "archived";
+  type Focus = "all" | "active" | "overdue" | "recurring" | "archived";
   type DueFilter = "all" | "due" | "none" | "today" | "custom";
   type SortMode = "due" | "title" | "column" | "archived" | "priority";
   // Most important first, matching the task dialog.
@@ -104,7 +104,7 @@
     onArchiveTask: (task: Task) => void;
   } = $props();
 
-  let smart_view = $state<SmartView>("active");
+  let focus = $state<Focus>("active");
   let board_scope = $state<number[] | null>(null);
   let controls_open = $state(false);
   const global_scope = $derived(
@@ -161,8 +161,8 @@
   let unarchive_board_id = $state<number | null>(null);
   let requested_query = $state("");
 
-  const smart_views: {
-    id: SmartView;
+  const focuses: {
+    id: Focus;
     label: string;
   }[] = $derived([
     { id: "active", label: m.explorer_active() },
@@ -177,12 +177,12 @@
     ...columns.map((column) => ({ id: column.id, label: column.name })),
   ]);
   const sort_options = $derived.by(() =>
-    smart_view === "archived"
+    focus === "archived"
       ? [
           { id: "archived" as const, label: m.explorer_archived_at() },
           { id: "title" as const, label: m.task_title() },
         ]
-      : smart_view === "recurring"
+      : focus === "recurring"
         ? [
             { id: "title" as const, label: m.task_title() },
             { id: "column" as const, label: m.explorer_column() },
@@ -227,7 +227,7 @@
         !global_scope && column_filter !== "all"
           ? get_column_id(column_filter)
           : null,
-      status: smart_view,
+      status: focus,
       sort: sort_mode,
       due:
         due_filter === "today" || due_filter === "custom" ? "due" : due_filter,
@@ -263,14 +263,14 @@
       ? m.explorer_no_boards()
       : has_conditions
         ? m.explorer_no_matching()
-        : smart_view === "all"
+        : focus === "all"
           ? m.explorer_no_tasks()
           : {
               active: m.explorer_empty_active,
               overdue: m.explorer_empty_overdue,
               recurring: m.explorer_empty_recurring,
               archived: m.explorer_empty_archived,
-            }[smart_view](),
+            }[focus](),
   );
 
   $effect(() => {
@@ -309,8 +309,8 @@
     }
   });
 
-  function set_view(view: SmartView) {
-    smart_view = view;
+  function set_view(view: Focus) {
+    focus = view;
     if (view === "archived") {
       column_filter = "all";
     }
@@ -639,12 +639,12 @@
         role="group"
         aria-label={m.explorer_status()}
       >
-        {#each smart_views as view (view.id)}
+        {#each focuses as view (view.id)}
           <Button
-            variant={smart_view === view.id ? "default" : "outline"}
+            variant={focus === view.id ? "default" : "outline"}
             size="sm"
             class="shrink-0"
-            aria-pressed={smart_view === view.id}
+            aria-pressed={focus === view.id}
             onclick={() => set_view(view.id)}>{view.label}</Button
           >
         {/each}
@@ -751,7 +751,7 @@
         {#if controls_open}
           <div class="grid gap-3">
             <div class="flex flex-wrap items-end gap-2">
-              {#if !global_scope && smart_view !== "archived"}
+              {#if !global_scope && focus !== "archived"}
                 <label
                   class="grid min-w-[9rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
                 >
@@ -891,7 +891,7 @@
                   : m.explorer_due_help()}
               </p>
             {/if}
-            {#if smart_view === "archived" || smart_view === "all"}
+            {#if focus === "archived" || focus === "all"}
               <div class="flex flex-wrap items-end gap-2">
                 <label
                   class="grid min-w-[10rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
@@ -1101,7 +1101,7 @@
                               class="shrink-0 py-0 text-[11px]">Shared</Badge
                             >
                           {/if}
-                          {#if smart_view !== "recurring" && entry.task.recurrence && !entry.archived_at}
+                          {#if focus !== "recurring" && entry.task.recurrence && !entry.archived_at}
                             <Badge
                               variant="outline"
                               class="gap-1 py-0 text-[11px]"

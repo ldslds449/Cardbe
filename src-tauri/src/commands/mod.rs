@@ -16,7 +16,7 @@ pub mod plugins;
 pub mod resource_usage;
 pub mod settings;
 pub mod share;
-pub mod smart_views;
+pub mod focuses;
 pub mod task_events;
 pub mod task_explorer;
 pub mod templates;

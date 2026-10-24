@@ -6,9 +6,9 @@
   import { logger } from "$lib/logger";
   import { restore_floating_tasks } from "$lib/floating-tasks";
   import {
-    open_floating_smart_view,
-    restore_floating_smart_views,
-  } from "$lib/floating-smart-views";
+    open_floating_focus,
+    restore_floating_focuses,
+  } from "$lib/floating-focuses";
   import { onMount, untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -34,10 +34,10 @@
   import { IrohDeviceStatus, type IrohInvite } from "./type/iroh-share";
   import BoardView from "./components/board/board_view.svelte";
   import AllTaskExplorer from "./components/task/all_task_explorer.svelte";
-  import SmartViewPage from "./components/smart_view/smart_view_page.svelte";
-  import SmartViewDialog from "./components/smart_view/smart_view_dialog.svelte";
-  import { SmartViewStore } from "./smart-views.svelte";
-  import type { SmartView } from "./type/smart-view";
+  import FocusPage from "./components/focus/focus_page.svelte";
+  import FocusDialog from "./components/focus/focus_dialog.svelte";
+  import { FocusStore } from "./focuses.svelte";
+  import type { Focus } from "./type/focus";
   import type { AllTaskItem } from "./board-base.svelte";
   import AddColumnDialog from "./components/dialog/add_column_dialog.svelte";
   import EditTaskDialog from "./components/dialog/edit_task_dialog.svelte";
@@ -133,55 +133,53 @@
   // all-task explorer
   let all_task_open = $state(false);
 
-  // smart views, shown in place of the active board
-  const smart_views = new SmartViewStore();
-  let active_smart_view_id = $state<string | null>(null);
-  const active_smart_view = $derived(
-    active_smart_view_id === null
-      ? undefined
-      : smart_views.find(active_smart_view_id),
+  // Focuses, shown in place of the active board
+  const focuses = new FocusStore();
+  let active_focus_id = $state<string | null>(null);
+  const active_focus = $derived(
+    active_focus_id === null ? undefined : focuses.find(active_focus_id),
   );
-  let smart_view_dialog_open = $state(false);
-  let editing_smart_view = $state<SmartView | null>(null);
+  let focus_dialog_open = $state(false);
+  let editing_focus = $state<Focus | null>(null);
 
-  function edit_smart_view(view: SmartView | null) {
-    editing_smart_view = view;
-    smart_view_dialog_open = true;
+  function edit_focus(view: Focus | null) {
+    editing_focus = view;
+    focus_dialog_open = true;
   }
 
-  async function save_smart_view(view: SmartView): Promise<boolean> {
-    if (!(await smart_views.save(view))) {
+  async function save_focus(view: Focus): Promise<boolean> {
+    if (!(await focuses.save(view))) {
       return false;
     }
-    active_smart_view_id = view.id;
+    active_focus_id = view.id;
     return true;
   }
 
-  async function float_smart_view(id: string) {
+  async function float_focus(id: string) {
     // A new or just edited view must be saved before its window reads it.
-    await smart_views.settled();
-    if (!smart_views.find(id)) {
+    await focuses.settled();
+    if (!focuses.find(id)) {
       return;
     }
     try {
-      await open_floating_smart_view(id);
+      await open_floating_focus(id);
     } catch (error) {
       toast.error(translateCommandError(error));
     }
   }
 
-  async function delete_smart_view(id: string): Promise<boolean> {
-    if (!(await smart_views.remove(id))) {
+  async function delete_focus(id: string): Promise<boolean> {
+    if (!(await focuses.remove(id))) {
       return false;
     }
-    if (active_smart_view_id === id) {
-      active_smart_view_id = null;
+    if (active_focus_id === id) {
+      active_focus_id = null;
     }
     return true;
   }
 
-  // Details open over the smart view; the task's board becomes active behind it.
-  async function open_smart_view_task(item: AllTaskItem) {
+  // Details open over the Focus; the task's board becomes active behind it.
+  async function open_focus_task(item: AllTaskItem) {
     await switch_board(item.board_id);
     if (board.active_board_id !== item.board_id) {
       return;
@@ -200,7 +198,7 @@
   }
 
   function open_board(id: number) {
-    active_smart_view_id = null;
+    active_focus_id = null;
     void switch_board(id);
   }
 
@@ -499,9 +497,9 @@
           if (disposed) {
             return;
           }
-          void smart_views.load();
+          void focuses.load();
           void restore_floating_tasks();
-          void restore_floating_smart_views();
+          void restore_floating_focuses();
           restore_managed_share_state(
             board.boards.length === 1 ? board.boards[0].id : undefined,
           );
@@ -679,19 +677,19 @@
         }
       },
     );
-    const open_smart_view_listener = listen<{ id?: string }>(
-      "cardbe:open-smart-view",
+    const open_focus_listener = listen<{ id?: string }>(
+      "cardbe:open-focus",
       async (event) => {
         const { id } = event.payload;
         if (typeof id !== "string") {
           return;
         }
         // Views load after the board, possibly after this request.
-        if (!smart_views.loaded) {
-          await smart_views.load();
+        if (!focuses.loaded) {
+          await focuses.load();
         }
-        if (smart_views.find(id)) {
-          active_smart_view_id = id;
+        if (focuses.find(id)) {
+          active_focus_id = id;
         }
       },
     );
@@ -714,7 +712,7 @@
       void data_changed_listener.then((unlisten) => unlisten());
       void iroh_remote_push_listener.then((unlisten) => unlisten());
       void open_task_listener.then((unlisten) => unlisten());
-      void open_smart_view_listener.then((unlisten) => unlisten());
+      void open_focus_listener.then((unlisten) => unlisten());
       document.removeEventListener("keydown", handle_shortcut);
       window.removeEventListener("cardbe:open-card", handle_open_card);
       window.removeEventListener(
@@ -1195,20 +1193,20 @@
       onRename={(id, name) => board.rename_board(id, name)}
       onLoadArchivedCount={(id) => board.get_archived_count(id)}
       onDelete={delete_board}
-      smart_views={smart_views.views}
-      {active_smart_view_id}
-      onOpenSmartView={(id) => (active_smart_view_id = id)}
-      onCreateSmartView={() => edit_smart_view(null)}
-      onEditSmartView={(id) => edit_smart_view(smart_views.find(id) ?? null)}
-      onFloatSmartView={(id) => void float_smart_view(id)}
-      onDeleteSmartView={delete_smart_view}
+      focuses={focuses.views}
+      {active_focus_id}
+      onOpenFocus={(id) => (active_focus_id = id)}
+      onCreateFocus={() => edit_focus(null)}
+      onEditFocus={(id) => edit_focus(focuses.find(id) ?? null)}
+      onFloatFocus={(id) => void float_focus(id)}
+      onDeleteFocus={delete_focus}
     />
-    <SmartViewDialog
-      bind:open={smart_view_dialog_open}
-      view={editing_smart_view}
+    <FocusDialog
+      bind:open={focus_dialog_open}
+      view={editing_focus}
       boards={board.boards}
       label_suggestions={board.labels}
-      onSave={save_smart_view}
+      onSave={save_focus}
     />
     <!-- `min-h-0` is essential here: without it this flex item grows to its
          contents and the inner viewport never becomes a vertical scroll
@@ -1274,14 +1272,14 @@
         onCheckForUpdates={(manual) => updates.check(manual)}
       />
 
-      {#if active_smart_view}
-        <SmartViewPage
-          view={active_smart_view}
+      {#if active_focus}
+        <FocusPage
+          view={active_focus}
           boards={board.boards}
           paused={task_dialog_open || view_task_dialog_open}
-          onEdit={() => edit_smart_view(active_smart_view)}
-          onFloat={() => void float_smart_view(active_smart_view.id)}
-          onOpenTask={(item) => void open_smart_view_task(item)}
+          onEdit={() => edit_focus(active_focus)}
+          onFloat={() => void float_focus(active_focus.id)}
+          onOpenTask={(item) => void open_focus_task(item)}
           onOpenBoard={open_board}
         />
       {:else}

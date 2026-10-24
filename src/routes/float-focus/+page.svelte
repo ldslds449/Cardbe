@@ -6,9 +6,9 @@
     type CommandError,
   } from "$lib/command-errors";
   import {
-    decode_floating_smart_view_id,
-    forget_floating_smart_view,
-  } from "$lib/floating-smart-views";
+    decode_floating_focus_id,
+    forget_floating_focus,
+  } from "$lib/floating-focuses";
   import { formatNumber } from "$lib/i18n";
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
@@ -25,12 +25,12 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import type { AllTaskItem, BoardSummary } from "../board-base.svelte";
-  import type { SmartView } from "../type/smart-view";
+  import type { Focus } from "../type/focus";
   import { get_task_id } from "../type/task.svelte";
   import PriorityIndicator from "../components/task/priority_indicator.svelte";
   import { due_label, due_label_class } from "../components/task/due-label";
-  import { group_smart_view_items } from "../components/smart_view/smart-view-groups";
-  import { load_smart_view_results } from "../components/smart_view/smart-view-results";
+  import { group_focus_items } from "../components/focus/focus-groups";
+  import { load_focus_results } from "../components/focus/focus-results";
 
   // Board edits in the main window send no change notifications, so a light
   // periodic read keeps the list current, as in floating tasks.
@@ -38,12 +38,12 @@
   // A glanceable list; the full view stays in the main window.
   const PAGE_SIZE = 100;
 
-  const view_id = decode_floating_smart_view_id(
-    new URLSearchParams(window.location.search).get("view"),
+  const view_id = decode_floating_focus_id(
+    new URLSearchParams(window.location.search).get("focus"),
   );
   const float_window = getCurrentWindow();
 
-  let view = $state<SmartView | null>(null);
+  let view = $state<Focus | null>(null);
   let boards = $state<BoardSummary[]>([]);
   let items = $state<AllTaskItem[]>([]);
   let has_more = $state(false);
@@ -54,7 +54,7 @@
   let load_generation = 0;
 
   const groups = $derived(
-    view ? group_smart_view_items(items, view.group, now) : [],
+    view ? group_focus_items(items, view.group, now) : [],
   );
 
   const window_title = $derived(view ? `${view.name} · Cardbe` : "Cardbe");
@@ -62,9 +62,7 @@
   $effect(() => {
     void float_window
       .setTitle(window_title)
-      .catch((caught) =>
-        logger.warn("floating_smart_view.title.failed", caught),
-      );
+      .catch((caught) => logger.warn("floating_focus.title.failed", caught));
   });
 
   function item_key(item: AllTaskItem) {
@@ -82,7 +80,7 @@
     const generation = ++load_generation;
     try {
       const [views, state] = await Promise.all([
-        invoke<SmartView[] | null>("get_smart_views"),
+        invoke<Focus[] | null>("get_focuses"),
         invoke<{ boards: BoardSummary[] }>("get_boards"),
       ]);
       if (generation !== load_generation) {
@@ -95,12 +93,7 @@
         return;
       }
       const loaded_at = new Date();
-      const page = await load_smart_view_results(
-        found,
-        loaded_at,
-        null,
-        PAGE_SIZE,
-      );
+      const page = await load_focus_results(found, loaded_at, null, PAGE_SIZE);
       if (generation !== load_generation) {
         return;
       }
@@ -112,7 +105,7 @@
       error = null;
     } catch (caught) {
       if (generation === load_generation) {
-        logger.warn("floating_smart_view.load.failed", caught);
+        logger.warn("floating_focus.load.failed", caught);
         error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
       }
     } finally {
@@ -138,7 +131,7 @@
         taskIds: [get_task_id(item.task.id)],
       });
     } catch (caught) {
-      logger.warn("floating_smart_view.complete.failed", caught);
+      logger.warn("floating_focus.complete.failed", caught);
       error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
     } finally {
       const next = new Set(busy_ids);
@@ -155,16 +148,16 @@
         taskId: get_task_id(item.task.id),
       });
     } catch (caught) {
-      logger.warn("floating_smart_view.open_task.failed", caught);
+      logger.warn("floating_focus.open_task.failed", caught);
       error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
     }
   }
 
   async function open_in_cardbe() {
     try {
-      await invoke("open_smart_view_in_main_window", { id: view_id });
+      await invoke("open_focus_in_main_window", { id: view_id });
     } catch (caught) {
-      logger.warn("floating_smart_view.open_main.failed", caught);
+      logger.warn("floating_focus.open_main.failed", caught);
       error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
     }
   }
@@ -180,7 +173,7 @@
     window.addEventListener("focus", handle_focus);
     const unlisteners = [
       listen("cardbe:data-changed", () => void load()),
-      listen("cardbe:smart-views-changed", () => void load()),
+      listen("cardbe:focuses-changed", () => void load()),
     ];
     return () => {
       void context_menu?.close();
@@ -200,9 +193,7 @@
     }
     void float_window
       .startDragging()
-      .catch((caught) =>
-        logger.warn("floating_smart_view.drag.failed", caught),
-      );
+      .catch((caught) => logger.warn("floating_focus.drag.failed", caught));
   }
 
   // A native menu can extend past the small window. As in floating tasks,
@@ -238,7 +229,7 @@
           },
           { item: "Separator" },
           {
-            text: m.smart_view_float_close(),
+            text: m.focus_float_close(),
             action: () => after_menu(() => void close_floating_window()),
           },
         ],
@@ -246,7 +237,7 @@
       context_menu = menu;
       await menu.popup(undefined, float_window);
     } catch (caught) {
-      logger.warn("floating_smart_view.menu.failed", caught);
+      logger.warn("floating_focus.menu.failed", caught);
     } finally {
       menu_open = false;
       const action = pending_action;
@@ -257,12 +248,12 @@
 
   async function close_floating_window() {
     if (view_id !== null) {
-      forget_floating_smart_view(view_id);
+      forget_floating_focus(view_id);
     }
     try {
       await float_window.close();
     } catch (caught) {
-      logger.warn("floating_smart_view.close.failed", caught);
+      logger.warn("floating_focus.close.failed", caught);
     }
   }
 </script>
@@ -279,7 +270,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header
     class="flex shrink-0 cursor-grab items-center gap-1.5 border-b px-3 py-2 active:cursor-grabbing"
-    title={m.smart_view_float_hint()}
+    title={m.focus_float_hint()}
     onmousedown={handle_mousedown}
     ondblclick={() => void open_in_cardbe()}
   >
@@ -303,7 +294,7 @@
       {/if}
       {#if view && items.length === 0 && !error}
         <p class="px-1.5 py-4 text-center text-xs text-muted-foreground">
-          {m.smart_view_empty()}
+          {m.focus_empty()}
         </p>
       {/if}
       {#each groups as group (group.key)}
@@ -386,7 +377,7 @@
           size="sm"
           class="w-full"
           onclick={() => void open_in_cardbe()}
-          >{m.smart_view_float_show_all()}</Button
+          >{m.focus_float_show_all()}</Button
         >
       {/if}
     </div>

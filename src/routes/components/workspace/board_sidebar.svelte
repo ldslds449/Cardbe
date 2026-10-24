@@ -18,7 +18,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import type { BoardRole } from "../../board.svelte";
-  import { MAX_SMART_VIEWS, type SmartView } from "../../type/smart-view";
+  import { MAX_FOCUSES, type Focus } from "../../type/focus";
 
   export interface BoardItem {
     id: number;
@@ -37,13 +37,13 @@
     onRename,
     onLoadArchivedCount,
     onDelete,
-    smart_views,
-    active_smart_view_id,
-    onOpenSmartView,
-    onCreateSmartView,
-    onEditSmartView,
-    onFloatSmartView,
-    onDeleteSmartView,
+    focuses,
+    active_focus_id,
+    onOpenFocus,
+    onCreateFocus,
+    onEditFocus,
+    onFloatFocus,
+    onDeleteFocus,
   }: {
     boards: BoardItem[];
     active_board_id: number | null;
@@ -53,14 +53,14 @@
     onRename: (id: number, name: string) => Promise<boolean>;
     onLoadArchivedCount: (id: number) => Promise<number | null>;
     onDelete: (id: number) => Promise<boolean>;
-    smart_views: SmartView[];
-    /** The smart view shown instead of the active board, if any. */
-    active_smart_view_id: string | null;
-    onOpenSmartView: (id: string) => void;
-    onCreateSmartView: () => void;
-    onEditSmartView: (id: string) => void;
-    onFloatSmartView: (id: string) => void;
-    onDeleteSmartView: (id: string) => Promise<boolean>;
+    focuses: Focus[];
+    /** The Focus shown instead of the active board, if any. */
+    active_focus_id: string | null;
+    onOpenFocus: (id: string) => void;
+    onCreateFocus: () => void;
+    onEditFocus: (id: string) => void;
+    onFloatFocus: (id: string) => void;
+    onDeleteFocus: (id: string) => Promise<boolean>;
   } = $props();
 
   let create_open = $state(false);
@@ -77,14 +77,14 @@
       item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
     ),
   );
-  const filtered_smart_views = $derived(
-    smart_views.filter((view) =>
+  const filtered_focuses = $derived(
+    focuses.filter((view) =>
       view.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
     ),
   );
   let delete_view_open = $state(false);
-  let selected_view = $state<SmartView | null>(null);
-  function open_delete_view_dialog(view: SmartView) {
+  let selected_view = $state<Focus | null>(null);
+  function open_delete_view_dialog(view: Focus) {
     selected_view = view;
     delete_view_open = true;
   }
@@ -94,7 +94,7 @@
     }
     saving = true;
     try {
-      if (await onDeleteSmartView(selected_view.id)) {
+      if (await onDeleteFocus(selected_view.id)) {
         delete_view_open = false;
       }
     } finally {
@@ -102,7 +102,7 @@
     }
   }
   function select_view(id: string) {
-    onOpenSmartView(id);
+    onOpenFocus(id);
     open = false;
   }
   function open_create_dialog() {
@@ -215,44 +215,44 @@
         <nav class="min-w-0 px-2 py-2" aria-label={m.board_list_navigation()}>
           <section
             class="mb-3 rounded-md bg-muted/50 p-1"
-            aria-labelledby="drawer-smart-views"
+            aria-labelledby="drawer-focuses"
           >
             <div class="flex h-8 items-center justify-between ps-2 pe-1">
               <h3
-                id="drawer-smart-views"
+                id="drawer-focuses"
                 class="flex items-center gap-1.5 text-xs font-semibold text-foreground"
               >
                 <ListFilterIcon class="size-3.5 text-primary" />
-                {m.smart_view_section()}
+                {m.focus_section()}
                 <span class="font-normal text-muted-foreground"
-                  >· {formatNumber(smart_views.length)}</span
+                  >· {formatNumber(focuses.length)}</span
                 >
               </h3>
               <Button
                 variant="ghost"
                 size="icon-xs"
                 class="text-muted-foreground"
-                aria-label={m.smart_view_new()}
-                title={m.smart_view_new()}
-                disabled={smart_views.length >= MAX_SMART_VIEWS}
+                aria-label={m.focus_new()}
+                title={m.focus_new()}
+                disabled={focuses.length >= MAX_FOCUSES}
                 onclick={() => {
-                  onCreateSmartView();
+                  onCreateFocus();
                   open = false;
                 }}
               >
                 <PlusIcon />
               </Button>
             </div>
-            {#if filtered_smart_views.length > 0}
+            {#if filtered_focuses.length > 0}
               <div class="space-y-0.5">
-                {#each filtered_smart_views as view (view.id)}
+                {#each filtered_focuses as view (view.id)}
                   <ContextMenu.Root>
                     <ContextMenu.Trigger>
                       <button
                         type="button"
-                        class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${view.id === active_smart_view_id ? "bg-background font-medium text-foreground shadow-xs before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}
+                        class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${view.id === active_focus_id ? "bg-background font-medium text-foreground shadow-xs before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}
                         onclick={() => select_view(view.id)}
-                        aria-current={view.id === active_smart_view_id
+                        aria-current={view.id === active_focus_id
                           ? "page"
                           : undefined}
                         title={view.name}
@@ -267,16 +267,15 @@
                     <ContextMenu.Content>
                       <ContextMenu.Item
                         onclick={() => {
-                          onEditSmartView(view.id);
+                          onEditFocus(view.id);
                           open = false;
                         }}
                         ><PencilIcon />
                         {m.common_edit()}</ContextMenu.Item
                       >
-                      <ContextMenu.Item
-                        onclick={() => onFloatSmartView(view.id)}
+                      <ContextMenu.Item onclick={() => onFloatFocus(view.id)}
                         ><PictureInPicture2Icon />
-                        {m.smart_view_float_on_desktop()}</ContextMenu.Item
+                        {m.focus_float_on_desktop()}</ContextMenu.Item
                       ><ContextMenu.Separator />
                       <ContextMenu.Item
                         variant="destructive"
@@ -288,9 +287,9 @@
                   </ContextMenu.Root>
                 {/each}
               </div>
-            {:else if smart_views.length === 0}
+            {:else if focuses.length === 0}
               <p class="px-2 py-2 text-xs text-muted-foreground">
-                {m.smart_view_none()}
+                {m.focus_none()}
               </p>
             {/if}
           </section>
@@ -310,10 +309,10 @@
                   <ContextMenu.Trigger>
                     <button
                       type="button"
-                      class={`relative flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${item.id === active_board_id && !active_smart_view_id ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+                      class={`relative flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${item.id === active_board_id && !active_focus_id ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
                       onclick={() => select_board(item.id)}
                       aria-current={item.id === active_board_id &&
-                      !active_smart_view_id
+                      !active_focus_id
                         ? "page"
                         : undefined}
                       title={item.shared_role === "owner"
@@ -496,11 +495,11 @@
   ><AlertDialog.Content
     ><AlertDialog.Header
       ><AlertDialog.Title
-        >{m.smart_view_delete_confirm({
+        >{m.focus_delete_confirm({
           name: selected_view?.name ?? "",
         })}</AlertDialog.Title
       ><AlertDialog.Description
-        >{m.smart_view_delete_description()}</AlertDialog.Description
+        >{m.focus_delete_description()}</AlertDialog.Description
       ></AlertDialog.Header
     ><AlertDialog.Footer
       ><AlertDialog.Cancel disabled={saving}

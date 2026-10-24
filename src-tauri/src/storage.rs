@@ -73,7 +73,7 @@ pub struct TaskExplorerQuery {
 }
 
 impl TaskExplorerQuery {
-    /// The filters added for smart views, passed to SQL as one JSON object.
+    /// The filters added for Focuses, passed to SQL as one JSON object.
     fn extra_filters(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string(&serde_json::json!({
             "completion": self.completion,
@@ -847,7 +847,7 @@ impl Database {
         active_index: usize,
         notes: &[Note],
         settings: &crate::models::Settings,
-        smart_views: Option<&[crate::smart_views::SmartView]>,
+        focuses: Option<&[crate::focuses::Focus]>,
     ) -> StorageResult<(Vec<Board>, StoredData)> {
         if boards.is_empty() || active_index >= boards.len() {
             return Err("Backup must contain an active board".into());
@@ -881,16 +881,16 @@ impl Database {
         let active_id = created[active_index].id;
         tx.execute("INSERT INTO cardbe_global_metadata(key,value) VALUES('active_board_id',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [active_id.to_string()])?;
         tx.execute("INSERT INTO cardbe_global_metadata(key,value) VALUES('settings',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [serde_json::to_string(settings)?])?;
-        if let Some(views) = smart_views {
+        if let Some(views) = focuses {
             // Backups refer to boards by position; restored boards get new IDs.
             let mut views = views.to_vec();
-            crate::smart_views::map_boards(&mut views, |index| {
+            crate::focuses::map_boards(&mut views, |index| {
                 usize::try_from(index)
                     .ok()
                     .and_then(|index| created.get(index))
                     .map(|board| board.id)
             });
-            crate::smart_views::save(&tx, &views)?;
+            crate::focuses::save(&tx, &views)?;
         }
         tx.commit()?;
         self.active_board_id = active_id;
@@ -7516,10 +7516,10 @@ mod tests {
                 1,
                 &notes,
                 &settings,
-                Some(&[crate::smart_views::SmartView {
+                Some(&[crate::focuses::Focus {
                     id: "second".into(),
                     name: "Second board".into(),
-                    filter: crate::smart_views::SmartViewFilter {
+                    filter: crate::focuses::FocusFilter {
                         board_ids: Some(vec![1]),
                         ..Default::default()
                     },
@@ -7531,7 +7531,7 @@ mod tests {
 
         assert_eq!(boards.len(), 2);
         // Backup positions become the restored boards' IDs.
-        let views = crate::smart_views::load(&loaded.database.connection)
+        let views = crate::focuses::load(&loaded.database.connection)
             .unwrap()
             .unwrap();
         assert_eq!(views[0].filter.board_ids, Some(vec![boards[1].id]));

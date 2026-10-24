@@ -2,81 +2,81 @@ use crate::errors::{CommandError, DomainError};
 use crate::{
     models::{StoredData, TaskPriority},
     operations::OperationHost,
-    smart_views::{self, SmartView},
+    focuses::{self, Focus},
     state::{lock_app, update_stored_with_archives_for_board, SharedAppData},
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// `None` until views were first saved.
 #[tauri::command]
-pub fn get_smart_views(
+pub fn get_focuses(
     state: State<'_, SharedAppData>,
-) -> Result<Option<Vec<SmartView>>, CommandError> {
+) -> Result<Option<Vec<Focus>>, CommandError> {
     let guard = lock_app(&state)?;
-    smart_views::load(&guard.database.connection).map_err(CommandError::from)
+    focuses::load(&guard.database.connection).map_err(CommandError::from)
 }
 
 /// Replaces the saved views, in display order.
 #[tauri::command]
-pub fn set_smart_views(
+pub fn set_focuses(
     app: AppHandle,
     state: State<'_, SharedAppData>,
-    views: Vec<SmartView>,
+    views: Vec<Focus>,
 ) -> Result<(), CommandError> {
     {
         let guard = lock_app(&state)?;
-        smart_views::save(&guard.database.connection, &views).map_err(CommandError::from)?;
+        focuses::save(&guard.database.connection, &views).map_err(CommandError::from)?;
     }
     // Floating views follow renames, filter changes, and deletion.
-    if let Err(error) = app.emit(SMART_VIEWS_CHANGED_EVENT, ()) {
-        log::warn!(target: "smart_views", "Could not announce saved smart views: {error}");
+    if let Err(error) = app.emit(FOCUSES_CHANGED_EVENT, ()) {
+        log::warn!(target: "focuses", "Could not announce saved Focuses: {error}");
     }
     Ok(())
 }
 
-const SMART_VIEWS_CHANGED_EVENT: &str = "cardbe:smart-views-changed";
+const FOCUSES_CHANGED_EVENT: &str = "cardbe:focuses-changed";
 
 fn ensure_view_exists(state: &State<'_, SharedAppData>, id: &str) -> Result<(), CommandError> {
     let guard = lock_app(state)?;
-    let views = smart_views::load(&guard.database.connection).map_err(CommandError::from)?;
+    let views = focuses::load(&guard.database.connection).map_err(CommandError::from)?;
     views
         .unwrap_or_default()
         .iter()
         .any(|view| view.id == id)
         .then_some(())
-        .ok_or(CommandError::SmartViewNotFound)
+        .ok_or(CommandError::FocusNotFound)
 }
 
 // Async so that window creation does not deadlock the Windows event loop.
 #[tauri::command]
-pub async fn open_floating_smart_view(
+pub async fn open_floating_focus(
     app: AppHandle,
     state: State<'_, SharedAppData>,
     id: String,
 ) -> Result<(), CommandError> {
     ensure_view_exists(&state, &id)?;
     #[cfg(desktop)]
-    crate::desktop::open_floating_smart_view_window(&app, &id).map_err(CommandError::internal)?;
+    crate::desktop::open_floating_focus_window(&app, &id).map_err(CommandError::internal)?;
     #[cfg(not(desktop))]
     let _ = app;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn open_smart_view_in_main_window(
+pub async fn open_focus_in_main_window(
     app: AppHandle,
     state: State<'_, SharedAppData>,
     id: String,
 ) -> Result<(), CommandError> {
     ensure_view_exists(&state, &id)?;
     #[cfg(desktop)]
-    crate::desktop::open_smart_view_in_main_window(&app, &id).map_err(CommandError::internal)?;
+    crate::desktop::open_focus_in_main_window(&app, &id).map_err(CommandError::internal)?;
     #[cfg(not(desktop))]
     let _ = app;
     Ok(())
 }
 
-/// Changes a board from a smart view, which may show any board. Changes to
+/// Changes a board from a Focus, which may show any board. Changes to
 /// the open board enter its Undo history like other local edits; other boards
 /// are written like MCP edits, outside Undo.
 fn write_board<R>(
