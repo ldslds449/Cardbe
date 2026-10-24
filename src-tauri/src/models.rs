@@ -46,6 +46,16 @@ pub enum IrohDeviceStatus {
     Revoked,
 }
 
+/// A board column for overviews, without its tasks.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct ColumnOverview {
+    pub board_id: i64,
+    pub id: i64,
+    pub name: String,
+    pub done: bool,
+    pub task_count: i64,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
 pub struct Board {
     pub id: i64,

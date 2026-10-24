@@ -4,9 +4,6 @@ import {
   create_focus,
   focus_from_explorer,
   focus_query,
-  is_builtin_focus,
-  today_focus,
-  TODAY_FOCUS_ID,
   type ExplorerConditions,
   type Focus,
 } from "./focus";
@@ -77,21 +74,6 @@ describe("Focuses", () => {
 
   it("starts new views with open tasks", () => {
     expect(create_focus("New").filter.completion).toEqual(["open"]);
-  });
-
-  it("defines Today as overdue and due-today open tasks of every board", () => {
-    const today = today_focus();
-    expect(today.id).toBe(TODAY_FOCUS_ID);
-    expect(is_builtin_focus(today.id)).toBe(true);
-    expect(is_builtin_focus(create_focus("Mine").id)).toBe(false);
-    expect(today).toMatchObject({ sort: "due", group: "due" });
-    expect(focus_query(today, now)).toMatchObject({
-      board_ids: null,
-      completion: ["open"],
-      due: "due",
-      due_start: null,
-      due_end: day(1),
-    });
   });
 
   describe("from task explorer conditions", () => {

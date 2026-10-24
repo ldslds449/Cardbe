@@ -8,6 +8,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { toast } from "svelte-sonner";
   import { untrack } from "svelte";
+  import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import * as Empty from "$lib/components/ui/empty/index.js";
@@ -44,7 +45,7 @@
   import ChooseColumnDialog from "../dialog/choose_column_dialog.svelte";
   import PriorityIndicator from "../task/priority_indicator.svelte";
   import DueBadge from "../task/due_badge.svelte";
-  import { group_focus_items } from "./focus-groups";
+  import { group_focus_items, type FocusGroupItems } from "./focus-groups";
   import { load_focus_results } from "./focus-results";
 
   const PAGE_SIZE = 100;
@@ -62,8 +63,7 @@
     boards: { id: number; shared_role: BoardRole }[];
     /** Set while a dialog opened from this page may still change tasks. */
     paused?: boolean;
-    /** Missing for the built-in views, which cannot be edited. */
-    onEdit?: () => void;
+    onEdit: () => void;
     onFloat?: () => void;
     onOpenTask: (item: AllTaskItem) => void;
     onOpenBoard: (board_id: number) => void;
@@ -79,6 +79,9 @@
 
   let groups = $derived(group_focus_items(items, view.group, now));
   let view_key = $derived(JSON.stringify(view));
+  // The view the shown tasks belong to; another view's tasks stay hidden
+  // while switching.
+  let loaded_key = $state<string | null>(null);
 
   // Reopening asks where the tasks go, among their board's open columns.
   let reopen_item = $state<AllTaskItem | null>(null);
@@ -98,6 +101,7 @@
 
   async function load(reset: boolean) {
     const current = ++request;
+    const key = view_key;
     if (reset) {
       now = new Date();
     }
@@ -115,6 +119,7 @@
       }
       items = reset ? page.items : [...items, ...page.items];
       cursor = page.next_cursor;
+      loaded_key = key;
     } catch (error) {
       if (current === request) {
         logger.error("focus.load.failed", error);
@@ -227,6 +232,170 @@
   }
 </script>
 
+{#snippet task_row(item: AllTaskItem)}
+  {@const can_write = writable(item)}
+  {@const busy = busy_ids.has(item_key(item))}
+  {@const finished = item.done || Boolean(item.archived_at)}
+  <li
+    class="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 shadow-xs"
+  >
+    {#if can_write}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        class={finished ? "text-primary" : "text-muted-foreground"}
+        disabled={busy}
+        aria-label={finished ? m.task_reopen_action() : m.task_complete()}
+        title={finished ? m.task_reopen_action() : m.task_complete()}
+        onclick={() => (finished ? void ask_to_reopen(item) : complete(item))}
+      >
+        {#if finished}
+          <RotateCcwIcon />
+        {:else}
+          <CircleCheckIcon />
+        {/if}
+      </Button>
+    {/if}
+    <button
+      type="button"
+      class="min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onclick={() => onOpenTask(item)}
+    >
+      <span
+        class={[
+          "block truncate text-sm",
+          finished && "text-muted-foreground line-through",
+        ]}>{item.task.title || m.task_untitled()}</span
+      >
+      <span
+        class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground"
+      >
+        <span class="truncate">{location(item)}</span>
+        {#if item.task.priority}
+          <PriorityIndicator priority={item.task.priority} />
+        {/if}
+        {#if item.waiting_count}
+          <span
+            class="inline-flex items-center gap-1"
+            title={m.task_waiting_count({
+              count: item.waiting_count,
+            })}
+          >
+            <HourglassIcon class="size-3.5" />
+            <span aria-hidden="true">{formatNumber(item.waiting_count)}</span>
+            <span class="sr-only"
+              >{m.task_waiting_count({
+                count: item.waiting_count,
+              })}</span
+            >
+          </span>
+        {/if}
+        {#if item.task.due_time}
+          <DueBadge
+            due_time={item.task.due_time}
+            {now}
+            at_midnight={item.task.due_at_midnight}
+          />
+        {/if}
+      </span>
+    </button>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="icon-sm"
+            aria-label={m.focus_task_actions({
+              name: item.task.title || m.task_untitled(),
+            })}
+          >
+            <EllipsisIcon />
+          </Button>
+        {/snippet}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end" class="min-w-44">
+        {#if can_write}
+          <DropdownMenu.Sub>
+            <DropdownMenu.SubTrigger disabled={busy}>
+              <GaugeIcon />
+              {m.task_priority()}
+            </DropdownMenu.SubTrigger>
+            <DropdownMenu.SubContent class="min-w-36">
+              <DropdownMenu.RadioGroup
+                value={item.task.priority ?? "none"}
+                onValueChange={(value) =>
+                  set_priority(
+                    item,
+                    is_task_priority(value) ? value : undefined,
+                  )}
+              >
+                {#each [...TASK_PRIORITIES].reverse() as priority (priority)}
+                  <DropdownMenu.RadioItem value={priority}>
+                    <PriorityIndicator {priority} />
+                  </DropdownMenu.RadioItem>
+                {/each}
+                <DropdownMenu.RadioItem value="none"
+                  >{m.task_priority_none()}</DropdownMenu.RadioItem
+                >
+              </DropdownMenu.RadioGroup>
+            </DropdownMenu.SubContent>
+          </DropdownMenu.Sub>
+        {/if}
+        <DropdownMenu.Item onclick={() => onOpenBoard(item.board_id)}>
+          <LayoutDashboardIcon />
+          {m.focus_open_board()}
+        </DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  </li>
+{/snippet}
+
+{#snippet group_section(group: FocusGroupItems)}
+  {#if group.label === null}
+    <ul class="space-y-2" aria-label={view.name}>
+      {#each group.items as item (item_key(item))}
+        {@render task_row(item)}
+      {/each}
+    </ul>
+  {:else}
+    <section class="rounded-xl border bg-muted/20 p-4" aria-label={group.label}>
+      <header class="mb-3 flex items-start justify-between gap-3">
+        <h3 class="min-w-0 truncate font-semibold tracking-tight">
+          {group.label}
+        </h3>
+        <Badge
+          variant={group.key === "overdue" && group.items.length > 0
+            ? "destructive"
+            : "secondary"}
+          class={group.key === "today" && group.items.length > 0
+            ? "border-warning/30 bg-warning/10 text-warning"
+            : ""}
+        >
+          {formatNumber(group.items.length)}
+        </Badge>
+      </header>
+      <ul class="space-y-2">
+        {#each group.items as item (item_key(item))}
+          {@render task_row(item)}
+        {/each}
+      </ul>
+    </section>
+  {/if}
+{/snippet}
+
+{#snippet load_more()}
+  {#if cursor}
+    <div class="mt-5 flex justify-center">
+      <Button
+        variant="outline"
+        disabled={loading}
+        onclick={() => void load(false)}>{m.focus_load_more()}</Button
+      >
+    </div>
+  {/if}
+{/snippet}
+
 <svelte:window
   onfocus={() => {
     if (!paused) {
@@ -261,17 +430,15 @@
         <PictureInPicture2Icon />
       </Button>
     {/if}
-    {#if onEdit}
-      <Button variant="outline" size="sm" onclick={onEdit}>
-        <PencilIcon />
-        {m.common_edit()}
-      </Button>
-    {/if}
+    <Button variant="outline" size="sm" onclick={onEdit}>
+      <PencilIcon />
+      {m.common_edit()}
+    </Button>
   </header>
 
   <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="vertical">
     <div class="mx-auto w-full max-w-4xl p-5">
-      {#if failed && items.length === 0}
+      {#if failed && (items.length === 0 || loaded_key !== view_key)}
         <Empty.Root>
           <Empty.Header>
             <Empty.Media variant="icon"><CircleAlertIcon /></Empty.Media>
@@ -281,8 +448,12 @@
             <Button onclick={refresh}>{m.common_retry()}</Button>
           </Empty.Content>
         </Empty.Root>
-      {:else if loading && items.length === 0}
-        <div class="flex justify-center py-16" role="status">
+      {:else if loaded_key !== view_key}
+        <!-- Shown only when loading is slow enough to notice. -->
+        <div
+          class="flex animate-in justify-center py-16 delay-300 fill-mode-backwards fade-in-0"
+          role="status"
+        >
           <Spinner />
           <span class="sr-only">{m.focus_loading()}</span>
         </div>
@@ -293,170 +464,20 @@
             <Empty.Title>{m.focus_empty()}</Empty.Title>
             <Empty.Description>{m.focus_empty_description()}</Empty.Description>
           </Empty.Header>
-          {#if onEdit}
-            <Empty.Content>
-              <Button variant="outline" onclick={onEdit}>
-                <PencilIcon />
-                {m.common_edit()}
-              </Button>
-            </Empty.Content>
-          {/if}
+          <Empty.Content>
+            <Button variant="outline" onclick={onEdit}>
+              <PencilIcon />
+              {m.common_edit()}
+            </Button>
+          </Empty.Content>
         </Empty.Root>
       {:else}
-        <div class="space-y-6">
+        <div class="space-y-5">
           {#each groups as group (group.key)}
-            <section aria-label={group.label ?? view.name}>
-              {#if group.label !== null}
-                <h3
-                  class="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground"
-                >
-                  <span class="truncate">{group.label}</span>
-                  <span class="tabular-nums"
-                    >{formatNumber(group.items.length)}</span
-                  >
-                </h3>
-              {/if}
-              <ul class="divide-y rounded-md border">
-                {#each group.items as item (item_key(item))}
-                  {@const can_write = writable(item)}
-                  {@const busy = busy_ids.has(item_key(item))}
-                  {@const finished = item.done || Boolean(item.archived_at)}
-                  <li class="flex items-center gap-2 px-3 py-2">
-                    {#if can_write}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        class={finished
-                          ? "text-primary"
-                          : "text-muted-foreground"}
-                        disabled={busy}
-                        aria-label={finished
-                          ? m.task_reopen_action()
-                          : m.task_complete()}
-                        title={finished
-                          ? m.task_reopen_action()
-                          : m.task_complete()}
-                        onclick={() =>
-                          finished ? void ask_to_reopen(item) : complete(item)}
-                      >
-                        {#if finished}
-                          <RotateCcwIcon />
-                        {:else}
-                          <CircleCheckIcon />
-                        {/if}
-                      </Button>
-                    {/if}
-                    <button
-                      type="button"
-                      class="min-w-0 flex-1 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onclick={() => onOpenTask(item)}
-                    >
-                      <span
-                        class={[
-                          "block truncate text-sm",
-                          finished && "text-muted-foreground line-through",
-                        ]}>{item.task.title || m.task_untitled()}</span
-                      >
-                      <span
-                        class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground"
-                      >
-                        <span class="truncate">{location(item)}</span>
-                        {#if item.task.priority}
-                          <PriorityIndicator priority={item.task.priority} />
-                        {/if}
-                        {#if item.waiting_count}
-                          <span
-                            class="inline-flex items-center gap-1"
-                            title={m.task_waiting_count({
-                              count: item.waiting_count,
-                            })}
-                          >
-                            <HourglassIcon class="size-3.5" />
-                            <span aria-hidden="true"
-                              >{formatNumber(item.waiting_count)}</span
-                            >
-                            <span class="sr-only"
-                              >{m.task_waiting_count({
-                                count: item.waiting_count,
-                              })}</span
-                            >
-                          </span>
-                        {/if}
-                        {#if item.task.due_time}
-                          <DueBadge
-                            due_time={item.task.due_time}
-                            {now}
-                            at_midnight={item.task.due_at_midnight}
-                          />
-                        {/if}
-                      </span>
-                    </button>
-                    <DropdownMenu.Root>
-                      <DropdownMenu.Trigger>
-                        {#snippet child({ props })}
-                          <Button
-                            {...props}
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={m.focus_task_actions({
-                              name: item.task.title || m.task_untitled(),
-                            })}
-                          >
-                            <EllipsisIcon />
-                          </Button>
-                        {/snippet}
-                      </DropdownMenu.Trigger>
-                      <DropdownMenu.Content align="end" class="min-w-44">
-                        {#if can_write}
-                          <DropdownMenu.Sub>
-                            <DropdownMenu.SubTrigger disabled={busy}>
-                              <GaugeIcon />
-                              {m.task_priority()}
-                            </DropdownMenu.SubTrigger>
-                            <DropdownMenu.SubContent class="min-w-36">
-                              <DropdownMenu.RadioGroup
-                                value={item.task.priority ?? "none"}
-                                onValueChange={(value) =>
-                                  set_priority(
-                                    item,
-                                    is_task_priority(value) ? value : undefined,
-                                  )}
-                              >
-                                {#each [...TASK_PRIORITIES].reverse() as priority (priority)}
-                                  <DropdownMenu.RadioItem value={priority}>
-                                    <PriorityIndicator {priority} />
-                                  </DropdownMenu.RadioItem>
-                                {/each}
-                                <DropdownMenu.RadioItem value="none"
-                                  >{m.task_priority_none()}</DropdownMenu.RadioItem
-                                >
-                              </DropdownMenu.RadioGroup>
-                            </DropdownMenu.SubContent>
-                          </DropdownMenu.Sub>
-                        {/if}
-                        <DropdownMenu.Item
-                          onclick={() => onOpenBoard(item.board_id)}
-                        >
-                          <LayoutDashboardIcon />
-                          {m.focus_open_board()}
-                        </DropdownMenu.Item>
-                      </DropdownMenu.Content>
-                    </DropdownMenu.Root>
-                  </li>
-                {/each}
-              </ul>
-            </section>
+            {@render group_section(group)}
           {/each}
-          {#if cursor}
-            <div class="flex justify-center">
-              <Button
-                variant="outline"
-                disabled={loading}
-                onclick={() => void load(false)}>{m.focus_load_more()}</Button
-              >
-            </div>
-          {/if}
         </div>
+        {@render load_more()}
       {/if}
     </div>
   </ScrollArea>

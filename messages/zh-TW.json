@@ -755,6 +755,42 @@
       }
     }
   ],
+  "home_title": "首頁",
+  "home_greeting_morning": "早安",
+  "home_greeting_afternoon": "午安",
+  "home_greeting_evening": "晚安",
+  "home_cards_more": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted}+ 張卡片"
+      }
+    }
+  ],
+  "home_more_columns": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "還有 {countFormatted} 個欄位"
+      }
+    }
+  ],
+  "home_more_groups": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "還有 {countFormatted} 組"
+      }
+    }
+  ],
+  "home_board_cards": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 張卡片"
+      }
+    }
+  ],
   "today_all_done": "今天的待辦事項都處理好了。",
   "today_upcoming": "即將到期",
   "today_unscheduled": "未排程",
@@ -2327,6 +2363,8 @@
     }
   ],
   "focus_section": "焦點",
+  "focus_list_empty": "尚未建立焦點",
+  "focus_list_no_match": "找不到焦點",
   "focus_new": "新增焦點",
   "focus_edit_title": "編輯焦點",
   "focus_dialog_description": "列出所有看板中，符合下面每個條件的卡片。",

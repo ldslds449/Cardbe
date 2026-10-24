@@ -2,12 +2,7 @@ import { translateCommandError } from "$lib/command-errors";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 
-import {
-  clone_focus,
-  today_focus,
-  TODAY_FOCUS_ID,
-  type Focus,
-} from "./type/focus";
+import { clone_focus, type Focus } from "./type/focus";
 
 /**
  * The saved Focuses. Changes apply immediately and roll back when the
@@ -21,7 +16,7 @@ export class FocusStore {
   async load(): Promise<void> {
     try {
       const views = await invoke<Focus[] | null>("get_focuses");
-      // Null before any view was saved; the built-in Today is the default.
+      // Null before any view was saved.
       this.views = views ?? [];
     } catch (error) {
       toast.error(translateCommandError(error));
@@ -35,11 +30,7 @@ export class FocusStore {
     return this.saving;
   }
 
-  /** A saved view or the built-in Today view. */
   find(id: string): Focus | undefined {
-    if (id === TODAY_FOCUS_ID) {
-      return today_focus();
-    }
     return this.views.find((view) => view.id === id);
   }
 

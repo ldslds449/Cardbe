@@ -914,6 +914,60 @@
       }
     }
   ],
+  "home_title": "Home",
+  "home_greeting_morning": "Good morning",
+  "home_greeting_afternoon": "Good afternoon",
+  "home_greeting_evening": "Good evening",
+  "home_cards_more": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted}+ cards"
+      }
+    }
+  ],
+  "home_more_columns": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} more column",
+        "countPlural=*": "{countFormatted} more columns"
+      }
+    }
+  ],
+  "home_more_groups": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} more group",
+        "countPlural=*": "{countFormatted} more groups"
+      }
+    }
+  ],
+  "home_board_cards": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} card",
+        "countPlural=*": "{countFormatted} cards"
+      }
+    }
+  ],
   "today_all_done": "You're clear for today.",
   "today_upcoming": "Upcoming",
   "today_unscheduled": "No schedule",
@@ -2630,6 +2684,8 @@
     }
   ],
   "focus_section": "Focus",
+  "focus_list_empty": "No Focuses yet",
+  "focus_list_no_match": "No matching Focuses",
   "focus_new": "New Focus",
   "focus_edit_title": "Edit Focus",
   "focus_dialog_description": "Show cards from any board that match every condition below.",

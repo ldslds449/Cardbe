@@ -42,7 +42,7 @@
 | View           | What it shows                                                          |
 | -------------- | ---------------------------------------------------------------------- |
 | **Board**      | Your columns and cards, the classic Kanban layout.                     |
-| **Today**      | What is overdue or due today across all your boards.                   |
+| **Focus**      | Your own saved filters across all boards, such as what is due today.   |
 | **Calendar**   | Your tasks on a monthly or weekly calendar, including multi-day tasks. |
 | **Flow**       | A free-form canvas to arrange cards, draw arrows, and add notes.       |
 | **Statistics** | How much you have finished and how your work has progressed.           |

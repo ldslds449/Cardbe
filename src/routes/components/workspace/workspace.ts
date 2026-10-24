@@ -8,3 +8,6 @@ export const WORKSPACE_VIEWS = [
 ] as const;
 
 export type WorkspaceView = (typeof WORKSPACE_VIEWS)[number];
+
+/** Shown in place of the board like a Focus, under an ID no Focus uses. */
+export const HOME_PAGE_ID = "home";

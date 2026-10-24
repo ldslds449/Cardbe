@@ -12,8 +12,6 @@ const MAX_NAME_CHARS: usize = 100;
 const MAX_QUERY_CHARS: usize = 500;
 const MAX_BOARDS: usize = 1000;
 const MAX_LABELS: usize = 100;
-/// The built-in Today Focus, defined by the app instead of saved views.
-pub const TODAY_ID: &str = "builtin.today";
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -24,7 +22,9 @@ pub enum DueFilter {
     Today,
     /// Overdue or due today.
     ByToday,
-    /// Due today or in the following six days.
+    /// Due today or in the following six days. Named as the frontend does;
+    /// snake_case alone would write `next7_days`.
+    #[serde(rename = "next_7_days")]
     Next7Days,
     None,
 }
@@ -94,7 +94,6 @@ fn valid_view(view: &Focus) -> bool {
     let name = view.name.trim();
     !view.id.is_empty()
         && view.id.len() <= 64
-        && view.id != TODAY_ID
         && !name.is_empty()
         && name.chars().count() <= MAX_NAME_CHARS
         && filter.query.chars().count() <= MAX_QUERY_CHARS
@@ -222,7 +221,6 @@ mod tests {
                 id: String::new(),
                 ..view("a")
             },
-            view(TODAY_ID),
         ];
         for view in invalid {
             assert!(validate(&[view]).is_err());
@@ -237,6 +235,12 @@ mod tests {
         filtered.filter.waiting = Some("blocked".into());
         assert!(validate(&[filtered]).is_err());
         assert!(serde_json::from_str::<Focus>(r#"{"id":"a","name":"x","extra":1}"#).is_err());
+        let next_week: FocusFilter = serde_json::from_str(r#"{"due":"next_7_days"}"#).unwrap();
+        assert_eq!(next_week.due, DueFilter::Next7Days);
+        assert_eq!(
+            serde_json::to_value(&next_week).unwrap()["due"],
+            "next_7_days"
+        );
     }
 
     #[test]

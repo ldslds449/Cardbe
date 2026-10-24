@@ -1,7 +1,8 @@
 use crate::errors::DomainError;
 use crate::models::{
-    Archive, Board, BoardRole, Column, ColumnSort, IrohDeviceStatus, IrohPermission, Note,
-    StoredData, SyncStatus, Task, TaskSummary, TaskTemplate, CURRENT_SCHEMA_VERSION,
+    Archive, Board, BoardRole, Column, ColumnOverview, ColumnSort, IrohDeviceStatus,
+    IrohPermission, Note, StoredData, SyncStatus, Task, TaskSummary, TaskTemplate,
+    CURRENT_SCHEMA_VERSION,
 };
 use crate::task_events::{self, EventSource};
 use base64::Engine;
@@ -686,6 +687,29 @@ impl Database {
                     sync_status: row.get(4)?,
                     sync_revision: row.get(5)?,
                     is_shared: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Every board's columns in board order, with their task counts.
+    pub fn column_overviews(&self) -> StorageResult<Vec<ColumnOverview>> {
+        Ok(self
+            .connection
+            .prepare(
+                "SELECT c.board_id, c.id, c.name, c.done, COUNT(t.id)
+                 FROM cardbe_columns c
+                 LEFT JOIN cardbe_tasks t ON t.board_id = c.board_id AND t.column_id = c.id
+                 GROUP BY c.board_id, c.id
+                 ORDER BY c.board_id, c.position",
+            )?
+            .query_map([], |row| {
+                Ok(ColumnOverview {
+                    board_id: row.get(0)?,
+                    id: row.get(1)?,
+                    name: row.get(2)?,
+                    done: row.get(3)?,
+                    task_count: row.get(4)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?)
@@ -5975,6 +5999,17 @@ mod tests {
             .database
             .apply_iroh_snapshot(board_id, "Shared", IrohPermission::Viewer, 1, &first, None)
             .unwrap();
+        assert!(loaded
+            .database
+            .column_overviews()
+            .unwrap()
+            .contains(&ColumnOverview {
+                board_id,
+                id: 1,
+                name: "Old".into(),
+                done: false,
+                task_count: 1,
+            }));
         let empty = StoredData::default();
         loaded
             .database
@@ -5987,6 +6022,12 @@ mod tests {
             .columns
             .is_empty());
         assert_eq!(loaded.database.boards().unwrap()[0].task_count, 0);
+        assert!(loaded
+            .database
+            .column_overviews()
+            .unwrap()
+            .iter()
+            .all(|column| column.board_id != board_id));
         use crate::task_events::{EventKind, EventOrigin};
         assert_eq!(
             loaded

@@ -512,6 +512,7 @@ pub fn run() {
             board::search_tasks,
             board::get_labels,
             boards::get_boards,
+            boards::get_board_overviews,
             boards::create_board,
             boards::rename_board,
             boards::switch_board,

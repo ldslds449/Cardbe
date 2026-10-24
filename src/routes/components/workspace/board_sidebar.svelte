@@ -4,6 +4,7 @@
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
+  import HouseIcon from "@lucide/svelte/icons/house";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -17,12 +18,14 @@
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import * as Kbd from "$lib/components/ui/kbd/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import type { Snippet } from "svelte";
   import type { BoardRole } from "../../board.svelte";
-  import { MAX_FOCUSES, TODAY_FOCUS_ID, type Focus } from "../../type/focus";
+  import { HOME_PAGE_ID } from "./workspace";
+  import { MAX_FOCUSES, type Focus } from "../../type/focus";
 
   export interface BoardItem {
     id: number;
@@ -44,6 +47,7 @@
     focuses,
     active_focus_id,
     onOpenFocus,
+    onOpenHome,
     onCreateFocus,
     onEditFocus,
     onFloatFocus,
@@ -61,6 +65,7 @@
     /** The Focus shown instead of the active board, if any. */
     active_focus_id: string | null;
     onOpenFocus: (id: string) => void;
+    onOpenHome: () => void;
     onCreateFocus: () => void;
     onEditFocus: (id: string) => void;
     onFloatFocus: (id: string) => void;
@@ -85,12 +90,6 @@
     focuses.filter((view) =>
       view.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
     ),
-  );
-  const show_today = $derived(
-    m
-      .workspace_today()
-      .toLocaleLowerCase()
-      .includes(search.trim().toLocaleLowerCase()),
   );
   let delete_view_open = $state(false);
   let selected_view = $state<Focus | null>(null);
@@ -220,49 +219,59 @@
   </DropdownMenu.Root>
 {/snippet}
 
-{#snippet focus_row(id: string, name: string, builtin: boolean, view?: Focus)}
+{#snippet add_button(label: string, disabled: boolean, onclick: () => void)}
+  <Button
+    variant="ghost"
+    size="icon-xs"
+    class="text-muted-foreground"
+    aria-label={label}
+    title={label}
+    {disabled}
+    {onclick}
+  >
+    <PlusIcon />
+  </Button>
+{/snippet}
+
+{#snippet focus_row(view: Focus)}
   {#snippet items(kind: "context" | "dropdown")}
     {@const Item = kind === "context" ? ContextMenu.Item : DropdownMenu.Item}
     {@const Separator =
       kind === "context" ? ContextMenu.Separator : DropdownMenu.Separator}
-    {#if !builtin}
-      <Item
-        onclick={() => {
-          onEditFocus(id);
-          open = false;
-        }}
-        ><PencilIcon />
-        {m.common_edit()}</Item
-      >
-    {/if}
-    <Item onclick={() => onFloatFocus(id)}
+    <Item
+      onclick={() => {
+        onEditFocus(view.id);
+        open = false;
+      }}
+      ><PencilIcon />
+      {m.common_edit()}</Item
+    >
+    <Item onclick={() => onFloatFocus(view.id)}
       ><PictureInPicture2Icon />
       {m.focus_float_on_desktop()}</Item
     >
-    {#if view}
-      <Separator />
-      <Item variant="destructive" onclick={() => open_delete_view_dialog(view)}
-        ><Trash2Icon />
-        {m.common_delete()}</Item
-      >
-    {/if}
+    <Separator />
+    <Item variant="destructive" onclick={() => open_delete_view_dialog(view)}
+      ><Trash2Icon />
+      {m.common_delete()}</Item
+    >
   {/snippet}
   <ContextMenu.Root>
     <ContextMenu.Trigger class="group/row relative block">
       <button
         type="button"
-        class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-2 pe-8 text-left text-sm transition-colors ${id === active_focus_id ? "bg-background font-medium text-foreground shadow-xs before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}
-        onclick={() => select_view(id)}
-        aria-current={id === active_focus_id ? "page" : undefined}
-        title={name}
+        class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-2 pe-8 text-left text-sm transition-colors ${view.id === active_focus_id ? "bg-background font-medium text-foreground shadow-xs before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}
+        onclick={() => select_view(view.id)}
+        aria-current={view.id === active_focus_id ? "page" : undefined}
+        title={view.name}
       >
         <ListFilterIcon
           class="size-4 shrink-0 text-primary"
           aria-hidden="true"
         />
-        <span class="min-w-0 flex-1 truncate">{name}</span>
+        <span class="min-w-0 flex-1 truncate">{view.name}</span>
       </button>
-      {@render actions_button(m.focus_actions({ name }), items)}
+      {@render actions_button(m.focus_actions({ name: view.name }), items)}
     </ContextMenu.Trigger>
     <ContextMenu.Content>
       {@render items("context")}
@@ -367,6 +376,40 @@
       </div>
       <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="vertical">
         <nav class="min-w-0 px-2 py-2" aria-label={m.board_list_navigation()}>
+          <button
+            type="button"
+            class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-3 pe-2 text-left text-sm transition-colors ${active_focus_id === HOME_PAGE_ID ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+            aria-current={active_focus_id === HOME_PAGE_ID ? "page" : undefined}
+            aria-keyshortcuts="Control+0"
+            onclick={() => {
+              onOpenHome();
+              open = false;
+            }}
+          >
+            <HouseIcon
+              class="size-4 shrink-0 text-primary"
+              aria-hidden="true"
+            />
+            <span class="min-w-0 flex-1 truncate">{m.home_title()}</span>
+            <!-- Styled as menu shortcuts; keys stay visible on the selected row. -->
+            <span
+              class="ms-auto text-xs font-normal tracking-widest text-muted-foreground"
+            >
+              <Kbd.Group>
+                <Kbd.Root
+                  class={active_focus_id === HOME_PAGE_ID
+                    ? "bg-background"
+                    : undefined}>Ctrl</Kbd.Root
+                >
+                <Kbd.Root
+                  class={active_focus_id === HOME_PAGE_ID
+                    ? "bg-background"
+                    : undefined}>0</Kbd.Root
+                >
+              </Kbd.Group>
+            </span>
+          </button>
+          <Separator class="my-3" />
           <section
             class="rounded-md bg-muted/50 p-1"
             aria-labelledby="drawer-focuses"
@@ -382,42 +425,44 @@
                   >· {formatNumber(focuses.length)}</span
                 >
               </h3>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                class="text-muted-foreground"
-                aria-label={m.focus_new()}
-                title={m.focus_new()}
-                disabled={focuses.length >= MAX_FOCUSES}
-                onclick={() => {
+              {@render add_button(
+                m.focus_new(),
+                focuses.length >= MAX_FOCUSES,
+                () => {
                   onCreateFocus();
                   open = false;
-                }}
-              >
-                <PlusIcon />
-              </Button>
+                },
+              )}
             </div>
-            <div class="space-y-0.5">
-              {#if show_today}
-                {@render focus_row(TODAY_FOCUS_ID, m.workspace_today(), true)}
-              {/if}
-              {#each filtered_focuses as view (view.id)}
-                {@render focus_row(view.id, view.name, false, view)}
-              {/each}
-            </div>
+            {#if filtered_focuses.length > 0}
+              <div class="space-y-0.5">
+                {#each filtered_focuses as view (view.id)}
+                  {@render focus_row(view)}
+                {/each}
+              </div>
+            {:else}
+              <p class="px-2 py-3 text-center text-xs text-muted-foreground">
+                {focuses.length > 0
+                  ? m.focus_list_no_match()
+                  : m.focus_list_empty()}
+              </p>
+            {/if}
           </section>
           <Separator class="my-3" />
           <section aria-labelledby="drawer-boards">
-            <h3
-              id="drawer-boards"
-              class="flex h-8 items-center gap-1.5 px-3 text-xs font-semibold text-foreground"
-            >
-              <LayoutDashboardIcon class="size-3.5 text-primary" />
-              {m.board_list()}
-              <span class="font-normal text-muted-foreground"
-                >· {formatNumber(boards.length)}</span
+            <div class="flex h-8 items-center justify-between ps-3 pe-1">
+              <h3
+                id="drawer-boards"
+                class="flex items-center gap-1.5 text-xs font-semibold text-foreground"
               >
-            </h3>
+                <LayoutDashboardIcon class="size-3.5 text-primary" />
+                {m.board_list()}
+                <span class="font-normal text-muted-foreground"
+                  >· {formatNumber(boards.length)}</span
+                >
+              </h3>
+              {@render add_button(m.board_new(), false, open_create_dialog)}
+            </div>
             {#if filtered_boards.length > 0}
               <div class="space-y-0.5">
                 {#each filtered_boards as item (item.id)}
@@ -432,17 +477,6 @@
           </section>
         </nav>
       </ScrollArea>
-      <footer class="shrink-0 border-t p-2">
-        <Button
-          variant="ghost"
-          class="w-full justify-start"
-          onclick={open_create_dialog}
-          aria-label={m.board_create()}
-        >
-          <PlusIcon />
-          {m.board_new()}
-        </Button>
-      </footer>
     </section>
   </div>
 {/if}

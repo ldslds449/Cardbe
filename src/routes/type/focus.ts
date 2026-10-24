@@ -1,5 +1,3 @@
-import { m } from "$lib/paraglide/messages.js";
-
 import type {
   CompletionFilter,
   PriorityFilter,
@@ -48,27 +46,6 @@ export interface Focus {
 
 export const MAX_FOCUSES = 100;
 export const MAX_FOCUS_NAME_LENGTH = 100;
-
-/**
- * The built-in Today Focus. It is never saved, cannot be edited or deleted,
- * and the backend refuses saved views with this ID.
- */
-export const TODAY_FOCUS_ID = "builtin.today";
-
-/** Open tasks of every board that are overdue or due today. */
-export function today_focus(): Focus {
-  return {
-    id: TODAY_FOCUS_ID,
-    name: m.workspace_today(),
-    filter: { ...create_focus_filter(), due: "by_today" },
-    sort: "due",
-    group: "due",
-  };
-}
-
-export function is_builtin_focus(id: string): boolean {
-  return id === TODAY_FOCUS_ID;
-}
 
 export function create_focus_filter(): FocusFilter {
   return {

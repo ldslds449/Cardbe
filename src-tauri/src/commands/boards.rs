@@ -1,6 +1,6 @@
 use crate::errors::{CommandError, DomainError};
 use crate::{
-    models::{Board, BoardRole},
+    models::{Board, BoardRole, ColumnOverview},
     state::{lock_app, SharedAppData},
 };
 use serde::Serialize;
@@ -43,6 +43,18 @@ pub fn get_boards(state: State<'_, SharedAppData>) -> Result<BoardsState, Comman
         boards: guard.database.boards().map_err(CommandError::repository)?,
         active_board_id: guard.active_board_id,
     })
+}
+
+/// Every board's columns with task counts, for the home page.
+#[tauri::command]
+pub fn get_board_overviews(
+    state: State<'_, SharedAppData>,
+) -> Result<Vec<ColumnOverview>, CommandError> {
+    let guard = lock_app(&state)?;
+    guard
+        .database
+        .column_overviews()
+        .map_err(CommandError::repository)
 }
 
 #[tauri::command]

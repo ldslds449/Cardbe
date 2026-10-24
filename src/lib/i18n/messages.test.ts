@@ -307,6 +307,10 @@ describe("core messages", () => {
     expect(m.today_attention({ count: 2 }, { locale: "en" })).toBe(
       "2 tasks need your attention.",
     );
+    expect(m.home_board_cards({ count: 1 }, { locale: "en" })).toBe("1 card");
+    expect(m.home_board_cards({ count: 1234 }, { locale: "zh-TW" })).toBe(
+      "1,234 張卡片",
+    );
     expect(m.explorer_loaded({ count: 1234 }, { locale: "zh-TW" })).toBe(
       "已載入 1,234 個任務",
     );

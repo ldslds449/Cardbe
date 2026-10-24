@@ -35,11 +35,11 @@
   import BoardView from "./components/board/board_view.svelte";
   import AllTaskExplorer from "./components/task/all_task_explorer.svelte";
   import FocusPage from "./components/focus/focus_page.svelte";
+  import HomePage from "./components/home/home_page.svelte";
   import FocusDialog from "./components/focus/focus_dialog.svelte";
   import { FocusStore } from "./focuses.svelte";
   import {
     focus_from_explorer,
-    is_builtin_focus,
     MAX_FOCUSES,
     type ExplorerConditions,
     type Focus,
@@ -70,6 +70,7 @@
   import BoardSidebar from "./components/workspace/board_sidebar.svelte";
   import WorkspaceTabs from "./components/workspace/workspace_tabs.svelte";
   import {
+    HOME_PAGE_ID,
     WORKSPACE_VIEWS,
     type WorkspaceView,
   } from "./components/workspace/workspace";
@@ -114,7 +115,9 @@
   let startup_error = $state.raw<unknown>(null);
   let startup_check_finished = $state(false);
   const updates = new UpdateChecker();
-  let startup_screen_dismissed = false;
+  // Set once the first board loads. Later board switches keep the toolbar
+  // and sidebar mounted and wait only in the content area.
+  let workspace_ready = $state(false);
   let board_panel_open = $state(false);
   const active_board_summary = $derived(
     board.boards.find((item) => item.id === board.active_board_id),
@@ -129,10 +132,10 @@
   });
 
   $effect(() => {
-    if (startup_screen_dismissed || !board.column_fetch_finish) {
+    if (workspace_ready || !board.column_fetch_finish) {
       return;
     }
-    startup_screen_dismissed = true;
+    workspace_ready = true;
     // Let the workspace paint before the HTML-level startup card fades away.
     requestAnimationFrame(() =>
       window.dispatchEvent(new Event("cardbe:workspace-ready")),
@@ -142,9 +145,11 @@
   // all-task explorer
   let all_task_open = $state(false);
 
-  // Focuses, shown in place of the active board; the app opens on the board.
+  // Focuses, shown in place of the active board. The home page takes the
+  // same place, so leaving it works like leaving a Focus; the app opens on it.
   const focuses = new FocusStore();
-  let active_focus_id = $state<string | null>(null);
+  let active_focus_id = $state<string | null>(HOME_PAGE_ID);
+  const home_open = $derived(active_focus_id === HOME_PAGE_ID);
   const active_focus = $derived(
     active_focus_id === null ? undefined : focuses.find(active_focus_id),
   );
@@ -592,6 +597,14 @@
       ) {
         event.preventDefault();
         void board.redo();
+      } else if (
+        command &&
+        !event.shiftKey &&
+        event.code === "Digit0" &&
+        !overlay_open
+      ) {
+        event.preventDefault();
+        open_focus(HOME_PAGE_ID);
       } else if (
         command &&
         !event.shiftKey &&
@@ -1248,7 +1261,7 @@
         <Button onclick={() => board.get_columns()}>{m.common_retry()}</Button>
       </Empty.Content>
     </Empty.Root>
-  {:else if !board.column_fetch_finish}
+  {:else if !workspace_ready}
     <Empty.Root class="w-full">
       <Empty.Header>
         <Empty.Media variant="icon">
@@ -1271,6 +1284,7 @@
       focuses={focuses.views}
       {active_focus_id}
       onOpenFocus={open_focus}
+      onOpenHome={() => open_focus(HOME_PAGE_ID)}
       onCreateFocus={() => edit_focus(null)}
       onEditFocus={(id) => edit_focus(focuses.find(id) ?? null)}
       onFloatFocus={(id) => void float_focus(id)}
@@ -1294,7 +1308,9 @@
         search_pending={board.search_pending}
         search_error={board.search_error}
         bind:note_open
-        show_task_details_toggle={!active_focus && selected_view === "board"}
+        show_task_details_toggle={!active_focus &&
+          !home_open &&
+          selected_view === "board"}
         update_check_in_progress={updates.in_progress}
         read_only={active_board_read_only}
         web_publish_count={share_sync.summary.active_count}
@@ -1349,14 +1365,20 @@
         onCheckForUpdates={(manual) => updates.check(manual)}
       />
 
-      {#if active_focus}
+      {#if home_open}
+        <HomePage
+          focuses={focuses.views}
+          boards={board.boards}
+          onOpenFocus={open_focus}
+          onCreateFocus={() => edit_focus(null)}
+          onOpenBoard={open_board}
+        />
+      {:else if active_focus}
         <FocusPage
           view={active_focus}
           boards={board.boards}
           paused={task_dialog_open || view_task_dialog_open}
-          onEdit={is_builtin_focus(active_focus.id)
-            ? undefined
-            : () => edit_focus(active_focus)}
+          onEdit={() => edit_focus(active_focus)}
           onFloat={() => void float_focus(active_focus.id)}
           onOpenTask={(item) => void open_focus_task(item)}
           onOpenBoard={open_board}
@@ -1381,7 +1403,17 @@
           onSwitchView={switch_view}
         />
 
-        {#if active_view === "flow" && board.active_board_id !== null}
+        {#if !board.column_fetch_finish}
+          <!-- The previous board's columns stay out of view while switching;
+               the spinner shows only when loading is slow enough to notice. -->
+          <div
+            class="flex min-h-0 min-w-0 flex-1 animate-in items-center justify-center delay-300 fill-mode-backwards fade-in-0"
+            role="status"
+          >
+            <Spinner />
+            <span class="sr-only">{m.board_loading()}</span>
+          </div>
+        {:else if active_view === "flow" && board.active_board_id !== null}
           <div class="min-h-0 min-w-0 flex-1">
             {#key board.active_board_id}
               <FlowView

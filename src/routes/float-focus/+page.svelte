@@ -22,7 +22,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import type { AllTaskItem, BoardSummary } from "../board-base.svelte";
-  import { TODAY_FOCUS_ID, today_focus, type Focus } from "../type/focus";
+  import type { Focus } from "../type/focus";
   import { get_task_id } from "../type/task.svelte";
   import PriorityIndicator from "../components/task/priority_indicator.svelte";
   import DueBadge from "../components/task/due_badge.svelte";
@@ -83,10 +83,7 @@
       if (generation !== load_generation) {
         return;
       }
-      const found =
-        view_id === TODAY_FOCUS_ID
-          ? today_focus()
-          : views?.find((candidate) => candidate.id === view_id);
+      const found = views?.find((candidate) => candidate.id === view_id);
       if (!found) {
         // The view was deleted, here or by restoring a backup.
         void close_floating_window();
