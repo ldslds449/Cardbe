@@ -25,8 +25,15 @@ describe("core messages", () => {
         applyLanguagePreference(locale);
         const chinese = locale === "zh-TW";
         const catalog = chinese ? zh : en;
-        expect(m.share_network_discard_title()).toBe(
-          catalog.share_network_discard_title,
+        expect(m.share_network_discard()).toBe(catalog.share_network_discard);
+        expect(m.settings_tab_sharing()).toBe(catalog.settings_tab_sharing);
+        expect(m.settings_current_version({ version: "1.2.3" })).toBe(
+          chinese ? "目前版本：1.2.3" : "Current version: 1.2.3",
+        );
+        expect(m.settings_notify_columns_help({ board: "Home" })).toBe(
+          chinese
+            ? "選擇「Home」中哪些欄位要發送到期通知。"
+            : "Choose which columns in “Home” send due notifications.",
         );
         expect(m.share_update_connection()).toBe(
           catalog.share_update_connection,

@@ -48,6 +48,7 @@
   import ViewTaskDialog from "./components/dialog/view_task_dialog.svelte";
   import BoardShareDialog from "./components/dialog/board_share_dialog.svelte";
   import IrohShareDialog from "./components/dialog/iroh_share_dialog.svelte";
+  import { openSettings } from "./components/workspace/settings-dialog.svelte";
   import FlowView from "./components/flow/flow_view.svelte";
   import CalendarView from "./components/calendar/calendar_view.svelte";
   import StatisticsView from "./components/statistics/statistics_view.svelte";
@@ -574,6 +575,15 @@
       ) {
         event.preventDefault();
         open_add_column_dialog();
+      } else if (
+        event.code === "Comma" &&
+        event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        openSettings();
       }
     };
 

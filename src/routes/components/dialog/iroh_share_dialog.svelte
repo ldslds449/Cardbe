@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { registerUnsavedChanges } from "$lib/unsaved-changes";
   import { formatNumber, getLocale } from "$lib/i18n";
   import * as m from "$lib/paraglide/messages.js";
   import {
@@ -19,7 +18,6 @@
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import PlusIcon from "@lucide/svelte/icons/plus";
-  import XIcon from "@lucide/svelte/icons/x";
   import { onMount, tick, untrack } from "svelte";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -35,8 +33,10 @@
   import type { BoardStore, BoardSummary } from "../../board.svelte";
   import IrohConnectionInfo from "../share/iroh_connection_info.svelte";
   import IrohInviteCard from "../share/iroh_invite_card.svelte";
-  import IrohNetworkSettingsForm from "../share/iroh_network_settings_form.svelte";
-  import { IrohNetworkSettingsDraft } from "../share/iroh_network_settings.svelte";
+  import {
+    openSettings,
+    settingsDialog,
+  } from "../workspace/settings-dialog.svelte";
   import IrohReceivedBoardCard from "../share/iroh_received_board_card.svelte";
   import {
     IrohDeviceStatus,
@@ -44,7 +44,7 @@
     type IrohConnectionDetails,
   } from "../../type/iroh-share";
 
-  type Flow = "home" | "share" | "join" | "manage" | "network";
+  type Flow = "home" | "share" | "join" | "manage";
   type Invite = IrohInvite;
   type Generated = {
     ticket: string;
@@ -214,24 +214,23 @@
       };
     }
   }
-  const network = new IrohNetworkSettingsDraft();
-  let discard_network_open = $state(false);
-  let close_after_discard = false;
-  function leave_network(discard = false, close = false) {
-    if (network.saving) {
+  // Invitations and access details belong to the previous network settings.
+  let network_version = settingsDialog.networkVersion;
+  $effect(() => {
+    const version = settingsDialog.networkVersion;
+    if (version === network_version) {
       return;
     }
-    if (!discard && flow === "network" && !network.loading && network.dirty) {
-      close_after_discard = close;
-      discard_network_open = true;
-      return;
-    }
-    discard_network_open = false;
-    if (close) {
-      open = false;
-    }
-    flow = "home";
-  }
+    network_version = version;
+    untrack(() => {
+      invite_access = {};
+      visible_qr_id = null;
+      generated = null;
+      if (open) {
+        void load_connection_details();
+      }
+    });
+  });
   let waiting_device_id = $state<string | null>(null);
   let checking_approval = false;
   let wait_generation = 0;
@@ -294,9 +293,6 @@
     }
   });
   onMount(() => {
-    const unregister_draft = registerUnsavedChanges(
-      () => open && flow === "network" && !network.loading && network.dirty,
-    );
     const timer = window.setInterval(() => {
       if (open && flow === "manage") {
         void load(true);
@@ -317,7 +313,6 @@
       }
     }, 5000);
     return () => {
-      unregister_draft();
       window.clearInterval(timer);
     };
   });
@@ -411,34 +406,9 @@
     board.iroh_last_error = null;
     flow = "join";
   }
-  async function open_network_settings() {
-    if (network.loading) {
-      return;
-    }
-    network.loading = true;
-    try {
-      await network.load();
-      if (open) {
-        flow = "network";
-      }
-    } catch (e) {
-      logger.error("iroh.network_settings_load.failed", e);
-      toast.error(translateCommandError(e));
-    } finally {
-      network.loading = false;
-    }
-  }
-  async function save_network_settings() {
-    await network.save(async (settings, restart_error) => {
-      board.iroh_enabled = settings.enabled;
-      invite_access = {};
-      visible_qr_id = null;
-      generated = null;
-      if (restart_error === null) {
-        board.reconnect_iroh_boards();
-        await load_connection_details();
-      }
-    });
+  function open_network_settings() {
+    open = false;
+    openSettings("sharing");
   }
   async function create() {
     if (creating || selected_board_id === null) {
@@ -833,10 +803,7 @@
 
 <Dialog.Root bind:open>
   <Dialog.Content
-    showCloseButton={flow !== "network" &&
-      !network.saving &&
-      !waiting_device_id &&
-      received_waiting_id === null}
+    showCloseButton={!waiting_device_id && received_waiting_id === null}
     interactOutsideBehavior={waiting_device_id ||
     received_waiting_id !== null ||
     approval_open ||
@@ -844,22 +811,9 @@
     delete_confirm_open
       ? "ignore"
       : "close"}
-    onInteractOutside={(event) => {
-      if (flow === "network") {
-        event.preventDefault();
-        if (!discard_network_open) {
-          leave_network(false, true);
-        }
-      }
-    }}
     onEscapeKeydown={(event) => {
-      if (network.saving || waiting_device_id || received_waiting_id !== null) {
+      if (waiting_device_id || received_waiting_id !== null) {
         event.preventDefault();
-      } else if (flow === "network") {
-        event.preventDefault();
-        if (!discard_network_open) {
-          leave_network(false, true);
-        }
       } else if (flow === "manage" && managed_board) {
         event.preventDefault();
         void back_to_overview();
@@ -868,25 +822,12 @@
         void leave_share();
       }
     }}
-    class={(flow === "manage" || flow === "network") &&
-    received_waiting_id === null
+    class={flow === "manage" && received_waiting_id === null
       ? "flex h-[min(42rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-xl"
       : flow === "share" && received_waiting_id === null
         ? "flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-xl"
         : "max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-xl"}
   >
-    {#if flow === "network"}
-      <Button
-        variant="ghost"
-        size="icon"
-        class="absolute right-3 top-3 size-7"
-        disabled={network.saving}
-        aria-label={m.share_back_to_sharing()}
-        title={m.share_back_to_sharing()}
-        onclick={() => leave_network(false, true)}
-        ><XIcon class="size-4" /></Button
-      >
-    {/if}
     {#if flow === "manage" && managed_board && received_waiting_id === null}
       <Dialog.Header class="shrink-0 gap-3 border-b pb-4 text-left">
         <Button
@@ -912,7 +853,7 @@
         </div>
       </Dialog.Header>
     {:else}
-      <Dialog.Header class={flow === "network" ? "shrink-0 pr-6" : "shrink-0"}>
+      <Dialog.Header class="shrink-0">
         <Dialog.Title
           >{received_waiting_id !== null
             ? m.ui_waiting_for_approval()
@@ -922,9 +863,7 @@
                 ? m.ui_share_a_board()
                 : flow === "join"
                   ? m.ui_join_a_shared_board()
-                  : flow === "network"
-                    ? m.share_connection_settings()
-                    : m.ui_manage_board_sharing()}</Dialog.Title
+                  : m.ui_manage_board_sharing()}</Dialog.Title
         >
         {#if flow === "home"}
           <Dialog.Description
@@ -934,15 +873,11 @@
           <Dialog.Description
             >{m.ui_manage_boards_you_share_and_boards_shared_with_you()}</Dialog.Description
           >
-        {:else if flow === "network"}
-          <Dialog.Description
-            >{m.share_network_description()}</Dialog.Description
-          >
         {/if}
       </Dialog.Header>
     {/if}
     <div
-      class={(flow === "manage" || flow === "network" || flow === "share") &&
+      class={(flow === "manage" || flow === "share") &&
       received_waiting_id === null
         ? "flex min-h-0 flex-1 flex-col gap-4"
         : flow === "home"
@@ -954,13 +889,7 @@
           variant="outline"
           size="sm"
           class="w-fit shrink-0"
-          disabled={network.saving}
-          onclick={() =>
-            flow === "network"
-              ? leave_network()
-              : flow === "share"
-                ? leave_share()
-                : (flow = "home")}
+          onclick={() => (flow === "share" ? leave_share() : (flow = "home"))}
           ><ArrowLeftIcon />{flow === "share" && share_return_to_manage
             ? managed_board
               ? m.share_back_to_board()
@@ -1070,21 +999,10 @@
           ><Settings2Icon />
           {m.ui_manage_sharing()}</Button
         >
-        <Button
-          variant="outline"
-          disabled={network.loading}
-          onclick={() => void open_network_settings()}
+        <Button variant="outline" onclick={open_network_settings}
           ><Settings2Icon />
-          {network.loading
-            ? m.share_loading_settings()
-            : m.share_connection_settings()}</Button
+          {m.share_connection_settings()}</Button
         >
-      {:else if flow === "network"}
-        <IrohNetworkSettingsForm
-          {network}
-          oncancel={() => leave_network(false, true)}
-          onsave={() => void save_network_settings()}
-        />
       {:else if flow === "share"}
         <ScrollArea
           class="min-h-0 [&>[data-slot=scroll-area-viewport]]:max-h-[calc(100dvh-15rem)]"
@@ -1490,25 +1408,6 @@
     </div>
   </Dialog.Content>
 </Dialog.Root>
-<AlertDialog.Root bind:open={discard_network_open}>
-  <AlertDialog.Content>
-    <AlertDialog.Header>
-      <AlertDialog.Title>{m.share_network_discard_title()}</AlertDialog.Title>
-      <AlertDialog.Description
-        >{m.share_network_discard_help()}</AlertDialog.Description
-      >
-    </AlertDialog.Header>
-    <AlertDialog.Footer>
-      <AlertDialog.Cancel>{m.unsaved_changes_keep_editing()}</AlertDialog.Cancel
-      >
-      <AlertDialog.Action
-        variant="destructive"
-        onclick={() => leave_network(true, close_after_discard)}
-        >{m.share_network_discard()}</AlertDialog.Action
-      >
-    </AlertDialog.Footer>
-  </AlertDialog.Content>
-</AlertDialog.Root>
 <AlertDialog.Root bind:open={delete_confirm_open}
   ><AlertDialog.Content
     ><AlertDialog.Header

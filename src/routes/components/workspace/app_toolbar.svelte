@@ -24,11 +24,13 @@
   import * as Kbd from "$lib/components/ui/kbd/index.js";
   import * as Menubar from "$lib/components/ui/menubar/index.js";
   import { cn } from "$lib/utils";
-  import HelpDialogs from "./help_dialogs.svelte";
-  import LanguageSettings from "./language_settings.svelte";
-  import PluginSettings from "./plugin_settings.svelte";
+  import AboutDialog from "./about_dialog.svelte";
+  import DiagnosticsDialog from "./diagnostics_dialog.svelte";
+  import SettingsDialog from "./settings_dialog.svelte";
   import PluginPermissions from "./plugin_permissions.svelte";
   import ResourceUsage from "./resource_usage.svelte";
+  import { reminderLabel, reminderMinutes } from "./notification-reminders";
+  import { openSettings } from "./settings-dialog.svelte";
 
   import { board } from "../../board.svelte";
   import type { WorkspaceView } from "./workspace";
@@ -89,25 +91,8 @@
     onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
   } = $props();
   let about_open = $state(false);
-  let settings_open = $state(false);
-  let plugins_open = $state(false);
-  let reviewPluginDomain = $state<string | null>(null);
   let diagnostics_open = $state(false);
-
-  // Matches the backend's allowed reminder offsets.
-  const reminder_minutes = [0, 5, 15, 30, 60, 1440];
-  function reminder_label(minutes: number) {
-    if (minutes === 0) {
-      return m.notification_reminder_off();
-    }
-    if (minutes % 1440 === 0) {
-      return m.notification_reminder_days({ count: minutes / 1440 });
-    }
-    if (minutes % 60 === 0) {
-      return m.notification_reminder_hours({ count: minutes / 60 });
-    }
-    return m.notification_reminder_minutes({ count: minutes });
-  }
+  let reviewPluginDomain = $state<string | null>(null);
 </script>
 
 <Menubar.Root class="h-12 shrink-0 rounded-none border-x-0 border-t-0 px-3">
@@ -211,11 +196,17 @@
         <Menubar.Menu>
           <Menubar.Trigger>{m.settings_title()}</Menubar.Trigger>
           <Menubar.Content>
-            <Menubar.Item onclick={() => (settings_open = true)}
-              >{m.settings_title()}</Menubar.Item
-            >
-            <Menubar.Item onclick={() => (plugins_open = true)}
-              >{m.plugin_title()}</Menubar.Item
+            <Menubar.Item onclick={() => openSettings()}>
+              {m.menu_preferences()}
+              <Menubar.Shortcut>
+                <Kbd.Group>
+                  <Kbd.Root>Ctrl</Kbd.Root>
+                  <Kbd.Root>,</Kbd.Root>
+                </Kbd.Group>
+              </Menubar.Shortcut>
+            </Menubar.Item>
+            <Menubar.Item onclick={() => openSettings("plugins")}
+              >{m.menu_plugins()}</Menubar.Item
             >
           </Menubar.Content>
         </Menubar.Menu>
@@ -428,16 +419,20 @@
             onValueChange={(value) =>
               void board.set_notify_reminder(Number(value))}
           >
-            {#each reminder_minutes as minutes (minutes)}
+            {#each reminderMinutes as minutes (minutes)}
               <DropdownMenu.RadioItem
                 value={String(minutes)}
                 disabled={!board.notify_enabled}
                 closeOnSelect={false}
               >
-                {reminder_label(minutes)}
+                {reminderLabel(minutes)}
               </DropdownMenu.RadioItem>
             {/each}
           </DropdownMenu.RadioGroup>
+          <DropdownMenu.Separator />
+          <DropdownMenu.Item onclick={() => openSettings("notifications")}
+            >{m.notification_more_settings()}</DropdownMenu.Item
+          >
         </DropdownMenu.Content>
       </DropdownMenu.Root>
 
@@ -486,14 +481,14 @@
   </div>
 </Menubar.Root>
 
-<HelpDialogs
-  bind:about_open
-  bind:diagnostics_open
+<AboutDialog
+  bind:open={about_open}
   {update_check_in_progress}
   {onCheckForUpdates}
 />
-<LanguageSettings bind:open={settings_open} />
-<PluginSettings
-  bind:open={plugins_open}
-  onReviewDomain={(id) => (reviewPluginDomain = id)}
+<DiagnosticsDialog bind:open={diagnostics_open} />
+<SettingsDialog
+  {update_check_in_progress}
+  {onCheckForUpdates}
+  onReviewPluginDomain={(id) => (reviewPluginDomain = id)}
 />

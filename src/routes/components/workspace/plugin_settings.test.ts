@@ -846,11 +846,11 @@ it("keeps board creation open with a safe error and rejects blank names", async 
 
 it("shows removal confirmation outside the scrolling plugin list and retains failures", () => {
   const confirmation = source.slice(
-    source.indexOf("  <AlertDialog.Root"),
-    source.indexOf("  </AlertDialog.Root>"),
+    source.indexOf("\n<AlertDialog.Root"),
+    source.indexOf("\n</AlertDialog.Root>"),
   );
-  expect(source.indexOf("  <AlertDialog.Root")).toBeGreaterThan(
-    source.indexOf("    </ScrollArea>"),
+  expect(source.indexOf("\n<AlertDialog.Root")).toBeGreaterThan(
+    source.indexOf("\n  </ScrollArea>"),
   );
   expect(confirmation).toContain("open={removal !== null}");
   expect(confirmation).toContain("!value && !pending");

@@ -54,9 +54,14 @@
   import { board, type BoardSummary } from "../../board.svelte";
 
   let {
-    open = $bindable(false),
+    open = false,
+    busy = $bindable(false),
     onReviewDomain,
-  }: { open: boolean; onReviewDomain?: (id: string) => void } = $props();
+  }: {
+    open?: boolean;
+    busy?: boolean;
+    onReviewDomain?: (id: string) => void;
+  } = $props();
   let pluginState = $state<PluginState>({
     packages: [],
     instances: [],
@@ -64,6 +69,9 @@
   });
   let error = $state<CommandError | null>(null);
   let pending = $state(false);
+  $effect(() => {
+    busy = pending;
+  });
   let packageUrl = $state("");
   let dropZone = $state<HTMLDivElement | null>(null);
   let dragging = $state(false);
@@ -763,594 +771,582 @@
   ondrop={preventFileNavigation}
 />
 
-<Dialog.Root bind:open busy={pending}>
-  <Dialog.Content
-    bind:ref={dialogContent}
-    tabindex={-1}
-    class="flex h-[85dvh] max-h-200 flex-col overflow-hidden outline-none sm:max-w-2xl"
-    onOpenAutoFocus={(event) => {
-      event.preventDefault();
-      dialogContent?.focus({ preventScroll: true });
-    }}
+<div
+  bind:this={dialogContent}
+  tabindex="-1"
+  class="flex h-full min-h-0 flex-col gap-4 outline-none"
+>
+  <p class="shrink-0 text-sm text-muted-foreground">
+    {m.plugin_description()}
+  </p>
+  <ScrollArea
+    type="always"
+    class="min-h-0 flex-1 [overflow-anchor:none]"
+    scrollbarYClasses="[&_[data-slot=scroll-area-thumb]]:bg-muted-foreground/50"
   >
-    <Dialog.Header
-      ><Dialog.Title>{m.plugin_title()}</Dialog.Title><Dialog.Description
-        >{m.plugin_description()}</Dialog.Description
-      ></Dialog.Header
-    >
-    <ScrollArea
-      type="always"
-      class="min-h-0 flex-1 [overflow-anchor:none]"
-      scrollbarYClasses="[&_[data-slot=scroll-area-thumb]]:bg-muted-foreground/50"
-    >
-      <div class="space-y-6 py-1 ps-1 pe-4">
-        <Field.Field orientation="horizontal" class="rounded-md border p-3">
-          <Field.Content>
-            <Field.Label for="plugin-safe-mode"
-              >{m.plugin_safe_mode()}</Field.Label
-            >
-            <Field.Description id="plugin-safe-mode-help"
-              >{m.plugin_safe_mode_help()}</Field.Description
-            >
-          </Field.Content>
-          <Switch
-            id="plugin-safe-mode"
-            checked={pluginState.safe_mode}
-            disabled={pending || !loaded}
-            aria-describedby="plugin-safe-mode-help"
-            onCheckedChange={(enabled) =>
-              void action(() => invoke("set_plugin_safe_mode", { enabled }))}
-          />
-        </Field.Field>
-        {#if error && !editing}<p role="alert" class="text-sm text-destructive">
-            {pluginErrorMessage(error)}
-          </p>{/if}
-        <section class="space-y-3" aria-label={m.plugin_install()}>
-          <h3 class="text-sm font-medium">{m.plugin_install()}</h3>
-          <Tabs.Root value="local" class="space-y-4">
-            <Tabs.List
-              aria-label={m.plugin_install_source()}
-              class="grid h-9 w-full grid-cols-2 items-center rounded-lg bg-muted p-1 text-muted-foreground"
-            >
-              <Tabs.Trigger
-                value="local"
-                class="inline-flex h-7 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-              >
-                <FileArchiveIcon class="size-4" />{m.plugin_source_local()}
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="url"
-                class="inline-flex h-7 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
-              >
-                <LinkIcon class="size-4" />{m.plugin_source_url()}
-              </Tabs.Trigger>
-            </Tabs.List>
-            <Tabs.Content
+    <div class="space-y-6 py-1 ps-1 pe-4">
+      <Field.Field orientation="horizontal" class="rounded-md border p-3">
+        <Field.Content>
+          <Field.Label for="plugin-safe-mode"
+            >{m.plugin_safe_mode()}</Field.Label
+          >
+          <Field.Description id="plugin-safe-mode-help"
+            >{m.plugin_safe_mode_help()}</Field.Description
+          >
+        </Field.Content>
+        <Switch
+          id="plugin-safe-mode"
+          checked={pluginState.safe_mode}
+          disabled={pending || !loaded}
+          aria-describedby="plugin-safe-mode-help"
+          onCheckedChange={(enabled) =>
+            void action(() => invoke("set_plugin_safe_mode", { enabled }))}
+        />
+      </Field.Field>
+      {#if error && !editing}<p role="alert" class="text-sm text-destructive">
+          {pluginErrorMessage(error)}
+        </p>{/if}
+      <section class="space-y-3" aria-label={m.plugin_install()}>
+        <h3 class="text-sm font-medium">{m.plugin_install()}</h3>
+        <Tabs.Root value="local" class="space-y-4">
+          <Tabs.List
+            aria-label={m.plugin_install_source()}
+            class="grid h-9 w-full grid-cols-2 items-center rounded-lg bg-muted p-1 text-muted-foreground"
+          >
+            <Tabs.Trigger
               value="local"
-              class="outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+              class="inline-flex h-7 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
             >
-              <div bind:this={dropZone}>
-                <Empty.Root
-                  class={dragging
-                    ? "gap-4 border border-primary bg-accent py-6 md:p-6"
-                    : "gap-4 border border-input bg-muted/20 py-6 md:p-6"}
-                >
-                  <Empty.Header>
-                    <Empty.Media variant="icon"><FileArchiveIcon /></Empty.Media
-                    >
-                    <Empty.Title class="text-sm"
-                      >{m.plugin_drop_file()}</Empty.Title
-                    >
-                    <Empty.Description class="text-xs"
-                      >{m.plugin_local_help()}</Empty.Description
-                    >
-                  </Empty.Header>
-                  <Button disabled={pending} onclick={install}
-                    >{installation?.status === "installing"
-                      ? m.plugin_installing()
-                      : m.plugin_choose_file()}</Button
-                  >
-                </Empty.Root>
-              </div>
-            </Tabs.Content>
-            <Tabs.Content
+              <FileArchiveIcon class="size-4" />{m.plugin_source_local()}
+            </Tabs.Trigger>
+            <Tabs.Trigger
               value="url"
-              class="outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+              class="inline-flex h-7 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
             >
-              <form
-                novalidate
-                class="space-y-4 rounded-lg border border-input p-5"
-                onsubmit={(event) => {
-                  event.preventDefault();
-                  if (packageUrl.trim()) {
-                    void action(async () => {
-                      const pkg = await installPackage({
-                        url: packageUrl.trim(),
-                      });
-                      if (pkg) {
-                        packageUrl = "";
-                      }
-                    });
-                  }
-                }}
+              <LinkIcon class="size-4" />{m.plugin_source_url()}
+            </Tabs.Trigger>
+          </Tabs.List>
+          <Tabs.Content
+            value="local"
+            class="outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+          >
+            <div bind:this={dropZone}>
+              <Empty.Root
+                class={dragging
+                  ? "gap-4 border border-primary bg-accent py-6 md:p-6"
+                  : "gap-4 border border-input bg-muted/20 py-6 md:p-6"}
               >
-                <div class="space-y-2">
-                  <Label for="plugin-package-url"
-                    >{m.plugin_package_url()}</Label
+                <Empty.Header>
+                  <Empty.Media variant="icon"><FileArchiveIcon /></Empty.Media>
+                  <Empty.Title class="text-sm"
+                    >{m.plugin_drop_file()}</Empty.Title
                   >
-                  <Input
-                    id="plugin-package-url"
-                    type="url"
-                    bind:value={packageUrl}
-                    placeholder="https://github.com/owner/repo/releases/download/v1.0/plugin.zip"
-                    required
-                    disabled={pending}
-                    aria-describedby="plugin-package-help"
-                  />
-                  <p
-                    id="plugin-package-help"
-                    class="text-xs leading-relaxed text-muted-foreground"
+                  <Empty.Description class="text-xs"
+                    >{m.plugin_local_help()}</Empty.Description
                   >
-                    {m.plugin_package_help()}
-                  </p>
-                </div>
-                <div class="flex justify-end">
-                  <Button type="submit" disabled={pending || !packageUrl.trim()}
-                    >{installation?.status === "installing"
-                      ? m.plugin_installing()
-                      : m.plugin_install_url()}</Button
-                  >
-                </div>
-              </form>
-            </Tabs.Content>
-          </Tabs.Root>
-          {#if installation}
-            <div
-              role="status"
-              aria-live="polite"
-              class="flex items-start gap-3 rounded-lg border bg-muted/30 p-4"
-            >
-              {#if installation.status === "installing"}
-                <Spinner class="mt-0.5 size-5 shrink-0" aria-hidden="true" />
-              {:else if installation.status === "success"}
-                <CircleCheckIcon class="mt-0.5 size-5 shrink-0 text-success" />
-              {:else}
-                <CircleAlertIcon
-                  class="mt-0.5 size-5 shrink-0 text-destructive"
-                />
-              {/if}
-              <div class="min-w-0 space-y-1">
-                <p class="text-sm font-medium">
-                  {installation.status === "installing"
+                </Empty.Header>
+                <Button disabled={pending} onclick={install}
+                  >{installation?.status === "installing"
                     ? m.plugin_installing()
-                    : installation.status === "success"
-                      ? m.plugin_install_success({
-                          name: pluginText(installation.package.name),
-                        })
-                      : m.plugin_install_failed()}
-                </p>
-                {#if installation.source}<p
-                    class="break-all text-xs text-muted-foreground"
-                  >
-                    {installation.source}
-                  </p>{/if}
-                {#if installation.status === "failed"}<p
-                    class="text-sm text-destructive"
-                  >
-                    {pluginErrorMessage(installation.error)}
-                  </p>{/if}
-              </div>
+                    : m.plugin_choose_file()}</Button
+                >
+              </Empty.Root>
             </div>
-          {/if}
-        </section>
-        <div class="flex items-center justify-between border-t pt-5">
-          <h3 class="text-sm font-medium">{m.plugin_installed_packages()}</h3>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending}
-            onclick={() => void action(refresh)}
-            ><RefreshCwIcon />{m.plugin_refresh()}</Button
+          </Tabs.Content>
+          <Tabs.Content
+            value="url"
+            class="outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
           >
-        </div>
-        {#if loaded && !pluginState.packages.length}<p
-            class="text-sm text-muted-foreground"
-          >
-            {m.plugin_empty()}
-          </p>{/if}
-        {#each pluginState.packages as pkg (pkg.id)}
-          <section
-            class="space-y-3 rounded-lg border p-4"
-            aria-label={pluginText(pkg.name)}
-          >
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 class="font-semibold">
-                  {pluginText(pkg.name)}
-                  <span class="text-sm font-normal text-muted-foreground"
-                    >{pkg.version}</span
-                  >
-                </h3>
-                <p class="text-sm text-muted-foreground">
-                  {pluginText(pkg.description)}
+            <form
+              novalidate
+              class="space-y-4 rounded-lg border border-input p-5"
+              onsubmit={(event) => {
+                event.preventDefault();
+                if (packageUrl.trim()) {
+                  void action(async () => {
+                    const pkg = await installPackage({
+                      url: packageUrl.trim(),
+                    });
+                    if (pkg) {
+                      packageUrl = "";
+                    }
+                  });
+                }
+              }}
+            >
+              <div class="space-y-2">
+                <Label for="plugin-package-url">{m.plugin_package_url()}</Label>
+                <Input
+                  id="plugin-package-url"
+                  type="url"
+                  bind:value={packageUrl}
+                  placeholder="https://github.com/owner/repo/releases/download/v1.0/plugin.zip"
+                  required
+                  disabled={pending}
+                  aria-describedby="plugin-package-help"
+                />
+                <p
+                  id="plugin-package-help"
+                  class="text-xs leading-relaxed text-muted-foreground"
+                >
+                  {m.plugin_package_help()}
                 </p>
               </div>
-              <div class="flex gap-2">
+              <div class="flex justify-end">
+                <Button type="submit" disabled={pending || !packageUrl.trim()}
+                  >{installation?.status === "installing"
+                    ? m.plugin_installing()
+                    : m.plugin_install_url()}</Button
+                >
+              </div>
+            </form>
+          </Tabs.Content>
+        </Tabs.Root>
+        {#if installation}
+          <div
+            role="status"
+            aria-live="polite"
+            class="flex items-start gap-3 rounded-lg border bg-muted/30 p-4"
+          >
+            {#if installation.status === "installing"}
+              <Spinner class="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+            {:else if installation.status === "success"}
+              <CircleCheckIcon class="mt-0.5 size-5 shrink-0 text-success" />
+            {:else}
+              <CircleAlertIcon
+                class="mt-0.5 size-5 shrink-0 text-destructive"
+              />
+            {/if}
+            <div class="min-w-0 space-y-1">
+              <p class="text-sm font-medium">
+                {installation.status === "installing"
+                  ? m.plugin_installing()
+                  : installation.status === "success"
+                    ? m.plugin_install_success({
+                        name: pluginText(installation.package.name),
+                      })
+                    : m.plugin_install_failed()}
+              </p>
+              {#if installation.source}<p
+                  class="break-all text-xs text-muted-foreground"
+                >
+                  {installation.source}
+                </p>{/if}
+              {#if installation.status === "failed"}<p
+                  class="text-sm text-destructive"
+                >
+                  {pluginErrorMessage(installation.error)}
+                </p>{/if}
+            </div>
+          </div>
+        {/if}
+      </section>
+      <div class="flex items-center justify-between border-t pt-5">
+        <h3 class="text-sm font-medium">{m.plugin_installed_packages()}</h3>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={pending}
+          onclick={() => void action(refresh)}
+          ><RefreshCwIcon />{m.plugin_refresh()}</Button
+        >
+      </div>
+      {#if loaded && !pluginState.packages.length}<p
+          class="text-sm text-muted-foreground"
+        >
+          {m.plugin_empty()}
+        </p>{/if}
+      {#each pluginState.packages as pkg (pkg.id)}
+        <section
+          class="space-y-3 rounded-lg border p-4"
+          aria-label={pluginText(pkg.name)}
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="font-semibold">
+                {pluginText(pkg.name)}
+                <span class="text-sm font-normal text-muted-foreground"
+                  >{pkg.version}</span
+                >
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                {pluginText(pkg.description)}
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                onclick={() => edit(pkg)}>{m.plugin_add_instance()}</Button
+              ><Button
+                size="sm"
+                variant="destructive"
+                disabled={pending}
+                onclick={() => {
+                  error = null;
+                  removal = { kind: "package", id: pkg.id };
+                }}>{m.common_delete()}</Button
+              >
+            </div>
+          </div>
+          {#each pluginState.instances.filter((instance) => instance.plugin_id === pkg.id) as instance (instance.id)}
+            <div class="space-y-2 border-t pt-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h4 class="font-medium">{instance.name}</h4>
+                <div class="flex items-center gap-2">
+                  <Switch
+                    id={"plugin-enable-" + instance.id}
+                    checked={instance.enabled}
+                    disabled={pending || instance.needs_review}
+                    onCheckedChange={(enabled) =>
+                      void action(() =>
+                        invoke("set_plugin_enabled", {
+                          instanceId: instance.id,
+                          enabled,
+                        }),
+                      )}
+                  /><Label for={"plugin-enable-" + instance.id}
+                    >{m.plugin_enabled()}</Label
+                  >
+                </div>
+              </div>
+              <div
+                class="space-y-1"
+                role="group"
+                aria-labelledby={"plugin-approved-domains-" + instance.id}
+              >
+                <p
+                  id={"plugin-approved-domains-" + instance.id}
+                  class="text-sm text-muted-foreground"
+                >
+                  {m.plugin_approved_domains()}
+                </p>
+                {#if instance.allowed_domains.length}
+                  <ul class="flex flex-wrap gap-1.5">
+                    {#each instance.allowed_domains as domain (domain)}
+                      <li class="min-w-0 max-w-full">
+                        <Badge
+                          variant="outline"
+                          class="max-w-full whitespace-normal break-all"
+                          >{(instance.private_network_domains ?? []).some(
+                            (value) =>
+                              canonicalPluginDomain(value) ===
+                              canonicalPluginDomain(domain),
+                          )
+                            ? m.plugin_private_network_domain({ domain })
+                            : domain}</Badge
+                        >
+                      </li>
+                    {/each}
+                  </ul>
+                {:else}
+                  <p class="text-sm text-muted-foreground">
+                    {m.plugin_no_approved_domains()}
+                  </p>
+                {/if}
+              </div>
+              <p class="text-sm text-muted-foreground">
+                {m.plugin_last_run({
+                  time: instance.last_run_at
+                    ? formatDateTime(instance.last_run_at)
+                    : m.plugin_never(),
+                })}
+              </p>
+              {#if instance.needs_review}<p
+                  role="status"
+                  class="text-sm text-muted-foreground"
+                >
+                  {m.plugin_update_instance_review()}
+                </p>{/if}
+              <p class="text-sm text-muted-foreground">
+                {instance.interval_seconds
+                  ? m.plugin_schedule_summary({
+                      seconds: formatNumber(instance.interval_seconds),
+                      time: instance.next_run_at
+                        ? formatDateTime(instance.next_run_at)
+                        : m.plugin_never(),
+                    })
+                  : m.plugin_manual_only()}
+              </p>
+              {#if instance.last_run_status && !instance.running}<p
+                  class="text-sm"
+                >
+                  {status(instance.last_run_status)}
+                </p>{/if}
+              {#if instance.running}<p role="status" class="text-sm">
+                  {m.plugin_running()}
+                </p>{/if}
+              {#if instance.last_error}<p
+                  role="status"
+                  class="text-sm text-destructive"
+                >
+                  {pluginErrorMessage(instance.last_error)}
+                </p>{/if}
+              <div class="flex flex-wrap gap-2">
+                {#if instance.pending_domain}<Button
+                    size="sm"
+                    variant="outline"
+                    disabled={pending || pluginState.safe_mode}
+                    onclick={() => onReviewDomain?.(instance.id)}
+                    >{m.plugin_review_domain()}</Button
+                  >{/if}
+                <Button
+                  size="sm"
+                  disabled={!instance.running &&
+                    (pending ||
+                      !instance.enabled ||
+                      instance.needs_review ||
+                      !!instance.pending_domain ||
+                      pluginState.safe_mode)}
+                  onclick={() => {
+                    if (instance.running) {
+                      void invoke("cancel_plugin_run", {
+                        instanceId: instance.id,
+                      }).catch((cause) => {
+                        error = parseCommandError(cause) ?? {
+                          code: "INTERNAL_ERROR",
+                        };
+                      });
+                    } else {
+                      void run(instance);
+                    }
+                  }}
+                  >{instance.running
+                    ? m.plugin_cancel_run()
+                    : m.plugin_run()}</Button
+                >
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={pending}
-                  onclick={() => edit(pkg)}>{m.plugin_add_instance()}</Button
-                ><Button
+                  onclick={() => edit(pkg, instance)}
+                  >{m.settings_title()}</Button
+                >
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  onclick={() => void showHistory(instance.id)}
+                  >{m.plugin_logs()}</Button
+                >
+                <Button
                   size="sm"
                   variant="destructive"
                   disabled={pending}
                   onclick={() => {
                     error = null;
-                    removal = { kind: "package", id: pkg.id };
+                    removal = { kind: "instance", id: instance.id };
                   }}>{m.common_delete()}</Button
                 >
               </div>
             </div>
-            {#each pluginState.instances.filter((instance) => instance.plugin_id === pkg.id) as instance (instance.id)}
-              <div class="space-y-2 border-t pt-3">
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                  <h4 class="font-medium">{instance.name}</h4>
-                  <div class="flex items-center gap-2">
-                    <Switch
-                      id={"plugin-enable-" + instance.id}
-                      checked={instance.enabled}
-                      disabled={pending || instance.needs_review}
-                      onCheckedChange={(enabled) =>
-                        void action(() =>
-                          invoke("set_plugin_enabled", {
-                            instanceId: instance.id,
-                            enabled,
-                          }),
-                        )}
-                    /><Label for={"plugin-enable-" + instance.id}
-                      >{m.plugin_enabled()}</Label
-                    >
-                  </div>
-                </div>
-                <div
-                  class="space-y-1"
-                  role="group"
-                  aria-labelledby={"plugin-approved-domains-" + instance.id}
-                >
-                  <p
-                    id={"plugin-approved-domains-" + instance.id}
-                    class="text-sm text-muted-foreground"
+          {/each}
+        </section>
+      {/each}
+    </div>
+  </ScrollArea>
+</div>
+<AlertDialog.Root
+  open={removal !== null}
+  onOpenChange={(value) => {
+    if (!value && !pending) {
+      removal = null;
+    }
+  }}
+>
+  <AlertDialog.Content
+    onOpenAutoFocus={() => {
+      removalFocus = document.activeElement as HTMLElement | null;
+    }}
+    onCloseAutoFocus={(event) => {
+      event.preventDefault();
+      const target =
+        removalFocus?.isConnected && !removalFocus.matches(":disabled")
+          ? removalFocus
+          : dialogContent;
+      target?.focus({ preventScroll: true });
+      removalFocus = null;
+    }}
+  >
+    <AlertDialog.Header>
+      <AlertDialog.Title>{m.common_delete()}</AlertDialog.Title>
+      <AlertDialog.Description>{m.plugin_remove_help()}</AlertDialog.Description
+      >
+    </AlertDialog.Header>
+    {#if error}<p role="alert" class="text-sm text-destructive">
+        {pluginErrorMessage(error)}
+      </p>{/if}
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel disabled={pending}
+        >{m.common_cancel()}</AlertDialog.Cancel
+      >
+      <Button variant="destructive" disabled={pending} onclick={remove}>
+        {#if pending}<Spinner aria-hidden="true" />{/if}{m.common_delete()}
+      </Button>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>
+<Dialog.Root
+  bind:open={
+    () => updateTarget !== null,
+    (value) => {
+      if (!value) {
+        closeUpdate();
+      }
+    }
+  }
+  busy={pending}
+>
+  <Dialog.Content class="flex max-h-[85dvh] flex-col overflow-hidden">
+    <Dialog.Header>
+      <Dialog.Title
+        >{m.plugin_update_title({
+          name: pluginText(updateTarget?.name ?? null),
+        })}</Dialog.Title
+      >
+      <Dialog.Description>{m.plugin_update_help()}</Dialog.Description>
+    </Dialog.Header>
+    <ScrollArea class="min-h-0 flex-1">
+      <div class="space-y-4 pe-4">
+        {#if updateSuccess}
+          <p role="status" class="text-sm">{m.plugin_update_success()}</p>
+        {:else if updatePreview}
+          <p class="text-sm font-medium">
+            {m.plugin_update_versions({
+              current: updatePreview.current_version,
+              next: updatePreview.package.version,
+            })}
+          </p>
+          {#if addedUpdateDomains.length}
+            <div class="space-y-2">
+              <h3 class="text-sm font-medium">
+                {m.plugin_update_added_domains()}
+              </h3>
+              <ul class="list-inside list-disc text-sm">
+                {#each addedUpdateDomains as domain (domain)}<li
+                    class="break-all"
                   >
-                    {m.plugin_approved_domains()}
-                  </p>
-                  {#if instance.allowed_domains.length}
-                    <ul class="flex flex-wrap gap-1.5">
-                      {#each instance.allowed_domains as domain (domain)}
-                        <li class="min-w-0 max-w-full">
-                          <Badge
-                            variant="outline"
-                            class="max-w-full whitespace-normal break-all"
-                            >{(instance.private_network_domains ?? []).some(
-                              (value) =>
-                                canonicalPluginDomain(value) ===
-                                canonicalPluginDomain(domain),
-                            )
-                              ? m.plugin_private_network_domain({ domain })
-                              : domain}</Badge
-                          >
-                        </li>
-                      {/each}
-                    </ul>
-                  {:else}
-                    <p class="text-sm text-muted-foreground">
-                      {m.plugin_no_approved_domains()}
-                    </p>
-                  {/if}
-                </div>
-                <p class="text-sm text-muted-foreground">
-                  {m.plugin_last_run({
-                    time: instance.last_run_at
-                      ? formatDateTime(instance.last_run_at)
-                      : m.plugin_never(),
-                  })}
-                </p>
-                {#if instance.needs_review}<p
-                    role="status"
-                    class="text-sm text-muted-foreground"
+                    {domain}
+                  </li>{/each}
+              </ul>
+            </div>
+          {/if}
+          {#if updatePreview.package.allow_custom_domains && !updateTarget?.allow_custom_domains}
+            <p class="text-sm">{m.plugin_update_custom_domains()}</p>
+          {/if}
+          {#if JSON.stringify(updatePreview.package.http_credentials ?? null) !== JSON.stringify(updateTarget?.http_credentials ?? null)}
+            <p class="text-sm">{m.plugin_update_credentials()}</p>
+          {/if}
+          {#if changedUpdateSettings.length}
+            <div class="space-y-2">
+              <h3 class="text-sm font-medium">
+                {m.plugin_update_changed_settings()}
+              </h3>
+              <ul class="list-inside list-disc text-sm">
+                {#each changedUpdateSettings as field (field.key)}<li
+                    class="break-words"
                   >
-                    {m.plugin_update_instance_review()}
-                  </p>{/if}
-                <p class="text-sm text-muted-foreground">
-                  {instance.interval_seconds
-                    ? m.plugin_schedule_summary({
-                        seconds: formatNumber(instance.interval_seconds),
-                        time: instance.next_run_at
-                          ? formatDateTime(instance.next_run_at)
-                          : m.plugin_never(),
-                      })
-                    : m.plugin_manual_only()}
-                </p>
-                {#if instance.last_run_status && !instance.running}<p
-                    class="text-sm"
-                  >
-                    {status(instance.last_run_status)}
-                  </p>{/if}
-                {#if instance.running}<p role="status" class="text-sm">
-                    {m.plugin_running()}
-                  </p>{/if}
-                {#if instance.last_error}<p
-                    role="status"
-                    class="text-sm text-destructive"
-                  >
-                    {pluginErrorMessage(instance.last_error)}
-                  </p>{/if}
-                <div class="flex flex-wrap gap-2">
-                  {#if instance.pending_domain}<Button
-                      size="sm"
-                      variant="outline"
-                      disabled={pending || pluginState.safe_mode}
-                      onclick={() => onReviewDomain?.(instance.id)}
-                      >{m.plugin_review_domain()}</Button
-                    >{/if}
-                  <Button
-                    size="sm"
-                    disabled={!instance.running &&
-                      (pending ||
-                        !instance.enabled ||
-                        instance.needs_review ||
-                        !!instance.pending_domain ||
-                        pluginState.safe_mode)}
-                    onclick={() => {
-                      if (instance.running) {
-                        void invoke("cancel_plugin_run", {
-                          instanceId: instance.id,
-                        }).catch((cause) => {
-                          error = parseCommandError(cause) ?? {
-                            code: "INTERNAL_ERROR",
-                          };
-                        });
-                      } else {
-                        void run(instance);
-                      }
-                    }}
-                    >{instance.running
-                      ? m.plugin_cancel_run()
-                      : m.plugin_run()}</Button
-                  >
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={pending}
-                    onclick={() => edit(pkg, instance)}
-                    >{m.settings_title()}</Button
-                  >
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={pending}
-                    onclick={() => void showHistory(instance.id)}
-                    >{m.plugin_logs()}</Button
-                  >
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={pending}
-                    onclick={() => {
-                      error = null;
-                      removal = { kind: "instance", id: instance.id };
-                    }}>{m.common_delete()}</Button
-                  >
-                </div>
-              </div>
-            {/each}
-          </section>
-        {/each}
+                    {pluginText(field.label) || field.key}
+                  </li>{/each}
+              </ul>
+            </div>
+          {/if}
+          {#if updatePreview.requires_review}
+            <p class="text-sm text-muted-foreground">
+              {m.plugin_update_review_help()}
+            </p>
+          {/if}
+        {/if}
+        {#if pending}<p role="status" class="flex items-center gap-2 text-sm">
+            <Spinner aria-hidden="true" />{m.plugin_update_working()}
+          </p>{/if}
+        {#if error}<p role="alert" class="text-sm text-destructive">
+            {pluginErrorMessage(error)}
+          </p>{/if}
+      </div>
+    </ScrollArea>
+    <Dialog.Footer class="shrink-0 border-t pt-4">
+      <Button variant="outline" disabled={pending} onclick={closeUpdate}>
+        {updateSuccess ? m.common_close() : m.common_cancel()}
+      </Button>
+      {#if updatePreview}<Button disabled={pending} onclick={confirmUpdate}
+          >{m.plugin_update()}</Button
+        >{/if}
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+<Dialog.Root
+  bind:open={
+    () => open && historyId !== null,
+    (value) => {
+      if (!value) historyId = null;
+    }
+  }
+>
+  <Dialog.Content
+    class="flex h-[85dvh] max-h-200 flex-col overflow-hidden sm:max-w-2xl"
+  >
+    <Dialog.Header>
+      <Dialog.Title>{m.plugin_logs()}</Dialog.Title>
+      <Dialog.Description
+        >{pluginState.instances.find((instance) => instance.id === historyId)
+          ?.name ?? m.plugin_logs()}</Dialog.Description
+      >
+    </Dialog.Header>
+    <ScrollArea type="always" class="min-h-0 flex-1">
+      <div class="space-y-3 py-1 ps-1 pe-4">
+        {#if error}<p role="alert" class="text-sm text-destructive">
+            {pluginErrorMessage(error)}
+          </p>{/if}
+        {#if pending && !runs.length}<p
+            role="status"
+            class="text-sm text-muted-foreground"
+          >
+            {m.ui_loading()}
+          </p>
+        {:else if !runs.length}<p class="text-sm text-muted-foreground">
+            {m.plugin_no_runs()}
+          </p>{/if}
+        {#each runs as run (run.id)}<div class="space-y-2 border-t pt-3">
+            <p class="text-sm font-medium">
+              {formatDateTime(run.started_at)} · {status(run.status)} · {run.trigger ===
+              "manual"
+                ? m.plugin_manual_trigger()
+                : m.plugin_schedule_trigger()}
+            </p>
+            <p class="text-sm">
+              {m.plugin_run_counts({
+                created: formatNumber(run.created),
+                updated: formatNumber(run.updated),
+              })}
+            </p>
+            {#if run.finished_at}<p class="text-xs text-muted-foreground">
+                {m.plugin_duration({
+                  seconds: formatNumber(
+                    (run.finished_at - run.started_at) / 1000,
+                    { maximumFractionDigits: 1 },
+                  ),
+                })}
+              </p>{/if}{#if run.error}<p class="text-sm text-destructive">
+                {pluginErrorMessage(run.error)}
+              </p>{/if}
+            <p class="break-all font-mono text-xs text-muted-foreground">
+              {run.id}
+            </p>
+            {#each run.logs as log, i (i)}<p
+                class={[
+                  "whitespace-pre-wrap break-words font-mono text-xs",
+                  log.level === "error" && "text-destructive",
+                  log.level === "debug" && "text-muted-foreground",
+                ]}
+              >
+                {pluginLogMessage(log)}
+              </p>{/each}
+          </div>{/each}
       </div>
     </ScrollArea>
   </Dialog.Content>
-  <AlertDialog.Root
-    open={removal !== null}
-    onOpenChange={(value) => {
-      if (!value && !pending) {
-        removal = null;
-      }
-    }}
-  >
-    <AlertDialog.Content
-      onOpenAutoFocus={() => {
-        removalFocus = document.activeElement as HTMLElement | null;
-      }}
-      onCloseAutoFocus={(event) => {
-        event.preventDefault();
-        const target =
-          removalFocus?.isConnected && !removalFocus.matches(":disabled")
-            ? removalFocus
-            : dialogContent;
-        target?.focus({ preventScroll: true });
-        removalFocus = null;
-      }}
-    >
-      <AlertDialog.Header>
-        <AlertDialog.Title>{m.common_delete()}</AlertDialog.Title>
-        <AlertDialog.Description
-          >{m.plugin_remove_help()}</AlertDialog.Description
-        >
-      </AlertDialog.Header>
-      {#if error}<p role="alert" class="text-sm text-destructive">
-          {pluginErrorMessage(error)}
-        </p>{/if}
-      <AlertDialog.Footer>
-        <AlertDialog.Cancel disabled={pending}
-          >{m.common_cancel()}</AlertDialog.Cancel
-        >
-        <Button variant="destructive" disabled={pending} onclick={remove}>
-          {#if pending}<Spinner aria-hidden="true" />{/if}{m.common_delete()}
-        </Button>
-      </AlertDialog.Footer>
-    </AlertDialog.Content>
-  </AlertDialog.Root>
-  <Dialog.Root
-    bind:open={
-      () => updateTarget !== null,
-      (value) => {
-        if (!value) {
-          closeUpdate();
-        }
-      }
-    }
-    busy={pending}
-  >
-    <Dialog.Content class="flex max-h-[85dvh] flex-col overflow-hidden">
-      <Dialog.Header>
-        <Dialog.Title
-          >{m.plugin_update_title({
-            name: pluginText(updateTarget?.name ?? null),
-          })}</Dialog.Title
-        >
-        <Dialog.Description>{m.plugin_update_help()}</Dialog.Description>
-      </Dialog.Header>
-      <ScrollArea class="min-h-0 flex-1">
-        <div class="space-y-4 pe-4">
-          {#if updateSuccess}
-            <p role="status" class="text-sm">{m.plugin_update_success()}</p>
-          {:else if updatePreview}
-            <p class="text-sm font-medium">
-              {m.plugin_update_versions({
-                current: updatePreview.current_version,
-                next: updatePreview.package.version,
-              })}
-            </p>
-            {#if addedUpdateDomains.length}
-              <div class="space-y-2">
-                <h3 class="text-sm font-medium">
-                  {m.plugin_update_added_domains()}
-                </h3>
-                <ul class="list-inside list-disc text-sm">
-                  {#each addedUpdateDomains as domain (domain)}<li
-                      class="break-all"
-                    >
-                      {domain}
-                    </li>{/each}
-                </ul>
-              </div>
-            {/if}
-            {#if updatePreview.package.allow_custom_domains && !updateTarget?.allow_custom_domains}
-              <p class="text-sm">{m.plugin_update_custom_domains()}</p>
-            {/if}
-            {#if JSON.stringify(updatePreview.package.http_credentials ?? null) !== JSON.stringify(updateTarget?.http_credentials ?? null)}
-              <p class="text-sm">{m.plugin_update_credentials()}</p>
-            {/if}
-            {#if changedUpdateSettings.length}
-              <div class="space-y-2">
-                <h3 class="text-sm font-medium">
-                  {m.plugin_update_changed_settings()}
-                </h3>
-                <ul class="list-inside list-disc text-sm">
-                  {#each changedUpdateSettings as field (field.key)}<li
-                      class="break-words"
-                    >
-                      {pluginText(field.label) || field.key}
-                    </li>{/each}
-                </ul>
-              </div>
-            {/if}
-            {#if updatePreview.requires_review}
-              <p class="text-sm text-muted-foreground">
-                {m.plugin_update_review_help()}
-              </p>
-            {/if}
-          {/if}
-          {#if pending}<p role="status" class="flex items-center gap-2 text-sm">
-              <Spinner aria-hidden="true" />{m.plugin_update_working()}
-            </p>{/if}
-          {#if error}<p role="alert" class="text-sm text-destructive">
-              {pluginErrorMessage(error)}
-            </p>{/if}
-        </div>
-      </ScrollArea>
-      <Dialog.Footer class="shrink-0 border-t pt-4">
-        <Button variant="outline" disabled={pending} onclick={closeUpdate}>
-          {updateSuccess ? m.common_close() : m.common_cancel()}
-        </Button>
-        {#if updatePreview}<Button disabled={pending} onclick={confirmUpdate}
-            >{m.plugin_update()}</Button
-          >{/if}
-      </Dialog.Footer>
-    </Dialog.Content>
-  </Dialog.Root>
-  <Dialog.Root
-    bind:open={
-      () => open && historyId !== null,
-      (value) => {
-        if (!value) historyId = null;
-      }
-    }
-  >
-    <Dialog.Content
-      class="flex h-[85dvh] max-h-200 flex-col overflow-hidden sm:max-w-2xl"
-    >
-      <Dialog.Header>
-        <Dialog.Title>{m.plugin_logs()}</Dialog.Title>
-        <Dialog.Description
-          >{pluginState.instances.find((instance) => instance.id === historyId)
-            ?.name ?? m.plugin_logs()}</Dialog.Description
-        >
-      </Dialog.Header>
-      <ScrollArea type="always" class="min-h-0 flex-1">
-        <div class="space-y-3 py-1 ps-1 pe-4">
-          {#if error}<p role="alert" class="text-sm text-destructive">
-              {pluginErrorMessage(error)}
-            </p>{/if}
-          {#if pending && !runs.length}<p
-              role="status"
-              class="text-sm text-muted-foreground"
-            >
-              {m.ui_loading()}
-            </p>
-          {:else if !runs.length}<p class="text-sm text-muted-foreground">
-              {m.plugin_no_runs()}
-            </p>{/if}
-          {#each runs as run (run.id)}<div class="space-y-2 border-t pt-3">
-              <p class="text-sm font-medium">
-                {formatDateTime(run.started_at)} · {status(run.status)} · {run.trigger ===
-                "manual"
-                  ? m.plugin_manual_trigger()
-                  : m.plugin_schedule_trigger()}
-              </p>
-              <p class="text-sm">
-                {m.plugin_run_counts({
-                  created: formatNumber(run.created),
-                  updated: formatNumber(run.updated),
-                })}
-              </p>
-              {#if run.finished_at}<p class="text-xs text-muted-foreground">
-                  {m.plugin_duration({
-                    seconds: formatNumber(
-                      (run.finished_at - run.started_at) / 1000,
-                      { maximumFractionDigits: 1 },
-                    ),
-                  })}
-                </p>{/if}{#if run.error}<p class="text-sm text-destructive">
-                  {pluginErrorMessage(run.error)}
-                </p>{/if}
-              <p class="break-all font-mono text-xs text-muted-foreground">
-                {run.id}
-              </p>
-              {#each run.logs as log, i (i)}<p
-                  class={[
-                    "whitespace-pre-wrap break-words font-mono text-xs",
-                    log.level === "error" && "text-destructive",
-                    log.level === "debug" && "text-muted-foreground",
-                  ]}
-                >
-                  {pluginLogMessage(log)}
-                </p>{/each}
-            </div>{/each}
-        </div>
-      </ScrollArea>
-    </Dialog.Content>
-  </Dialog.Root>
 </Dialog.Root>
 
 {#if editing}

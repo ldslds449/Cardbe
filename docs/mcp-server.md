@@ -6,7 +6,7 @@ The server is part of the Cardbe process; there is no separate executable or sid
 
 ## Turning it on
 
-1. Open **Settings** and find **MCP server**.
+1. Open **Settings → Preferences…** (`Ctrl+,`) and select **MCP**.
 2. Turn on **Enable MCP server**. The server starts immediately and the status shows **Running**.
 3. Optional: change **Port** (default `8765`, allowed `1024`–`65535`) and select **Apply**. A running server restarts on the new port.
 4. Optional: select **Start when Cardbe opens**. Otherwise an enabled server starts only when you turn it on or select **Start**.

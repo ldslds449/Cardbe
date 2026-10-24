@@ -16,11 +16,11 @@
 
   let {
     network,
-    oncancel,
+    ondiscard,
     onsave,
   }: {
     network: IrohNetworkSettingsDraft;
-    oncancel: () => void;
+    ondiscard: () => void;
     onsave: () => void;
   } = $props();
   const mode_label = $derived(
@@ -322,8 +322,8 @@
       <Button
         variant="outline"
         class="min-w-24"
-        disabled={network.saving}
-        onclick={oncancel}>{m.common_cancel()}</Button
+        disabled={network.saving || !network.dirty}
+        onclick={ondiscard}>{m.share_network_discard()}</Button
       >
       <Button
         class="min-w-24"
