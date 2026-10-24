@@ -33,7 +33,6 @@
   import { openSettings } from "./settings-dialog.svelte";
 
   import { board } from "../../board.svelte";
-  import type { WorkspaceView } from "./workspace";
 
   let {
     board_panel_open = $bindable(),
@@ -41,7 +40,7 @@
     search_pending = false,
     search_error = false,
     note_open = $bindable(),
-    selected_view,
+    show_task_details_toggle,
     update_check_in_progress,
     read_only = false,
     web_publish_count = 0,
@@ -59,6 +58,7 @@
     onOpenIrohShare,
     onOpenTaskTemplates,
     onOpenAllTasks,
+    onFocusSearch,
     onAddTask,
     onAddColumn,
     onCheckForUpdates,
@@ -68,7 +68,8 @@
     search_pending?: boolean;
     search_error?: boolean;
     note_open: boolean;
-    selected_view: WorkspaceView;
+    /** The task details toggle applies only to the board view. */
+    show_task_details_toggle: boolean;
     update_check_in_progress: boolean;
     read_only?: boolean;
     web_publish_count?: number;
@@ -86,11 +87,13 @@
     onOpenIrohShare: () => void;
     onOpenTaskTemplates: () => void;
     onOpenAllTasks: () => void;
+    onFocusSearch: () => void;
     onAddTask: () => void;
     onAddColumn: () => void;
     onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
   } = $props();
   let about_open = $state(false);
+  let search_requested = false;
   let diagnostics_open = $state(false);
   let reviewPluginDomain = $state<string | null>(null);
 </script>
@@ -144,7 +147,16 @@
         </Menubar.Menu>
         <Menubar.Menu>
           <Menubar.Trigger>{m.common_edit()}</Menubar.Trigger>
-          <Menubar.Content>
+          <Menubar.Content
+            onCloseAutoFocus={(event) => {
+              // Closing the menu would move focus back to its trigger.
+              if (search_requested) {
+                search_requested = false;
+                event.preventDefault();
+                onFocusSearch();
+              }
+            }}
+          >
             <Menubar.Item
               disabled={!board.can_undo || board.undo_in_progress}
               onclick={() => void board.undo()}
@@ -154,6 +166,28 @@
                 <Kbd.Group>
                   <Kbd.Root>Ctrl</Kbd.Root>
                   <Kbd.Root>Z</Kbd.Root>
+                </Kbd.Group>
+              </Menubar.Shortcut>
+            </Menubar.Item>
+            <Menubar.Item
+              disabled={!board.can_redo || board.undo_in_progress}
+              onclick={() => void board.redo()}
+            >
+              {m.menu_redo()}
+              <Menubar.Shortcut>
+                <Kbd.Group>
+                  <Kbd.Root>Ctrl</Kbd.Root>
+                  <Kbd.Root>Y</Kbd.Root>
+                </Kbd.Group>
+              </Menubar.Shortcut>
+            </Menubar.Item>
+            <Menubar.Separator />
+            <Menubar.Item onclick={() => (search_requested = true)}>
+              {m.menu_find()}
+              <Menubar.Shortcut>
+                <Kbd.Group>
+                  <Kbd.Root>Ctrl</Kbd.Root>
+                  <Kbd.Root>F</Kbd.Root>
                 </Kbd.Group>
               </Menubar.Shortcut>
             </Menubar.Item>
@@ -232,12 +266,14 @@
         size="sm"
         class="shrink-0 gap-1.5 border-primary/40 bg-primary/5 text-primary"
         onclick={onOpenDeviceRequests}
-        aria-label={`${pending_device_count} device approval requests`}
+        aria-label={m.share_device_requests_count({
+          count: pending_device_count,
+        })}
         title={m.ui_review_device_approval_requests()}
         ><ShieldCheckIcon class="size-4" />
         <span class="hidden xl:inline">{m.ui_device_requests()}</span><span
           class="rounded-full bg-primary px-1.5 text-xs text-primary-foreground"
-          >{pending_device_count}</span
+          >{formatNumber(pending_device_count)}</span
         ></Button
       >
     {/if}
@@ -286,7 +322,7 @@
         </span>
         <span class="hidden xl:inline">{m.board_publish()}</span>
         <span class="text-xs tabular-nums text-muted-foreground"
-          >{web_publish_count}</span
+          >{formatNumber(web_publish_count)}</span
         >
       </Button>
     {/if}
@@ -310,6 +346,8 @@
         title={search_error ? m.board_search_error() : undefined}
       >
         <InputGroup.Input
+          id="workspace-search"
+          aria-keyshortcuts="Control+F /"
           aria-label={m.board_search_tasks()}
           aria-busy={search_pending}
           placeholder={m.board_search_tasks()}
@@ -436,28 +474,21 @@
         </DropdownMenu.Content>
       </DropdownMenu.Root>
 
-      <div
-        class="size-8 flex-none"
-        title={selected_view !== "board" ? m.workspace_board_only() : undefined}
-      >
+      {#if show_task_details_toggle}
         <Button
           onclick={() => {
             void board.set_task_expand_mode(!board.task_expand_mode);
           }}
           variant="outline"
           size="icon-sm"
-          disabled={selected_view !== "board"}
+          class="flex-none"
           aria-pressed={board.task_expand_mode}
-          aria-label={selected_view !== "board"
-            ? m.task_details_board()
-            : board.task_expand_mode
-              ? m.task_details_hide()
-              : m.task_details_show()}
-          title={selected_view !== "board"
-            ? undefined
-            : board.task_expand_mode
-              ? m.task_details_hide()
-              : m.task_details_show()}
+          aria-label={board.task_expand_mode
+            ? m.task_details_hide()
+            : m.task_details_show()}
+          title={board.task_expand_mode
+            ? m.task_details_hide()
+            : m.task_details_show()}
         >
           <EyeIcon
             class={cn(
@@ -476,7 +507,7 @@
             )}
           />
         </Button>
-      </div>
+      {/if}
     </div>
   </div>
 </Menubar.Root>

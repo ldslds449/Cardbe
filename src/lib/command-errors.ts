@@ -41,6 +41,7 @@ const coreMessages = {
   STALE_BOARD_REQUEST: () => m.error_stale_board_request(),
   PERMISSION_DENIED: () => m.error_permission_denied(),
   NOTHING_TO_UNDO: () => m.error_nothing_to_undo(),
+  NOTHING_TO_REDO: () => m.error_nothing_to_redo(),
   UPDATE_REQUEST_FAILED: () => m.update_network_error(),
   UPDATE_RELEASE_DATA_INVALID: () => m.update_release_data_error(),
   SHARE_ACCESS_REVOKED: () => m.ui_access_was_declined_or_revoked(),

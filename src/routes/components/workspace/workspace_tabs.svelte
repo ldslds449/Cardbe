@@ -7,7 +7,6 @@
   import ChartNoAxesCombinedIcon from "@lucide/svelte/icons/chart-no-axes-combined";
   import Columns3Icon from "@lucide/svelte/icons/columns-3";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import SparklesIcon from "@lucide/svelte/icons/sparkles";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import type { WorkspaceView } from "./workspace";
@@ -36,10 +35,9 @@
     {
       id: WorkspaceView;
       label: string;
-      icon: typeof SparklesIcon;
+      icon: typeof Columns3Icon;
     }[]
   >([
-    { id: "today", label: m.workspace_today(), icon: SparklesIcon },
     { id: "board", label: m.board_title(), icon: Columns3Icon },
     { id: "calendar", label: m.workspace_calendar(), icon: CalendarDaysIcon },
     { id: "gantt", label: m.workspace_gantt(), icon: ChartGanttIcon },
@@ -61,13 +59,18 @@
     aria-label={m.workspace_views()}
     role="tablist"
   >
-    {#each views as view (view.id)}
+    {#each views as view, index (view.id)}
       {@const Icon = view.icon}
       <Button
         variant="ghost"
         class={`h-10 rounded-none border-b-2 px-4 text-sm transition-colors ${selected_view === view.id ? "border-b-primary text-foreground" : "border-b-transparent text-muted-foreground hover:text-foreground"}`}
         role="tab"
         aria-selected={selected_view === view.id}
+        aria-keyshortcuts="Control+{index + 1}"
+        title={m.workspace_view_shortcut({
+          view: view.label,
+          shortcut: `Ctrl+${index + 1}`,
+        })}
         onclick={() => onSwitchView(view.id)}
       >
         <Icon />

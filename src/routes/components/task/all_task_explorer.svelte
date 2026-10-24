@@ -8,6 +8,7 @@
   import CalendarClockIcon from "@lucide/svelte/icons/calendar-clock";
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import Columns3Icon from "@lucide/svelte/icons/columns-3";
+  import ListFilterPlusIcon from "@lucide/svelte/icons/list-filter-plus";
   import ListTodoIcon from "@lucide/svelte/icons/list-todo";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
@@ -26,6 +27,7 @@
   import * as Sheet from "$lib/components/ui/sheet/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Spinner } from "$lib/components/ui/spinner/index.js";
   import DateFilterPicker from "./date_filter_picker.svelte";
   import { cn } from "$lib/utils.js";
@@ -45,6 +47,7 @@
     type TaskExplorerQuery,
   } from "../../utils/task-explorer";
   import { get_column_id } from "../../type/column.svelte";
+  import type { ExplorerConditions } from "../../type/focus";
   import { display_task_color } from "../../utils/task-color";
   import { is_date_only } from "../../utils/task-date-range";
   import UnarchiveTaskDialog from "../archive/unarchive_task_dialog.svelte";
@@ -82,6 +85,7 @@
     onViewArchivedTask,
     onEditTask,
     onArchiveTask,
+    onSaveAsFocus,
   }: {
     open: boolean;
     active_board_id: number | null;
@@ -102,6 +106,8 @@
     onViewArchivedTask: (task: Task) => void;
     onEditTask: (task: Task) => void;
     onArchiveTask: (task: Task) => void;
+    /** Starts a new Focus with the current conditions. */
+    onSaveAsFocus?: (conditions: ExplorerConditions) => void;
   } = $props();
 
   let focus = $state<Focus>("active");
@@ -370,6 +376,20 @@
       : fallback;
   }
 
+  function save_as_focus() {
+    onSaveAsFocus?.({
+      query: search_text,
+      board_ids: board_scope,
+      status: focus,
+      due: due_filter,
+      priorities: priority_filter,
+      sort: sort_mode,
+      other_conditions:
+        (!global_scope && column_filter !== "all") ||
+        archive_time_filter !== "all",
+    });
+  }
+
   function clear_filters() {
     search_text = "";
     reset_filters();
@@ -497,438 +517,337 @@
       </div>
     </Sheet.Header>
 
-    <div
-      class="grid max-h-[65%] shrink-0 gap-3 overflow-y-auto border-b px-6 py-3"
+    <ScrollArea
+      class="flex max-h-[65%] shrink-0 flex-col border-b [&>[data-slot=scroll-area-viewport]]:min-h-0"
+      orientation="vertical"
     >
-      <div class="flex items-center justify-between gap-3">
-        <div aria-live="polite">
-          <span class="text-base font-semibold"
-            >{has_more
-              ? m.explorer_loaded({ count: entries.length })
-              : m.task_count({ count: entries.length })}</span
-          >
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          aria-expanded={controls_open}
-          aria-controls="task-explorer-controls"
-          onclick={() => (controls_open = !controls_open)}
-        >
-          <SlidersHorizontalIcon class="size-4" />{controls_open
-            ? m.explorer_hide_filters()
-            : m.explorer_show_filters()}
-          {#if active_filter_count}<Badge variant="secondary"
-              >{formatNumber(active_filter_count)}</Badge
-            >{/if}
-          <ChevronDownIcon
-            class={cn(
-              "size-4 transition-transform",
-              controls_open && "rotate-180",
-            )}
-          />
-        </Button>
-      </div>
-      <div class="flex flex-wrap items-end gap-3">
-        <div
-          class="grid min-w-[10rem] flex-[1.2] gap-1 text-xs font-medium text-muted-foreground"
-        >
-          <span id="task-explorer-board-label">{m.explorer_scope()}</span>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              {#snippet child({ props })}
-                <Button
-                  {...props}
-                  variant="outline"
-                  class="w-full min-w-0 justify-between"
-                  aria-labelledby="task-explorer-board-label task-explorer-board-selection"
-                >
-                  <span id="task-explorer-board-selection" class="truncate"
-                    >{scope_name}</span
-                  >
-                  <ChevronDownIcon class="size-4" />
-                </Button>
-              {/snippet}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content class="max-h-80" align="start">
-              <DropdownMenu.CheckboxItem
-                checked={board_scope === null ||
-                  (boards.length > 0 && board_scope.length === boards.length)}
-                indeterminate={board_scope !== null &&
-                  board_scope.length > 0 &&
-                  board_scope.length < boards.length}
-                closeOnSelect={false}
-                onCheckedChange={(checked) => {
-                  board_scope = checked ? null : [];
-                  column_filter = "all";
-                }}>{m.explorer_all_boards()}</DropdownMenu.CheckboxItem
+      <div class="grid gap-3 px-6 py-3">
+        <div class="flex items-center justify-between gap-3">
+          <div aria-live="polite">
+            <span class="text-base font-semibold"
+              >{has_more
+                ? m.explorer_loaded({ count: entries.length })
+                : m.task_count({ count: entries.length })}</span
+            >
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            {#if onSaveAsFocus}
+              <Button
+                variant="ghost"
+                size="sm"
+                title={m.explorer_save_as_focus_hint()}
+                onclick={save_as_focus}
               >
-              <DropdownMenu.Separator />
-              {#each boards as board (board.id)}
+                <ListFilterPlusIcon
+                  class="size-4"
+                />{m.explorer_save_as_focus()}
+              </Button>
+            {/if}
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={controls_open}
+              aria-controls="task-explorer-controls"
+              onclick={() => (controls_open = !controls_open)}
+            >
+              <SlidersHorizontalIcon class="size-4" />{controls_open
+                ? m.explorer_hide_filters()
+                : m.explorer_show_filters()}
+              {#if active_filter_count}<Badge variant="secondary"
+                  >{formatNumber(active_filter_count)}</Badge
+                >{/if}
+              <ChevronDownIcon
+                class={cn(
+                  "size-4 transition-transform",
+                  controls_open && "rotate-180",
+                )}
+              />
+            </Button>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-end gap-3">
+          <div
+            class="grid min-w-[10rem] flex-[1.2] gap-1 text-xs font-medium text-muted-foreground"
+          >
+            <span id="task-explorer-board-label">{m.explorer_scope()}</span>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
+                {#snippet child({ props })}
+                  <Button
+                    {...props}
+                    variant="outline"
+                    class="w-full min-w-0 justify-between"
+                    aria-labelledby="task-explorer-board-label task-explorer-board-selection"
+                  >
+                    <span id="task-explorer-board-selection" class="truncate"
+                      >{scope_name}</span
+                    >
+                    <ChevronDownIcon class="size-4" />
+                  </Button>
+                {/snippet}
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content class="max-h-80" align="start">
                 <DropdownMenu.CheckboxItem
                   checked={board_scope === null ||
-                    board_scope.includes(board.id)}
+                    (boards.length > 0 && board_scope.length === boards.length)}
+                  indeterminate={board_scope !== null &&
+                    board_scope.length > 0 &&
+                    board_scope.length < boards.length}
                   closeOnSelect={false}
-                  onCheckedChange={(checked) => select_board(board.id, checked)}
-                  >{board.name}
-                  {#if board.is_shared || board.shared_role !== "owner"}
-                    <Badge variant="outline" class="ml-auto text-[11px]">
-                      {board.shared_role === "viewer"
-                        ? "Read only"
-                        : board.shared_role === "editor"
-                          ? "Can edit"
-                          : "Shared"}
-                    </Badge>
-                  {/if}</DropdownMenu.CheckboxItem
+                  onCheckedChange={(checked) => {
+                    board_scope = checked ? null : [];
+                    column_filter = "all";
+                  }}>{m.explorer_all_boards()}</DropdownMenu.CheckboxItem
                 >
-              {/each}
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
+                <DropdownMenu.Separator />
+                {#each boards as board (board.id)}
+                  <DropdownMenu.CheckboxItem
+                    checked={board_scope === null ||
+                      board_scope.includes(board.id)}
+                    closeOnSelect={false}
+                    onCheckedChange={(checked) =>
+                      select_board(board.id, checked)}
+                    >{board.name}
+                    {#if board.is_shared || board.shared_role !== "owner"}
+                      <Badge variant="outline" class="ml-auto text-[11px]">
+                        {board.shared_role === "viewer"
+                          ? "Read only"
+                          : board.shared_role === "editor"
+                            ? "Can edit"
+                            : "Shared"}
+                      </Badge>
+                    {/if}</DropdownMenu.CheckboxItem
+                  >
+                {/each}
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
+          </div>
+          <label
+            class="grid min-w-[8rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
+            >{m.explorer_sort_by()}
+            <Select.Root
+              type="single"
+              value={sort_mode}
+              onValueChange={(value) =>
+                (sort_mode = (value ??
+                  sort_options[0]?.id ??
+                  "due") as SortMode)}
+            >
+              <Select.Trigger
+                class="h-9 w-full min-w-0 gap-2"
+                aria-label={m.explorer_sort_tasks()}
+              >
+                <ArrowUpDownIcon class="size-4" />
+                {sort_options.find((option) => option.id === sort_mode)
+                  ?.label ?? sort_options[0]?.label}
+              </Select.Trigger>
+              <Select.Content>
+                {#each sort_options as option (option.id)}<Select.Item
+                    value={option.id}>{option.label}</Select.Item
+                  >{/each}
+              </Select.Content>
+            </Select.Root>
+          </label>
         </div>
-        <label
-          class="grid min-w-[8rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
-          >{m.explorer_sort_by()}
-          <Select.Root
-            type="single"
-            value={sort_mode}
-            onValueChange={(value) =>
-              (sort_mode = (value ?? sort_options[0]?.id ?? "due") as SortMode)}
-          >
-            <Select.Trigger
-              class="h-9 w-full min-w-0 gap-2"
-              aria-label={m.explorer_sort_tasks()}
-            >
-              <ArrowUpDownIcon class="size-4" />
-              {sort_options.find((option) => option.id === sort_mode)?.label ??
-                sort_options[0]?.label}
-            </Select.Trigger>
-            <Select.Content>
-              {#each sort_options as option (option.id)}<Select.Item
-                  value={option.id}>{option.label}</Select.Item
-                >{/each}
-            </Select.Content>
-          </Select.Root>
-        </label>
-      </div>
-      <InputGroup.Root>
-        <InputGroup.Input
-          placeholder={board_scope === null
-            ? m.explorer_search_all()
-            : m.explorer_search_selected()}
-          aria-label={board_scope === null
-            ? m.explorer_search_all()
-            : m.explorer_search_selected()}
-          bind:value={search_text}
-        />
-        <InputGroup.Addon><SearchIcon /></InputGroup.Addon>
-        {#if search_text}
-          <InputGroup.Addon align="inline-end">
-            <InputGroup.Button
-              aria-label={m.explorer_clear_search()}
-              size="icon-xs"
-              onclick={() => (search_text = "")}
-            >
-              <XIcon />
-            </InputGroup.Button>
-          </InputGroup.Addon>
-        {/if}
-      </InputGroup.Root>
+        <InputGroup.Root>
+          <InputGroup.Input
+            placeholder={board_scope === null
+              ? m.explorer_search_all()
+              : m.explorer_search_selected()}
+            aria-label={board_scope === null
+              ? m.explorer_search_all()
+              : m.explorer_search_selected()}
+            bind:value={search_text}
+          />
+          <InputGroup.Addon><SearchIcon /></InputGroup.Addon>
+          {#if search_text}
+            <InputGroup.Addon align="inline-end">
+              <InputGroup.Button
+                aria-label={m.explorer_clear_search()}
+                size="icon-xs"
+                onclick={() => (search_text = "")}
+              >
+                <XIcon />
+              </InputGroup.Button>
+            </InputGroup.Addon>
+          {/if}
+        </InputGroup.Root>
 
-      <div
-        class="flex flex-wrap gap-2"
-        role="group"
-        aria-label={m.explorer_status()}
-      >
-        {#each focuses as view (view.id)}
-          <Button
-            variant={focus === view.id ? "default" : "outline"}
-            size="sm"
-            class="shrink-0"
-            aria-pressed={focus === view.id}
-            onclick={() => set_view(view.id)}>{view.label}</Button
-          >
-        {/each}
-      </div>
-      {#if active_filter_count}
         <div
-          class="flex flex-wrap items-center gap-2"
-          aria-label={m.explorer_applied()}
+          class="flex flex-wrap gap-2"
+          role="group"
+          aria-label={m.explorer_status()}
         >
-          {#if column_filter !== "all"}
+          {#each focuses as view (view.id)}
             <Button
-              variant="secondary"
-              size="xs"
-              title={m.explorer_clear_column()}
-              onclick={() => (column_filter = "all")}
+              variant={focus === view.id ? "default" : "outline"}
+              size="sm"
+              class="shrink-0"
+              aria-pressed={focus === view.id}
+              onclick={() => set_view(view.id)}>{view.label}</Button
             >
-              {m.explorer_filter_column({
-                name:
-                  column_options.find((column) => column.id === column_filter)
-                    ?.label ?? m.explorer_no_column(),
-              })}
-              <XIcon class="size-3" />
-            </Button>
-          {/if}
-          {#if due_filter !== "all"}
-            <Button
-              variant="secondary"
-              size="xs"
-              title={m.explorer_clear_due()}
-              onclick={() => {
-                due_filter = "all";
-                due_start = "";
-                due_end = "";
-              }}
-              >{due_filter === "due"
-                ? m.explorer_has_due()
-                : due_filter === "today"
-                  ? m.explorer_due_today()
-                  : due_filter === "custom"
-                    ? m.explorer_filter_due({
-                        start: range_date(due_start, m.explorer_any_start()),
-                        end: range_date(due_end, m.explorer_any_end()),
-                      })
-                    : m.task_due_none()}
-              <XIcon class="size-3" />
-            </Button>
-          {/if}
-          {#if priority_filter.length > 0}
-            <Button
-              variant="secondary"
-              size="xs"
-              title={m.explorer_clear_priority()}
-              onclick={() => (priority_filter = [])}
-            >
-              {m.task_priority_value({ level: priority_filter_label })}
-              <XIcon class="size-3" />
-            </Button>
-          {/if}
-          {#if archive_time_filter !== "all"}
-            <Button
-              variant="secondary"
-              size="xs"
-              title={m.explorer_clear_archive()}
-              onclick={() => {
-                archive_time_filter = "all";
-                archive_start = "";
-                archive_end = "";
-              }}
-              >{m.explorer_filter_archive({
-                range:
-                  archive_time_filter === "today"
-                    ? m.workspace_today()
-                    : archive_time_filter === "7d"
-                      ? m.explorer_last7()
-                      : archive_time_filter === "30d"
-                        ? m.explorer_last30()
-                        : archive_time_filter === "custom"
-                          ? m.explorer_range({
-                              start: range_date(
-                                archive_start,
-                                m.explorer_any_start(),
-                              ),
-                              end: range_date(
-                                archive_end,
-                                m.explorer_any_end(),
-                              ),
-                            })
-                          : m.explorer_year(),
-              })}
-              <XIcon class="size-3" />
-            </Button>
-          {/if}
-          <Button
-            variant="ghost"
-            size="xs"
-            title={m.explorer_clear_all_hint()}
-            onclick={reset_filters}
-            ><RotateCcwIcon class="size-3" />{m.explorer_clear_all()}</Button
-          >
+          {/each}
         </div>
-      {/if}
-
-      <div id="task-explorer-controls" hidden={!controls_open}>
-        {#if controls_open}
-          <div class="grid gap-3">
-            <div class="flex flex-wrap items-end gap-2">
-              {#if !global_scope && focus !== "archived"}
-                <label
-                  class="grid min-w-[9rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
-                >
-                  {m.explorer_column()}
-                  <Select.Root
-                    type="single"
-                    value={column_filter}
-                    onValueChange={(value) => (column_filter = value ?? "all")}
-                  >
-                    <Select.Trigger class="h-9 w-full min-w-0">
-                      {column_options.find(
-                        (column) => column.id === column_filter,
-                      )?.label ?? m.explorer_all_columns()}
-                    </Select.Trigger>
-                    <Select.Content>
-                      {#each column_options as column (column.id)}
-                        <Select.Item value={column.id}
-                          >{column.label}</Select.Item
-                        >
-                      {/each}
-                    </Select.Content>
-                  </Select.Root>
-                </label>
-              {/if}
-              <label
-                class="grid min-w-[8rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
+        {#if active_filter_count}
+          <div
+            class="flex flex-wrap items-center gap-2"
+            aria-label={m.explorer_applied()}
+          >
+            {#if column_filter !== "all"}
+              <Button
+                variant="secondary"
+                size="xs"
+                title={m.explorer_clear_column()}
+                onclick={() => (column_filter = "all")}
               >
-                {m.task_due_date()}
-                <Select.Root
-                  type="single"
-                  value={due_filter}
-                  onValueChange={(value) =>
-                    (due_filter = (value ?? "all") as DueFilter)}
-                >
-                  <Select.Trigger class="h-9 w-full min-w-0">
-                    {due_filter === "all"
-                      ? m.explorer_any_due()
-                      : due_filter === "due"
-                        ? m.explorer_has_due()
-                        : due_filter === "today"
-                          ? m.explorer_due_today()
-                          : due_filter === "custom"
-                            ? m.explorer_custom_range()
-                            : m.task_due_none()}
-                  </Select.Trigger>
-                  <Select.Content>
-                    <Select.Item value="all">{m.explorer_any_due()}</Select.Item
-                    >
-                    <Select.Item value="due">{m.explorer_has_due()}</Select.Item
-                    >
-                    <Select.Item value="today"
-                      >{m.explorer_due_today()}</Select.Item
-                    >
-                    <Select.Item value="none">{m.task_due_none()}</Select.Item>
-                    <Select.Item value="custom"
-                      >{m.explorer_custom_range()}</Select.Item
-                    >
-                  </Select.Content>
-                </Select.Root>
-              </label>
-              <div
-                class="grid min-w-[8rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
-              >
-                <span id="task-explorer-priority-label"
-                  >{m.task_priority()}</span
-                >
-                <DropdownMenu.Root>
-                  <DropdownMenu.Trigger>
-                    {#snippet child({ props })}
-                      <Button
-                        {...props}
-                        variant="outline"
-                        class="h-9 w-full min-w-0 justify-between font-normal"
-                        aria-labelledby="task-explorer-priority-label task-explorer-priority-selection"
-                      >
-                        <span
-                          id="task-explorer-priority-selection"
-                          class="truncate"
-                          >{priority_filter.length > 0
-                            ? priority_filter_label
-                            : m.explorer_any_priority()}</span
-                        >
-                        <ChevronDownIcon class="size-4" />
-                      </Button>
-                    {/snippet}
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Content align="start">
-                    {#each priority_filters as priority (priority)}
-                      <DropdownMenu.CheckboxItem
-                        checked={priority_filter.includes(priority)}
-                        closeOnSelect={false}
-                        onCheckedChange={(checked) => {
-                          priority_filter = checked
-                            ? [...priority_filter, priority]
-                            : priority_filter.filter(
-                                (item) => item !== priority,
-                              );
-                        }}
-                      >
-                        {#if priority === "none"}
-                          {m.task_priority_none()}
-                        {:else}
-                          <PriorityIndicator {priority} />
-                        {/if}
-                      </DropdownMenu.CheckboxItem>
-                    {/each}
-                  </DropdownMenu.Content>
-                </DropdownMenu.Root>
-              </div>
-            </div>
-            {#if due_filter === "custom"}
-              <div class="grid grid-cols-2 gap-3">
-                <DateFilterPicker
-                  label={m.explorer_due_from()}
-                  bind:value={due_start}
-                  max={due_end || undefined}
-                  invalid={invalid_due_range}
-                  describedby="due-range-help"
-                />
-                <DateFilterPicker
-                  label={m.explorer_due_through()}
-                  bind:value={due_end}
-                  min={due_start || undefined}
-                  invalid={invalid_due_range}
-                  describedby="due-range-help"
-                />
-              </div>
-              <p
-                id="due-range-help"
-                class={invalid_due_range
-                  ? "text-xs text-destructive"
-                  : "text-xs text-muted-foreground"}
-                role={invalid_due_range ? "alert" : undefined}
-              >
-                {invalid_due_range
-                  ? m.explorer_range_invalid()
-                  : m.explorer_due_help()}
-              </p>
+                {m.explorer_filter_column({
+                  name:
+                    column_options.find((column) => column.id === column_filter)
+                      ?.label ?? m.explorer_no_column(),
+                })}
+                <XIcon class="size-3" />
+              </Button>
             {/if}
-            {#if focus === "archived" || focus === "all"}
+            {#if due_filter !== "all"}
+              <Button
+                variant="secondary"
+                size="xs"
+                title={m.explorer_clear_due()}
+                onclick={() => {
+                  due_filter = "all";
+                  due_start = "";
+                  due_end = "";
+                }}
+                >{due_filter === "due"
+                  ? m.explorer_has_due()
+                  : due_filter === "today"
+                    ? m.explorer_due_today()
+                    : due_filter === "custom"
+                      ? m.explorer_filter_due({
+                          start: range_date(due_start, m.explorer_any_start()),
+                          end: range_date(due_end, m.explorer_any_end()),
+                        })
+                      : m.task_due_none()}
+                <XIcon class="size-3" />
+              </Button>
+            {/if}
+            {#if priority_filter.length > 0}
+              <Button
+                variant="secondary"
+                size="xs"
+                title={m.explorer_clear_priority()}
+                onclick={() => (priority_filter = [])}
+              >
+                {m.task_priority_value({ level: priority_filter_label })}
+                <XIcon class="size-3" />
+              </Button>
+            {/if}
+            {#if archive_time_filter !== "all"}
+              <Button
+                variant="secondary"
+                size="xs"
+                title={m.explorer_clear_archive()}
+                onclick={() => {
+                  archive_time_filter = "all";
+                  archive_start = "";
+                  archive_end = "";
+                }}
+                >{m.explorer_filter_archive({
+                  range:
+                    archive_time_filter === "today"
+                      ? m.workspace_today()
+                      : archive_time_filter === "7d"
+                        ? m.explorer_last7()
+                        : archive_time_filter === "30d"
+                          ? m.explorer_last30()
+                          : archive_time_filter === "custom"
+                            ? m.explorer_range({
+                                start: range_date(
+                                  archive_start,
+                                  m.explorer_any_start(),
+                                ),
+                                end: range_date(
+                                  archive_end,
+                                  m.explorer_any_end(),
+                                ),
+                              })
+                            : m.explorer_year(),
+                })}
+                <XIcon class="size-3" />
+              </Button>
+            {/if}
+            <Button
+              variant="ghost"
+              size="xs"
+              title={m.explorer_clear_all_hint()}
+              onclick={reset_filters}
+              ><RotateCcwIcon class="size-3" />{m.explorer_clear_all()}</Button
+            >
+          </div>
+        {/if}
+
+        <div id="task-explorer-controls" hidden={!controls_open}>
+          {#if controls_open}
+            <div class="grid gap-3">
               <div class="flex flex-wrap items-end gap-2">
+                {#if !global_scope && focus !== "archived"}
+                  <label
+                    class="grid min-w-[9rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {m.explorer_column()}
+                    <Select.Root
+                      type="single"
+                      value={column_filter}
+                      onValueChange={(value) =>
+                        (column_filter = value ?? "all")}
+                    >
+                      <Select.Trigger class="h-9 w-full min-w-0">
+                        {column_options.find(
+                          (column) => column.id === column_filter,
+                        )?.label ?? m.explorer_all_columns()}
+                      </Select.Trigger>
+                      <Select.Content>
+                        {#each column_options as column (column.id)}
+                          <Select.Item value={column.id}
+                            >{column.label}</Select.Item
+                          >
+                        {/each}
+                      </Select.Content>
+                    </Select.Root>
+                  </label>
+                {/if}
                 <label
-                  class="grid min-w-[10rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
+                  class="grid min-w-[8rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
                 >
-                  {m.explorer_archive_time()}
+                  {m.task_due_date()}
                   <Select.Root
                     type="single"
-                    value={archive_time_filter}
+                    value={due_filter}
                     onValueChange={(value) =>
-                      (archive_time_filter = (value ??
-                        "all") as ArchiveTimeFilter)}
+                      (due_filter = (value ?? "all") as DueFilter)}
                   >
                     <Select.Trigger class="h-9 w-full min-w-0">
-                      {archive_time_filter === "all"
-                        ? m.explorer_any_time()
-                        : archive_time_filter === "today"
-                          ? m.workspace_today()
-                          : archive_time_filter === "7d"
-                            ? m.explorer_last7()
-                            : archive_time_filter === "30d"
-                              ? m.explorer_last30()
-                              : archive_time_filter === "custom"
-                                ? m.explorer_custom_range()
-                                : m.explorer_year()}
+                      {due_filter === "all"
+                        ? m.explorer_any_due()
+                        : due_filter === "due"
+                          ? m.explorer_has_due()
+                          : due_filter === "today"
+                            ? m.explorer_due_today()
+                            : due_filter === "custom"
+                              ? m.explorer_custom_range()
+                              : m.task_due_none()}
                     </Select.Trigger>
                     <Select.Content>
                       <Select.Item value="all"
-                        >{m.explorer_any_time()}</Select.Item
+                        >{m.explorer_any_due()}</Select.Item
+                      >
+                      <Select.Item value="due"
+                        >{m.explorer_has_due()}</Select.Item
                       >
                       <Select.Item value="today"
-                        >{m.workspace_today()}</Select.Item
+                        >{m.explorer_due_today()}</Select.Item
                       >
-                      <Select.Item value="7d">{m.explorer_last7()}</Select.Item>
-                      <Select.Item value="30d"
-                        >{m.explorer_last30()}</Select.Item
-                      >
-                      <Select.Item value="year">{m.explorer_year()}</Select.Item
+                      <Select.Item value="none">{m.task_due_none()}</Select.Item
                       >
                       <Select.Item value="custom"
                         >{m.explorer_custom_range()}</Select.Item
@@ -936,41 +855,169 @@
                     </Select.Content>
                   </Select.Root>
                 </label>
+                <div
+                  class="grid min-w-[8rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
+                >
+                  <span id="task-explorer-priority-label"
+                    >{m.task_priority()}</span
+                  >
+                  <DropdownMenu.Root>
+                    <DropdownMenu.Trigger>
+                      {#snippet child({ props })}
+                        <Button
+                          {...props}
+                          variant="outline"
+                          class="h-9 w-full min-w-0 justify-between font-normal"
+                          aria-labelledby="task-explorer-priority-label task-explorer-priority-selection"
+                        >
+                          <span
+                            id="task-explorer-priority-selection"
+                            class="truncate"
+                            >{priority_filter.length > 0
+                              ? priority_filter_label
+                              : m.explorer_any_priority()}</span
+                          >
+                          <ChevronDownIcon class="size-4" />
+                        </Button>
+                      {/snippet}
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Content align="start">
+                      {#each priority_filters as priority (priority)}
+                        <DropdownMenu.CheckboxItem
+                          checked={priority_filter.includes(priority)}
+                          closeOnSelect={false}
+                          onCheckedChange={(checked) => {
+                            priority_filter = checked
+                              ? [...priority_filter, priority]
+                              : priority_filter.filter(
+                                  (item) => item !== priority,
+                                );
+                          }}
+                        >
+                          {#if priority === "none"}
+                            {m.task_priority_none()}
+                          {:else}
+                            <PriorityIndicator {priority} />
+                          {/if}
+                        </DropdownMenu.CheckboxItem>
+                      {/each}
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Root>
+                </div>
               </div>
-              {#if archive_time_filter === "custom"}
+              {#if due_filter === "custom"}
                 <div class="grid grid-cols-2 gap-3">
                   <DateFilterPicker
-                    label={m.ui_start_date()}
-                    bind:value={archive_start}
-                    max={archive_end || undefined}
-                    invalid={invalid_archive_range}
-                    describedby="archive-range-help"
+                    label={m.explorer_due_from()}
+                    bind:value={due_start}
+                    max={due_end || undefined}
+                    invalid={invalid_due_range}
+                    describedby="due-range-help"
                   />
                   <DateFilterPicker
-                    label={m.explorer_end()}
-                    bind:value={archive_end}
-                    min={archive_start || undefined}
-                    invalid={invalid_archive_range}
-                    describedby="archive-range-help"
+                    label={m.explorer_due_through()}
+                    bind:value={due_end}
+                    min={due_start || undefined}
+                    invalid={invalid_due_range}
+                    describedby="due-range-help"
                   />
                 </div>
                 <p
-                  id="archive-range-help"
-                  class={invalid_archive_range
+                  id="due-range-help"
+                  class={invalid_due_range
                     ? "text-xs text-destructive"
                     : "text-xs text-muted-foreground"}
-                  role={invalid_archive_range ? "alert" : undefined}
+                  role={invalid_due_range ? "alert" : undefined}
                 >
-                  {invalid_archive_range
+                  {invalid_due_range
                     ? m.explorer_range_invalid()
-                    : m.explorer_archive_help()}
+                    : m.explorer_due_help()}
                 </p>
               {/if}
-            {/if}
-          </div>
-        {/if}
+              {#if focus === "archived" || focus === "all"}
+                <div class="flex flex-wrap items-end gap-2">
+                  <label
+                    class="grid min-w-[10rem] flex-1 gap-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {m.explorer_archive_time()}
+                    <Select.Root
+                      type="single"
+                      value={archive_time_filter}
+                      onValueChange={(value) =>
+                        (archive_time_filter = (value ??
+                          "all") as ArchiveTimeFilter)}
+                    >
+                      <Select.Trigger class="h-9 w-full min-w-0">
+                        {archive_time_filter === "all"
+                          ? m.explorer_any_time()
+                          : archive_time_filter === "today"
+                            ? m.workspace_today()
+                            : archive_time_filter === "7d"
+                              ? m.explorer_last7()
+                              : archive_time_filter === "30d"
+                                ? m.explorer_last30()
+                                : archive_time_filter === "custom"
+                                  ? m.explorer_custom_range()
+                                  : m.explorer_year()}
+                      </Select.Trigger>
+                      <Select.Content>
+                        <Select.Item value="all"
+                          >{m.explorer_any_time()}</Select.Item
+                        >
+                        <Select.Item value="today"
+                          >{m.workspace_today()}</Select.Item
+                        >
+                        <Select.Item value="7d"
+                          >{m.explorer_last7()}</Select.Item
+                        >
+                        <Select.Item value="30d"
+                          >{m.explorer_last30()}</Select.Item
+                        >
+                        <Select.Item value="year"
+                          >{m.explorer_year()}</Select.Item
+                        >
+                        <Select.Item value="custom"
+                          >{m.explorer_custom_range()}</Select.Item
+                        >
+                      </Select.Content>
+                    </Select.Root>
+                  </label>
+                </div>
+                {#if archive_time_filter === "custom"}
+                  <div class="grid grid-cols-2 gap-3">
+                    <DateFilterPicker
+                      label={m.ui_start_date()}
+                      bind:value={archive_start}
+                      max={archive_end || undefined}
+                      invalid={invalid_archive_range}
+                      describedby="archive-range-help"
+                    />
+                    <DateFilterPicker
+                      label={m.explorer_end()}
+                      bind:value={archive_end}
+                      min={archive_start || undefined}
+                      invalid={invalid_archive_range}
+                      describedby="archive-range-help"
+                    />
+                  </div>
+                  <p
+                    id="archive-range-help"
+                    class={invalid_archive_range
+                      ? "text-xs text-destructive"
+                      : "text-xs text-muted-foreground"}
+                    role={invalid_archive_range ? "alert" : undefined}
+                  >
+                    {invalid_archive_range
+                      ? m.explorer_range_invalid()
+                      : m.explorer_archive_help()}
+                  </p>
+                {/if}
+              {/if}
+            </div>
+          {/if}
+        </div>
       </div>
-    </div>
+    </ScrollArea>
 
     <div class="flex min-h-0 flex-1 flex-col px-4 py-3">
       {#if all_task_items_error && !loading && entries.length === 0}

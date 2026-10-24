@@ -3,6 +3,7 @@
   import { formatNumber } from "$lib/i18n";
   import { m } from "$lib/paraglide/messages.js";
   import "$lib/i18n/locale.svelte";
+  import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -15,10 +16,13 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
+  import type { Snippet } from "svelte";
   import type { BoardRole } from "../../board.svelte";
-  import { MAX_FOCUSES, type Focus } from "../../type/focus";
+  import { MAX_FOCUSES, TODAY_FOCUS_ID, type Focus } from "../../type/focus";
 
   export interface BoardItem {
     id: number;
@@ -81,6 +85,12 @@
     focuses.filter((view) =>
       view.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
     ),
+  );
+  const show_today = $derived(
+    m
+      .workspace_today()
+      .toLocaleLowerCase()
+      .includes(search.trim().toLocaleLowerCase()),
   );
   let delete_view_open = $state(false);
   let selected_view = $state<Focus | null>(null);
@@ -184,6 +194,150 @@
 
 <svelte:window onkeydown={handle_keydown} />
 
+<!-- The ⋯ button offers the right-click menu to pointer and keyboard users. -->
+{#snippet actions_button(
+  label: string,
+  items: Snippet<["context" | "dropdown"]>,
+)}
+  <DropdownMenu.Root>
+    <DropdownMenu.Trigger>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          variant="ghost"
+          size="icon-xs"
+          class="absolute end-1 top-1/2 -translate-y-1/2 text-muted-foreground opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+          aria-label={label}
+          title={label}
+        >
+          <EllipsisIcon />
+        </Button>
+      {/snippet}
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Content align="start" class="min-w-40">
+      {@render items("dropdown")}
+    </DropdownMenu.Content>
+  </DropdownMenu.Root>
+{/snippet}
+
+{#snippet focus_row(id: string, name: string, builtin: boolean, view?: Focus)}
+  {#snippet items(kind: "context" | "dropdown")}
+    {@const Item = kind === "context" ? ContextMenu.Item : DropdownMenu.Item}
+    {@const Separator =
+      kind === "context" ? ContextMenu.Separator : DropdownMenu.Separator}
+    {#if !builtin}
+      <Item
+        onclick={() => {
+          onEditFocus(id);
+          open = false;
+        }}
+        ><PencilIcon />
+        {m.common_edit()}</Item
+      >
+    {/if}
+    <Item onclick={() => onFloatFocus(id)}
+      ><PictureInPicture2Icon />
+      {m.focus_float_on_desktop()}</Item
+    >
+    {#if view}
+      <Separator />
+      <Item variant="destructive" onclick={() => open_delete_view_dialog(view)}
+        ><Trash2Icon />
+        {m.common_delete()}</Item
+      >
+    {/if}
+  {/snippet}
+  <ContextMenu.Root>
+    <ContextMenu.Trigger class="group/row relative block">
+      <button
+        type="button"
+        class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-2 pe-8 text-left text-sm transition-colors ${id === active_focus_id ? "bg-background font-medium text-foreground shadow-xs before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}
+        onclick={() => select_view(id)}
+        aria-current={id === active_focus_id ? "page" : undefined}
+        title={name}
+      >
+        <ListFilterIcon
+          class="size-4 shrink-0 text-primary"
+          aria-hidden="true"
+        />
+        <span class="min-w-0 flex-1 truncate">{name}</span>
+      </button>
+      {@render actions_button(m.focus_actions({ name }), items)}
+    </ContextMenu.Trigger>
+    <ContextMenu.Content>
+      {@render items("context")}
+    </ContextMenu.Content>
+  </ContextMenu.Root>
+{/snippet}
+
+{#snippet board_row(item: BoardItem)}
+  {#snippet items(kind: "context" | "dropdown")}
+    {@const Item = kind === "context" ? ContextMenu.Item : DropdownMenu.Item}
+    {@const Separator =
+      kind === "context" ? ContextMenu.Separator : DropdownMenu.Separator}
+    {#if item.shared_role === "owner"}
+      <Item onclick={() => open_rename_dialog(item)}
+        ><PencilIcon />
+        {m.board_rename_action()}</Item
+      ><Separator />
+    {/if}
+    <Item
+      variant="destructive"
+      disabled={boards.length <= 1}
+      onclick={() => open_delete_dialog(item)}
+      ><Trash2Icon />
+      {m.common_delete()}</Item
+    >
+  {/snippet}
+  {@const current = item.id === active_board_id && !active_focus_id}
+  <ContextMenu.Root>
+    <ContextMenu.Trigger class="group/row relative block">
+      <button
+        type="button"
+        class={`relative flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-3 pe-2 text-left text-sm transition-colors ${current ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+        onclick={() => select_board(item.id)}
+        aria-current={current ? "page" : undefined}
+        title={item.shared_role === "owner"
+          ? item.name
+          : m.board_shared_name({
+              name: item.name,
+              permission:
+                item.shared_role === "viewer"
+                  ? m.board_read_only()
+                  : m.board_can_edit(),
+            })}
+      >
+        {#if item.shared_role !== "owner"}
+          <UsersIcon class="size-4 shrink-0 text-primary" aria-hidden="true" />
+        {/if}
+        <span class="min-w-0 flex-1">
+          <span class="block truncate">{item.name}</span>
+          {#if item.shared_role !== "owner"}
+            <span
+              class="block truncate text-[11px] font-normal leading-4 text-muted-foreground"
+            >
+              {m.board_shared()} ·
+              {item.shared_role === "viewer"
+                ? m.board_read_only()
+                : m.board_can_edit()}
+            </span>
+          {/if}
+        </span>
+        <!-- The ⋯ button takes the count's place while shown. -->
+        <span
+          class={`min-w-6 shrink-0 text-end text-xs tabular-nums group-hover/row:invisible group-focus-within/row:invisible ${item.task_count === 0 ? "text-muted-foreground/60" : "text-muted-foreground"}`}
+          title={m.task_count({ count: item.task_count })}
+          >{formatNumber(item.task_count)}</span
+        >
+      </button>
+      {@render actions_button(m.board_actions({ name: item.name }), items)}
+    </ContextMenu.Trigger>
+    <ContextMenu.Content>
+      {@render items("context")}
+    </ContextMenu.Content>
+  </ContextMenu.Root>
+{/snippet}
+
 {#if open}
   <div class="fixed inset-0 z-30" aria-label={m.board_navigation()}>
     <button
@@ -214,7 +368,7 @@
       <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="vertical">
         <nav class="min-w-0 px-2 py-2" aria-label={m.board_list_navigation()}>
           <section
-            class="mb-3 rounded-md bg-muted/50 p-1"
+            class="rounded-md bg-muted/50 p-1"
             aria-labelledby="drawer-focuses"
           >
             <div class="flex h-8 items-center justify-between ps-2 pe-1">
@@ -243,137 +397,39 @@
                 <PlusIcon />
               </Button>
             </div>
-            {#if filtered_focuses.length > 0}
+            <div class="space-y-0.5">
+              {#if show_today}
+                {@render focus_row(TODAY_FOCUS_ID, m.workspace_today(), true)}
+              {/if}
+              {#each filtered_focuses as view (view.id)}
+                {@render focus_row(view.id, view.name, false, view)}
+              {/each}
+            </div>
+          </section>
+          <Separator class="my-3" />
+          <section aria-labelledby="drawer-boards">
+            <h3
+              id="drawer-boards"
+              class="flex h-8 items-center gap-1.5 px-3 text-xs font-semibold text-foreground"
+            >
+              <LayoutDashboardIcon class="size-3.5 text-primary" />
+              {m.board_list()}
+              <span class="font-normal text-muted-foreground"
+                >· {formatNumber(boards.length)}</span
+              >
+            </h3>
+            {#if filtered_boards.length > 0}
               <div class="space-y-0.5">
-                {#each filtered_focuses as view (view.id)}
-                  <ContextMenu.Root>
-                    <ContextMenu.Trigger>
-                      <button
-                        type="button"
-                        class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${view.id === active_focus_id ? "bg-background font-medium text-foreground shadow-xs before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}
-                        onclick={() => select_view(view.id)}
-                        aria-current={view.id === active_focus_id
-                          ? "page"
-                          : undefined}
-                        title={view.name}
-                      >
-                        <ListFilterIcon
-                          class="size-4 shrink-0 text-primary"
-                          aria-hidden="true"
-                        />
-                        <span class="min-w-0 flex-1 truncate">{view.name}</span>
-                      </button>
-                    </ContextMenu.Trigger>
-                    <ContextMenu.Content>
-                      <ContextMenu.Item
-                        onclick={() => {
-                          onEditFocus(view.id);
-                          open = false;
-                        }}
-                        ><PencilIcon />
-                        {m.common_edit()}</ContextMenu.Item
-                      >
-                      <ContextMenu.Item onclick={() => onFloatFocus(view.id)}
-                        ><PictureInPicture2Icon />
-                        {m.focus_float_on_desktop()}</ContextMenu.Item
-                      ><ContextMenu.Separator />
-                      <ContextMenu.Item
-                        variant="destructive"
-                        onclick={() => open_delete_view_dialog(view)}
-                        ><Trash2Icon />
-                        {m.common_delete()}</ContextMenu.Item
-                      >
-                    </ContextMenu.Content>
-                  </ContextMenu.Root>
+                {#each filtered_boards as item (item.id)}
+                  {@render board_row(item)}
                 {/each}
               </div>
-            {:else if focuses.length === 0}
-              <p class="px-2 py-2 text-xs text-muted-foreground">
-                {m.focus_none()}
+            {:else}
+              <p class="px-3 py-8 text-center text-sm text-muted-foreground">
+                {m.board_empty()}
               </p>
             {/if}
           </section>
-          <h3
-            class="flex h-8 items-center gap-1.5 px-3 text-xs font-semibold text-foreground"
-          >
-            <LayoutDashboardIcon class="size-3.5 text-muted-foreground" />
-            {m.board_list()}
-            <span class="font-normal text-muted-foreground"
-              >· {formatNumber(boards.length)}</span
-            >
-          </h3>
-          {#if filtered_boards.length > 0}
-            <div class="space-y-0.5">
-              {#each filtered_boards as item (item.id)}
-                <ContextMenu.Root>
-                  <ContextMenu.Trigger>
-                    <button
-                      type="button"
-                      class={`relative flex min-h-10 w-full min-w-0 items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors ${item.id === active_board_id && !active_focus_id ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
-                      onclick={() => select_board(item.id)}
-                      aria-current={item.id === active_board_id &&
-                      !active_focus_id
-                        ? "page"
-                        : undefined}
-                      title={item.shared_role === "owner"
-                        ? item.name
-                        : m.board_shared_name({
-                            name: item.name,
-                            permission:
-                              item.shared_role === "viewer"
-                                ? m.board_read_only()
-                                : m.board_can_edit(),
-                          })}
-                    >
-                      {#if item.shared_role !== "owner"}
-                        <UsersIcon
-                          class="size-4 shrink-0 text-primary"
-                          aria-hidden="true"
-                        />
-                      {/if}
-                      <span class="min-w-0 flex-1">
-                        <span class="block truncate">{item.name}</span>
-                        {#if item.shared_role !== "owner"}
-                          <span
-                            class="block truncate text-[11px] font-normal leading-4 text-muted-foreground"
-                          >
-                            {m.board_shared()} ·
-                            {item.shared_role === "viewer"
-                              ? m.board_read_only()
-                              : m.board_can_edit()}
-                          </span>
-                        {/if}
-                      </span>
-                      <span
-                        class={`shrink-0 text-xs tabular-nums ${item.task_count === 0 ? "text-muted-foreground/60" : "text-muted-foreground"}`}
-                        title={m.task_count({ count: item.task_count })}
-                        >{item.task_count}</span
-                      >
-                    </button>
-                  </ContextMenu.Trigger>
-                  <ContextMenu.Content>
-                    {#if item.shared_role === "owner"}
-                      <ContextMenu.Item onclick={() => open_rename_dialog(item)}
-                        ><PencilIcon />
-                        {m.board_rename_action()}</ContextMenu.Item
-                      ><ContextMenu.Separator />
-                    {/if}
-                    <ContextMenu.Item
-                      variant="destructive"
-                      disabled={boards.length <= 1}
-                      onclick={() => open_delete_dialog(item)}
-                      ><Trash2Icon />
-                      {m.common_delete()}</ContextMenu.Item
-                    >
-                  </ContextMenu.Content>
-                </ContextMenu.Root>
-              {/each}
-            </div>
-          {:else}
-            <p class="px-3 py-8 text-center text-sm text-muted-foreground">
-              {m.board_empty()}
-            </p>
-          {/if}
         </nav>
       </ScrollArea>
       <footer class="shrink-0 border-t p-2">

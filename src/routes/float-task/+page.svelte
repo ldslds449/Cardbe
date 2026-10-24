@@ -17,13 +17,10 @@
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { Menu } from "@tauri-apps/api/menu";
   import { LogicalSize } from "@tauri-apps/api/dpi";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount, tick } from "svelte";
 
-  import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
-  import ClockIcon from "@lucide/svelte/icons/clock";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
 
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
@@ -37,7 +34,8 @@
   import PriorityIndicator from "../components/task/priority_indicator.svelte";
   import Markdown from "../components/markdown.svelte";
   import ChecklistDisplay from "../components/task/checklist_display.svelte";
-  import { due_label, due_label_class } from "../components/task/due-label";
+  import DueBadge from "../components/task/due_badge.svelte";
+  import FloatingWindow from "../components/floating/floating_window.svelte";
 
   interface BoardsState {
     boards: Array<{ id: number; name: string }>;
@@ -92,17 +90,13 @@
     }
   }
 
-  const due = $derived(
-    task?.due_time ? due_label(task.due_time, now, task.due_at_midnight) : null,
-  );
-
   // The window height follows its content, so there is no empty bottom, up
   // to a share of the screen beyond which the body scrolls. Dragging can
   // shorten it, and the body then scrolls; the size constraints cap the
   // height at the content so a drag never adds empty space.
   const has_details = $derived(
     !!task &&
-      (!!due ||
+      (!!task.due_time ||
         !!task.recurrence ||
         task.labels.length > 0 ||
         task.items.length > 0 ||
@@ -213,12 +207,6 @@
         : "Cardbe",
   );
 
-  $effect(() => {
-    void float_window
-      .setTitle(window_title)
-      .catch((caught) => logger.warn("floating_task.title.failed", caught));
-  });
-
   async function load() {
     const generation = ++load_generation;
     try {
@@ -323,7 +311,6 @@
     };
     window.addEventListener("wheel", handle_wheel, { passive: false });
     return () => {
-      void context_menu?.close();
       window.removeEventListener("wheel", handle_wheel);
       window.clearTimeout(zoom_indicator_timer);
       window.clearInterval(clock);
@@ -332,29 +319,6 @@
       void data_changed.then((unlisten) => unlisten());
     };
   });
-
-  // The whole window is a drag handle. Like Tauri's own drag region, this uses
-  // mousedown, whose detail counts clicks (pointer events report 0), and a
-  // second press is a double-click: starting another drag would swallow it.
-  function handle_mousedown(event: MouseEvent) {
-    if (
-      event.button !== 0 ||
-      (event.target as Element | null)?.closest(
-        "a, [data-slot='scroll-area-scrollbar']",
-      )
-    ) {
-      return;
-    }
-    if (event.detail === 2) {
-      if (task) {
-        void open_in_cardbe();
-      }
-      return;
-    }
-    void float_window
-      .startDragging()
-      .catch((caught) => logger.warn("floating_task.drag.failed", caught));
-  }
 
   async function open_in_cardbe() {
     try {
@@ -371,61 +335,6 @@
       } else {
         error = parsed;
       }
-    }
-  }
-
-  // A native menu can extend past the small window instead of being clipped
-  // by it. It is rebuilt per popup so labels and enabled state stay current.
-  //
-  // Tauri's popup command holds this webview's resource table lock while the
-  // menu's modal loop runs on the main thread, and creating or closing a menu
-  // locks that table on the main thread. Any such call during a popup, like a
-  // second right-click, deadlocks the app, so nothing touches menus or runs
-  // an item's action until the popup has returned.
-  let context_menu: Menu | null = null;
-  let menu_open = false;
-  let pending_action: (() => void) | null = null;
-
-  function after_menu(action: () => void) {
-    if (menu_open) {
-      pending_action = action;
-    } else {
-      action();
-    }
-  }
-
-  async function show_context_menu(event: MouseEvent) {
-    event.preventDefault();
-    if (menu_open) {
-      return;
-    }
-    menu_open = true;
-    try {
-      await context_menu?.close();
-      context_menu = null;
-      const menu = await Menu.new({
-        items: [
-          {
-            text: m.floating_task_open_in_cardbe(),
-            enabled: !!task,
-            action: () => after_menu(() => void open_in_cardbe()),
-          },
-          { item: "Separator" },
-          {
-            text: m.floating_task_close(),
-            action: () => after_menu(() => void close_floating_window()),
-          },
-        ],
-      });
-      context_menu = menu;
-      await menu.popup(undefined, float_window);
-    } catch (caught) {
-      logger.warn("floating_task.menu.failed", caught);
-    } finally {
-      menu_open = false;
-      const action = pending_action;
-      pending_action = null;
-      action?.();
     }
   }
 
@@ -460,21 +369,18 @@
   }}
 />
 
-<svelte:head>
-  <title>{window_title}</title>
-</svelte:head>
-
-<main
-  class="flex h-screen select-none flex-col overflow-hidden border bg-background text-foreground outline-none"
-  aria-busy={loading}
-  oncontextmenu={show_context_menu}
+<FloatingWindow
+  title={window_title}
+  busy={loading}
+  hint={m.floating_task_hint()}
+  open_label={m.floating_task_open_in_cardbe()}
+  can_open={!!task}
+  close_label={m.floating_task_close()}
+  log_scope="floating_task"
+  onOpen={() => void open_in_cardbe()}
+  onClose={() => void close_floating_window()}
 >
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="flex min-h-0 flex-1 cursor-grab flex-col active:cursor-grabbing"
-    title={m.floating_task_hint()}
-    onmousedown={handle_mousedown}
-  >
+  <div class="flex min-h-0 flex-1 flex-col">
     <header class="shrink-0 px-3 pt-2.5 pb-1.5" bind:this={header}>
       <h1
         class="line-clamp-2 text-sm leading-5 font-semibold [overflow-wrap:anywhere]"
@@ -506,21 +412,14 @@
               {m.floating_task_missing_description()}
             </p>
           {:else if task}
-            {#if due || task.recurrence || task.priority}
+            {#if task.due_time || task.recurrence || task.priority}
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                {#if due}
-                  <span
-                    class="inline-flex items-center gap-1.5 {due_label_class(
-                      due.status,
-                    )}"
-                  >
-                    {#if due.status === "overdue"}
-                      <CircleAlertIcon class="size-3.5 shrink-0" />
-                    {:else}
-                      <ClockIcon class="size-3.5 shrink-0" />
-                    {/if}
-                    <span>{due.text}</span>
-                  </span>
+                {#if task.due_time}
+                  <DueBadge
+                    due_time={task.due_time}
+                    {now}
+                    at_midnight={task.due_at_midnight}
+                  />
                 {/if}
                 {#if task.recurrence}
                   <span
@@ -561,4 +460,4 @@
       {formatNumber(zoom, { style: "percent" })}
     </div>
   {/if}
-</main>
+</FloatingWindow>

@@ -518,6 +518,7 @@ pub fn run() {
             boards::get_board_archived_count,
             boards::delete_board,
             board::undo,
+            board::redo,
             board::add_column,
             board::update_column,
             board::move_column,

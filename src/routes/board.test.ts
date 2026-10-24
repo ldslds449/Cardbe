@@ -1072,6 +1072,33 @@ describe("Undo scope and shared Task Explorer updates", () => {
     },
   );
 
+  it("redoes undone changes until another change is made", async () => {
+    const store = create_store();
+    let redo_left = true;
+    invoke_mock.mockImplementation((command) =>
+      Promise.resolve(
+        command === "undo" ? true : command === "redo" ? redo_left : [],
+      ),
+    );
+    expect(await store.redo()).toBe(false);
+    store.can_undo = true;
+    expect(await store.undo()).toBe(true);
+    expect(store.can_redo).toBe(true);
+    redo_left = false;
+    expect(await store.redo()).toBe(true);
+    expect(
+      invoke_mock.mock.calls.find(([command]) => command === "redo")?.[1],
+    ).toEqual({ expectedBoardId: store.active_board_id });
+    expect(store.can_undo).toBe(true);
+    expect(store.can_redo).toBe(false);
+
+    expect(await store.undo()).toBe(true);
+    expect(store.can_redo).toBe(true);
+    // A new local change, such as adding a task.
+    store.can_undo = true;
+    expect(store.can_redo).toBe(false);
+  });
+
   it.each([false, true])(
     "settings preserve existing Undo availability (%s)",
     async (has_history) => {

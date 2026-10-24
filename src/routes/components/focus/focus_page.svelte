@@ -16,7 +16,6 @@
 
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
-  import ClockIcon from "@lucide/svelte/icons/clock";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import GaugeIcon from "@lucide/svelte/icons/gauge";
   import HourglassIcon from "@lucide/svelte/icons/hourglass";
@@ -44,7 +43,7 @@
   import type { Focus } from "../../type/focus";
   import ChooseColumnDialog from "../dialog/choose_column_dialog.svelte";
   import PriorityIndicator from "../task/priority_indicator.svelte";
-  import { due_label, due_label_class } from "../task/due-label";
+  import DueBadge from "../task/due_badge.svelte";
   import { group_focus_items } from "./focus-groups";
   import { load_focus_results } from "./focus-results";
 
@@ -63,7 +62,8 @@
     boards: { id: number; shared_role: BoardRole }[];
     /** Set while a dialog opened from this page may still change tasks. */
     paused?: boolean;
-    onEdit: () => void;
+    /** Missing for the built-in views, which cannot be edited. */
+    onEdit?: () => void;
     onFloat?: () => void;
     onOpenTask: (item: AllTaskItem) => void;
     onOpenBoard: (board_id: number) => void;
@@ -261,10 +261,12 @@
         <PictureInPicture2Icon />
       </Button>
     {/if}
-    <Button variant="outline" size="sm" onclick={onEdit}>
-      <PencilIcon />
-      {m.common_edit()}
-    </Button>
+    {#if onEdit}
+      <Button variant="outline" size="sm" onclick={onEdit}>
+        <PencilIcon />
+        {m.common_edit()}
+      </Button>
+    {/if}
   </header>
 
   <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="vertical">
@@ -291,12 +293,14 @@
             <Empty.Title>{m.focus_empty()}</Empty.Title>
             <Empty.Description>{m.focus_empty_description()}</Empty.Description>
           </Empty.Header>
-          <Empty.Content>
-            <Button variant="outline" onclick={onEdit}>
-              <PencilIcon />
-              {m.common_edit()}
-            </Button>
-          </Empty.Content>
+          {#if onEdit}
+            <Empty.Content>
+              <Button variant="outline" onclick={onEdit}>
+                <PencilIcon />
+                {m.common_edit()}
+              </Button>
+            </Empty.Content>
+          {/if}
         </Empty.Root>
       {:else}
         <div class="space-y-6">
@@ -314,13 +318,6 @@
               {/if}
               <ul class="divide-y rounded-md border">
                 {#each group.items as item (item_key(item))}
-                  {@const due = item.task.due_time
-                    ? due_label(
-                        item.task.due_time,
-                        now,
-                        item.task.due_at_midnight,
-                      )
-                    : undefined}
                   {@const can_write = writable(item)}
                   {@const busy = busy_ids.has(item_key(item))}
                   {@const finished = item.done || Boolean(item.archived_at)}
@@ -385,17 +382,12 @@
                             >
                           </span>
                         {/if}
-                        {#if due}
-                          <span
-                            class={`inline-flex items-center gap-1 ${due_label_class(due.status)}`}
-                          >
-                            {#if due.status === "overdue"}
-                              <CircleAlertIcon class="size-3.5" />
-                            {:else}
-                              <ClockIcon class="size-3.5" />
-                            {/if}
-                            {due.text}
-                          </span>
+                        {#if item.task.due_time}
+                          <DueBadge
+                            due_time={item.task.due_time}
+                            {now}
+                            at_midnight={item.task.due_at_midnight}
+                          />
                         {/if}
                       </span>
                     </button>

@@ -29,6 +29,7 @@
   let {
     open = $bindable(false),
     view,
+    template = null,
     boards,
     label_suggestions,
     onSave,
@@ -36,6 +37,8 @@
     open: boolean;
     /** The view to edit, or null to create one. */
     view: Focus | null;
+    /** Conditions a new view starts from, when `view` is null. */
+    template?: Focus | null;
     boards: { id: number; name: string }[];
     label_suggestions: string[];
     onSave: (view: Focus) => Promise<boolean>;
@@ -47,7 +50,11 @@
 
   $effect(() => {
     if (open) {
-      draft = view ? clone_focus(view) : create_focus("");
+      draft = view
+        ? clone_focus(view)
+        : template
+          ? { ...clone_focus(template), id: create_focus("").id }
+          : create_focus("");
       invalid_name = false;
     }
   });

@@ -37,7 +37,14 @@
   import FocusPage from "./components/focus/focus_page.svelte";
   import FocusDialog from "./components/focus/focus_dialog.svelte";
   import { FocusStore } from "./focuses.svelte";
-  import type { Focus } from "./type/focus";
+  import {
+    focus_from_explorer,
+    is_builtin_focus,
+    MAX_FOCUSES,
+    TODAY_FOCUS_ID,
+    type ExplorerConditions,
+    type Focus,
+  } from "./type/focus";
   import type { AllTaskItem } from "./board-base.svelte";
   import AddColumnDialog from "./components/dialog/add_column_dialog.svelte";
   import EditTaskDialog from "./components/dialog/edit_task_dialog.svelte";
@@ -56,7 +63,6 @@
   import GanttView from "./components/gantt/gantt_view.svelte";
   import type { GanttScale } from "./components/gantt/gantt";
   import type { TaskDates } from "./utils/task-date-range";
-  import TodayView from "./components/today/today_view.svelte";
   import NotePanel from "./components/note/note_panel.svelte";
   import CardReferencePreview from "./components/card_reference_preview.svelte";
   import IrohRemovalNotice from "./components/share/iroh_removal_notice.svelte";
@@ -64,7 +70,10 @@
   import AppToolbar from "./components/workspace/app_toolbar.svelte";
   import BoardSidebar from "./components/workspace/board_sidebar.svelte";
   import WorkspaceTabs from "./components/workspace/workspace_tabs.svelte";
-  import type { WorkspaceView } from "./components/workspace/workspace";
+  import {
+    WORKSPACE_VIEWS,
+    type WorkspaceView,
+  } from "./components/workspace/workspace";
   import {
     UPDATE_POLL_INTERVAL_MS,
     UPDATE_STARTUP_DELAY_MS,
@@ -84,8 +93,8 @@
   import { board, type ImportCandidate } from "./board.svelte";
 
   // menubar state
-  let active_view = $state<WorkspaceView>("today");
-  let selected_view = $state<WorkspaceView>("today");
+  let active_view = $state<WorkspaceView>("board");
+  let selected_view = $state<WorkspaceView>("board");
   $effect(() => {
     if (
       active_view === "statistics" &&
@@ -134,19 +143,43 @@
   // all-task explorer
   let all_task_open = $state(false);
 
-  // Focuses, shown in place of the active board
+  // Focuses, shown in place of the active board; the app opens on Today.
   const focuses = new FocusStore();
-  let active_focus_id = $state<string | null>(null);
+  let active_focus_id = $state<string | null>(TODAY_FOCUS_ID);
   const active_focus = $derived(
     active_focus_id === null ? undefined : focuses.find(active_focus_id),
   );
   let focus_dialog_open = $state(false);
   let editing_focus = $state<Focus | null>(null);
+  let focus_template = $state<Focus | null>(null);
 
-  function edit_focus(view: Focus | null) {
+  function edit_focus(view: Focus | null, template: Focus | null = null) {
     editing_focus = view;
+    focus_template = template;
     focus_dialog_open = true;
   }
+
+  function save_explorer_as_focus(conditions: ExplorerConditions) {
+    const { view, partial } = focus_from_explorer(conditions);
+    all_task_open = false;
+    edit_focus(null, view);
+    if (partial) {
+      toast.info(m.focus_from_explorer_partial());
+    }
+  }
+
+  function open_focus(id: string) {
+    // The toolbar search only filters board views.
+    search_text = "";
+    active_focus_id = id;
+  }
+
+  // Searching shows the board the search applies to.
+  $effect(() => {
+    if (search_text.trim()) {
+      untrack(() => (active_focus_id = null));
+    }
+  });
 
   async function save_focus(view: Focus): Promise<boolean> {
     if (!(await focuses.save(view))) {
@@ -543,15 +576,45 @@
       ) {
         return;
       }
+      const command = (event.ctrlKey || event.metaKey) && !event.altKey;
+      // Navigation stays behind open dialogs, sheets and menus.
+      const overlay_open =
+        document.querySelector(
+          "[role='dialog'], [role='alertdialog'], [role='menu']",
+        ) !== null;
 
-      if (
-        event.code === "KeyZ" &&
-        (event.ctrlKey || event.metaKey) &&
-        !event.shiftKey &&
-        !event.altKey
-      ) {
+      if (event.code === "KeyZ" && command && !event.shiftKey) {
         event.preventDefault();
         void board.undo();
+      } else if (
+        command &&
+        ((event.code === "KeyZ" && event.shiftKey) ||
+          (event.code === "KeyY" && !event.shiftKey))
+      ) {
+        event.preventDefault();
+        void board.redo();
+      } else if (
+        command &&
+        !event.shiftKey &&
+        /^Digit[1-9]$/.test(event.code) &&
+        !overlay_open
+      ) {
+        const view = WORKSPACE_VIEWS[Number(event.code.slice(5)) - 1];
+        if (view) {
+          event.preventDefault();
+          active_focus_id = null;
+          switch_view(view);
+        }
+      } else if (
+        !overlay_open &&
+        ((command && !event.shiftKey && event.code === "KeyF") ||
+          (event.key === "/" &&
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey))
+      ) {
+        event.preventDefault();
+        focus_search();
       } else if (
         event.code === "KeyT" &&
         event.ctrlKey &&
@@ -696,7 +759,7 @@
           await focuses.load();
         }
         if (focuses.find(id)) {
-          active_focus_id = id;
+          open_focus(id);
         }
       },
     );
@@ -1141,6 +1204,15 @@
     void board.update_task(task.id, updated);
   }
 
+  function focus_search() {
+    active_focus_id = null;
+    const input = document.getElementById("workspace-search");
+    if (input instanceof HTMLInputElement) {
+      input.focus();
+      input.select();
+    }
+  }
+
   function switch_view(view: WorkspaceView) {
     selected_view = view;
     if (view === "calendar" || view === "gantt") {
@@ -1199,7 +1271,7 @@
       onDelete={delete_board}
       focuses={focuses.views}
       {active_focus_id}
-      onOpenFocus={(id) => (active_focus_id = id)}
+      onOpenFocus={open_focus}
       onCreateFocus={() => edit_focus(null)}
       onEditFocus={(id) => edit_focus(focuses.find(id) ?? null)}
       onFloatFocus={(id) => void float_focus(id)}
@@ -1208,6 +1280,7 @@
     <FocusDialog
       bind:open={focus_dialog_open}
       view={editing_focus}
+      template={focus_template}
       boards={board.boards}
       label_suggestions={board.labels}
       onSave={save_focus}
@@ -1222,7 +1295,7 @@
         search_pending={board.search_pending}
         search_error={board.search_error}
         bind:note_open
-        {selected_view}
+        show_task_details_toggle={!active_focus && selected_view === "board"}
         update_check_in_progress={updates.in_progress}
         read_only={active_board_read_only}
         web_publish_count={share_sync.summary.active_count}
@@ -1271,6 +1344,7 @@
         }}
         onOpenTaskTemplates={open_templates_dialog}
         onOpenAllTasks={() => (all_task_open = true)}
+        onFocusSearch={focus_search}
         onAddTask={open_add_task_shortcut}
         onAddColumn={open_add_column_dialog}
         onCheckForUpdates={(manual) => updates.check(manual)}
@@ -1281,7 +1355,9 @@
           view={active_focus}
           boards={board.boards}
           paused={task_dialog_open || view_task_dialog_open}
-          onEdit={() => edit_focus(active_focus)}
+          onEdit={is_builtin_focus(active_focus.id)
+            ? undefined
+            : () => edit_focus(active_focus)}
           onFloat={() => void float_focus(active_focus.id)}
           onOpenTask={(item) => void open_focus_task(item)}
           onOpenBoard={open_board}
@@ -1304,173 +1380,6 @@
             ? () => void board.sync_iroh_board(active_board_summary.id)
             : undefined}
           onSwitchView={switch_view}
-        />
-
-        <AllTaskExplorer
-          bind:open={all_task_open}
-          active_board_id={board.active_board_id}
-          boards={board.boards}
-          columns={board.columns}
-          all_task_items={board.all_task_items}
-          all_task_items_loading={board.all_task_items_loading}
-          all_task_items_error={board.all_task_items_error}
-          all_task_items_has_more={board.all_task_items_has_more}
-          read_only={active_board_read_only}
-          onSwitchBoard={switch_board}
-          onLoadMoreAllTasks={board.load_more_all_tasks.bind(board)}
-          onSearchAllTasks={board.search_all_tasks.bind(board)}
-          onGetArchiveDetail={board.get_archive_detail.bind(board)}
-          onGetExpiredDetail={board.get_expired_task_detail.bind(board)}
-          onUnarchive={board.unarchive_task_from_list.bind(board)}
-          onViewTask={view_task_by_id}
-          onViewArchivedTask={view_archived_task}
-          onEditTask={edit_task_by_id}
-          onArchiveTask={(task) => void board.archive_task(task.id)}
-        />
-
-        <AddColumnDialog
-          bind:open={column_dialog_open}
-          bind:name={dialog_column_name}
-          bind:title_error={column_dialog_title_error}
-          onSubmit={handle_add_column}
-        />
-
-        <NotePanel
-          {requested_note}
-          onNotesChanged={() => note_revision++}
-          bind:open={note_open}
-          card_reference_options={board.columns.flatMap((column) =>
-            column.tasks.map((task) => ({ task, column_name: column.name })),
-          )}
-        />
-
-        <BoardShareDialog
-          bind:open={board_share_dialog_open}
-          columns={board.columns}
-          default_title={updates.app_name}
-          active_board_id={board.active_board_id}
-          boards={board.boards}
-          onRetireShare={(share_id) => share_sync.retire(share_id)}
-          onRetryShareStorage={async () => {
-            restore_managed_share_state(
-              board.boards.length === 1 ? board.boards[0].id : undefined,
-            );
-            if (!managed_share_state.storage_error) {
-              await share_sync.restore_all();
-            }
-          }}
-          onShareRevokeError={(share_id, error) => {
-            if (
-              !managed_share_state.shares.some((share) => share.id === share_id)
-            ) {
-              return;
-            }
-            managed_share_state.set_sync_state(
-              share_id,
-              "error",
-              m.share_revoke_retry(),
-            );
-          }}
-        />
-        <IrohShareDialog
-          bind:open={iroh_share_dialog_open}
-          show_requests={iroh_show_requests}
-          show_received={iroh_show_received}
-          onRequestsChanged={() => void refresh_device_requests()}
-          {board}
-        />
-
-        <TaskColumnDialog
-          bind:open={task_column_dialog_open}
-          bind:selected_column_id={task_column_id}
-          bind:selection_error={task_column_error}
-          column_items={task_column_items}
-          onSubmit={handle_task_column_select}
-          title={pending_import_task ? m.task_import() : m.task_add_card()}
-          description={pending_import_task
-            ? m.ui_select_the_column_where_this_task_should_be_imported()
-            : m.ui_select_the_column_for_the_new_card()}
-          submit_label={pending_import_task
-            ? m.common_import()
-            : m.ui_continue()}
-        />
-
-        <TaskTransferDialog
-          bind:export_open={task_share_dialog_open}
-          bind:import_open={task_import_dialog_open}
-          share_text={task_share_text}
-          bind:import_text={task_import_text}
-          import_error={task_import_error}
-          import_target_column={task_import_target_column_name}
-          onCopy={copy_task_share_text}
-          onImport={import_shared_task}
-        />
-
-        <TaskTemplateDialogs
-          bind:open={templates_dialog_open}
-          bind:save_open={save_template_dialog_open}
-          bind:selected_template_id
-          bind:template_column_id
-          bind:selection_error={template_selection_error}
-          bind:save_template_name
-          {saving_template}
-          templates={board.templates}
-          column_items={task_column_items}
-          onUseTemplate={use_selected_template}
-          onPreviewTemplate={preview_task_template}
-          onEditTemplate={edit_task_template}
-          onDeleteTemplate={(template_id) =>
-            board.delete_task_template(template_id)}
-          onSaveTemplate={save_task_template}
-        />
-
-        <EditTaskDialog
-          bind:open={task_dialog_open}
-          bind:task={dialog_task}
-          label_suggestions={board.labels}
-          card_reference_options={board.columns.flatMap((column) =>
-            column.tasks.map((task) => ({ task, column_name: column.name })),
-          )}
-          columns={board.columns}
-          dialog_title={dialog_title()}
-          submit_button_text={dialog_button_text()}
-          auto_focus_title={creating_task}
-          show_template_name={editing_template_id !== null}
-          bind:template_name={editing_template_name}
-          show_template_picker={creating_task}
-          templates={board.templates}
-          bind:selected_template_id={dialog_template_id}
-          on_template_change={apply_template_to_new_task}
-          dialog_done_callback={async () => {
-            if (await dialog_callback()) {
-              task_dialog_open = false;
-              editing_template_id = null;
-              creating_task = false;
-            }
-          }}
-        ></EditTaskDialog>
-
-        <ViewTaskDialog
-          bind:open={view_task_dialog_open}
-          task={view_task}
-          onEdit={active_board_read_only ? undefined : view_task_edit_callback}
-          onViewTask={(task) => view_task_by_id(task)}
-          history={board.active_board_id === null
-            ? undefined
-            : { board_id: board.active_board_id, columns: board.columns }}
-        />
-
-        <ViewTaskDialog
-          bind:open={template_preview_open}
-          task={template_preview_task}
-        />
-
-        <ImportConfirmDialog
-          bind:open={import_confirm_open}
-          candidate={import_candidate}
-          {importing}
-          {show_importing}
-          onConfirm={confirm_import}
         />
 
         {#if active_view === "flow" && board.active_board_id !== null}
@@ -1557,23 +1466,6 @@
                     {m.board_search_retry()}
                   </Button>
                 </div>
-              {:else if active_view === "today"}
-                <TodayView
-                  columns={board.columns}
-                  {search_text}
-                  search_task_ids={board.search_task_ids}
-                  onViewTask={view_task_by_id}
-                  onEditTask={edit_task_by_id}
-                  onDuplicateTask={(task) => board.duplicate_task(task.id)}
-                  onSaveAsTemplate={open_save_template_dialog}
-                  onExportTask={share_task}
-                  onAddTask={open_add_task_for_date}
-                  onArchiveTask={(task) => board.archive_task(task.id)}
-                  onCompleteTask={(task) =>
-                    void board.complete_tasks([task.id])}
-                  onDeleteTask={(task) => board.delete_task(task.id)}
-                  read_only={active_board_read_only}
-                />
               {:else if active_view === "calendar"}
                 <CalendarView
                   columns={board.columns}
@@ -1628,6 +1520,176 @@
           </ScrollArea>
         {/if}
       {/if}
+
+      <!-- Dialogs stay mounted while a Focus is shown: it opens tasks in them,
+           and toolbar actions use them. -->
+      <AllTaskExplorer
+        bind:open={all_task_open}
+        active_board_id={board.active_board_id}
+        boards={board.boards}
+        columns={board.columns}
+        all_task_items={board.all_task_items}
+        all_task_items_loading={board.all_task_items_loading}
+        all_task_items_error={board.all_task_items_error}
+        all_task_items_has_more={board.all_task_items_has_more}
+        read_only={active_board_read_only}
+        onSwitchBoard={switch_board}
+        onLoadMoreAllTasks={board.load_more_all_tasks.bind(board)}
+        onSearchAllTasks={board.search_all_tasks.bind(board)}
+        onGetArchiveDetail={board.get_archive_detail.bind(board)}
+        onGetExpiredDetail={board.get_expired_task_detail.bind(board)}
+        onUnarchive={board.unarchive_task_from_list.bind(board)}
+        onViewTask={view_task_by_id}
+        onViewArchivedTask={view_archived_task}
+        onEditTask={edit_task_by_id}
+        onArchiveTask={(task) => void board.archive_task(task.id)}
+        onSaveAsFocus={focuses.views.length < MAX_FOCUSES
+          ? save_explorer_as_focus
+          : undefined}
+      />
+
+      <AddColumnDialog
+        bind:open={column_dialog_open}
+        bind:name={dialog_column_name}
+        bind:title_error={column_dialog_title_error}
+        onSubmit={handle_add_column}
+      />
+
+      <NotePanel
+        {requested_note}
+        onNotesChanged={() => note_revision++}
+        bind:open={note_open}
+        card_reference_options={board.columns.flatMap((column) =>
+          column.tasks.map((task) => ({ task, column_name: column.name })),
+        )}
+      />
+
+      <BoardShareDialog
+        bind:open={board_share_dialog_open}
+        columns={board.columns}
+        default_title={updates.app_name}
+        active_board_id={board.active_board_id}
+        boards={board.boards}
+        onRetireShare={(share_id) => share_sync.retire(share_id)}
+        onRetryShareStorage={async () => {
+          restore_managed_share_state(
+            board.boards.length === 1 ? board.boards[0].id : undefined,
+          );
+          if (!managed_share_state.storage_error) {
+            await share_sync.restore_all();
+          }
+        }}
+        onShareRevokeError={(share_id, error) => {
+          if (
+            !managed_share_state.shares.some((share) => share.id === share_id)
+          ) {
+            return;
+          }
+          managed_share_state.set_sync_state(
+            share_id,
+            "error",
+            m.share_revoke_retry(),
+          );
+        }}
+      />
+      <IrohShareDialog
+        bind:open={iroh_share_dialog_open}
+        show_requests={iroh_show_requests}
+        show_received={iroh_show_received}
+        onRequestsChanged={() => void refresh_device_requests()}
+        {board}
+      />
+
+      <TaskColumnDialog
+        bind:open={task_column_dialog_open}
+        bind:selected_column_id={task_column_id}
+        bind:selection_error={task_column_error}
+        column_items={task_column_items}
+        onSubmit={handle_task_column_select}
+        title={pending_import_task ? m.task_import() : m.task_add_card()}
+        description={pending_import_task
+          ? m.ui_select_the_column_where_this_task_should_be_imported()
+          : m.ui_select_the_column_for_the_new_card()}
+        submit_label={pending_import_task ? m.common_import() : m.ui_continue()}
+      />
+
+      <TaskTransferDialog
+        bind:export_open={task_share_dialog_open}
+        bind:import_open={task_import_dialog_open}
+        share_text={task_share_text}
+        bind:import_text={task_import_text}
+        import_error={task_import_error}
+        import_target_column={task_import_target_column_name}
+        onCopy={copy_task_share_text}
+        onImport={import_shared_task}
+      />
+
+      <TaskTemplateDialogs
+        bind:open={templates_dialog_open}
+        bind:save_open={save_template_dialog_open}
+        bind:selected_template_id
+        bind:template_column_id
+        bind:selection_error={template_selection_error}
+        bind:save_template_name
+        {saving_template}
+        templates={board.templates}
+        column_items={task_column_items}
+        onUseTemplate={use_selected_template}
+        onPreviewTemplate={preview_task_template}
+        onEditTemplate={edit_task_template}
+        onDeleteTemplate={(template_id) =>
+          board.delete_task_template(template_id)}
+        onSaveTemplate={save_task_template}
+      />
+
+      <EditTaskDialog
+        bind:open={task_dialog_open}
+        bind:task={dialog_task}
+        label_suggestions={board.labels}
+        card_reference_options={board.columns.flatMap((column) =>
+          column.tasks.map((task) => ({ task, column_name: column.name })),
+        )}
+        columns={board.columns}
+        dialog_title={dialog_title()}
+        submit_button_text={dialog_button_text()}
+        auto_focus_title={creating_task}
+        show_template_name={editing_template_id !== null}
+        bind:template_name={editing_template_name}
+        show_template_picker={creating_task}
+        templates={board.templates}
+        bind:selected_template_id={dialog_template_id}
+        on_template_change={apply_template_to_new_task}
+        dialog_done_callback={async () => {
+          if (await dialog_callback()) {
+            task_dialog_open = false;
+            editing_template_id = null;
+            creating_task = false;
+          }
+        }}
+      ></EditTaskDialog>
+
+      <ViewTaskDialog
+        bind:open={view_task_dialog_open}
+        task={view_task}
+        onEdit={active_board_read_only ? undefined : view_task_edit_callback}
+        onViewTask={(task) => view_task_by_id(task)}
+        history={board.active_board_id === null
+          ? undefined
+          : { board_id: board.active_board_id, columns: board.columns }}
+      />
+
+      <ViewTaskDialog
+        bind:open={template_preview_open}
+        task={template_preview_task}
+      />
+
+      <ImportConfirmDialog
+        bind:open={import_confirm_open}
+        candidate={import_candidate}
+        {importing}
+        {show_importing}
+        onConfirm={confirm_import}
+      />
 
       {#if card_reference_preview}
         <CardReferencePreview

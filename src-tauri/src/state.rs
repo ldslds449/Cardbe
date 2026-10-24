@@ -18,6 +18,8 @@ pub struct AppData {
     pub boards: Vec<Board>,
     pub active_board_id: i64,
     pub undo_history: VecDeque<UndoEntry>,
+    /// Contents undone since the last local change, most recent last.
+    pub redo_history: Vec<UndoEntry>,
     pub labels: BTreeSet<String>,
     pub database: Database,
     pub recovery_messages: Vec<String>,
@@ -186,6 +188,7 @@ impl AppData {
             boards,
             active_board_id,
             undo_history: VecDeque::new(),
+            redo_history: Vec::new(),
             labels: BTreeSet::new(),
             database,
             recovery_messages,
@@ -233,6 +236,7 @@ impl AppData {
     pub fn replace_board_contents(&mut self, stored: StoredData) {
         self.stored = stored;
         self.undo_history.clear();
+        self.redo_history.clear();
         self.refresh_labels();
     }
 
@@ -407,12 +411,20 @@ fn update_locked_with_events<R, E: From<String>>(
     Ok(result)
 }
 
+const MAX_UNDO_HISTORY: usize = 50;
+
 impl AppData {
-    /// Records `previous` once `stored` holds the changed contents.
+    /// Record a new local change; it replaces whatever could be redone.
     pub(crate) fn record_board_undo(&mut self, previous: StoredData, event_op: Option<i64>) {
+        self.redo_history.clear();
+        self.push_undo(previous, event_op);
+    }
+
+    /// Records `previous` once `stored` holds the changed contents.
+    fn push_undo(&mut self, previous: StoredData, event_op: Option<i64>) {
         let entry = UndoEntry::new(previous, &self.stored, event_op);
         self.undo_history.push_back(entry);
-        if self.undo_history.len() > 50 {
+        if self.undo_history.len() > MAX_UNDO_HISTORY {
             self.undo_history.pop_front();
         }
     }
@@ -478,36 +490,85 @@ pub fn undo_last_change_for_board(
 }
 
 fn undo_locked(guard: &mut AppData, expected_board_id: i64) -> Result<bool, DomainError> {
-    if guard.active_board_id != expected_board_id {
-        return Err(DomainError::StaleBoardRequest);
-    }
-    ensure_board_can_edit(guard)?;
+    ensure_can_restore(guard, expected_board_id)?;
     let entry = guard
         .undo_history
         .pop_back()
         .ok_or(DomainError::NothingToUndo)?;
+    // On failure the change stays undoable.
+    let (current, op) = restore_locked(guard, entry, |guard, entry| {
+        guard.undo_history.push_back(entry)
+    })?;
+    let entry = UndoEntry::new(current, &guard.stored, op);
+    guard.redo_history.push(entry);
+    finish_restore(guard)?;
+    Ok(!guard.undo_history.is_empty())
+}
+
+pub fn redo_last_change_for_board(
+    state: &State<'_, SharedAppData>,
+    expected_board_id: i64,
+) -> Result<bool, DomainError> {
+    let mut guard = lock_app(state)?;
+    redo_locked(&mut guard, expected_board_id)
+}
+
+/// Reapply the most recently undone change. Its task events revert the undo
+/// operation, so readers see an undo of an undo.
+fn redo_locked(guard: &mut AppData, expected_board_id: i64) -> Result<bool, DomainError> {
+    ensure_can_restore(guard, expected_board_id)?;
+    let entry = guard.redo_history.pop().ok_or(DomainError::NothingToRedo)?;
+    // On failure the change stays redoable.
+    let (current, op) =
+        restore_locked(guard, entry, |guard, entry| guard.redo_history.push(entry))?;
+    guard.push_undo(current, op);
+    finish_restore(guard)?;
+    Ok(!guard.redo_history.is_empty())
+}
+
+fn ensure_can_restore(guard: &AppData, expected_board_id: i64) -> Result<(), DomainError> {
+    if guard.active_board_id != expected_board_id {
+        return Err(DomainError::StaleBoardRequest);
+    }
+    ensure_board_can_edit(guard)
+}
+
+/// Install a recorded entry as a local change that reverts its `event_op`, and
+/// return the replaced contents with the operation recorded for this change.
+/// When nothing was written, the entry is handed to `put_back`.
+fn restore_locked(
+    guard: &mut AppData,
+    entry: UndoEntry,
+    put_back: impl FnOnce(&mut AppData, UndoEntry),
+) -> Result<(StoredData, Option<i64>), DomainError> {
     let event_op = entry.event_op;
-    let previous = entry.restore(&guard.stored);
+    let target = entry.restore(&guard.stored);
 
     let archives_loaded = guard.archives_loaded;
     let AppData {
         database, stored, ..
     } = &mut *guard;
-    if let Err(error) = database.persist_diff_with_events(
+    let stats = match database.persist_diff_with_events(
         stored,
-        &previous,
+        &target,
         archives_loaded,
         EventWrite::Record(EventSource::undo(event_op)),
     ) {
-        // The change stays undoable.
-        let entry = UndoEntry::new(previous, &guard.stored, event_op);
-        guard.undo_history.push_back(entry);
-        return Err(error.to_string().into());
-    }
-    guard.stored = previous;
+        Ok(stats) => stats,
+        Err(error) => {
+            let entry = UndoEntry::new(target, &guard.stored, event_op);
+            put_back(guard, entry);
+            return Err(error.to_string().into());
+        }
+    };
+    let current = std::mem::replace(&mut guard.stored, target);
+    Ok((current, stats.event_op))
+}
+
+fn finish_restore(guard: &mut AppData) -> Result<(), DomainError> {
     refresh_active_board_summary(guard)?;
     guard.refresh_labels();
-    Ok(!guard.undo_history.is_empty())
+    Ok(())
 }
 
 #[cfg(test)]
@@ -891,6 +952,69 @@ mod tests {
         let persisted = app.database.read_board_complete(board_id).unwrap();
         assert!(persisted.archives.is_empty());
         assert_eq!(persisted.columns, app.stored.columns);
+        drop(app);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn redo_reapplies_undone_changes_until_a_new_change() {
+        let dir = std::env::temp_dir().join(format!(
+            "cardbe-redo-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let mut app = app_data(&dir, StoredData::default());
+        let board_id = app.active_board_id;
+        let add_column = |app: &mut AppData, name: &str| {
+            update_locked_typed(app, |data| {
+                crate::board_mutations::add_column(data, name.into(), String::new())
+            })
+            .unwrap();
+        };
+        add_column(&mut app, "First");
+        add_column(&mut app, "Second");
+
+        assert!(matches!(
+            redo_locked(&mut app, board_id),
+            Err(DomainError::NothingToRedo)
+        ));
+        assert!(undo_locked(&mut app, board_id).unwrap());
+        assert!(!undo_locked(&mut app, board_id).unwrap());
+        assert!(app.stored.columns.is_empty());
+        assert!(matches!(
+            redo_locked(&mut app, board_id + 1),
+            Err(DomainError::StaleBoardRequest)
+        ));
+
+        assert!(redo_locked(&mut app, board_id).unwrap());
+        assert_eq!(app.stored.columns.len(), 1);
+        assert_eq!(app.undo_history.len(), 1);
+        assert_eq!(
+            app.database
+                .read_board_complete(board_id)
+                .unwrap()
+                .columns
+                .len(),
+            1
+        );
+        // Undoing a redo goes back again.
+        assert!(!undo_locked(&mut app, board_id).unwrap());
+        assert_eq!(app.redo_history.len(), 2);
+        assert!(redo_locked(&mut app, board_id).unwrap());
+
+        // A new local change discards what could still be redone.
+        add_column(&mut app, "Third");
+        assert!(app.redo_history.is_empty());
+
+        // So do changes from outside the local history.
+        assert!(undo_locked(&mut app, board_id).unwrap());
+        app.replace_board_contents(app.stored.clone());
+        assert!(app.redo_history.is_empty());
+        assert!(app.undo_history.is_empty());
         drop(app);
         fs::remove_dir_all(dir).unwrap();
     }

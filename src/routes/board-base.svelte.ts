@@ -103,6 +103,7 @@ export abstract class BoardStoreBase {
   column_fetch_error = $state(false);
   task_expansion = new TaskExpansionState();
   private has_undo_history = $state(false);
+  private has_redo_history = $state(false);
   get can_edit() {
     const active = this.boards.find(
       (board) => board.id === this.active_board_id,
@@ -115,8 +116,13 @@ export abstract class BoardStoreBase {
   get can_undo() {
     return this.has_undo_history && this.can_edit;
   }
+  /** Any change outside Undo and Redo also discards what could be redone. */
   set can_undo(value: boolean) {
     this.has_undo_history = value && this.can_edit;
+    this.has_redo_history = false;
+  }
+  get can_redo() {
+    return this.has_redo_history && this.can_edit;
   }
   undo_in_progress = $state(false);
   search_task_ids = $state<Set<string> | null>(null);
@@ -170,8 +176,19 @@ export abstract class BoardStoreBase {
     });
   }
 
-  async undo(): Promise<boolean> {
-    if (!this.can_undo || this.undo_in_progress) {
+  undo(): Promise<boolean> {
+    return this.step_history("undo");
+  }
+
+  redo(): Promise<boolean> {
+    return this.step_history("redo");
+  }
+
+  private async step_history(direction: "undo" | "redo"): Promise<boolean> {
+    if (
+      (direction === "undo" ? !this.can_undo : !this.can_redo) ||
+      this.undo_in_progress
+    ) {
       return false;
     }
     this.undo_in_progress = true;
@@ -181,21 +198,32 @@ export abstract class BoardStoreBase {
       if (expectedBoardId === null) {
         return false;
       }
-      const canUndo = await addMission(() =>
-        invoke<boolean>("undo", { expectedBoardId }),
+      const remaining = await addMission(() =>
+        invoke<boolean>(direction === "undo" ? "undo" : "redo", {
+          expectedBoardId,
+        }),
       );
       if (generation !== this.board_generation) {
         return false;
       }
-      this.can_undo = canUndo;
+      // Each step moves one entry onto the opposite history.
+      if (direction === "undo") {
+        this.can_undo = remaining;
+        this.has_redo_history = this.can_edit;
+      } else {
+        this.can_undo = true;
+        this.has_redo_history = remaining && this.can_edit;
+      }
       this.get_columns();
       this.refresh_archives_if_loaded();
       this.get_task_templates();
       this.update_labels();
-      toast.success(m.common_undone());
+      toast.success(
+        direction === "undo" ? m.common_undone() : m.common_redone(),
+      );
       return true;
     } catch (e: unknown) {
-      logger.error("board.undo.failed", e);
+      logger.error(`board.${direction}.failed`, e);
       toast.error(translateCommandError(e));
       return false;
     } finally {

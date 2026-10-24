@@ -169,7 +169,6 @@
   "task_time_remove": "Remove time",
   "task_details_hide": "Hide task details",
   "task_details_show": "Show task details",
-  "task_details_board": "Task detail expansion is available in Board view",
   "task_template_open": "Open task templates",
   "task_template_save": "Save as Template",
   "task_template_edit": "Edit Template",
@@ -224,7 +223,6 @@
   ],
   "workspace_navigation": "Workspace navigation",
   "workspace_views": "Workspace views",
-  "workspace_board_only": "Available in Board view",
   "settings_title": "Settings",
   "settings_language": "Language",
   "settings_language_system": "System",
@@ -916,20 +914,9 @@
       }
     }
   ],
-  "today_nothing": "Nothing here",
-  "today_view": "Today overview",
-  "today_clear": "All clear",
   "today_all_done": "You're clear for today.",
   "today_upcoming": "Upcoming",
-  "today_visible": "Visible tasks",
-  "today_try_search": "Try another search.",
-  "today_empty": "There are no active tasks in your workspace.",
-  "today_add": "Add today's first task",
-  "today_due_help": "Tasks due before the day ends",
-  "today_overdue_help": "Past due tasks that need a decision",
-  "today_upcoming_help": "Everything scheduled after today",
   "today_unscheduled": "No schedule",
-  "today_unscheduled_help": "Tasks waiting for a due date",
   "today_attention": [
     {
       "declarations": [
@@ -2642,11 +2629,7 @@
       "match": { "msPlural=*": "{msFormatted} ms" }
     }
   ],
-  "focus_starter_due": "Overdue and due today",
-  "focus_starter_important": "Urgent and high priority",
-  "focus_starter_waiting": "Waiting on other cards",
   "focus_section": "Focus",
-  "focus_none": "No Focus yet.",
   "focus_new": "New Focus",
   "focus_edit_title": "Edit Focus",
   "focus_dialog_description": "Show cards from any board that match every condition below.",
@@ -2703,5 +2686,29 @@
   "focus_float_close": "Close floating Focus",
   "focus_float_hint": "Drag to move, double-click to open in Cardbe, right-click for more options",
   "focus_float_show_all": "Show all in Cardbe",
-  "error_focus_not_found": "This Focus no longer exists."
+  "error_focus_not_found": "This Focus no longer exists.",
+  "menu_redo": "Redo",
+  "menu_find": "Find",
+  "common_redone": "Undone action redone",
+  "error_nothing_to_redo": "There is nothing to redo.",
+  "share_device_requests_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} device approval request",
+        "countPlural=*": "{countFormatted} device approval requests"
+      }
+    }
+  ],
+  "workspace_view_shortcut": "{view} ({shortcut})",
+  "explorer_save_as_focus": "Save as Focus",
+  "explorer_save_as_focus_hint": "Create a Focus with these conditions",
+  "focus_from_explorer_partial": "Some conditions, such as a column, a custom date range, or sorting by column, can’t be kept in a Focus and were left out.",
+  "focus_actions": "Actions for “{name}”",
+  "board_actions": "Actions for “{name}”"
 }

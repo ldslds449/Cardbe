@@ -12,6 +12,8 @@ const MAX_NAME_CHARS: usize = 100;
 const MAX_QUERY_CHARS: usize = 500;
 const MAX_BOARDS: usize = 1000;
 const MAX_LABELS: usize = 100;
+/// The built-in Today Focus, defined by the app instead of saved views.
+pub const TODAY_ID: &str = "builtin.today";
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -92,6 +94,7 @@ fn valid_view(view: &Focus) -> bool {
     let name = view.name.trim();
     !view.id.is_empty()
         && view.id.len() <= 64
+        && view.id != TODAY_ID
         && !name.is_empty()
         && name.chars().count() <= MAX_NAME_CHARS
         && filter.query.chars().count() <= MAX_QUERY_CHARS
@@ -124,7 +127,7 @@ pub fn validate(views: &[Focus]) -> Result<(), DomainError> {
     Ok(())
 }
 
-/// `None` until views were first saved, so the app can offer starter views.
+/// `None` until views were first saved.
 pub fn load(connection: &Connection) -> Result<Option<Vec<Focus>>, DomainError> {
     let value: Option<String> = connection
         .query_row(
@@ -219,6 +222,7 @@ mod tests {
                 id: String::new(),
                 ..view("a")
             },
+            view(TODAY_ID),
         ];
         for view in invalid {
             assert!(validate(&[view]).is_err());

@@ -49,6 +49,27 @@ export interface Focus {
 export const MAX_FOCUSES = 100;
 export const MAX_FOCUS_NAME_LENGTH = 100;
 
+/**
+ * The built-in Today Focus. It is never saved, cannot be edited or deleted,
+ * and the backend refuses saved views with this ID.
+ */
+export const TODAY_FOCUS_ID = "builtin.today";
+
+/** Open tasks of every board, grouped from overdue to undated. */
+export function today_focus(): Focus {
+  return {
+    id: TODAY_FOCUS_ID,
+    name: m.workspace_today(),
+    filter: create_focus_filter(),
+    sort: "due",
+    group: "due",
+  };
+}
+
+export function is_builtin_focus(id: string): boolean {
+  return id === TODAY_FOCUS_ID;
+}
+
 export function create_focus_filter(): FocusFilter {
   return {
     query: "",
@@ -85,36 +106,6 @@ export function clone_focus(view: Focus): Focus {
   };
 }
 
-/** Offered the first time, before any view was saved. */
-export function starter_focuses(): Focus[] {
-  const view = (
-    name: string,
-    filter: Partial<FocusFilter>,
-    sort: FocusSort,
-    group: FocusGroup,
-  ): Focus => ({
-    ...create_focus(name),
-    filter: { ...create_focus_filter(), ...filter },
-    sort,
-    group,
-  });
-  return [
-    view(m.focus_starter_due(), { due: "by_today" }, "due", "none"),
-    view(
-      m.focus_starter_important(),
-      { priorities: ["urgent", "high"] },
-      "priority",
-      "board",
-    ),
-    view(
-      m.focus_starter_waiting(),
-      { waiting: "waiting" },
-      "priority",
-      "board",
-    ),
-  ];
-}
-
 function day_start(date: Date, offset_days = 0): number {
   const start = new Date(date);
   start.setHours(0, 0, 0, 0);
@@ -149,5 +140,65 @@ export function focus_query(view: Focus, now = new Date()): TaskExplorerQuery {
     labels: filter.labels.length > 0 ? filter.labels : null,
     waiting: filter.waiting,
     recurring: filter.recurring,
+  };
+}
+
+/** The task explorer conditions that a Focus can keep. */
+export interface ExplorerConditions {
+  query: string;
+  board_ids: number[] | null;
+  status: TaskExplorerQuery["status"];
+  due: "all" | "due" | "none" | "today" | "custom";
+  priorities: PriorityFilter[];
+  sort: TaskExplorerQuery["sort"];
+  /** A column filter or archive date range, which a Focus cannot keep. */
+  other_conditions: boolean;
+}
+
+/**
+ * A new unnamed Focus with the explorer's conditions. `partial` is set when
+ * some conditions have no Focus equivalent and were left out.
+ */
+export function focus_from_explorer(conditions: ExplorerConditions): {
+  view: Focus;
+  partial: boolean;
+} {
+  const { status, due, sort } = conditions;
+  const filter: FocusFilter = {
+    ...create_focus_filter(),
+    query: conditions.query.trim(),
+    board_ids: conditions.board_ids ? [...conditions.board_ids] : null,
+    // Every status but archived and all leaves archived tasks out.
+    completion:
+      status === "archived"
+        ? ["archived"]
+        : status === "active" || status === "recurring"
+          ? ["open", "done"]
+          : [],
+    priorities: [...conditions.priorities],
+    due:
+      status === "overdue"
+        ? "overdue"
+        : due === "none" || due === "today"
+          ? due
+          : "all",
+    recurring: status === "recurring" ? true : null,
+  };
+  const focus_sort: FocusSort =
+    sort === "due" ||
+    sort === "title" ||
+    sort === "priority" ||
+    sort === "created"
+      ? sort
+      : "priority";
+  return {
+    view: { ...create_focus(""), filter, sort: focus_sort },
+    partial:
+      conditions.other_conditions ||
+      due === "due" ||
+      due === "custom" ||
+      // Overdue already restricts due dates.
+      (status === "overdue" && due !== "all") ||
+      focus_sort !== sort,
   };
 }

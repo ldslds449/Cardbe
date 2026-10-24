@@ -13,22 +13,20 @@
   import { logger } from "$lib/logger";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { Menu } from "@tauri-apps/api/menu";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount, tick } from "svelte";
 
-  import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
-  import ClockIcon from "@lucide/svelte/icons/clock";
   import ListFilterIcon from "@lucide/svelte/icons/list-filter";
 
   import { Button } from "$lib/components/ui/button/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import type { AllTaskItem, BoardSummary } from "../board-base.svelte";
-  import type { Focus } from "../type/focus";
+  import { TODAY_FOCUS_ID, today_focus, type Focus } from "../type/focus";
   import { get_task_id } from "../type/task.svelte";
   import PriorityIndicator from "../components/task/priority_indicator.svelte";
-  import { due_label, due_label_class } from "../components/task/due-label";
+  import DueBadge from "../components/task/due_badge.svelte";
+  import FloatingWindow from "../components/floating/floating_window.svelte";
   import { group_focus_items } from "../components/focus/focus-groups";
   import { load_focus_results } from "../components/focus/focus-results";
 
@@ -64,12 +62,6 @@
 
   const window_title = $derived(view ? `${view.name} · Cardbe` : "Cardbe");
 
-  $effect(() => {
-    void float_window
-      .setTitle(window_title)
-      .catch((caught) => logger.warn("floating_focus.title.failed", caught));
-  });
-
   function item_key(item: AllTaskItem) {
     return `${item.board_id}:${item.archived_at ? "a" : ""}${item.task.id}`;
   }
@@ -91,7 +83,10 @@
       if (generation !== load_generation) {
         return;
       }
-      const found = views?.find((candidate) => candidate.id === view_id);
+      const found =
+        view_id === TODAY_FOCUS_ID
+          ? today_focus()
+          : views?.find((candidate) => candidate.id === view_id);
       if (!found) {
         // The view was deleted, here or by restoring a backup.
         void close_floating_window();
@@ -199,7 +194,6 @@
       listen("cardbe:focuses-changed", reload_soon),
     ];
     return () => {
-      void context_menu?.close();
       window.clearInterval(clock);
       window.clearTimeout(reload_timer);
       window.removeEventListener("focus", handle_focus);
@@ -208,67 +202,6 @@
       }
     };
   });
-
-  // The header is the drag handle. Like Tauri's own drag region, this uses
-  // mousedown, whose detail counts clicks, and lets a double-click through.
-  function handle_mousedown(event: MouseEvent) {
-    if (event.button !== 0 || event.detail === 2) {
-      return;
-    }
-    void float_window
-      .startDragging()
-      .catch((caught) => logger.warn("floating_focus.drag.failed", caught));
-  }
-
-  // A native menu can extend past the small window. As in floating tasks,
-  // nothing touches menus or runs an item's action until the popup returns:
-  // doing so while it is open deadlocks the app.
-  let context_menu: Menu | null = null;
-  let menu_open = false;
-  let pending_action: (() => void) | null = null;
-
-  function after_menu(action: () => void) {
-    if (menu_open) {
-      pending_action = action;
-    } else {
-      action();
-    }
-  }
-
-  async function show_context_menu(event: MouseEvent) {
-    event.preventDefault();
-    if (menu_open) {
-      return;
-    }
-    menu_open = true;
-    try {
-      await context_menu?.close();
-      context_menu = null;
-      const menu = await Menu.new({
-        items: [
-          {
-            text: m.floating_task_open_in_cardbe(),
-            enabled: !!view,
-            action: () => after_menu(() => void open_in_cardbe()),
-          },
-          { item: "Separator" },
-          {
-            text: m.focus_float_close(),
-            action: () => after_menu(() => void close_floating_window()),
-          },
-        ],
-      });
-      context_menu = menu;
-      await menu.popup(undefined, float_window);
-    } catch (caught) {
-      logger.warn("floating_focus.menu.failed", caught);
-    } finally {
-      menu_open = false;
-      const action = pending_action;
-      pending_action = null;
-      action?.();
-    }
-  }
 
   async function close_floating_window() {
     if (view_id !== null) {
@@ -282,22 +215,18 @@
   }
 </script>
 
-<svelte:head>
-  <title>{window_title}</title>
-</svelte:head>
-
-<main
-  class="flex h-screen select-none flex-col overflow-hidden border bg-background text-foreground"
-  aria-busy={loading}
-  oncontextmenu={show_context_menu}
+<FloatingWindow
+  title={window_title}
+  busy={loading}
+  hint={m.focus_float_hint()}
+  open_label={m.floating_task_open_in_cardbe()}
+  can_open={!!view}
+  close_label={m.focus_float_close()}
+  log_scope="floating_focus"
+  onOpen={() => void open_in_cardbe()}
+  onClose={() => void close_floating_window()}
 >
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <header
-    class="flex shrink-0 cursor-grab items-center gap-1.5 border-b px-3 py-2 active:cursor-grabbing"
-    title={m.focus_float_hint()}
-    onmousedown={handle_mousedown}
-    ondblclick={() => void open_in_cardbe()}
-  >
+  <header class="flex shrink-0 items-center gap-1.5 border-b px-3 py-2">
     <ListFilterIcon class="size-3.5 shrink-0 text-muted-foreground" />
     <h1 class="min-w-0 flex-1 truncate text-sm font-semibold">
       {view?.name ?? ""}
@@ -335,9 +264,6 @@
           {/if}
           <ul>
             {#each group.items as item (item_key(item))}
-              {@const due = item.task.due_time
-                ? due_label(item.task.due_time, now, item.task.due_at_midnight)
-                : undefined}
               {@const finished = item.done || Boolean(item.archived_at)}
               <li class="flex items-center gap-1 rounded-md hover:bg-muted/50">
                 {#if !finished && writable(item)}
@@ -374,19 +300,12 @@
                     {#if item.task.priority}
                       <PriorityIndicator priority={item.task.priority} />
                     {/if}
-                    {#if due}
-                      <span
-                        class="inline-flex items-center gap-1 {due_label_class(
-                          due.status,
-                        )}"
-                      >
-                        {#if due.status === "overdue"}
-                          <CircleAlertIcon class="size-3.5" />
-                        {:else}
-                          <ClockIcon class="size-3.5" />
-                        {/if}
-                        {due.text}
-                      </span>
+                    {#if item.task.due_time}
+                      <DueBadge
+                        due_time={item.task.due_time}
+                        {now}
+                        at_midnight={item.task.due_at_midnight}
+                      />
                     {/if}
                   </span>
                 </button>
@@ -406,4 +325,4 @@
       {/if}
     </div>
   </ScrollArea>
-</main>
+</FloatingWindow>

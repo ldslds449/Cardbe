@@ -3,7 +3,7 @@ use crate::errors::CommandError;
 use crate::{
     models::{Column, ColumnSort, SortRule, Task},
     state::{
-        lock_app, undo_last_change_for_board, update_stored_for_board,
+        lock_app, redo_last_change_for_board, undo_last_change_for_board, update_stored_for_board,
         update_stored_with_archives_for_board, SharedAppData,
     },
 };
@@ -104,6 +104,11 @@ pub fn get_labels(
 #[tauri::command]
 pub fn undo(state: State<'_, SharedAppData>, expected_board_id: i64) -> Result<bool, CommandError> {
     undo_last_change_for_board(&state, expected_board_id).map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub fn redo(state: State<'_, SharedAppData>, expected_board_id: i64) -> Result<bool, CommandError> {
+    redo_last_change_for_board(&state, expected_board_id).map_err(CommandError::from)
 }
 
 #[tauri::command]

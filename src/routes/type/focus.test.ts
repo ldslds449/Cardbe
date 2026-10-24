@@ -2,8 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   create_focus,
+  focus_from_explorer,
   focus_query,
-  starter_focuses,
+  is_builtin_focus,
+  today_focus,
+  TODAY_FOCUS_ID,
+  type ExplorerConditions,
   type Focus,
 } from "./focus";
 
@@ -71,11 +75,81 @@ describe("Focuses", () => {
     });
   });
 
-  it("starts with open tasks and offers distinct starter views", () => {
+  it("starts new views with open tasks", () => {
     expect(create_focus("New").filter.completion).toEqual(["open"]);
-    const starters = starter_focuses();
-    expect(starters).toHaveLength(3);
-    expect(new Set(starters.map((starter) => starter.id)).size).toBe(3);
-    expect(starters[2].filter.waiting).toBe("waiting");
+  });
+
+  it("defines Today as open tasks of every board grouped by due date", () => {
+    const today = today_focus();
+    expect(today.id).toBe(TODAY_FOCUS_ID);
+    expect(is_builtin_focus(today.id)).toBe(true);
+    expect(is_builtin_focus(create_focus("Mine").id)).toBe(false);
+    expect(today).toMatchObject({ sort: "due", group: "due" });
+    expect(focus_query(today, now)).toMatchObject({
+      board_ids: null,
+      completion: ["open"],
+      due: "all",
+    });
+  });
+
+  describe("from task explorer conditions", () => {
+    const conditions = (
+      changes: Partial<ExplorerConditions>,
+    ): ExplorerConditions => ({
+      query: "",
+      board_ids: null,
+      status: "active",
+      due: "all",
+      priorities: [],
+      sort: "due",
+      other_conditions: false,
+      ...changes,
+    });
+
+    it("keeps the query, boards, priorities and sort as a new view", () => {
+      const board_ids = [2, 5];
+      const { view, partial } = focus_from_explorer(
+        conditions({
+          query: "  報告 ",
+          board_ids,
+          priorities: ["high"],
+          sort: "priority",
+        }),
+      );
+      expect(partial).toBe(false);
+      expect(view.name).toBe("");
+      expect(view.sort).toBe("priority");
+      expect(view.filter).toMatchObject({
+        query: "報告",
+        board_ids: [2, 5],
+        completion: ["open", "done"],
+        priorities: ["high"],
+        due: "all",
+        recurring: null,
+      });
+      expect(view.filter.board_ids).not.toBe(board_ids);
+    });
+
+    it.each([
+      ["all", [], "all", null],
+      ["archived", ["archived"], "all", null],
+      ["overdue", [], "overdue", null],
+      ["recurring", ["open", "done"], "all", true],
+    ] as const)("maps the %s status", (status, completion, due, recurring) => {
+      const { view } = focus_from_explorer(conditions({ status }));
+      expect(view.filter).toMatchObject({ completion, due, recurring });
+    });
+
+    it.each([
+      [{ due: "today" }, false],
+      [{ due: "none" }, false],
+      [{ due: "due" }, true],
+      [{ due: "custom" }, true],
+      [{ sort: "column" }, true],
+      [{ other_conditions: true }, true],
+      [{ status: "overdue", due: "today" }, true],
+    ] as const)("reports conditions left out: %o", (changes, partial) => {
+      expect(focus_from_explorer(conditions(changes)).partial).toBe(partial);
+    });
   });
 });

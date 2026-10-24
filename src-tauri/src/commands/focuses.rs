@@ -35,6 +35,9 @@ pub fn set_focuses(
 const FOCUSES_CHANGED_EVENT: &str = "cardbe:focuses-changed";
 
 fn ensure_view_exists(state: &State<'_, SharedAppData>, id: &str) -> Result<(), CommandError> {
+    if id == focuses::TODAY_ID {
+        return Ok(());
+    }
     let guard = lock_app(state)?;
     let views = focuses::load(&guard.database.connection).map_err(CommandError::from)?;
     views

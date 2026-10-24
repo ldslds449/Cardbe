@@ -157,7 +157,6 @@
   "task_time_remove": "移除時間",
   "task_details_hide": "隱藏任務詳細內容",
   "task_details_show": "顯示任務詳細內容",
-  "task_details_board": "可在看板檢視中展開任務詳細內容",
   "task_template_open": "開啟任務範本",
   "task_template_save": "儲存為範本",
   "task_template_edit": "編輯範本",
@@ -200,7 +199,6 @@
   ],
   "workspace_navigation": "工作區導覽",
   "workspace_views": "工作區檢視",
-  "workspace_board_only": "可在看板檢視中使用",
   "settings_title": "設定",
   "settings_language": "語言",
   "settings_language_system": "跟隨系統",
@@ -757,20 +755,9 @@
       }
     }
   ],
-  "today_nothing": "目前沒有待辦事項",
-  "today_view": "今日重點檢視",
-  "today_clear": "目前沒有待辦事項",
   "today_all_done": "今天的待辦事項都處理好了。",
   "today_upcoming": "即將到期",
-  "today_visible": "顯示的任務",
-  "today_try_search": "請嘗試其他搜尋條件。",
-  "today_empty": "工作區目前沒有待辦任務。",
-  "today_add": "新增今天的第一個任務",
-  "today_due_help": "今天結束前到期的任務",
-  "today_overdue_help": "已超過到期時間，等待處理的任務",
-  "today_upcoming_help": "今天之後到期的任務",
   "today_unscheduled": "未排程",
-  "today_unscheduled_help": "尚未設定到期日的任務",
   "today_attention": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],
@@ -2339,11 +2326,7 @@
       "match": { "msPlural=*": "{msFormatted} 毫秒" }
     }
   ],
-  "focus_starter_due": "逾期與今天到期",
-  "focus_starter_important": "緊急與高優先",
-  "focus_starter_waiting": "正在等其他卡片",
   "focus_section": "焦點",
-  "focus_none": "還沒有焦點。",
   "focus_new": "新增焦點",
   "focus_edit_title": "編輯焦點",
   "focus_dialog_description": "列出所有看板中，符合下面每個條件的卡片。",
@@ -2400,5 +2383,23 @@
   "focus_float_close": "關閉浮動焦點",
   "focus_float_hint": "拖曳移動，點兩下在 Cardbe 中開啟，按右鍵顯示更多選項",
   "focus_float_show_all": "在 Cardbe 中查看全部",
-  "error_focus_not_found": "這個焦點已不存在。"
+  "error_focus_not_found": "這個焦點已不存在。",
+  "menu_redo": "重做",
+  "menu_find": "搜尋",
+  "common_redone": "已重做剛才復原的操作",
+  "error_nothing_to_redo": "沒有可重做的變更。",
+  "share_device_requests_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "{countFormatted} 個裝置核准請求"
+      }
+    }
+  ],
+  "workspace_view_shortcut": "{view}（{shortcut}）",
+  "explorer_save_as_focus": "另存為焦點",
+  "explorer_save_as_focus_hint": "以目前的條件建立焦點",
+  "focus_from_explorer_partial": "欄位、自訂日期範圍、依欄位排序等條件無法存進焦點，已略過。",
+  "focus_actions": "「{name}」的操作",
+  "board_actions": "「{name}」的操作"
 }
