@@ -49,7 +49,7 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/today.png" alt="Today view with overdue, today, and upcoming tasks"><br><p align="center"><b>Today</b> — know what needs attention first</p></td>
+    <td width="50%"><img src="docs/images/home.png" alt="Home page with Focus and board overviews"><br><p align="center"><b>Home</b> — every Focus and board at a glance</p></td>
     <td width="50%"><img src="docs/images/calendar.png" alt="Calendar view showing multi-day tasks as bars"><br><p align="center"><b>Calendar</b> — plan your month at a glance</p></td>
   </tr>
   <tr>
