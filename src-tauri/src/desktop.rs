@@ -1,8 +1,8 @@
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window,
-    WindowEvent,
+    App, AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    Window, WindowEvent,
 };
 use tauri_plugin_global_shortcut::ShortcutState;
 
@@ -184,10 +184,62 @@ fn global_shortcuts_enabled<R: Runtime>(app: &AppHandle<R>) -> Result<bool, Stri
     Ok(guard.stored.settings.global_shortcuts_enabled)
 }
 
+/// Asks WebView2 to trim a hidden window's memory, or restores the normal
+/// target before the window is shown again. Unlike suspending the WebView,
+/// scripts keep running, so the main window's background sync continues.
+/// Other platforms have no equivalent.
+fn set_low_memory<R: Runtime>(window: &WebviewWindow<R>, low: bool) {
+    #[cfg(windows)]
+    {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+        };
+        use windows_core::Interface;
+
+        let level = if low {
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+        } else {
+            COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+        };
+        let result = window.with_webview(move |webview| {
+            // SAFETY: Tauri runs this on the thread that owns the controller.
+            // Older WebView2 runtimes without ICoreWebView2_19 fail the cast.
+            let result = unsafe {
+                webview
+                    .controller()
+                    .CoreWebView2()
+                    .and_then(|core| core.cast::<ICoreWebView2_19>())
+                    .and_then(|core| core.SetMemoryUsageTargetLevel(level))
+            };
+            if let Err(error) = result {
+                log::warn!(target: "desktop", "Could not change the WebView memory target: {error}");
+            }
+        });
+        if let Err(error) = result {
+            log::warn!(target: "desktop", "Could not reach the WebView to change its memory target: {error}");
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = (window, low);
+}
+
+/// Hides a window that stays alive in the background.
+fn hide_window<R: Runtime>(window: &Window<R>) {
+    if let Err(error) = window.hide() {
+        log::warn!(target: "desktop", "Could not hide the {} window: {error}", window.label());
+        return;
+    }
+    if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+        set_low_memory(&webview, true);
+    }
+}
+
 pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     // Tauri creates this window from `app.windows` in tauri.conf.json before
     // setup runs. It is the default visible window because `visible` is true.
     if let Some(window) = app.get_webview_window("main") {
+        set_low_memory(&window, false);
         if let Err(error) = window.unminimize() {
             log::warn!(target: "desktop", "Could not unminimize the main window: {error}");
         }
@@ -202,6 +254,7 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
 
 fn show_quick_add_window<R: Runtime>(app: &AppHandle<R>, label: &str) {
     if let Some(window) = app.get_webview_window(label) {
+        set_low_memory(&window, false);
         if let Err(error) = window.center() {
             log::warn!(target: "desktop", "Could not center the quick-add window: {error}");
         }
@@ -227,11 +280,9 @@ pub fn open_floating_task_window<R: Runtime>(
 ) -> tauri::Result<()> {
     let label = floating_task_label(board_id, task_id);
     if let Some(window) = app.get_webview_window(&label) {
-        window.unminimize()?;
-        window.show()?;
-        return window.set_focus();
+        return show_floating_window(&window);
     }
-    WebviewWindowBuilder::new(
+    let window = WebviewWindowBuilder::new(
         app,
         label,
         WebviewUrl::App(format!("float-task?board={board_id}&task={task_id}").into()),
@@ -239,13 +290,15 @@ pub fn open_floating_task_window<R: Runtime>(
     .title("Cardbe")
     .inner_size(320.0, 220.0)
     .min_inner_size(220.0, 32.0)
+    .visible(false)
     .decorations(false)
     .always_on_top(true)
     .skip_taskbar(true)
     .maximizable(false)
     .minimizable(false)
-    .build()
-    .map(|_| ())
+    .build()?;
+    show_floating_window_later(window);
+    Ok(())
 }
 
 /// Focus IDs may hold any characters, while window labels allow only a
@@ -264,11 +317,9 @@ fn hex_id(id: &str) -> String {
 pub fn open_floating_focus_window<R: Runtime>(app: &AppHandle<R>, id: &str) -> tauri::Result<()> {
     let label = floating_focus_label(id);
     if let Some(window) = app.get_webview_window(&label) {
-        window.unminimize()?;
-        window.show()?;
-        return window.set_focus();
+        return show_floating_window(&window);
     }
-    WebviewWindowBuilder::new(
+    let window = WebviewWindowBuilder::new(
         app,
         label,
         WebviewUrl::App(format!("float-focus?focus={}", hex_id(id)).into()),
@@ -276,13 +327,37 @@ pub fn open_floating_focus_window<R: Runtime>(app: &AppHandle<R>, id: &str) -> t
     .title("Cardbe")
     .inner_size(320.0, 360.0)
     .min_inner_size(220.0, 120.0)
+    .visible(false)
     .decorations(false)
     .always_on_top(true)
     .skip_taskbar(true)
     .maximizable(false)
     .minimizable(false)
-    .build()
-    .map(|_| ())
+    .build()?;
+    show_floating_window_later(window);
+    Ok(())
+}
+
+fn show_floating_window<R: Runtime>(window: &WebviewWindow<R>) -> tauri::Result<()> {
+    set_low_memory(window, false);
+    window.unminimize()?;
+    window.show()?;
+    window.set_focus()
+}
+
+/// A new floating window opens hidden, and its page shows it once the
+/// content and size are settled instead of flashing the loader. This shows
+/// it anyway if the page never does, so it cannot stay invisible.
+fn show_floating_window_later<R: Runtime>(window: WebviewWindow<R>) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        if !window.is_visible().unwrap_or(true) {
+            log::warn!(target: "desktop", "A floating window did not show itself in time");
+            if let Err(error) = window.show() {
+                log::warn!(target: "desktop", "Could not show a floating window: {error}");
+            }
+        }
+    });
 }
 
 /// Hides every floating window while any is visible; otherwise shows them
@@ -299,9 +374,14 @@ fn toggle_floating_task_windows<R: Runtime>(app: &AppHandle<R>) {
         .iter()
         .any(|window| window.is_visible().unwrap_or(false));
     for window in windows {
+        if !hide {
+            set_low_memory(&window, false);
+        }
         let result = if hide { window.hide() } else { window.show() };
         if let Err(error) = result {
             log::warn!(target: "desktop", "Could not toggle a floating task window: {error}");
+        } else if hide {
+            set_low_memory(&window, true);
         }
     }
 }
@@ -343,14 +423,11 @@ pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) 
         WindowEvent::CloseRequested { .. } if is_floating_window(window.label()) => {}
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
-            if let Err(error) = window.hide() {
-                log::warn!(target: "desktop", "Could not hide the main window: {error}");
-            }
+            hide_window(window);
         }
+        // Also follows the quick-add page hiding itself after saving.
         WindowEvent::Focused(false) if window.label().starts_with("quick-") => {
-            if let Err(error) = window.hide() {
-                log::warn!(target: "desktop", "Could not hide the quick-add window: {error}");
-            }
+            hide_window(window);
         }
         _ => {}
     }

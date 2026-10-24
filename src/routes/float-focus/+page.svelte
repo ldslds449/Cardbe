@@ -15,7 +15,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { Menu } from "@tauri-apps/api/menu";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
@@ -111,10 +111,14 @@
     } finally {
       if (generation === load_generation && loading) {
         loading = false;
-        // Keeps the compact startup loader until the first read settles.
-        requestAnimationFrame(() =>
-          window.dispatchEvent(new Event("cardbe:workspace-ready")),
-        );
+        // The window opens hidden and is shown once the first read settles.
+        // A hidden window may not paint frames, so this does not wait for one.
+        void tick()
+          .then(() => {
+            window.dispatchEvent(new Event("cardbe:workspace-ready"));
+            return float_window.show();
+          })
+          .catch((caught) => logger.warn("floating_focus.show.failed", caught));
       }
     }
   }

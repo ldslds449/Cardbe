@@ -47,6 +47,8 @@ dependencies = [
  "tokio-util",
  "tower",
  "wasmtime",
+ "webview2-com",
+ "windows-core 0.61.2",
  "windows-sys 0.61.2",
  "zip",
 ]

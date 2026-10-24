@@ -95,6 +95,9 @@ tauri-plugin-window-state = "~2.4.1"
 
 [target.'cfg(windows)'.dependencies]
 tauri-winrt-notification = "0.8"
+# Match the WebView2 bindings wry uses, to lower hidden windows' memory target.
+webview2-com = "0.38"
+windows-core = "0.61"
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Graphics_Dwm",

@@ -20,7 +20,7 @@
   import { Menu } from "@tauri-apps/api/menu";
   import { LogicalSize } from "@tauri-apps/api/dpi";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import ClockIcon from "@lucide/svelte/icons/clock";
@@ -267,12 +267,17 @@
     }
   }
 
-  // Keeps the compact startup loader until the first read settles, instead
-  // of flashing an empty window.
+  // The window opens hidden and is shown once the first read and the height
+  // fit settle, instead of flashing the loader or an empty window. A hidden
+  // window may not paint frames, so this does not wait for one.
   function announce_ready() {
-    requestAnimationFrame(() =>
-      window.dispatchEvent(new Event("cardbe:workspace-ready")),
-    );
+    void tick()
+      .then(() => {
+        window.dispatchEvent(new Event("cardbe:workspace-ready"));
+        return resizing;
+      })
+      .then(() => float_window.show())
+      .catch((caught) => logger.warn("floating_task.show.failed", caught));
   }
 
   onMount(() => {
