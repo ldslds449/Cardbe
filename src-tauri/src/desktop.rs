@@ -14,8 +14,7 @@ const FLOATING_TASK_LABEL_PREFIX: &str = "float-task-";
 const FLOATING_FOCUS_LABEL_PREFIX: &str = "float-focus-";
 
 fn is_floating_window(label: &str) -> bool {
-    label.starts_with(FLOATING_TASK_LABEL_PREFIX)
-        || label.starts_with(FLOATING_FOCUS_LABEL_PREFIX)
+    label.starts_with(FLOATING_TASK_LABEL_PREFIX) || label.starts_with(FLOATING_FOCUS_LABEL_PREFIX)
 }
 
 fn run_shortcut_action<R: Runtime>(app: &AppHandle<R>, action: ShortcutAction) {
@@ -262,10 +261,7 @@ fn hex_id(id: &str) -> String {
 /// Opens one always-on-top window listing a Focus's tasks, or focuses
 /// the existing one. Like floating tasks, its position and size are restored
 /// by label.
-pub fn open_floating_focus_window<R: Runtime>(
-    app: &AppHandle<R>,
-    id: &str,
-) -> tauri::Result<()> {
+pub fn open_floating_focus_window<R: Runtime>(app: &AppHandle<R>, id: &str) -> tauri::Result<()> {
     let label = floating_focus_label(id);
     if let Some(window) = app.get_webview_window(&label) {
         window.unminimize()?;
@@ -335,16 +331,9 @@ struct OpenFocusRequest<'a> {
     id: &'a str,
 }
 
-pub fn open_focus_in_main_window<R: Runtime>(
-    app: &AppHandle<R>,
-    id: &str,
-) -> tauri::Result<()> {
+pub fn open_focus_in_main_window<R: Runtime>(app: &AppHandle<R>, id: &str) -> tauri::Result<()> {
     show_main_window(app);
-    app.emit_to(
-        "main",
-        "cardbe:open-focus",
-        OpenFocusRequest { id },
-    )
+    app.emit_to("main", "cardbe:open-focus", OpenFocusRequest { id })
 }
 
 pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) {

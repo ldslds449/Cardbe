@@ -1,17 +1,15 @@
 use crate::errors::{CommandError, DomainError};
 use crate::{
+    focuses::{self, Focus},
     models::{StoredData, TaskPriority},
     operations::OperationHost,
-    focuses::{self, Focus},
     state::{lock_app, update_stored_with_archives_for_board, SharedAppData},
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// `None` until views were first saved.
 #[tauri::command]
-pub fn get_focuses(
-    state: State<'_, SharedAppData>,
-) -> Result<Option<Vec<Focus>>, CommandError> {
+pub fn get_focuses(state: State<'_, SharedAppData>) -> Result<Option<Vec<Focus>>, CommandError> {
     let guard = lock_app(&state)?;
     focuses::load(&guard.database.connection).map_err(CommandError::from)
 }

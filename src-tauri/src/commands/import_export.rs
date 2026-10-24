@@ -313,8 +313,7 @@ mod tests {
         ));
         value["active_board_index"] = 0.into();
         // Focus board filters refer to positions in the backup.
-        value["focuses"] =
-            serde_json::json!([{"id":"a","name":"Mine","filter":{"board_ids":[0]}}]);
+        value["focuses"] = serde_json::json!([{"id":"a","name":"Mine","filter":{"board_ids":[0]}}]);
         assert!(parse_all_boards_backup(&value.to_string()).is_ok());
         value["focuses"][0]["filter"]["board_ids"] = serde_json::json!([1]);
         assert!(matches!(

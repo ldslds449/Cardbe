@@ -6,6 +6,7 @@ mod completion;
 mod desktop;
 mod errors;
 mod flow;
+mod focuses;
 #[cfg(desktop)]
 mod global_shortcuts;
 mod link_preview;
@@ -16,7 +17,6 @@ mod operations;
 mod plugins;
 mod resource_usage;
 mod search;
-mod focuses;
 mod state;
 mod storage;
 mod task_dates;
