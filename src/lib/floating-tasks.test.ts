@@ -15,9 +15,11 @@ import {
   clamp_floating_zoom,
   forget_floating_task,
   open_floating_task,
+  read_floating_height,
   read_floating_tasks,
   read_floating_zoom,
   restore_floating_tasks,
+  write_floating_height,
   write_floating_zoom,
 } from "./floating-tasks";
 
@@ -91,6 +93,23 @@ describe("floating task windows", () => {
     write_floating_zoom(ref, 1.5);
     forget_floating_task(ref);
     expect(read_floating_zoom(ref)).toBe(1);
+  });
+
+  it("keeps a shortened height per task and clears it on close", () => {
+    const ref = { boardId: 1, taskId: 7 };
+    expect(read_floating_height(ref)).toBeNull();
+
+    write_floating_height(ref, 150);
+    expect(read_floating_height(ref)).toBe(150);
+    expect(read_floating_height({ boardId: 2, taskId: 7 })).toBeNull();
+    write_floating_height(ref, null);
+    expect(read_floating_height(ref)).toBeNull();
+    storage.set("cardbe.floating-task-height.1.7", "nonsense");
+    expect(read_floating_height(ref)).toBeNull();
+
+    write_floating_height(ref, 150);
+    forget_floating_task(ref);
+    expect(read_floating_height(ref)).toBeNull();
   });
 
   it("restores windows and drops tasks or boards that no longer exist", async () => {

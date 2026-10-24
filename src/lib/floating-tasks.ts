@@ -61,8 +61,9 @@ export function forget_floating_task(ref: FloatingTaskRef) {
   );
   try {
     window.localStorage.removeItem(zoom_key(ref));
+    window.localStorage.removeItem(height_key(ref));
   } catch {
-    // Zoom is a convenience; a stale value is harmless.
+    // Zoom and height are conveniences; a stale value is harmless.
   }
 }
 
@@ -98,6 +99,34 @@ export function write_floating_zoom(ref: FloatingTaskRef, zoom: number) {
     }
   } catch (error) {
     logger.warn("floating_task.zoom_write.failed", error);
+  }
+}
+
+const height_key = (ref: FloatingTaskRef) =>
+  `cardbe.floating-task-height.${ref.boardId}.${ref.taskId}`;
+
+/** The height the user shortened the window to, or null to fit the content. */
+export function read_floating_height(ref: FloatingTaskRef) {
+  try {
+    const stored = Number(window.localStorage.getItem(height_key(ref)));
+    return Number.isFinite(stored) && stored > 0 ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function write_floating_height(
+  ref: FloatingTaskRef,
+  height: number | null,
+) {
+  try {
+    if (height === null) {
+      window.localStorage.removeItem(height_key(ref));
+    } else {
+      window.localStorage.setItem(height_key(ref), String(height));
+    }
+  } catch (error) {
+    logger.warn("floating_task.height_write.failed", error);
   }
 }
 

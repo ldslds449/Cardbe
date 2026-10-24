@@ -8,7 +8,9 @@
   import {
     clamp_floating_zoom,
     forget_floating_task,
+    read_floating_height,
     read_floating_zoom,
+    write_floating_height,
     write_floating_zoom,
   } from "$lib/floating-tasks";
   import { formatNumber } from "$lib/i18n";
@@ -88,10 +90,10 @@
     task?.due_time ? due_label(task.due_time, now, task.due_at_midnight) : null,
   );
 
-  // The window height always follows its content, so there is no empty
-  // bottom, up to a share of the screen beyond which the body scrolls. Only
-  // the width can be resized by hand; locking the height through size
-  // constraints keeps a drag from fighting the fit.
+  // The window height follows its content, so there is no empty bottom, up
+  // to a share of the screen beyond which the body scrolls. Dragging can
+  // shorten it, and the body then scrolls; the size constraints cap the
+  // height at the content so a drag never adds empty space.
   const has_details = $derived(
     !!task &&
       (!!due ||
@@ -111,10 +113,30 @@
   let header = $state<HTMLElement | null>(null);
   let body = $state<HTMLElement | null>(null);
   let fitted_height = 0;
+  let content_height = 0;
+  // A height the user dragged below the fit, kept while the content changes
+  // and across launches.
+  let chosen_height = read_floating_height(ref);
+  let pending_resizes = 0;
   // Content that fits only overflows until the window catches up, as while
   // zooming in; the scrollbar is shown only when it really scrolls.
   let overflowing = $state(false);
   let resizing = Promise.resolve();
+
+  function handle_window_resize() {
+    // Resizes made here are not the user's choice.
+    if (pending_resizes > 0 || fitted_height === 0) {
+      return;
+    }
+    // One pixel absorbs logical-to-physical rounding.
+    const shortened = window.innerHeight < fitted_height - 1;
+    const next = shortened ? window.innerHeight : null;
+    if (next !== chosen_height) {
+      chosen_height = next;
+      write_floating_height(ref, next);
+    }
+    overflowing = shortened || content_height > fitted_height;
+  }
 
   function fit_window() {
     if (!header) {
@@ -132,22 +154,36 @@
       MIN_HEIGHT,
       Math.floor(window.screen.availHeight * MAX_SCREEN_SHARE),
     );
-    const height = Math.min(Math.max(content, MIN_HEIGHT), ceiling);
-    overflowing = content > ceiling;
-    if (height === fitted_height && window.innerHeight === height) {
+    const max_height = Math.min(Math.max(content, MIN_HEIGHT), ceiling);
+    const height =
+      chosen_height === null
+        ? max_height
+        : Math.min(Math.max(chosen_height, MIN_HEIGHT), max_height);
+    content_height = content;
+    overflowing = content > height;
+    if (max_height === fitted_height && window.innerHeight === height) {
       return;
     }
-    fitted_height = height;
+    fitted_height = max_height;
+    pending_resizes += 1;
     resizing = resizing
       .then(async () => {
         await float_window.setSizeConstraints({
           minWidth: MIN_WIDTH,
-          minHeight: height,
-          maxHeight: height,
+          minHeight: MIN_HEIGHT,
+          maxHeight: max_height,
         });
         await float_window.setSize(new LogicalSize(window.innerWidth, height));
       })
-      .catch((caught) => logger.warn("floating_task.resize.failed", caught));
+      .catch((caught) => logger.warn("floating_task.resize.failed", caught))
+      // The resize event can follow the call's return.
+      .then(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      )
+      .finally(() => (pending_resizes -= 1));
   }
 
   $effect(() => {
@@ -379,6 +415,7 @@
 </script>
 
 <svelte:window
+  onresize={handle_window_resize}
   onkeydown={(event) => {
     if (event.key === "Enter" && task && event.target === document.body) {
       event.preventDefault();
