@@ -128,6 +128,7 @@ export abstract class BoardStoreBase {
   private all_task_list_request = 0;
   protected search_query = "";
   private search_request = 0;
+  private search_results_generation = -1;
   private search_timer: ReturnType<typeof setTimeout> | undefined;
   protected disposed = false;
 
@@ -286,14 +287,24 @@ export abstract class BoardStoreBase {
   }
 
   search_tasks(search_text: string) {
-    this.search_query = search_text.trim();
+    const query_text = search_text.trim();
+    // Refreshing the same query after board edits keeps current results
+    // visible instead of flashing the searching placeholder.
+    const refreshing =
+      query_text !== "" &&
+      query_text === this.search_query &&
+      this.search_task_ids !== null &&
+      this.search_results_generation === this.board_generation;
+    this.search_query = query_text;
     const request = ++this.search_request;
     if (this.search_timer) {
       clearTimeout(this.search_timer);
     }
-    this.search_task_ids = null;
     this.search_error = false;
-    this.search_pending = Boolean(this.search_query);
+    if (!refreshing) {
+      this.search_task_ids = null;
+      this.search_pending = Boolean(this.search_query);
+    }
     if (!this.search_query) {
       return;
     }
@@ -327,6 +338,7 @@ export abstract class BoardStoreBase {
           return;
         }
         this.search_task_ids = new Set(ids.map((id) => `task_${id}`));
+        this.search_results_generation = generation;
         logger.debug("board.search.completed", {
           board_id: expectedBoardId,
           query_length,

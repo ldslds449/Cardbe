@@ -105,7 +105,9 @@
 
   $effect(() => {
     void board.columns;
-    board.search_tasks(search_text);
+    const text = search_text;
+    // Rerun only for board or query changes, not for the search state it sets.
+    untrack(() => board.search_tasks(text));
   });
 
   $effect(() => {

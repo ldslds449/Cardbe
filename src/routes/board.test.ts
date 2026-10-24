@@ -309,6 +309,39 @@ describe("cross-board task moves", () => {
   });
 });
 
+describe("current board search", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps current results visible while refreshing the same query", async () => {
+    vi.useFakeTimers();
+    invoke_mock.mockReset();
+    const store = create_store();
+    invoke_mock.mockResolvedValueOnce([1]);
+    store.search_tasks("plan");
+    expect(store.search_pending).toBe(true);
+    await vi.runAllTimersAsync();
+    expect(store.search_task_ids).toEqual(new Set(["task_1"]));
+
+    const refreshed = deferred<number[]>();
+    invoke_mock.mockReturnValueOnce(refreshed.promise);
+    store.search_tasks("plan");
+    expect(store.search_pending).toBe(false);
+    expect(store.search_task_ids).toEqual(new Set(["task_1"]));
+    await vi.advanceTimersByTimeAsync(160);
+    refreshed.resolve([1, 2]);
+    await vi.runAllTimersAsync();
+    expect(store.search_task_ids).toEqual(new Set(["task_1", "task_2"]));
+
+    invoke_mock.mockResolvedValueOnce([]);
+    store.search_tasks("planning");
+    expect(store.search_pending).toBe(true);
+    expect(store.search_task_ids).toBeNull();
+    await vi.runAllTimersAsync();
+  });
+});
+
 describe("board deletion summary", () => {
   it("loads the archived task count and treats failures as unknown", async () => {
     const store = create_store();
