@@ -1,3 +1,10 @@
+import assert from "node:assert/strict";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createServer as createNetServer } from "node:net";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { Editor } from "@tiptap/core";
 
@@ -384,3 +391,159 @@ describe("Markdown editor serialization", () => {
     expect(serializeMarkdown(editor)).toBe("First\n\nSecond");
   });
 });
+
+it("blocks XSS in Markdown previews, clipboard content and public shares", async ({
+  skip,
+}) => {
+  // Exercise the real browser DOM without adding a browser automation dependency.
+  const root = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../../..",
+  );
+
+  const browserCandidates = process.env.CARDBE_TEST_BROWSER
+    ? [process.env.CARDBE_TEST_BROWSER]
+    : [
+        "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+        "C:/Program Files/Google/Chrome/Application/chrome.exe",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+      ];
+  const browser = browserCandidates.find((candidate) => existsSync(candidate));
+  if (!browser) {
+    skip("No Chromium browser found; browser XSS checks were not run.");
+    return;
+  }
+
+  const probe = createNetServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const address = probe.address();
+  assert(address && typeof address !== "string");
+  const port = address.port;
+  await new Promise<void>((resolve, reject) =>
+    probe.close((error) => (error ? reject(error) : resolve())),
+  );
+  const previousPort = process.env.CARDBE_DEV_PORT;
+  process.env.CARDBE_DEV_PORT = String(port);
+  const { createServer } = await import("vite-plus");
+  type Report = { name: string; error?: string }[];
+  let resolveResult!: (report: Report) => void;
+  let rejectResult!: (error: unknown) => void;
+  const result = new Promise<Report>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  const server = await createServer({
+    root,
+    server: { open: false, fs: { allow: [root] } },
+    plugins: [
+      {
+        name: "xss-browser-tests",
+        configureServer(vite) {
+          vite.middlewares.use(async (request, response, next) => {
+            if (request.url === "/__xss.html") {
+              response.setHeader("Content-Type", "text/html");
+              response.end(
+                await vite.transformIndexHtml(
+                  request.url,
+                  readFileSync(
+                    path.join(root, "scripts/test-fixtures/xss.html"),
+                    "utf8",
+                  ),
+                ),
+              );
+            } else if (
+              request.url === "/__xss_result" &&
+              request.method === "POST"
+            ) {
+              let body = "";
+              request.on("data", (chunk) => {
+                body += chunk;
+              });
+              request.on("end", () => {
+                response.end("ok");
+                try {
+                  resolveResult(JSON.parse(body));
+                } catch (error) {
+                  rejectResult(error);
+                }
+              });
+            } else {
+              next();
+            }
+          });
+        },
+      },
+    ],
+  });
+  const profile = mkdtempSync(path.join(tmpdir(), "cardbe-xss-"));
+  let child: ChildProcess | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await server.listen();
+    timeout = setTimeout(
+      () => rejectResult(new Error("XSS browser tests timed out")),
+      90_000,
+    );
+    child = spawn(
+      browser,
+      [
+        "--headless",
+        "--disable-extensions",
+        "--disable-background-networking",
+        "--disable-sync",
+        "--no-first-run",
+        "--no-default-browser-check",
+        `--user-data-dir=${profile}`,
+        `http://127.0.0.1:${port}/__xss.html`,
+      ],
+      { stdio: ["ignore", "ignore", "pipe"], windowsHide: true },
+    );
+    child.on("error", rejectResult);
+    child.stderr!.on("data", (chunk) => process.stderr.write(chunk));
+    child.on("exit", (code) =>
+      rejectResult(
+        new Error(`Browser exited before reporting results (${code})`),
+      ),
+    );
+    const report = await result;
+    for (const entry of report) {
+      console.log(
+        `${entry.error ? "FAIL" : "PASS"} ${entry.name}${entry.error ? `: ${entry.error}` : ""}`,
+      );
+    }
+    assert(report.length === 7, "The browser must run every XSS scenario");
+    assert(!report.some((entry) => entry.error), "XSS regression tests failed");
+  } finally {
+    clearTimeout(timeout);
+    if (previousPort === undefined) {
+      delete process.env.CARDBE_DEV_PORT;
+    } else {
+      process.env.CARDBE_DEV_PORT = previousPort;
+    }
+    if (child?.pid) {
+      if (process.platform === "win32") {
+        spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+          windowsHide: true,
+          stdio: "ignore",
+        });
+      } else if (child.exitCode === null && child.signalCode === null) {
+        const exited = new Promise<void>((resolve) =>
+          child!.once("exit", () => resolve()),
+        );
+        child.kill();
+        await exited;
+      }
+    }
+    await server.close();
+    // The only directory removed is the fresh temporary browser profile above.
+    rmSync(profile, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200,
+    });
+  }
+}, 160_000);

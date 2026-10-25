@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cardbe XSS regression tests</title>
+  </head>
+  <body>
+    <script type="module">
+      const report = (results) =>
+        fetch("/__xss_result", {
+          method: "POST",
+          body: JSON.stringify(results),
+        });
+      try {
+        const { run } = await import("/scripts/test-fixtures/xss.ts");
+        await report(await run());
+      } catch (error) {
+        await report([
+          { name: "browser test setup", error: String(error.stack ?? error) },
+        ]);
+      }
+    </script>
+  </body>
+</html>
