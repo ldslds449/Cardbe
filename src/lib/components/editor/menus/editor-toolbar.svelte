@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { m } from "#lib/paraglide/messages.js";
   import type { Editor } from "@tiptap/core";
   import BoldIcon from "@lucide/svelte/icons/bold";
@@ -30,6 +30,7 @@
   import { Label } from "#lib/components/ui/label/index.js";
   import { FieldError } from "#lib/components/ui/field/index.js";
   import { Separator } from "#lib/components/ui/separator/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
 
   let { editor, revision }: { editor: Editor | null; revision: number } =
     $props();
@@ -178,259 +179,275 @@
   }
 </script>
 
-<div
-  class="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-1 border-b bg-background/95 p-2 text-foreground shadow-sm backdrop-blur-sm [&_[aria-pressed=true]]:bg-primary [&_[aria-pressed=true]]:text-primary-foreground [&_[aria-pressed=true]:hover]:bg-primary/80"
-  role="toolbar"
-  aria-label={m.editor_formatting()}
-  tabindex="-1"
-  onpointerdown={(event) => event.preventDefault()}
+<ScrollArea
+  orientation="horizontal"
+  class="sticky top-0 z-10 h-12 w-full min-w-0 shrink-0 border-b bg-background/95 text-foreground shadow-sm backdrop-blur-sm [&_[data-scroll-area-content]]:flex [&_[data-scroll-area-content]]:h-full [&_[data-scroll-area-content]]:items-center"
 >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_undo()}
-    title={m.editor_undo()}
-    disabled={!canUndo()}
-    onclick={() => editor?.chain().focus().undo().run()}><Undo2Icon /></Button
+  <div
+    class="flex w-max flex-nowrap items-center gap-1 px-2 py-1 [&>*]:shrink-0 [&_[aria-pressed=true]]:bg-primary [&_[aria-pressed=true]]:text-primary-foreground [&_[aria-pressed=true]:hover]:bg-primary/80"
+    role="toolbar"
+    aria-label={m.editor_formatting()}
+    tabindex="-1"
+    onpointerdown={(event) => event.preventDefault()}
   >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_redo()}
-    title={m.editor_redo()}
-    disabled={!canRedo()}
-    onclick={() => editor?.chain().focus().redo().run()}><Redo2Icon /></Button
-  >
-
-  <Separator orientation="vertical" class="mx-2 h-6" />
-
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_heading_1()}
-    title={m.editor_heading_1()}
-    aria-pressed={isActive("heading", { level: 1 })}
-    onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
-    ><Heading1Icon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_heading_2()}
-    title={m.editor_heading_2()}
-    aria-pressed={isActive("heading", { level: 2 })}
-    onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
-    ><Heading2Icon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_heading_3()}
-    title={m.editor_heading_3()}
-    aria-pressed={isActive("heading", { level: 3 })}
-    onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
-    ><Heading3Icon /></Button
-  >
-
-  <Separator orientation="vertical" class="mx-2 h-6" />
-
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_bold()}
-    title={m.editor_bold()}
-    aria-pressed={isActive("bold")}
-    onclick={() => editor?.chain().focus().toggleBold().run()}
-    ><BoldIcon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_italic()}
-    title={m.editor_italic()}
-    aria-pressed={isActive("italic")}
-    onclick={() => editor?.chain().focus().toggleItalic().run()}
-    ><ItalicIcon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_strike()}
-    title={m.editor_strike()}
-    aria-pressed={isActive("strike")}
-    onclick={() => editor?.chain().focus().toggleStrike().run()}
-    ><StrikethroughIcon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_inline_code()}
-    title={m.editor_inline_code_help()}
-    aria-pressed={isActive("code")}
-    onclick={() => editor?.chain().focus().toggleCode().run()}
-    ><CodeIcon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={isActive("link") ? m.editor_remove_link() : m.editor_add_link()}
-    title={isActive("link") ? m.editor_remove_link() : m.editor_add_link()}
-    aria-pressed={isActive("link")}
-    onclick={toggleLink}><Link2Icon /></Button
-  >
-
-  <Separator orientation="vertical" class="mx-2 h-6" />
-
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_bullet_list()}
-    title={m.editor_bullet_list()}
-    aria-pressed={isActive("bulletList")}
-    onclick={() => editor?.chain().focus().toggleBulletList().run()}
-    ><ListIcon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_numbered_list()}
-    title={m.editor_numbered_list()}
-    aria-pressed={isActive("orderedList")}
-    onclick={() => editor?.chain().focus().toggleOrderedList().run()}
-    ><ListOrderedIcon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_task_list()}
-    title={m.editor_task_list()}
-    aria-pressed={isActive("taskList")}
-    onclick={() => editor?.chain().focus().toggleTaskList().run()}
-    ><ListChecksIcon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_blockquote()}
-    title={m.editor_blockquote()}
-    aria-pressed={isActive("blockquote")}
-    onclick={() => editor?.chain().focus().toggleBlockquote().run()}
-    ><QuoteIcon /></Button
-  >
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_code_block()}
-    title={m.editor_code_block()}
-    aria-pressed={isActive("codeBlock")}
-    onclick={() => editor?.chain().focus().toggleCodeBlock().run()}
-    ><Code2Icon /></Button
-  >
-  <DropdownMenu.Root>
-    <DropdownMenu.Trigger>
-      {#snippet child({ props })}
-        <Button
-          {...props}
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={m.editor_table()}
-          title={m.editor_table()}
-          aria-pressed={isActive("table")}
-          disabled={!editor?.isEditable}><TableIcon /></Button
-        >
-      {/snippet}
-    </DropdownMenu.Trigger>
-    <DropdownMenu.Content
-      align="start"
-      onCloseAutoFocus={(event) => {
-        event.preventDefault();
-        editor?.commands.focus(undefined, { scrollIntoView: false });
-      }}
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_undo()}
+      title={m.editor_undo()}
+      disabled={!canUndo()}
+      onclick={() => editor?.chain().focus().undo().run()}><Undo2Icon /></Button
     >
-      <DropdownMenu.Item
-        disabled={isActive("table")}
-        onSelect={() =>
-          runTable((chain) =>
-            chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }),
-          )}>{m.editor_insert_table()}</DropdownMenu.Item
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_redo()}
+      title={m.editor_redo()}
+      disabled={!canRedo()}
+      onclick={() => editor?.chain().focus().redo().run()}><Redo2Icon /></Button
+    >
+
+    <Separator
+      orientation="vertical"
+      class="mx-2 data-[orientation=vertical]:h-6"
+    />
+
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_heading_1()}
+      title={m.editor_heading_1()}
+      aria-pressed={isActive("heading", { level: 1 })}
+      onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
+      ><Heading1Icon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_heading_2()}
+      title={m.editor_heading_2()}
+      aria-pressed={isActive("heading", { level: 2 })}
+      onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
+      ><Heading2Icon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_heading_3()}
+      title={m.editor_heading_3()}
+      aria-pressed={isActive("heading", { level: 3 })}
+      onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
+      ><Heading3Icon /></Button
+    >
+
+    <Separator
+      orientation="vertical"
+      class="mx-2 data-[orientation=vertical]:h-6"
+    />
+
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_bold()}
+      title={m.editor_bold()}
+      aria-pressed={isActive("bold")}
+      onclick={() => editor?.chain().focus().toggleBold().run()}
+      ><BoldIcon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_italic()}
+      title={m.editor_italic()}
+      aria-pressed={isActive("italic")}
+      onclick={() => editor?.chain().focus().toggleItalic().run()}
+      ><ItalicIcon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_strike()}
+      title={m.editor_strike()}
+      aria-pressed={isActive("strike")}
+      onclick={() => editor?.chain().focus().toggleStrike().run()}
+      ><StrikethroughIcon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_inline_code()}
+      title={m.editor_inline_code_help()}
+      aria-pressed={isActive("code")}
+      onclick={() => editor?.chain().focus().toggleCode().run()}
+      ><CodeIcon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={isActive("link")
+        ? m.editor_remove_link()
+        : m.editor_add_link()}
+      title={isActive("link") ? m.editor_remove_link() : m.editor_add_link()}
+      aria-pressed={isActive("link")}
+      onclick={toggleLink}><Link2Icon /></Button
+    >
+
+    <Separator
+      orientation="vertical"
+      class="mx-2 data-[orientation=vertical]:h-6"
+    />
+
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_bullet_list()}
+      title={m.editor_bullet_list()}
+      aria-pressed={isActive("bulletList")}
+      onclick={() => editor?.chain().focus().toggleBulletList().run()}
+      ><ListIcon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_numbered_list()}
+      title={m.editor_numbered_list()}
+      aria-pressed={isActive("orderedList")}
+      onclick={() => editor?.chain().focus().toggleOrderedList().run()}
+      ><ListOrderedIcon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_task_list()}
+      title={m.editor_task_list()}
+      aria-pressed={isActive("taskList")}
+      onclick={() => editor?.chain().focus().toggleTaskList().run()}
+      ><ListChecksIcon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_blockquote()}
+      title={m.editor_blockquote()}
+      aria-pressed={isActive("blockquote")}
+      onclick={() => editor?.chain().focus().toggleBlockquote().run()}
+      ><QuoteIcon /></Button
+    >
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_code_block()}
+      title={m.editor_code_block()}
+      aria-pressed={isActive("codeBlock")}
+      onclick={() => editor?.chain().focus().toggleCodeBlock().run()}
+      ><Code2Icon /></Button
+    >
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={m.editor_table()}
+            title={m.editor_table()}
+            aria-pressed={isActive("table")}
+            disabled={!editor?.isEditable}><TableIcon /></Button
+          >
+        {/snippet}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content
+        align="start"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          editor?.commands.focus(undefined, { scrollIntoView: false });
+        }}
       >
-      <DropdownMenu.Separator />
-      {#each tableActions as action (action.label)}
-        {#if action.separated}
-          <DropdownMenu.Separator />
-        {/if}
         <DropdownMenu.Item
-          disabled={!canRunTable(action.run)}
-          onSelect={() => runTable(action.run)}
-          >{action.label()}</DropdownMenu.Item
+          disabled={isActive("table")}
+          onSelect={() =>
+            runTable((chain) =>
+              chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }),
+            )}>{m.editor_insert_table()}</DropdownMenu.Item
         >
-      {/each}
-    </DropdownMenu.Content>
-  </DropdownMenu.Root>
-  <DropdownMenu.Root>
-    <DropdownMenu.Trigger>
-      {#snippet child({ props })}
-        <Button
-          {...props}
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`${m.editor_table_align()}: ${currentAlign.label()}`}
-          title={m.editor_table_align()}
-          disabled={!editor?.isEditable || !isActive("table")}
-          ><currentAlign.icon /></Button
-        >
-      {/snippet}
-    </DropdownMenu.Trigger>
-    <DropdownMenu.Content
-      align="start"
-      onCloseAutoFocus={(event) => {
-        event.preventDefault();
-        editor?.commands.focus(undefined, { scrollIntoView: false });
-      }}
-    >
-      <DropdownMenu.Label>{m.editor_table_align()}</DropdownMenu.Label>
-      <DropdownMenu.RadioGroup
-        value={currentAlign.value}
-        onValueChange={(value) =>
-          runTable((chain) =>
-            chain.setColumnAlign((value || null) as ColumnAlign),
-          )}
-      >
-        {#each columnAligns as align (align.value)}
-          <DropdownMenu.RadioItem value={align.value}
-            >{align.label()}</DropdownMenu.RadioItem
+        <DropdownMenu.Separator />
+        {#each tableActions as action (action.label)}
+          {#if action.separated}
+            <DropdownMenu.Separator />
+          {/if}
+          <DropdownMenu.Item
+            disabled={!canRunTable(action.run)}
+            onSelect={() => runTable(action.run)}
+            >{action.label()}</DropdownMenu.Item
           >
         {/each}
-      </DropdownMenu.RadioGroup>
-    </DropdownMenu.Content>
-  </DropdownMenu.Root>
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon-sm"
-    aria-label={m.editor_horizontal_rule()}
-    title={m.editor_horizontal_rule()}
-    onclick={() => editor?.chain().focus().setHorizontalRule().run()}
-    ><MinusIcon /></Button
-  >
-</div>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`${m.editor_table_align()}: ${currentAlign.label()}`}
+            title={m.editor_table_align()}
+            disabled={!editor?.isEditable || !isActive("table")}
+            ><currentAlign.icon /></Button
+          >
+        {/snippet}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content
+        align="start"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          editor?.commands.focus(undefined, { scrollIntoView: false });
+        }}
+      >
+        <DropdownMenu.Label>{m.editor_table_align()}</DropdownMenu.Label>
+        <DropdownMenu.RadioGroup
+          value={currentAlign.value}
+          onValueChange={(value) =>
+            runTable((chain) =>
+              chain.setColumnAlign((value || null) as ColumnAlign),
+            )}
+        >
+          {#each columnAligns as align (align.value)}
+            <DropdownMenu.RadioItem value={align.value}
+              >{align.label()}</DropdownMenu.RadioItem
+            >
+          {/each}
+        </DropdownMenu.RadioGroup>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.editor_horizontal_rule()}
+      title={m.editor_horizontal_rule()}
+      onclick={() => editor?.chain().focus().setHorizontalRule().run()}
+      ><MinusIcon /></Button
+    >
+  </div>
+</ScrollArea>
 
 <Dialog.Root bind:open={linkOpen}>
   <Dialog.Content

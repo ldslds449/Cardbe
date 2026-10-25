@@ -23,8 +23,11 @@
   import PinIcon from "@lucide/svelte/icons/pin";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import XIcon from "@lucide/svelte/icons/x";
+  import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
 
   import { Button } from "#lib/components/ui/button/index.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import * as InputGroup from "#lib/components/ui/input-group/index.js";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { Textarea } from "#lib/components/ui/textarea/index.js";
@@ -87,6 +90,8 @@
   let loaded = $state(false);
   let creating = $state(false);
   let deleting_id = $state<number | null>(null);
+  let delete_confirm_open = $state(false);
+  let note_to_delete = $state<Note | null>(null);
   const enqueue = create_note_queue();
   let list_collapsed = $state(false);
   let note_ref = $state<RichTextEditorHandle | null>(null);
@@ -350,13 +355,6 @@
     if (deleting_id !== null) {
       return;
     }
-    if (
-      !window.confirm(
-        m.note_delete_confirm({ name: note.title.trim() || m.note_untitled() }),
-      )
-    ) {
-      return;
-    }
     const timer = save_timers.get(note.id);
     if (timer) {
       clearTimeout(timer);
@@ -600,97 +598,139 @@
       </ScrollArea>
     </div>
 
-    <div class="flex min-h-0 min-w-0 flex-col">
+    <div class="@container/note-header flex min-h-0 min-w-0 flex-col">
       {#if selected_note}
-        <div class="flex flex-wrap items-center gap-2 border-b p-3">
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={list_collapsed
-              ? m.note_show_list()
-              : m.note_hide_list()}
-            title={list_collapsed ? m.note_show_list() : m.note_hide_list()}
-            aria-pressed={!list_collapsed}
-            onclick={() => (list_collapsed = !list_collapsed)}
-          >
-            {#if list_collapsed}
-              <PanelLeftOpenIcon />
-            {:else}
-              <PanelLeftCloseIcon />
-            {/if}
-          </Button>
-          <Textarea
-            rows={1}
-            class="min-h-9 min-w-24 flex-1 resize-none break-normal border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
-            placeholder={m.note_name()}
-            aria-label={m.note_name()}
-            disabled={deleting_id === selected_note.id}
-            value={selected_note.title}
-            onkeydown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-              }
-            }}
-            oninput={update_note_title}
-          />
-          <EditorControls
-            compact
-            bind:previewing={note_previewing}
-            language={note_language}
-            disabled={deleting_id === selected_note.id}
-            onlanguagechange={(language) =>
-              note_ref?.setCodeLanguage?.(language)}
-          />
-          <div class="flex shrink-0 items-center gap-2">
-            {#if card_reference_options.length}
-              <div class="size-8 shrink-0">
-                {#if !note_previewing}
-                  <CardReferencePicker
-                    compact
-                    disabled={deleting_id === selected_note.id}
-                    editor={note_ref}
-                    options={card_reference_options}
-                    bind:open={reference_open}
-                    bind:triggerStart={reference_start}
-                  />
-                {/if}
-              </div>
-            {/if}
-            <Button
-              size="icon-sm"
-              variant={selected_note.pinned ? "secondary" : "ghost"}
-              aria-label={selected_note.pinned ? m.note_unpin() : m.note_pin()}
-              title={selected_note.pinned ? m.note_unpin() : m.note_pin()}
-              disabled={deleting_id === selected_note.id}
-              onclick={() => toggle_pinned(selected_note)}
-            >
-              <PinIcon class={cn(selected_note.pinned && "fill-current")} />
-            </Button>
+        <div class="flex items-center gap-2 border-b p-3">
+          <div class="flex min-w-0 flex-1 items-center gap-2">
             <Button
               size="icon-sm"
               variant="ghost"
-              class="text-destructive hover:text-destructive"
-              aria-label={m.note_delete()}
-              title={m.note_delete()}
-              disabled={deleting_id !== null}
-              onclick={() => delete_note(selected_note)}
+              aria-label={list_collapsed
+                ? m.note_show_list()
+                : m.note_hide_list()}
+              title={list_collapsed ? m.note_show_list() : m.note_hide_list()}
+              aria-pressed={!list_collapsed}
+              onclick={() => (list_collapsed = !list_collapsed)}
             >
-              <Trash2Icon />
+              {#if list_collapsed}
+                <PanelLeftOpenIcon />
+              {:else}
+                <PanelLeftCloseIcon />
+              {/if}
             </Button>
+            <Textarea
+              rows={1}
+              class="min-h-9 min-w-0 flex-1 resize-none break-normal border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
+              placeholder={m.note_name()}
+              aria-label={m.note_name()}
+              disabled={deleting_id === selected_note.id}
+              value={selected_note.title}
+              onkeydown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                }
+              }}
+              oninput={update_note_title}
+            />
+          </div>
+          <div class="ml-auto flex shrink-0 items-center gap-2 [&>*]:shrink-0">
+            <EditorControls
+              compact
+              bind:previewing={note_previewing}
+              language={note_language}
+              disabled={deleting_id === selected_note.id}
+              onlanguagechange={(language) =>
+                note_ref?.setCodeLanguage?.(language)}
+            />
+            <div class="flex shrink-0 items-center gap-2">
+              <div class="size-8 shrink-0">
+                <CardReferencePicker
+                  compact
+                  disabled={note_previewing || deleting_id === selected_note.id}
+                  editor={note_ref}
+                  options={card_reference_options}
+                  bind:open={reference_open}
+                  bind:triggerStart={reference_start}
+                />
+              </div>
+              <div class="hidden items-center gap-2 @min-md/note-header:flex">
+                <Button
+                  size="icon-sm"
+                  variant={selected_note.pinned ? "secondary" : "ghost"}
+                  aria-label={selected_note.pinned
+                    ? m.note_unpin()
+                    : m.note_pin()}
+                  title={selected_note.pinned ? m.note_unpin() : m.note_pin()}
+                  disabled={deleting_id === selected_note.id}
+                  onclick={() => toggle_pinned(selected_note)}
+                >
+                  <PinIcon class={cn(selected_note.pinned && "fill-current")} />
+                </Button>
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  class="text-destructive hover:text-destructive"
+                  aria-label={m.note_delete()}
+                  title={m.note_delete()}
+                  disabled={deleting_id !== null}
+                  onclick={() => {
+                    note_to_delete = selected_note;
+                    delete_confirm_open = true;
+                  }}
+                >
+                  <Trash2Icon />
+                </Button>
+              </div>
+              <div class="@min-md/note-header:hidden">
+                <DropdownMenu.Root>
+                  <DropdownMenu.Trigger>
+                    {#snippet child({ props })}
+                      <Button
+                        {...props}
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={m.note_actions()}
+                        title={m.note_actions()}
+                      >
+                        <EllipsisIcon />
+                      </Button>
+                    {/snippet}
+                  </DropdownMenu.Trigger>
+                  <DropdownMenu.Content align="end">
+                    <DropdownMenu.Item
+                      disabled={deleting_id === selected_note.id}
+                      onSelect={() => toggle_pinned(selected_note)}
+                    >
+                      <PinIcon />
+                      {selected_note.pinned ? m.note_unpin() : m.note_pin()}
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Separator />
+                    <DropdownMenu.Item
+                      variant="destructive"
+                      disabled={deleting_id !== null}
+                      onSelect={() => {
+                        note_to_delete = selected_note;
+                        delete_confirm_open = true;
+                      }}
+                    >
+                      <Trash2Icon />
+                      {m.note_delete()}
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Root>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="flex min-h-0 flex-1 flex-col bg-background p-2">
+        <div class="flex min-h-0 flex-1 flex-col bg-background">
           {#key selected_note.id}
             <RichTextEditor
               bind:ref={note_ref}
               bind:language={note_language}
               bind:previewing={note_previewing}
               showControls={false}
-              containerClass={cn(
-                "flex min-h-0 flex-1 flex-col",
-                variant === "page" && "mx-auto w-full max-w-4xl",
-              )}
-              class="min-h-0 flex-1 overflow-y-auto rounded-md border-0 bg-transparent px-3 py-2 font-sans text-base leading-6 shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
+              containerClass="flex min-h-0 flex-1 flex-col"
+              class="min-h-0 flex-1 rounded-none border-0 bg-transparent px-3 py-2 font-sans text-base leading-6 shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
               placeholder={m.note_write()}
               showToolbar={variant === "page"}
               aria-label={m.note_content()}
@@ -711,3 +751,28 @@
     </div>
   </div>
 {/snippet}
+
+<AlertDialog.Root bind:open={delete_confirm_open}>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>{m.note_delete()}</AlertDialog.Title>
+      <AlertDialog.Description>
+        {m.note_delete_confirm({
+          name: note_to_delete?.title.trim() || m.note_untitled(),
+        })}
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>{m.common_cancel()}</AlertDialog.Cancel>
+      <AlertDialog.Action
+        variant="destructive"
+        disabled={deleting_id !== null || !note_to_delete}
+        onclick={() => {
+          if (note_to_delete) {
+            void delete_note(note_to_delete);
+          }
+        }}>{m.common_delete()}</AlertDialog.Action
+      >
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>

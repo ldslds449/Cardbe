@@ -58,54 +58,6 @@
   role="group"
   aria-label={m.editor_controls()}
 >
-  <DropdownMenu.Root>
-    <DropdownMenu.Trigger>
-      {#snippet child({ props })}
-        <Button
-          {...props}
-          bind:ref={trigger}
-          type="button"
-          size={compact ? "icon-sm" : "sm"}
-          variant={compact ? "ghost" : "outline"}
-          class={compact ? "" : "h-7 w-28 justify-between text-xs"}
-          aria-label={compact ? m.editor_settings() : m.editor_mode()}
-          title={compact ? m.editor_settings() : undefined}
-        >
-          {#if compact}<Settings2Icon />{:else}{$editorMode === "rich"
-              ? m.editor_rich_text()
-              : m.editor_plain_text()}<ChevronDownIcon />{/if}
-        </Button>
-      {/snippet}
-    </DropdownMenu.Trigger>
-    <DropdownMenu.Content
-      align={compact ? "end" : "start"}
-      onCloseAutoFocus={restoreFocus}
-    >
-      <DropdownMenu.Label>{m.editor_mode()}</DropdownMenu.Label>
-      <DropdownMenu.RadioGroup value={$editorMode} onValueChange={setMode}>
-        <DropdownMenu.RadioItem value="rich"
-          >{m.editor_rich_text()}</DropdownMenu.RadioItem
-        >
-        <DropdownMenu.RadioItem value="plain"
-          >{m.editor_plain_text()}</DropdownMenu.RadioItem
-        >
-      </DropdownMenu.RadioGroup>
-      {#if compact && $editorMode === "plain"}
-        <DropdownMenu.Separator />
-        <DropdownMenu.RadioGroup
-          value={previewing ? "preview" : "edit"}
-          onValueChange={(value) => (previewing = value === "preview")}
-        >
-          <DropdownMenu.RadioItem value="edit"
-            >{m.editor_edit()}</DropdownMenu.RadioItem
-          >
-          <DropdownMenu.RadioItem value="preview"
-            >{m.editor_preview()}</DropdownMenu.RadioItem
-          >
-        </DropdownMenu.RadioGroup>
-      {/if}
-    </DropdownMenu.Content>
-  </DropdownMenu.Root>
   {#if !compact && $editorMode === "plain" && splitPreview !== undefined}
     <Button
       type="button"
@@ -124,7 +76,7 @@
       {m.editor_split_preview()}
     </Button>
   {/if}
-  {#if !compact && $editorMode === "plain" && !splitPreview}
+  {#if $editorMode === "plain" && !splitPreview}
     <div
       class="flex items-center gap-1"
       role="group"
@@ -159,4 +111,38 @@
       onselect={(value) => onlanguagechange?.(value === "text" ? null : value)}
     />
   {/if}
+  <DropdownMenu.Root>
+    <DropdownMenu.Trigger>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          bind:ref={trigger}
+          type="button"
+          size={compact ? "icon-sm" : "sm"}
+          variant={compact ? "ghost" : "outline"}
+          class={compact ? "" : "h-7 w-28 justify-between text-xs"}
+          aria-label={compact ? m.editor_settings() : m.editor_mode()}
+          title={compact ? m.editor_settings() : undefined}
+        >
+          {#if compact}<Settings2Icon />{:else}{$editorMode === "rich"
+              ? m.editor_rich_text()
+              : m.editor_plain_text()}<ChevronDownIcon />{/if}
+        </Button>
+      {/snippet}
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Content
+      align={compact ? "end" : "start"}
+      onCloseAutoFocus={restoreFocus}
+    >
+      <DropdownMenu.Label>{m.editor_mode()}</DropdownMenu.Label>
+      <DropdownMenu.RadioGroup value={$editorMode} onValueChange={setMode}>
+        <DropdownMenu.RadioItem value="rich"
+          >{m.editor_rich_text()}</DropdownMenu.RadioItem
+        >
+        <DropdownMenu.RadioItem value="plain"
+          >{m.editor_plain_text()}</DropdownMenu.RadioItem
+        >
+      </DropdownMenu.RadioGroup>
+    </DropdownMenu.Content>
+  </DropdownMenu.Root>
 </div>

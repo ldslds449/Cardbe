@@ -814,6 +814,7 @@
   "note_unpin": "取消釘選筆記",
   "note_pin": "釘選筆記",
   "note_delete": "刪除筆記",
+  "note_actions": "更多筆記操作",
   "note_name": "筆記標題",
   "note_no_preview": "尚無內容可預覽。",
   "note_write": "輸入 Markdown…",

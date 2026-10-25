@@ -997,6 +997,7 @@
   "note_unpin": "Unpin note",
   "note_pin": "Pin note",
   "note_delete": "Delete note",
+  "note_actions": "More note actions",
   "note_name": "Note title",
   "note_no_preview": "Nothing to preview yet.",
   "note_write": "Write Markdown…",
