@@ -8,6 +8,9 @@
   import {
     decode_floating_focus_id,
     forget_floating_focus,
+    resize_floating_focus,
+    read_floating_focus_state,
+    write_floating_focus_state,
   } from "#lib/floating-focuses.js";
   import { formatNumber } from "#lib/i18n/index.js";
   import { logger } from "#lib/logger.js";
@@ -16,6 +19,9 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount, tick } from "svelte";
 
+  import { LogicalSize } from "@tauri-apps/api/dpi";
+  import MinusIcon from "@lucide/svelte/icons/minus";
+  import Maximize2Icon from "@lucide/svelte/icons/maximize-2";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import ListFilterIcon from "@lucide/svelte/icons/list-filter";
 
@@ -42,6 +48,42 @@
     new URLSearchParams(window.location.search).get("focus"),
   );
   const float_window = getCurrentWindow();
+
+  const saved_window_state = read_floating_focus_state(view_id ?? "");
+  let collapsed = $state(saved_window_state.collapsed);
+  let resizing = $state(false);
+  let expanded_size = new LogicalSize(320, saved_window_state.expanded_height);
+
+  async function toggle_collapsed() {
+    if (resizing) {
+      return;
+    }
+    resizing = true;
+    const next = !collapsed;
+    try {
+      const size = await float_window.innerSize();
+      const current_size = size.toLogical(await float_window.scaleFactor());
+      expanded_size = new LogicalSize(
+        current_size.width,
+        next ? Math.max(120, current_size.height) : expanded_size.height,
+      );
+      collapsed = next;
+      await tick();
+      await resize_floating_focus(float_window, next, expanded_size);
+      if (view_id !== null) {
+        write_floating_focus_state(view_id, next, expanded_size.height);
+      }
+    } catch (caught) {
+      collapsed = !next;
+      logger.warn("floating_focus.resize.failed", caught);
+      error = parseCommandError(caught) ?? { code: "INTERNAL_ERROR" };
+      await resize_floating_focus(float_window, collapsed, expanded_size).catch(
+        (failure) => logger.warn("floating_focus.resize.failed", failure),
+      );
+    } finally {
+      resizing = false;
+    }
+  }
 
   let view = $state<Focus | null>(null);
   let boards = $state<BoardSummary[]>([]);
@@ -120,7 +162,15 @@
         // The window opens hidden and is shown once the first read settles.
         // A hidden window may not paint frames, so this does not wait for one.
         void tick()
-          .then(() => {
+          .then(async () => {
+            if (collapsed) {
+              const size = await float_window.innerSize();
+              const logical_size = size.toLogical(
+                await float_window.scaleFactor(),
+              );
+              expanded_size.width = logical_size.width;
+              await resize_floating_focus(float_window, true, expanded_size);
+            }
             window.dispatchEvent(new Event("cardbe:workspace-ready"));
             return float_window.show();
           })
@@ -223,103 +273,129 @@
   onOpen={() => void open_in_cardbe()}
   onClose={() => void close_floating_window()}
 >
-  <header class="flex shrink-0 items-center gap-1.5 border-b px-3 py-2">
+  <header
+    class={[
+      "flex h-10 shrink-0 items-center gap-1.5 border-b px-3",
+      collapsed && "border-transparent",
+    ]}
+  >
     <ListFilterIcon class="size-3.5 shrink-0 text-muted-foreground" />
-    <h1 class="min-w-0 flex-1 truncate text-sm font-semibold">
+    <h1 class="min-w-0 flex-1 truncate text-sm leading-5 font-semibold">
       {view?.name ?? ""}
     </h1>
-    {#if view && !has_more}
-      <span class="shrink-0 text-xs text-muted-foreground tabular-nums"
-        >{formatNumber(items.length)}</span
+    {#if view}
+      <span
+        class="shrink-0 text-xs text-muted-foreground tabular-nums"
+        title={`${m.focus_float_count({ count: formatNumber(items.length) })}${has_more ? m.focus_float_partial() : ""}`}
+        >{formatNumber(items.length)}{has_more ? "+" : ""}</span
       >
     {/if}
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      aria-label={collapsed
+        ? m.floating_window_restore()
+        : m.floating_window_collapse()}
+      title={collapsed
+        ? m.floating_window_restore()
+        : m.floating_window_collapse()}
+      aria-expanded={!collapsed}
+      disabled={loading || resizing}
+      onclick={() => void toggle_collapsed()}
+    >
+      {#if collapsed}<Maximize2Icon />{:else}<MinusIcon />{/if}
+    </Button>
   </header>
 
-  <ScrollArea orientation="vertical" class="min-h-0 flex-1">
-    <div class="space-y-2 p-1.5">
-      {#if error}
-        <p class="px-1.5 text-xs text-destructive" aria-live="polite">
-          {translateCommandError(error)}
-        </p>
-      {/if}
-      {#if view && items.length === 0 && !error}
-        <p class="px-1.5 py-4 text-center text-xs text-muted-foreground">
-          {m.focus_empty()}
-        </p>
-      {/if}
-      {#each groups as group (group.key)}
-        <section aria-label={group.label ?? view?.name}>
-          {#if group.label !== null}
-            <h2
-              class="flex items-center gap-1.5 px-1.5 pt-1 pb-0.5 text-xs font-medium text-muted-foreground"
-            >
-              <span class="truncate">{group.label}</span>
-              <span class="tabular-nums"
-                >{formatNumber(group.items.length)}</span
+  {#if !collapsed}
+    <ScrollArea orientation="vertical" class="min-h-0 flex-1">
+      <div class="space-y-2 p-1.5">
+        {#if error}
+          <p class="px-1.5 text-xs text-destructive" aria-live="polite">
+            {translateCommandError(error)}
+          </p>
+        {/if}
+        {#if view && items.length === 0 && !error}
+          <p class="px-1.5 py-4 text-center text-xs text-muted-foreground">
+            {m.focus_empty()}
+          </p>
+        {/if}
+        {#each groups as group (group.key)}
+          <section aria-label={group.label ?? view?.name}>
+            {#if group.label !== null}
+              <h2
+                class="flex items-center gap-1.5 px-1.5 pt-1 pb-0.5 text-xs font-medium text-muted-foreground"
               >
-            </h2>
-          {/if}
-          <ul>
-            {#each group.items as item (item_key(item))}
-              {@const finished = item.done || Boolean(item.archived_at)}
-              <li class="flex items-center gap-1 rounded-md hover:bg-muted/50">
-                {#if !finished && writable(item)}
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    class="shrink-0 text-muted-foreground"
-                    disabled={busy_ids.has(item_key(item))}
-                    aria-label={m.task_complete()}
-                    title={m.task_complete()}
-                    onclick={() => void complete(item)}
-                  >
-                    <CircleCheckIcon />
-                  </Button>
-                {:else}
-                  <span class="size-8 shrink-0"></span>
-                {/if}
-                <button
-                  type="button"
-                  class="min-w-0 flex-1 rounded-sm py-1 pe-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  title={m.floating_task_open_in_cardbe()}
-                  onclick={() => void open_task(item)}
+                <span class="truncate">{group.label}</span>
+                <span class="tabular-nums"
+                  >{formatNumber(group.items.length)}</span
                 >
-                  <span
-                    class={[
-                      "block truncate text-sm",
-                      finished && "text-muted-foreground line-through",
-                    ]}>{item.task.title || m.task_untitled()}</span
+              </h2>
+            {/if}
+            <ul>
+              {#each group.items as item (item_key(item))}
+                {@const finished = item.done || Boolean(item.archived_at)}
+                <li
+                  class="flex items-center gap-1 rounded-md hover:bg-muted/50"
+                >
+                  {#if !finished && writable(item)}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      class="shrink-0 text-muted-foreground"
+                      disabled={busy_ids.has(item_key(item))}
+                      aria-label={m.task_complete()}
+                      title={m.task_complete()}
+                      onclick={() => void complete(item)}
+                    >
+                      <CircleCheckIcon />
+                    </Button>
+                  {:else}
+                    <span class="size-8 shrink-0"></span>
+                  {/if}
+                  <button
+                    type="button"
+                    class="min-w-0 flex-1 rounded-sm py-1 pe-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    title={m.floating_task_open_in_cardbe()}
+                    onclick={() => void open_task(item)}
                   >
-                  <span
-                    class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground"
-                  >
-                    <span class="truncate">{item.board_name}</span>
-                    {#if item.task.priority}
-                      <PriorityIndicator priority={item.task.priority} />
-                    {/if}
-                    {#if item.task.due_time}
-                      <DueBadge
-                        due_time={item.task.due_time}
-                        {now}
-                        at_midnight={item.task.due_at_midnight}
-                      />
-                    {/if}
-                  </span>
-                </button>
-              </li>
-            {/each}
-          </ul>
-        </section>
-      {/each}
-      {#if has_more}
-        <Button
-          variant="link"
-          size="sm"
-          class="w-full"
-          onclick={() => void open_in_cardbe()}
-          >{m.focus_float_show_all()}</Button
-        >
-      {/if}
-    </div>
-  </ScrollArea>
+                    <span
+                      class={[
+                        "block truncate text-sm",
+                        finished && "text-muted-foreground line-through",
+                      ]}>{item.task.title || m.task_untitled()}</span
+                    >
+                    <span
+                      class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground"
+                    >
+                      <span class="truncate">{item.board_name}</span>
+                      {#if item.task.priority}
+                        <PriorityIndicator priority={item.task.priority} />
+                      {/if}
+                      {#if item.task.due_time}
+                        <DueBadge
+                          due_time={item.task.due_time}
+                          {now}
+                          at_midnight={item.task.due_at_midnight}
+                        />
+                      {/if}
+                    </span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/each}
+        {#if has_more}
+          <Button
+            variant="link"
+            size="sm"
+            class="w-full"
+            onclick={() => void open_in_cardbe()}
+            >{m.focus_float_show_all()}</Button
+          >
+        {/if}
+      </div>
+    </ScrollArea>
+  {/if}
 </FloatingWindow>

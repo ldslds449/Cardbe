@@ -1,5 +1,6 @@
 <script lang="ts">
   import { logger } from "#lib/logger.js";
+  import { persist_floating_window_position } from "#lib/floating-window-state.js";
   import { Menu } from "@tauri-apps/api/menu";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount, type Snippet } from "svelte";
@@ -120,7 +121,17 @@
     }
   }
 
-  onMount(() => () => void context_menu?.close());
+  onMount(() => {
+    const position_listener = persist_floating_window_position(
+      float_window,
+    ).catch((error) => {
+      logger.warn(`${log_scope}.position_listener.failed`, error);
+    });
+    return () => {
+      void context_menu?.close();
+      void position_listener.then((unlisten) => unlisten?.());
+    };
+  });
 </script>
 
 <svelte:head>

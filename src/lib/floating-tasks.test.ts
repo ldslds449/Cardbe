@@ -15,11 +15,14 @@ import {
   clamp_floating_zoom,
   forget_floating_task,
   open_floating_task,
+  read_floating_collapsed,
   read_floating_height,
   read_floating_tasks,
   read_floating_zoom,
+  remember_floating_task,
   restore_floating_tasks,
   write_floating_height,
+  write_floating_collapsed,
   write_floating_zoom,
 } from "./floating-tasks";
 
@@ -39,6 +42,37 @@ describe("floating task windows", () => {
     mocks.invoke.mockResolvedValue(undefined);
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it("restores collapsed state per board and task and clears it on close", async () => {
+    const ref = { boardId: 1, taskId: 7 };
+    expect(read_floating_collapsed(ref)).toBe(false);
+    write_floating_collapsed(ref, true);
+    expect(read_floating_collapsed({ ...ref })).toBe(true);
+    expect(read_floating_collapsed({ boardId: 2, taskId: 7 })).toBe(false);
+    expect(read_floating_collapsed({ boardId: 1, taskId: 8 })).toBe(false);
+    remember_floating_task(ref);
+    await restore_floating_tasks();
+    expect(read_floating_collapsed(ref)).toBe(true);
+    write_floating_collapsed(ref, false);
+    expect(read_floating_collapsed(ref)).toBe(false);
+    storage.set("cardbe.floating-task-collapsed.1.7", "invalid");
+    expect(read_floating_collapsed(ref)).toBe(false);
+    write_floating_collapsed(ref, true);
+    forget_floating_task(ref);
+    expect(read_floating_collapsed(ref)).toBe(false);
+  });
+
+  it("handles unavailable storage for collapsed state", () => {
+    vi.stubGlobal("window", {
+      get localStorage() {
+        throw new Error("unavailable");
+      },
+    });
+    const ref = { boardId: 1, taskId: 7 };
+    expect(read_floating_collapsed(ref)).toBe(false);
+    expect(() => write_floating_collapsed(ref, true)).not.toThrow();
+    expect(mocks.warn).toHaveBeenCalledOnce();
+  });
 
   it("remembers each opened task once and forgets closed ones", async () => {
     await open_floating_task({ boardId: 1, taskId: 7 });

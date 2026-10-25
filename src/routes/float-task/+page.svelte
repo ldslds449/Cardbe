@@ -8,9 +8,11 @@
   import {
     clamp_floating_zoom,
     forget_floating_task,
+    read_floating_collapsed,
     read_floating_height,
     read_floating_zoom,
     write_floating_height,
+    write_floating_collapsed,
     write_floating_zoom,
   } from "#lib/floating-tasks.js";
   import { formatNumber } from "#lib/i18n/index.js";
@@ -21,6 +23,9 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount, tick } from "svelte";
 
+  import { Button } from "#lib/components/ui/button/index.js";
+  import MinusIcon from "@lucide/svelte/icons/minus";
+  import Maximize2Icon from "@lucide/svelte/icons/maximize-2";
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
 
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
@@ -54,6 +59,12 @@
   };
   const float_window = getCurrentWindow();
 
+  let collapsed = $state(read_floating_collapsed(ref));
+
+  function toggle_collapsed() {
+    collapsed = !collapsed;
+    write_floating_collapsed(ref, collapsed);
+  }
   let task = $state<Task | null>(null);
   let board_name = $state("");
   let column_name = $state("");
@@ -113,6 +124,7 @@
   let header = $state<HTMLElement | null>(null);
   let body = $state<HTMLElement | null>(null);
   let fitted_height = 0;
+  let fitted_collapsed = false;
   let content_height = 0;
   // A height the user dragged below the fit, kept while the content changes
   // and across launches.
@@ -125,7 +137,7 @@
 
   function handle_window_resize() {
     // Resizes made here are not the user's choice.
-    if (pending_resizes > 0 || fitted_height === 0) {
+    if (collapsed || pending_resizes > 0 || fitted_height === 0) {
       return;
     }
     // One pixel absorbs logical-to-physical rounding.
@@ -147,7 +159,7 @@
     // otherwise leave the body a fraction short and show a scrollbar.
     const content = Math.ceil(
       header.getBoundingClientRect().height +
-        (body?.getBoundingClientRect().height ?? 0) +
+        (collapsed ? 0 : (body?.getBoundingClientRect().height ?? 0)) +
         3,
     );
     const ceiling = Math.max(
@@ -156,24 +168,35 @@
     );
     const max_height = Math.min(Math.max(content, MIN_HEIGHT), ceiling);
     const height =
-      chosen_height === null
+      collapsed || chosen_height === null
         ? max_height
         : Math.min(Math.max(chosen_height, MIN_HEIGHT), max_height);
     content_height = content;
     overflowing = content > height;
-    if (max_height === fitted_height && window.innerHeight === height) {
+    if (
+      max_height === fitted_height &&
+      window.innerHeight === height &&
+      collapsed === fitted_collapsed
+    ) {
       return;
     }
     fitted_height = max_height;
+    fitted_collapsed = collapsed;
+    const min_height = collapsed ? height : MIN_HEIGHT;
+    const resizable = !collapsed;
     pending_resizes += 1;
     resizing = resizing
       .then(async () => {
+        await float_window.setResizable(false);
         await float_window.setSizeConstraints({
           minWidth: MIN_WIDTH,
-          minHeight: MIN_HEIGHT,
+          minHeight: min_height,
           maxHeight: max_height,
         });
         await float_window.setSize(new LogicalSize(window.innerWidth, height));
+        if (resizable) {
+          await float_window.setResizable(true);
+        }
       })
       .catch((caught) => logger.warn("floating_task.resize.failed", caught))
       // The resize event can follow the call's return.
@@ -381,21 +404,45 @@
   onClose={() => void close_floating_window()}
 >
   <div class="flex min-h-0 flex-1 flex-col">
-    <header class="shrink-0 px-3 pt-2.5 pb-1.5" bind:this={header}>
+    <header
+      class={collapsed
+        ? "relative flex min-h-10 shrink-0 items-center px-3 pe-12"
+        : "relative shrink-0 px-3 pt-2.5 pb-1.5 pe-12"}
+      bind:this={header}
+    >
       <h1
-        class="line-clamp-2 text-sm leading-5 font-semibold [overflow-wrap:anywhere]"
+        class={collapsed
+          ? "min-w-0 flex-1 truncate text-sm leading-5 font-semibold"
+          : "line-clamp-2 text-sm leading-5 font-semibold [overflow-wrap:anywhere]"}
         style:color={task ? display_task_color(task.color) : undefined}
       >
         {task?.title ?? (loading ? "" : m.task_missing())}
       </h1>
-      {#if task}
-        <p class="truncate text-xs text-muted-foreground">
-          {board_name} · {column_name}
-        </p>
+      {#if !collapsed}
+        {#if task}
+          <p class="truncate text-xs text-muted-foreground">
+            {board_name} · {column_name}
+          </p>
+        {/if}
       {/if}
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        class="absolute top-2 right-3"
+        aria-label={collapsed
+          ? m.floating_window_restore()
+          : m.floating_window_collapse()}
+        title={collapsed
+          ? m.floating_window_restore()
+          : m.floating_window_collapse()}
+        aria-expanded={!collapsed}
+        onclick={toggle_collapsed}
+      >
+        {#if collapsed}<Maximize2Icon />{:else}<MinusIcon />{/if}
+      </Button>
     </header>
 
-    {#if !title_only}
+    {#if !collapsed && !title_only}
       <ScrollArea
         orientation="vertical"
         class="min-h-0 flex-1"

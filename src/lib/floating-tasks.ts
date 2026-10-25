@@ -62,8 +62,35 @@ export function forget_floating_task(ref: FloatingTaskRef) {
   try {
     window.localStorage.removeItem(zoom_key(ref));
     window.localStorage.removeItem(height_key(ref));
+    window.localStorage.removeItem(collapsed_key(ref));
   } catch {
-    // Zoom and height are conveniences; a stale value is harmless.
+    // Window preferences are conveniences; stale values are harmless.
+  }
+}
+
+const collapsed_key = (ref: FloatingTaskRef) =>
+  `cardbe.floating-task-collapsed.${ref.boardId}.${ref.taskId}`;
+
+export function read_floating_collapsed(ref: FloatingTaskRef) {
+  try {
+    return window.localStorage.getItem(collapsed_key(ref)) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function write_floating_collapsed(
+  ref: FloatingTaskRef,
+  collapsed: boolean,
+) {
+  try {
+    if (collapsed) {
+      window.localStorage.setItem(collapsed_key(ref), "true");
+    } else {
+      window.localStorage.removeItem(collapsed_key(ref));
+    }
+  } catch (error) {
+    logger.warn("floating_task.collapsed_write.failed", error);
   }
 }
 

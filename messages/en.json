@@ -2788,5 +2788,9 @@
         "count=*": "You can create up to {countFormatted} Focuses."
       }
     }
-  ]
+  ],
+  "floating_window_collapse": "Collapse window",
+  "floating_window_restore": "Restore window",
+  "focus_float_count": "Tasks: {count}",
+  "focus_float_partial": " (loaded tasks)"
 }

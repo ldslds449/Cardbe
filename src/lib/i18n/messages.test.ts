@@ -17,6 +17,27 @@ import en from "../../../messages/en.json";
 import zh from "../../../messages/zh-TW.json";
 
 describe("core messages", () => {
+  it("renders floating window controls and counts in both languages", () => {
+    for (const locale of ["en", "zh-TW"] as const) {
+      const chinese = locale === "zh-TW";
+      const options = { locale };
+      expect(m.floating_window_collapse({}, options)).toBe(
+        chinese ? "收合視窗" : "Collapse window",
+      );
+      expect(m.floating_window_restore({}, options)).toBe(
+        chinese ? "展開視窗" : "Restore window",
+      );
+      for (const count of ["0", "1", "5"]) {
+        expect(m.focus_float_count({ count }, options)).toBe(
+          chinese ? `任務數：${count}` : `Tasks: ${count}`,
+        );
+      }
+      expect(m.focus_float_partial({}, options)).toBe(
+        chinese ? "（已載入的任務）" : " (loaded tasks)",
+      );
+    }
+  });
+
   it("switches remaining UI, statistics, exports and validation messages live", async () => {
     const originalGetLocale = runtimeGetLocale;
     overwriteGetLocale(getLocale);

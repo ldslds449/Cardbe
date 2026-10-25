@@ -2461,5 +2461,9 @@
         "count=*": "最多只能建立 {countFormatted} 個焦點。"
       }
     }
-  ]
+  ],
+  "floating_window_collapse": "收合視窗",
+  "floating_window_restore": "展開視窗",
+  "focus_float_count": "任務數：{count}",
+  "focus_float_partial": "（已載入的任務）"
 }
