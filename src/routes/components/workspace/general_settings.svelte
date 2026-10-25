@@ -3,14 +3,14 @@
   import { onMount } from "svelte";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import { Separator } from "$lib/components/ui/separator/index.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
-  import { m } from "$lib/paraglide/messages.js";
-  import { language, isLanguagePreference } from "$lib/i18n";
-  import { logger } from "$lib/logger";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Field from "#lib/components/ui/field/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import { Separator } from "#lib/components/ui/separator/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import { language, isLanguagePreference } from "#lib/i18n/index.js";
+  import { logger } from "#lib/logger.js";
   import { board } from "../../board.svelte";
 
   let {

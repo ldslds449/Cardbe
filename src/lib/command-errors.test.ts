@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { parseCommandError, translateCommandError } from "./command-errors";
-import { applyLanguagePreference } from "$lib/i18n";
-import { getLocale } from "$lib/i18n";
+import { applyLanguagePreference } from "#lib/i18n/index.js";
+import { getLocale } from "#lib/i18n/index.js";
 import {
   getLocale as runtimeGetLocale,
   overwriteGetLocale,
-} from "$lib/paraglide/runtime";
-import { m } from "$lib/paraglide/messages";
+} from "#lib/paraglide/runtime.js";
+import { m } from "#lib/paraglide/messages.js";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";

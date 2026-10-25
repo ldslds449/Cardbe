@@ -2,10 +2,10 @@
   import {
     confirmUnsavedChanges,
     registerUnsavedChanges,
-  } from "$lib/unsaved-changes";
-  import { translateCommandError } from "$lib/command-errors";
-  import * as m from "$lib/paraglide/messages.js";
-  import { logger } from "$lib/logger";
+  } from "#lib/unsaved-changes.js";
+  import { translateCommandError } from "#lib/command-errors.js";
+  import * as m from "#lib/paraglide/messages.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { toast } from "svelte-sonner";
@@ -24,19 +24,19 @@
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import XIcon from "@lucide/svelte/icons/x";
 
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as InputGroup from "$lib/components/ui/input-group/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
-  import EditorControls from "$lib/components/editor/editor-controls.svelte";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as InputGroup from "#lib/components/ui/input-group/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { Textarea } from "#lib/components/ui/textarea/index.js";
+  import EditorControls from "#lib/components/editor/editor-controls.svelte";
   import CardReferencePicker, {
     type CardReferenceOption,
-  } from "$lib/components/editor/card-reference-picker.svelte";
+  } from "#lib/components/editor/card-reference-picker.svelte";
   import {
     RichTextEditor,
     type RichTextEditorHandle,
-  } from "$lib/components/editor/index.js";
-  import { cn } from "$lib/utils";
+  } from "#lib/components/editor/index.js";
+  import { cn } from "#lib/utils.js";
   import Markdown from "../markdown.svelte";
 
   interface Note {

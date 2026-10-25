@@ -1,23 +1,23 @@
 <script lang="ts">
-  import { confirmUnsavedChanges } from "$lib/unsaved-changes";
-  import { translateCommandError } from "$lib/command-errors";
-  import { getLocale } from "$lib/i18n";
-  import { m } from "$lib/paraglide/messages.js";
-  import { logger } from "$lib/logger";
-  import { restore_floating_tasks } from "$lib/floating-tasks";
+  import { confirmUnsavedChanges } from "#lib/unsaved-changes.js";
+  import { translateCommandError } from "#lib/command-errors.js";
+  import { getLocale } from "#lib/i18n/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import { logger } from "#lib/logger.js";
+  import { restore_floating_tasks } from "#lib/floating-tasks.js";
   import {
     open_floating_focus,
     restore_floating_focuses,
-  } from "$lib/floating-focuses";
+  } from "#lib/floating-focuses.js";
   import { onMount, untrack } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { toast } from "svelte-sonner";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Spinner } from "$lib/components/ui/spinner/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import * as Empty from "$lib/components/ui/empty/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Spinner } from "#lib/components/ui/spinner/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import * as Empty from "#lib/components/ui/empty/index.js";
 
   import BugIcon from "@lucide/svelte/icons/bug";
 

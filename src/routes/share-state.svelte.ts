@@ -1,4 +1,4 @@
-import { logger } from "$lib/logger";
+import { logger } from "#lib/logger.js";
 import type { ManagedShare } from "./share";
 
 const MANAGED_SHARE_STORAGE_KEY = "cardbe.active-share";

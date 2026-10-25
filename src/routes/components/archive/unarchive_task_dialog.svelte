@@ -1,5 +1,5 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
 
   import type { Column } from "../../type/column.svelte";
   import type { TaskSummary } from "../../type/task.svelte";

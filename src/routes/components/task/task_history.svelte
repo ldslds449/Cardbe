@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import { formatDateTime } from "$lib/i18n";
-  import { translateCommandError } from "$lib/command-errors";
+  import { m } from "#lib/paraglide/messages.js";
+  import { formatDateTime } from "#lib/i18n/index.js";
+  import { translateCommandError } from "#lib/command-errors.js";
   import HistoryIcon from "@lucide/svelte/icons/history";
   import CollapsibleBlock from "../collapsible_block.svelte";
   import type { Column } from "../../type/column.svelte";

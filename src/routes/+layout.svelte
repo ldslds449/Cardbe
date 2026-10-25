@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import { dev } from "$app/environment";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import { dev } from "$app/env";
   import "../app.css";
-  import ThemeProvider from "$lib/theme/theme-provider.svelte";
-  import Sonner from "$lib/components/ui/sonner/sonner.svelte";
-  import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
+  import ThemeProvider from "#lib/theme/theme-provider.svelte";
+  import Sonner from "#lib/components/ui/sonner/sonner.svelte";
+  import UnsavedChangesDialog from "#lib/components/unsaved-changes-dialog.svelte";
   import { onMount } from "svelte";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -13,8 +13,8 @@
     applyLanguagePreference,
     getLocale,
     refreshSystemLocale,
-  } from "$lib/i18n";
-  import { installGlobalErrorLogging, logger } from "$lib/logger";
+  } from "#lib/i18n/index.js";
+  import { installGlobalErrorLogging, logger } from "#lib/logger.js";
 
   let { children } = $props();
 

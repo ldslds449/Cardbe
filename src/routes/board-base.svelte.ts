@@ -1,7 +1,7 @@
-import { translateCommandError } from "$lib/command-errors";
-import { m } from "$lib/paraglide/messages.js";
+import { translateCommandError } from "#lib/command-errors.js";
+import { m } from "#lib/paraglide/messages.js";
 import type { TaskExplorerQuery } from "./utils/task-explorer";
-import { logger } from "$lib/logger";
+import { logger } from "#lib/logger.js";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 import {

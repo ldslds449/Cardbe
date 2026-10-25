@@ -1,5 +1,5 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import { useSortable } from "@dnd-kit-svelte/svelte/sortable";
   import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
   import type { Snippet } from "svelte";

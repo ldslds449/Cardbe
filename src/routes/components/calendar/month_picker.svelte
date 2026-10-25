@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { formatNumber } from "$lib/i18n";
-  import { getLocale } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { getLocale } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import CalendarIcon from "@lucide/svelte/icons/calendar";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
 
   let {
     value = $bindable(),

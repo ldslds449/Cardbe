@@ -1,4 +1,4 @@
-import * as m from "$lib/paraglide/messages.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
   create_task,
   create_task_item,
@@ -222,7 +222,7 @@ async function gzip(data: Uint8Array): Promise<Uint8Array> {
   const stream = new CompressionStream("gzip");
   const output = new Response(stream.readable).arrayBuffer();
   const writer = stream.writable.getWriter();
-  await writer.write(data);
+  await writer.write(data as Uint8Array<ArrayBuffer>);
   await writer.close();
   return new Uint8Array(await output);
 }
@@ -254,7 +254,7 @@ async function gunzip(data: Uint8Array): Promise<Uint8Array> {
     return result;
   })();
   const writer = stream.writable.getWriter();
-  await writer.write(data);
+  await writer.write(data as Uint8Array<ArrayBuffer>);
   await writer.close();
   return output;
 }

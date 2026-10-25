@@ -1,4 +1,4 @@
-import { m } from "$lib/paraglide/messages.js";
+import { m } from "#lib/paraglide/messages.js";
 
 // Matches the backend's allowed reminder offsets.
 export const reminderMinutes = [0, 5, 15, 30, 60, 1440];

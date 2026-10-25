@@ -1,7 +1,7 @@
 import { render } from "svelte/server";
 import { expect, it } from "vite-plus/test";
-import * as m from "$lib/paraglide/messages";
-import { setLocale } from "$lib/paraglide/runtime";
+import * as m from "#lib/paraglide/messages.js";
+import { setLocale } from "#lib/paraglide/runtime.js";
 import ChecklistDisplay from "./checklist_display.svelte";
 import ChecklistSummary from "./checklist_summary.svelte";
 import TaskActionMenu from "./test-fixtures/task_action_menu.svelte";

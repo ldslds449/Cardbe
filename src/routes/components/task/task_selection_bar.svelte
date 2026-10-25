@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import { formatNumber } from "$lib/i18n";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Separator } from "#lib/components/ui/separator/index.js";
   import ArchiveIcon from "@lucide/svelte/icons/archive";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";

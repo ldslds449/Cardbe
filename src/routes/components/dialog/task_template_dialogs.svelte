@@ -1,5 +1,5 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import CopyTemplateDialog from "./copy_template_dialog.svelte";
   import { board } from "../../board.svelte";
@@ -8,12 +8,12 @@
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import TrashIcon from "@lucide/svelte/icons/trash-2";
 
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Empty from "$lib/components/ui/empty/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as Empty from "#lib/components/ui/empty/index.js";
+  import * as Field from "#lib/components/ui/field/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
 
   import type { Task, TaskTemplate } from "../../type/task.svelte";
   import Combobox from "../combobox.svelte";

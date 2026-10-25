@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { logger } from "$lib/logger";
+import { logger } from "#lib/logger.js";
 import { themeAppearance, type ThemePreference } from "./themes";
 
 type Rgb = [number, number, number];

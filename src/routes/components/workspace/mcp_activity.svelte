@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button";
-  import { m } from "$lib/paraglide/messages";
-  import { formatDateTime } from "$lib/i18n";
-  import { translateCommandError } from "$lib/command-errors";
-  import { logger } from "$lib/logger";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import { formatDateTime } from "#lib/i18n/index.js";
+  import { translateCommandError } from "#lib/command-errors.js";
+  import { logger } from "#lib/logger.js";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";

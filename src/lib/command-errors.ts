@@ -1,5 +1,5 @@
-import { m } from "$lib/paraglide/messages";
-import { getLocale } from "$lib/i18n";
+import { m } from "#lib/paraglide/messages.js";
+import { getLocale } from "#lib/i18n/index.js";
 
 const coreMessages = {
   SHARE_UNAVAILABLE: () => m.ui_share_unavailable(),

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { parse } from "svelte/compiler";
 import { transpile } from "typescript";
 import { expect, it, vi } from "vite-plus/test";
-import { parseCommandError } from "$lib/command-errors";
+import { parseCommandError } from "#lib/command-errors.js";
 
 const source = readFileSync(
   new URL("./plugin_permissions.svelte", import.meta.url),

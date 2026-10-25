@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import * as m from "$lib/paraglide/messages.js";
-  import { formatDate, formatNumber } from "$lib/i18n";
+  import * as m from "#lib/paraglide/messages.js";
+  import { formatDate, formatNumber } from "#lib/i18n/index.js";
   import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Spinner } from "$lib/components/ui/spinner/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Spinner } from "#lib/components/ui/spinner/index.js";
   import type { Archive } from "../../type/archive.svelte";
   import type { Column } from "../../type/column.svelte";
   import type { Task } from "../../type/task.svelte";

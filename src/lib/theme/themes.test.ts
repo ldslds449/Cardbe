@@ -8,7 +8,7 @@ import {
   themeAppearance,
   themes,
 } from "./themes";
-import { setLocale } from "$lib/paraglide/runtime";
+import { setLocale } from "#lib/paraglide/runtime.js";
 
 const css = readFileSync("static/themes.css", "utf8");
 const html = readFileSync("src/app.html", "utf8");

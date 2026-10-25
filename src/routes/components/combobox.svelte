@@ -1,12 +1,12 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import CheckIcon from "@lucide/svelte/icons/check";
   import ChevronsUpDownIcon from "@lucide/svelte/icons/chevrons-up-down";
   import { tick } from "svelte";
-  import * as Command from "$lib/components/ui/command/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { cn } from "$lib/utils.js";
+  import * as Command from "#lib/components/ui/command/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { cn } from "#lib/utils.js";
 
   interface SelectItem {
     value: any;

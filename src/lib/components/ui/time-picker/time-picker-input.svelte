@@ -18,8 +18,8 @@
 </script>
 
 <script lang="ts">
-  import { Input } from "$lib/components/ui/input";
-  import { cn } from "$lib/utils";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { cn } from "#lib/utils.js";
   import { Time } from "@internationalized/date";
   import {
     type Period,

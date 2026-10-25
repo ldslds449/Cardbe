@@ -1,6 +1,6 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
-  import { getLocale } from "$lib/i18n";
+  import * as m from "#lib/paraglide/messages.js";
+  import { getLocale } from "#lib/i18n/index.js";
   import type { Task } from "../type/task.svelte";
   import { is_date_only } from "../utils/task-date-range";
 

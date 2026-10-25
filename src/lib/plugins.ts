@@ -2,10 +2,10 @@ import {
   parseCommandError,
   translateCommandError,
   type CommandError,
-} from "$lib/command-errors";
-import { getLocale } from "$lib/i18n";
-import { m } from "$lib/paraglide/messages.js";
-import { formatNumber } from "$lib/i18n";
+} from "#lib/command-errors.js";
+import { getLocale } from "#lib/i18n/index.js";
+import { m } from "#lib/paraglide/messages.js";
+import { formatNumber } from "#lib/i18n/index.js";
 export type PluginText =
   | string
   | Partial<Record<"en" | "zh-TW", string>>

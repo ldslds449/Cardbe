@@ -1,4 +1,4 @@
-import { translateCommandError } from "$lib/command-errors";
+import { translateCommandError } from "#lib/command-errors.js";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 

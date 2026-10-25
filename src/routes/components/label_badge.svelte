@@ -4,8 +4,8 @@
   import CircleDotDashedIcon from "@lucide/svelte/icons/circle-dot-dashed";
   import WeightIcon from "@lucide/svelte/icons/weight";
 
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { cn } from "$lib/utils.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { cn } from "#lib/utils.js";
   import { parse_label } from "../utils/label";
 
   let {

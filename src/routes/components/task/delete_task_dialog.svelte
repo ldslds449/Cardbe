@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 
   interface DeleteTaskDialogProps {
     open: boolean;

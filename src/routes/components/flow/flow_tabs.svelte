@@ -3,14 +3,14 @@
   import { DragDropProvider, PointerSensor } from "@dnd-kit-svelte/svelte";
   import { distance_activation_constraint } from "../dnd/activation";
   import FlowTabSortable from "./flow_tab_sortable.svelte";
-  import { Button, buttonVariants } from "$lib/components/ui/button";
-  import { Input } from "$lib/components/ui/input";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
   import { dragged_tab_ids, tab_label, type FlowTab } from "./flow";
 
   let {

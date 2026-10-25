@@ -1,8 +1,8 @@
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import {
   defineCustomClientStrategy,
   overwriteGetLocale,
-} from "$lib/paraglide/runtime.js";
+} from "#lib/paraglide/runtime.js";
 import {
   isLanguagePreference,
   resolveLocale,

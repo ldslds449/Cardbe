@@ -1,7 +1,7 @@
 import { render } from "svelte/server";
 import { expect, it } from "vite-plus/test";
-import * as m from "$lib/paraglide/messages";
-import { setLocale } from "$lib/paraglide/runtime";
+import * as m from "#lib/paraglide/messages.js";
+import { setLocale } from "#lib/paraglide/runtime.js";
 import AnnotationNode from "./annotation_node.svelte";
 import { build_annotations, type FlowAnnotation } from "./flow";
 

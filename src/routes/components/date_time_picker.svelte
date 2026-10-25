@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import { formatDate, formatDateTime, getLocale } from "$lib/i18n";
-  import Calendar from "$lib/components/ui/calendar/calendar.svelte";
-  import * as Popover from "$lib/components/ui/popover/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { TimePicker } from "$lib/components/ui/time-picker/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import { formatDate, formatDateTime, getLocale } from "#lib/i18n/index.js";
+  import Calendar from "#lib/components/ui/calendar/calendar.svelte";
+  import * as Popover from "#lib/components/ui/popover/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { TimePicker } from "#lib/components/ui/time-picker/index.js";
   import CalendarIcon from "@lucide/svelte/icons/calendar";
   import ClockIcon from "@lucide/svelte/icons/clock";
   import XIcon from "@lucide/svelte/icons/x";

@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { translateCommandError } from "$lib/command-errors";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Spinner } from "$lib/components/ui/spinner/index.js";
-  import { logger } from "$lib/logger";
-  import { m } from "$lib/paraglide/messages.js";
-  import { registerUnsavedChanges } from "$lib/unsaved-changes";
+  import { translateCommandError } from "#lib/command-errors.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Spinner } from "#lib/components/ui/spinner/index.js";
+  import { logger } from "#lib/logger.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import { registerUnsavedChanges } from "#lib/unsaved-changes.js";
   import { board } from "../../board.svelte";
   import { IrohNetworkSettingsDraft } from "../share/iroh_network_settings.svelte";
   import IrohNetworkSettingsForm from "../share/iroh_network_settings_form.svelte";

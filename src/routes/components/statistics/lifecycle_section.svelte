@@ -1,12 +1,12 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
-  import { formatDate, formatNumber } from "$lib/i18n";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import * as Table from "$lib/components/ui/table/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
+  import * as m from "#lib/paraglide/messages.js";
+  import { formatDate, formatNumber } from "#lib/i18n/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import * as Table from "#lib/components/ui/table/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
   import { untrack } from "svelte";
-  import { translateCommandError } from "$lib/command-errors";
+  import { translateCommandError } from "#lib/command-errors.js";
   import type { Archive } from "../../type/archive.svelte";
   import { done_column, type Column } from "../../type/column.svelte";
   import type { Task } from "../../type/task.svelte";

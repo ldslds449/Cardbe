@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { parseCommandError } from "$lib/command-errors";
-import { logger } from "$lib/logger";
+import { parseCommandError } from "#lib/command-errors.js";
+import { logger } from "#lib/logger.js";
 
 // Floating reminder windows are a device-local convenience: the list is kept
 // in WebView storage, outside board data, synchronization, and Undo. Window

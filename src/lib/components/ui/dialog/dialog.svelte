@@ -4,7 +4,7 @@
   import {
     confirmUnsavedChanges,
     registerUnsavedChanges,
-  } from "$lib/unsaved-changes";
+  } from "#lib/unsaved-changes.js";
 
   let {
     open = $bindable(false),

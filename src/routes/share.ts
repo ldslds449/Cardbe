@@ -1,5 +1,5 @@
-import * as m from "$lib/paraglide/messages.js";
-import { formatNumber } from "$lib/i18n";
+import * as m from "#lib/paraglide/messages.js";
+import { formatNumber } from "#lib/i18n/index.js";
 import { get_column_id, type Column } from "./type/column.svelte";
 import { serialize_task, type TaskSerialized } from "./type/task.svelte";
 import { invoke } from "@tauri-apps/api/core";

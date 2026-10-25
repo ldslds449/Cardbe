@@ -2,14 +2,14 @@
   import {
     confirmUnsavedChanges,
     registerUnsavedChanges,
-  } from "$lib/unsaved-changes";
-  import * as m from "$lib/paraglide/messages.js";
+  } from "#lib/unsaved-changes.js";
+  import * as m from "#lib/paraglide/messages.js";
   import {
     parseCommandError,
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
-  import { logger } from "$lib/logger";
+  } from "#lib/command-errors.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
   import { emit } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -18,16 +18,16 @@
   import {
     display_shortcut,
     type GlobalShortcutOverview,
-  } from "$lib/global-shortcuts";
+  } from "#lib/global-shortcuts.js";
 
   import CheckIcon from "@lucide/svelte/icons/check";
   import ListTodoIcon from "@lucide/svelte/icons/list-todo";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import XIcon from "@lucide/svelte/icons/x";
 
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Textarea } from "#lib/components/ui/textarea/index.js";
   import {
     priority_label,
     TASK_PRIORITIES,

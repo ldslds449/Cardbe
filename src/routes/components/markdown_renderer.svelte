@@ -1,14 +1,14 @@
 ﻿<script lang="ts">
-  import { logger } from "$lib/logger";
-  import "$lib/components/editor/markdown-content.css";
-  import * as m from "$lib/paraglide/messages.js";
+  import { logger } from "#lib/logger.js";
+  import "#lib/components/editor/markdown-content.css";
+  import * as m from "#lib/paraglide/messages.js";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
 
-  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import Link2Icon from "@lucide/svelte/icons/link-2";
-  import LinkPreview from "$lib/components/link-preview.svelte";
+  import LinkPreview from "#lib/components/link-preview.svelte";
   import CollapsibleBlock from "./collapsible_block.svelte";
 
   import Markdown from "svelte-exmarkdown";

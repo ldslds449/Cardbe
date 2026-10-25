@@ -1,11 +1,11 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import { formatNumber } from "$lib/i18n";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import XIcon from "@lucide/svelte/icons/x";
   import ChevronUpIcon from "@lucide/svelte/icons/chevron-up";

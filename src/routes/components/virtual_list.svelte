@@ -2,8 +2,8 @@
   import type { Snippet } from "svelte";
   import { untrack } from "svelte";
   import { createVirtualizer } from "@tanstack/svelte-virtual";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { cn } from "$lib/utils.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { cn } from "#lib/utils.js";
 
   let {
     items,

@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
   import CpuIcon from "@lucide/svelte/icons/cpu";
   import MemoryStickIcon from "@lucide/svelte/icons/memory-stick";
 
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
   import {
     format_cpu,
     format_memory,

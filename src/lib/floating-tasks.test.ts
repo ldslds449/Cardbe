@@ -9,7 +9,7 @@ import {
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), warn: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
-vi.mock("$lib/logger", () => ({ logger: { warn: mocks.warn } }));
+vi.mock("#lib/logger.js", () => ({ logger: { warn: mocks.warn } }));
 
 import {
   clamp_floating_zoom,

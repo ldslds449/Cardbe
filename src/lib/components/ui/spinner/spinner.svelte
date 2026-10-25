@@ -1,6 +1,6 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
-  import { cn } from "$lib/utils.js";
+  import * as m from "#lib/paraglide/messages.js";
+  import { cn } from "#lib/utils.js";
   import Loader2Icon from "@lucide/svelte/icons/loader-2";
   import type { ComponentProps } from "svelte";
 

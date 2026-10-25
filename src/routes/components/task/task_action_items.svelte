@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import * as ContextMenu from "$lib/components/ui/context-menu";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import * as m from "$lib/paraglide/messages";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import ArchiveIcon from "@lucide/svelte/icons/archive";

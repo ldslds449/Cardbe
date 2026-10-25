@@ -1,10 +1,10 @@
+import adapter from "@sveltejs/adapter-static";
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, lazyPlugins } from "vite-plus";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import path from "path";
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
 
 const host = process.env.TAURI_DEV_HOST;
 const port = Number(process.env.CARDBE_DEV_PORT ?? "1420");
@@ -14,15 +14,6 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 const isCustomPort = port !== 1420;
 const ownGeneratedDir = `/.svelte-kit-dev-${port}/`;
 const projectRoot = path.resolve(".").replaceAll("\\", "/");
-
-// Keep the editor's base config available when only a custom-port instance runs.
-if (isCustomPort && !existsSync(".svelte-kit/tsconfig.json")) {
-  execFileSync(
-    process.execPath,
-    [path.resolve("node_modules/@sveltejs/kit/svelte-kit.js"), "sync"],
-    { stdio: "inherit", env: { ...process.env, CARDBE_DEV_PORT: "1420" } },
-  );
-}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -57,7 +48,16 @@ export default defineConfig({
       emitTsDeclarations: true,
       strategy: ["custom-cardbe", "baseLocale"],
     }),
-    sveltekit(),
+    sveltekit({
+      preprocess: vitePreprocess(),
+      // Custom ports use their own generated files.
+      ...(isCustomPort ? { outDir: `.svelte-kit-dev-${port}` } : {}),
+      // Tauri doesn't have a Node.js server to do proper SSR
+      // so we use adapter-static with a fallback to index.html to put the site in SPA mode
+      // See: https://svelte.dev/docs/kit/single-page-apps
+      // See: https://v2.tauri.app/start/frontend/sveltekit/ for more info
+      adapter: adapter({ fallback: "index.html" }),
+    }),
   ]),
   optimizeDeps: {
     // Keep late-discovered imports from rebuilding shared chunks and reloading
@@ -70,13 +70,8 @@ export default defineConfig({
       "@pdf-lib/fontkit",
     ],
   },
-  // Custom ports use their own generated config and dependency cache.
-  ...(isCustomPort
-    ? {
-        cacheDir: `node_modules/.vite-cardbe-${port}`,
-        tsconfig: path.resolve(`.svelte-kit-dev-${port}/tsconfig.json`),
-      }
-    : {}),
+  // Custom ports use their own dependency cache.
+  ...(isCustomPort ? { cacheDir: `node_modules/.vite-cardbe-${port}` } : {}),
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
@@ -105,11 +100,6 @@ export default defineConfig({
     },
     warmup: {
       clientFiles: ["./src/routes/+layout.svelte", "./src/routes/+page.svelte"],
-    },
-  },
-  resolve: {
-    alias: {
-      $lib: path.resolve("./src/lib"),
     },
   },
   build: {

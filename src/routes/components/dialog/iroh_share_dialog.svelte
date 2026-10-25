@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { formatNumber, getLocale } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
+  import { formatNumber, getLocale } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import {
     type CommandError,
     parseCommandError,
     translateCommandError,
-  } from "$lib/command-errors";
-  import { logger } from "$lib/logger";
+  } from "#lib/command-errors.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
@@ -19,17 +19,17 @@
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import { onMount, tick, untrack } from "svelte";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as ButtonGroup from "$lib/components/ui/button-group/index.js";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as ButtonGroup from "#lib/components/ui/button-group/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
   import type { BoardStore, BoardSummary } from "../../board.svelte";
   import IrohConnectionInfo from "../share/iroh_connection_info.svelte";
   import IrohInviteCard from "../share/iroh_invite_card.svelte";

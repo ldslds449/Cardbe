@@ -1,20 +1,20 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
-  import * as ColorPicker from "$lib/components/ui/color-picker/index.js";
-  import * as Command from "$lib/components/ui/command/index.js";
-  import { TagInput } from "$lib/components/ui/tag-input/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as Field from "#lib/components/ui/field/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
+  import * as ColorPicker from "#lib/components/ui/color-picker/index.js";
+  import * as Command from "#lib/components/ui/command/index.js";
+  import { TagInput } from "#lib/components/ui/tag-input/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import {
     RichTextEditor,
     type RichTextEditorHandle,
-  } from "$lib/components/editor/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
+  } from "#lib/components/editor/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import { DragDropProvider } from "@dnd-kit-svelte/svelte";
 
   import PaletteIcon from "@lucide/svelte/icons/palette";
@@ -26,13 +26,13 @@
   import ArrowLeftIcon from "@lucide/svelte/icons/arrow-left";
   import FilePlus2Icon from "@lucide/svelte/icons/file-plus-2";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
-  import CardReferencePicker from "$lib/components/editor/card-reference-picker.svelte";
-  import type { EditorSelection } from "$lib/components/editor/rich-text-surface.svelte";
-  import { editorMode } from "$lib/components/editor/mode";
-  import { SplitScrollSync } from "$lib/components/editor/split-scroll-sync";
+  import CardReferencePicker from "#lib/components/editor/card-reference-picker.svelte";
+  import type { EditorSelection } from "#lib/components/editor/rich-text-surface.svelte";
+  import { editorMode } from "#lib/components/editor/mode.js";
+  import { SplitScrollSync } from "#lib/components/editor/split-scroll-sync.js";
 
   import { tick } from "svelte";
-  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
 
   import PlusIcon from "@lucide/svelte/icons/plus";
   import TrashIcon from "@lucide/svelte/icons/trash-2";

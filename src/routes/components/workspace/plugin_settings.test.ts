@@ -3,13 +3,13 @@ import { parse } from "svelte/compiler";
 import { transpile } from "typescript";
 import { expect, it, vi } from "vite-plus/test";
 import { PhysicalPosition } from "@tauri-apps/api/dpi";
-import { parseCommandError } from "$lib/command-errors";
+import { parseCommandError } from "#lib/command-errors.js";
 import {
   canonicalPluginDomain,
   isNewerPluginVersion,
   validPluginManifestVersion,
   pluginApiVersions,
-} from "$lib/plugins";
+} from "#lib/plugins.js";
 
 const source = readFileSync(
   new URL("./plugin_settings.svelte", import.meta.url),

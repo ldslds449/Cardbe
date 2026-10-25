@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import { cn } from "$lib/utils";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import { cn } from "#lib/utils.js";
   import type { WidthBounds } from "../layout-widths.svelte";
 
   const KEYBOARD_STEP = 16;

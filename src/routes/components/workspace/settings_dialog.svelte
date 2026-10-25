@@ -7,12 +7,12 @@
   import PuzzleIcon from "@lucide/svelte/icons/puzzle";
   import ServerIcon from "@lucide/svelte/icons/server";
   import SettingsIcon from "@lucide/svelte/icons/settings";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import * as Tabs from "$lib/components/ui/tabs/index.js";
-  import { m } from "$lib/paraglide/messages.js";
-  import { confirmUnsavedChanges } from "$lib/unsaved-changes";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import * as Tabs from "#lib/components/ui/tabs/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import { confirmUnsavedChanges } from "#lib/unsaved-changes.js";
   import GeneralSettings from "./general_settings.svelte";
   import GlobalShortcutSettings from "./global_shortcut_settings.svelte";
   import McpServerSettings from "./mcp_server_settings.svelte";

@@ -1,19 +1,19 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import { formatNumber } from "$lib/i18n";
-  import { translateCommandError } from "$lib/command-errors";
-  import { logger } from "$lib/logger";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { translateCommandError } from "#lib/command-errors.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { toast } from "svelte-sonner";
   import { untrack } from "svelte";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as Empty from "$lib/components/ui/empty/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { Spinner } from "$lib/components/ui/spinner/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as Empty from "#lib/components/ui/empty/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { Spinner } from "#lib/components/ui/spinner/index.js";
 
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";

@@ -3,18 +3,18 @@
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import { m } from "$lib/paraglide/messages.js";
-  import { formatNumber } from "$lib/i18n";
-  import { parseCommandError, type CommandError } from "$lib/command-errors";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import * as Field from "#lib/components/ui/field/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { parseCommandError, type CommandError } from "#lib/command-errors.js";
   import {
     pluginErrorMessage,
     type PluginInstance,
     type PluginState,
-  } from "$lib/plugins";
+  } from "#lib/plugins.js";
 
   let { review = $bindable(null) }: { review: string | null } = $props();
   let instances = $state<PluginInstance[]>([]);

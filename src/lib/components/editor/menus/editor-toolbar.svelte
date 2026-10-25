@@ -1,5 +1,5 @@
 ﻿<script lang="ts">
-  import { m } from "$lib/paraglide/messages";
+  import { m } from "#lib/paraglide/messages.js";
   import type { Editor } from "@tiptap/core";
   import BoldIcon from "@lucide/svelte/icons/bold";
   import CodeIcon from "@lucide/svelte/icons/code";
@@ -23,13 +23,13 @@
   import Undo2Icon from "@lucide/svelte/icons/undo-2";
   import type { ChainedCommands } from "@tiptap/core";
   import type { ColumnAlign } from "../extensions";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import { FieldError } from "$lib/components/ui/field/index.js";
-  import { Separator } from "$lib/components/ui/separator/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import { FieldError } from "#lib/components/ui/field/index.js";
+  import { Separator } from "#lib/components/ui/separator/index.js";
 
   let { editor, revision }: { editor: Editor | null; revision: number } =
     $props();

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { formatNumber } from "$lib/i18n";
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
   import BellIcon from "@lucide/svelte/icons/bell";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
   import EyeIcon from "@lucide/svelte/icons/eye";
@@ -18,12 +18,12 @@
   import SearchIcon from "@lucide/svelte/icons/search";
   import XIcon from "@lucide/svelte/icons/x";
 
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as InputGroup from "$lib/components/ui/input-group/index.js";
-  import * as Kbd from "$lib/components/ui/kbd/index.js";
-  import * as Menubar from "$lib/components/ui/menubar/index.js";
-  import { cn } from "$lib/utils";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as InputGroup from "#lib/components/ui/input-group/index.js";
+  import * as Kbd from "#lib/components/ui/kbd/index.js";
+  import * as Menubar from "#lib/components/ui/menubar/index.js";
+  import { cn } from "#lib/utils.js";
   import AboutDialog from "./about_dialog.svelte";
   import DiagnosticsDialog from "./diagnostics_dialog.svelte";
   import SettingsDialog from "./settings_dialog.svelte";

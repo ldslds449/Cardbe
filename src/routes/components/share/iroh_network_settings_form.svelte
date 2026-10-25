@@ -1,17 +1,17 @@
 <script lang="ts">
-  import { translateCommandError } from "$lib/command-errors";
-  import * as m from "$lib/paraglide/messages.js";
+  import { translateCommandError } from "#lib/command-errors.js";
+  import * as m from "#lib/paraglide/messages.js";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Collapsible from "#lib/components/ui/collapsible/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.js";
+  import { Textarea } from "#lib/components/ui/textarea/index.js";
   import type { IrohNetworkSettingsDraft } from "./iroh_network_settings.svelte";
 
   let {

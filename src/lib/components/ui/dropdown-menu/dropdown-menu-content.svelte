@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { cn } from "$lib/utils.js";
+  import { cn } from "#lib/utils.js";
   import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
 
   let {
     ref = $bindable(null),

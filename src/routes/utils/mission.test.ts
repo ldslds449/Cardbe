@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 const logger = vi.hoisted(() => ({ error: vi.fn() }));
-vi.mock("$lib/logger", () => ({ logger }));
+vi.mock("#lib/logger.js", () => ({ logger }));
 
 import { addMission } from "./mission.svelte";
 

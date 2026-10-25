@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button";
-  import { m } from "$lib/paraglide/messages";
-  import { themes } from "$lib/theme/themes";
-  import { selectTheme, themeState } from "$lib/theme/theme-manager.svelte";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import { themes } from "#lib/theme/themes.js";
+  import { selectTheme, themeState } from "#lib/theme/theme-manager.svelte.js";
   import CheckIcon from "@lucide/svelte/icons/check";
 </script>
 

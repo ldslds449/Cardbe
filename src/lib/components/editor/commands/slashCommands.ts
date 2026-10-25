@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import { m } from "$lib/paraglide/messages";
+import { m } from "#lib/paraglide/messages.js";
 
 export type SlashCommand = {
   id: string;

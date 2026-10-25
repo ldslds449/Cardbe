@@ -4,11 +4,11 @@
 </script>
 
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages";
+  import { m } from "#lib/paraglide/messages.js";
   import { tick } from "svelte";
-  import * as Popover from "$lib/components/ui/popover/index.js";
-  import * as Command from "$lib/components/ui/command/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
+  import * as Command from "#lib/components/ui/command/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import Link2Icon from "@lucide/svelte/icons/link-2";
   import type { RichTextEditorHandle } from "./rich-text-surface.svelte";
   import { create_card_reference } from "../../../routes/utils/card-reference";

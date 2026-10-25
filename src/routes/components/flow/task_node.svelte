@@ -4,13 +4,13 @@
   import CardScaleHandle from "./card_scale_handle.svelte";
   import { Handle, Position, useStore, type NodeProps } from "@xyflow/svelte";
   import type { TaskNode } from "./flow";
-  import { Badge } from "$lib/components/ui/badge";
-  import * as ContextMenu from "$lib/components/ui/context-menu";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
   import DeleteTaskDialog from "../task/delete_task_dialog.svelte";
   import ChecklistSummary from "../task/checklist_summary.svelte";
   import PriorityIndicator from "../task/priority_indicator.svelte";
-  import { formatDate } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages";
+  import { formatDate } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import XIcon from "@lucide/svelte/icons/x";
   let { id, data, selected }: NodeProps<TaskNode> = $props();
   let delete_open = $state(false);

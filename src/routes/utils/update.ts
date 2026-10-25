@@ -1,4 +1,4 @@
-import { translateCommandError } from "$lib/command-errors";
+import { translateCommandError } from "#lib/command-errors.js";
 import updateConfig from "../../config/update.json";
 
 export const UPDATE_STARTUP_DELAY_MS = updateConfig.startupDelayMs;

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { formatDate, formatNumber } from "$lib/i18n";
-  import { getLocale } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { formatDate, formatNumber } from "#lib/i18n/index.js";
+  import { getLocale } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import ChevronLeftIcon from "@lucide/svelte/icons/chevron-left";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";

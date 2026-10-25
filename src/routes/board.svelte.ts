@@ -1,7 +1,10 @@
-import { translateCommandError } from "$lib/command-errors";
-import { m } from "$lib/paraglide/messages.js";
-import { applyLanguagePreference, type LanguagePreference } from "$lib/i18n";
-import { logger } from "$lib/logger";
+import { translateCommandError } from "#lib/command-errors.js";
+import { m } from "#lib/paraglide/messages.js";
+import {
+  applyLanguagePreference,
+  type LanguagePreference,
+} from "#lib/i18n/index.js";
+import { logger } from "#lib/logger.js";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { save, open } from "@tauri-apps/plugin-dialog";

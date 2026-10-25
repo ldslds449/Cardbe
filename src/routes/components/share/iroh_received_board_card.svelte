@@ -2,16 +2,16 @@
   import {
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
-  import { getLocale } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
+  } from "#lib/command-errors.js";
+  import { getLocale } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
   import type { BoardStore, BoardSummary } from "../../board.svelte";
   import type { IrohConnectionInfo as ConnectionInfo } from "../../type/iroh-share";
   import IrohConnectionInfo from "./iroh_connection_info.svelte";

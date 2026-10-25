@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { parse } from "svelte/compiler";
 import { ScriptTarget, transpile } from "typescript";
 import { expect, it, vi } from "vite-plus/test";
-import { parseCommandError } from "$lib/command-errors";
+import { parseCommandError } from "#lib/command-errors.js";
 import { IrohDeviceStatus, type IrohInvite } from "../../type/iroh-share";
 
 const source = readFileSync(

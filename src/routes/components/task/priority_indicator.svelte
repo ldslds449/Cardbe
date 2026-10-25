@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ChevronUpIcon from "@lucide/svelte/icons/chevron-up";
   import ChevronsUpIcon from "@lucide/svelte/icons/chevrons-up";
   import EqualIcon from "@lucide/svelte/icons/equal";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { cn } from "$lib/utils.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { cn } from "#lib/utils.js";
   import { priority_label, type TaskPriority } from "../../type/task.svelte";
 
   let {

@@ -13,7 +13,7 @@ async function transform(
 ): Promise<Uint8Array> {
   const output = new Response(stream.readable).arrayBuffer();
   const writer = stream.writable.getWriter();
-  await writer.write(bytes);
+  await writer.write(bytes as Uint8Array<ArrayBuffer>);
   await writer.close();
   return new Uint8Array(await output);
 }

@@ -1,4 +1,4 @@
-import { logger } from "$lib/logger";
+import { logger } from "#lib/logger.js";
 
 // Queue ensures toast notifications appear in the same order as user actions
 // Backend's Mutex<AppData> ensures data consistency regardless of queue usage

@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { formatNumber, getLocale } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
+  import { formatNumber, getLocale } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import * as Collapsible from "#lib/components/ui/collapsible/index.js";
   import type { IrohConnectionInfo } from "../../type/iroh-share";
 
   let {

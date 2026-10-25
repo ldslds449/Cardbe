@@ -19,21 +19,21 @@ name = "cardbe_lib"
 crate-type = ["rlib"]
 
 [build-dependencies]
-tauri-build = { version = "~2.6.3", features = [] }
+tauri-build = { version = "~2.7.4", features = [] }
 
 [dependencies]
-tauri = { version = "=2.11.6", features = ["tray-icon"] }
-# Keep Tauri 2.11 internal runtime crates aligned.
+tauri = { version = "=2.12.5", features = ["tray-icon"] }
+# Keep Tauri 2.12 internal runtime crates aligned.
 # Prevent Cargo from resolving them to incompatible newer minor releases.
-tauri-runtime = "~2.11.3"
-tauri-runtime-wry = "~2.11.4"
-tauri-macros = "~2.6.3"
-tauri-utils = "~2.9.3"
-tauri-plugin-opener = "~2.5.5"
-tauri-plugin-dialog = "~2.7.3"
-tauri-plugin-fs = "~2.5.2"
-tauri-plugin-notification = "~2.4.0"
-tauri-plugin-log = "~2.9.2"
+tauri-runtime = "~2.12.2"
+tauri-runtime-wry = "~2.12.3"
+tauri-macros = "~2.7.4"
+tauri-utils = "~2.10.2"
+tauri-plugin-opener = "~2.7.2"
+tauri-plugin-dialog = "~2.8.3"
+tauri-plugin-fs = "~2.7.1"
+tauri-plugin-notification = "~2.7.0"
+tauri-plugin-log = "~2.10.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", features = ["json"] }
@@ -89,15 +89,15 @@ debug = false
 tower = { version = "0.5", features = ["util"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-single-instance = "~2.4.5"
-tauri-plugin-global-shortcut = "=2.2.0"
-tauri-plugin-window-state = "~2.4.1"
+tauri-plugin-single-instance = "~2.5.4"
+tauri-plugin-global-shortcut = "~2.4.1"
+tauri-plugin-window-state = "~2.5.0"
 
 [target.'cfg(windows)'.dependencies]
 tauri-winrt-notification = "0.8"
 # Match the WebView2 bindings wry uses, to lower hidden windows' memory target.
-webview2-com = "0.38"
-windows-core = "0.61"
+webview2-com = "0.39"
+windows-core = "0.62"
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Graphics_Dwm",

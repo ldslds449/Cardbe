@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { getLocale } from "$lib/i18n";
+  import { getLocale } from "#lib/i18n/index.js";
   import { Calendar as CalendarPrimitive } from "bits-ui";
   import * as Calendar from "./index.js";
-  import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+  import { cn, type WithoutChildrenOrChild } from "#lib/utils.js";
   import type { ButtonVariant } from "../button/button.svelte";
   import { isEqualMonth, type DateValue } from "@internationalized/date";
   import type { Snippet } from "svelte";

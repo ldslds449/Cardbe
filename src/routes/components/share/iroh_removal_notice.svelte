@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 
   let {
     notice,

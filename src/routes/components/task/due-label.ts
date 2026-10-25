@@ -1,5 +1,5 @@
-import { m } from "$lib/paraglide/messages.js";
-import { formatDate, formatDateTime } from "$lib/i18n";
+import { m } from "#lib/paraglide/messages.js";
+import { formatDate, formatDateTime } from "#lib/i18n/index.js";
 import { due_status, type DueStatus } from "./due-status";
 import { is_date_only } from "../../utils/task-date-range";
 

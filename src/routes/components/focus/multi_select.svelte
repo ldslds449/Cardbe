@@ -1,7 +1,7 @@
 <script lang="ts" generics="T extends string | number">
-  import { getLocale } from "$lib/i18n";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import { getLocale } from "#lib/i18n/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 
   // Any number of values; nothing chosen means no restriction.

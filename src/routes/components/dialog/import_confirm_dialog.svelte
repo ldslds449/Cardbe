@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { formatNumber } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 
   import type { ImportCandidate } from "../../board.svelte";
 

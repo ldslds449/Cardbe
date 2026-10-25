@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { m } from "$lib/paraglide/messages.js";
+import { m } from "#lib/paraglide/messages.js";
 import { applyLanguagePreference, getLocale } from "./locale.svelte";
 import {
   getLocale as runtimeGetLocale,
   overwriteGetLocale,
-} from "$lib/paraglide/runtime.js";
+} from "#lib/paraglide/runtime.js";
 import {
   parse_requested_share_link,
   build_share_snapshot,

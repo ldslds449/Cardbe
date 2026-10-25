@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Command as CommandPrimitive } from "bits-ui";
   import SearchIcon from "@lucide/svelte/icons/search";
-  import * as m from "$lib/paraglide/messages.js";
-  import { cn } from "$lib/utils.js";
+  import * as m from "#lib/paraglide/messages.js";
+  import { cn } from "#lib/utils.js";
 
   let {
     ref = $bindable(null),

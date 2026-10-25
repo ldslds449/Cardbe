@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { Button } from "$lib/components/ui/button";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import * as Kbd from "$lib/components/ui/kbd/index.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
-  import { m } from "$lib/paraglide/messages";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as Kbd from "#lib/components/ui/kbd/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.js";
+  import { m } from "#lib/paraglide/messages.js";
   import {
     parseCommandError,
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
-  import { logger } from "$lib/logger";
+  } from "#lib/command-errors.js";
+  import { logger } from "#lib/logger.js";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
@@ -23,7 +23,7 @@
     shortcut_from_keydown,
     type GlobalShortcutOverview,
     type ShortcutAction,
-  } from "$lib/global-shortcuts";
+  } from "#lib/global-shortcuts.js";
 
   type Feedback =
     | { kind: "error"; error: CommandError }

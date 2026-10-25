@@ -30,17 +30,17 @@
 </script>
 
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
   import { Dialog as SheetPrimitive } from "bits-ui";
   import XIcon from "@lucide/svelte/icons/x";
   import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
   import { onMount } from "svelte";
   import type { Snippet } from "svelte";
-  import { logger } from "$lib/logger";
+  import { logger } from "#lib/logger.js";
   import SheetPortal from "./sheet-portal.svelte";
   import SheetOverlay from "./sheet-overlay.svelte";
-  import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+  import { cn, type WithoutChildrenOrChild } from "#lib/utils.js";
   import type { ComponentProps } from "svelte";
 
   let {

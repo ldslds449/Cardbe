@@ -1,5 +1,5 @@
-import { type CommandError, parseCommandError } from "$lib/command-errors";
-import { logger } from "$lib/logger";
+import { type CommandError, parseCommandError } from "#lib/command-errors.js";
+import { logger } from "#lib/logger.js";
 import { invoke } from "@tauri-apps/api/core";
 import { tick } from "svelte";
 

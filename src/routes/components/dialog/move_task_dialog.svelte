@@ -1,15 +1,15 @@
 ﻿<script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import {
     parseCommandError,
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
-  import { logger } from "$lib/logger";
+  } from "#lib/command-errors.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import { board } from "../../board.svelte";
   import type { Task } from "../../type/task.svelte";
   import type { ColumnSerialized } from "../../type/column.svelte";

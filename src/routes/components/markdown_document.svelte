@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { cn } from "$lib/utils.js";
-  import { m } from "$lib/paraglide/messages.js";
+  import { cn } from "#lib/utils.js";
+  import { m } from "#lib/paraglide/messages.js";
   import { tick } from "svelte";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import * as Collapsible from "#lib/components/ui/collapsible/index.js";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
 
   import Markdown from "./markdown.svelte";

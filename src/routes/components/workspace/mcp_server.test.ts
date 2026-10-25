@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { m } from "$lib/paraglide/messages";
-import { applyLanguagePreference, getLocale } from "$lib/i18n";
+import { m } from "#lib/paraglide/messages.js";
+import { applyLanguagePreference, getLocale } from "#lib/i18n/index.js";
 import {
   getLocale as runtimeGetLocale,
   overwriteGetLocale,
-} from "$lib/paraglide/runtime";
-import { translateCommandError } from "$lib/command-errors";
+} from "#lib/paraglide/runtime.js";
+import { translateCommandError } from "#lib/command-errors.js";
 import { client_configuration, valid_port } from "./mcp_server";
 
 describe("MCP server settings", () => {

@@ -1,9 +1,9 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import { Time } from "@internationalized/date";
-  import { Label } from "$lib/components/ui/label";
+  import { Label } from "#lib/components/ui/label/index.js";
   import TimePickerInput from "./time-picker-input.svelte";
-  import { cn } from "$lib/utils";
+  import { cn } from "#lib/utils.js";
   import TimePeriodSelect from "./time-period-select.svelte";
   import type { Period } from "./time-picker-utils";
 

@@ -1,18 +1,18 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
   import ChartGanttIcon from "@lucide/svelte/icons/chart-gantt";
   import ChartNoAxesCombinedIcon from "@lucide/svelte/icons/chart-no-axes-combined";
   import Columns3Icon from "@lucide/svelte/icons/columns-3";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import type { WorkspaceView } from "./workspace";
   import type { BoardRole } from "../../board.svelte";
-  import { formatDateTime } from "$lib/i18n";
+  import { formatDateTime } from "#lib/i18n/index.js";
 
   let {
     selected_view,

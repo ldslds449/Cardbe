@@ -1,10 +1,10 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import { Time } from "@internationalized/date";
-  import { Label } from "$lib/components/ui/label";
+  import { Label } from "#lib/components/ui/label/index.js";
   import TimePickerInput from "./time-picker-input.svelte";
   import TimeUnitSelect from "./time-unit-select.svelte";
-  import { cn } from "$lib/utils";
+  import { cn } from "#lib/utils.js";
 
   let {
     time = $bindable(new Time(0, 0)),

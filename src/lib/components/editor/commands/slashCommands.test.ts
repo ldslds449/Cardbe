@@ -1,4 +1,4 @@
-import { overwriteGetLocale, getLocale } from "$lib/paraglide/runtime";
+import { overwriteGetLocale, getLocale } from "#lib/paraglide/runtime.js";
 import { describe, expect, it } from "vite-plus/test";
 import { filterSlashCommands, getSlashCommands } from "./slashCommands";
 

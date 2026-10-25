@@ -1,6 +1,6 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
-  import { cn } from "$lib/utils";
+  import * as m from "#lib/paraglide/messages.js";
+  import { cn } from "#lib/utils.js";
   import XIcon from "@lucide/svelte/icons/x";
   import type { Snippet } from "svelte";
   import { tv, type VariantProps } from "tailwind-variants";

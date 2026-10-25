@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { confirmUnsavedChanges } from "$lib/unsaved-changes";
+  import { confirmUnsavedChanges } from "#lib/unsaved-changes.js";
   import {
     parseCommandError,
     translateCommandError,
-  } from "$lib/command-errors";
-  import { formatNumber } from "$lib/i18n";
-  import { getLocale } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
-  import { logger } from "$lib/logger";
+  } from "#lib/command-errors.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { getLocale } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -25,16 +25,16 @@
     getLocalTimeZone,
     today,
   } from "@internationalized/date";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import Calendar from "$lib/components/ui/calendar/calendar.svelte";
-  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import Calendar from "#lib/components/ui/calendar/calendar.svelte";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
   import TaskSelectionPicker from "../task/task_selection_picker.svelte";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { TagInput } from "$lib/components/ui/tag-input/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { TagInput } from "#lib/components/ui/tag-input/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
   import {
     deserialize_column,
     type Column,

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import { formatNumber } from "$lib/i18n";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import CircleIcon from "@lucide/svelte/icons/circle";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
 

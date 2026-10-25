@@ -3,7 +3,7 @@ import { MarkerType, Position } from "@xyflow/svelte";
 import type { Column } from "../../type/column.svelte";
 import type { Task } from "../../type/task.svelte";
 import type { Archive } from "../../type/archive.svelte";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 
 // Arrows are only visual; each pair of tasks has at most one line.
 export interface Relationship {

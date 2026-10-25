@@ -8,7 +8,7 @@
 </script>
 
 <script lang="ts">
-  import { logger } from "$lib/logger";
+  import { logger } from "#lib/logger.js";
   import { onMount } from "svelte";
   import { render_card_references } from "../utils/card-reference";
 

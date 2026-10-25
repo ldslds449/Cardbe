@@ -1,11 +1,14 @@
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { mode, setMode, setTheme } from "mode-watcher";
 import { toast } from "svelte-sonner";
-import { parseCommandError, translateCommandError } from "$lib/command-errors";
-import { logger } from "$lib/logger";
-import { m } from "$lib/paraglide/messages";
+import {
+  parseCommandError,
+  translateCommandError,
+} from "#lib/command-errors.js";
+import { logger } from "#lib/logger.js";
+import { m } from "#lib/paraglide/messages.js";
 import {
   isThemePreference,
   restoreTheme,

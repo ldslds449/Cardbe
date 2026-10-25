@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { Checkbox } from "$lib/components/ui/checkbox";
-  import { ScrollArea } from "$lib/components/ui/scroll-area";
-  import { Input } from "$lib/components/ui/input";
-  import { Button } from "$lib/components/ui/button";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import SearchIcon from "@lucide/svelte/icons/search";
-  import { formatNumber } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import type { Column } from "../../type/column.svelte";
   import {
     filter_selection_columns,

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
-  import { cn } from "$lib/utils";
-  import * as Chip from "$lib/components/ui/chip";
+  import * as m from "#lib/paraglide/messages.js";
+  import { cn } from "#lib/utils.js";
+  import * as Chip from "#lib/components/ui/chip/index.js";
 
   let {
     tags = $bindable([]),

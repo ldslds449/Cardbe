@@ -20,7 +20,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({ setTheme: mocks.setTheme }),
 }));
-vi.mock("$lib/logger", () => ({ logger: { warn: vi.fn() } }));
+vi.mock("#lib/logger.js", () => ({ logger: { warn: vi.fn() } }));
 
 describe("window chrome", () => {
   beforeEach(() => {

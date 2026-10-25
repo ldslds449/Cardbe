@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   mode: { current: "light" as "light" | "dark" },
 }));
-vi.mock("$app/environment", () => ({ browser: true }));
+vi.mock("$app/env", () => ({ browser: true }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mocks.invoke,
   isTauri: () => true,
@@ -32,7 +32,7 @@ vi.mock("mode-watcher", () => ({
   setTheme: mocks.setTheme,
 }));
 vi.mock("svelte-sonner", () => ({ toast: { error: mocks.error } }));
-vi.mock("$lib/logger", () => ({ logger: { warn: vi.fn() } }));
+vi.mock("#lib/logger.js", () => ({ logger: { warn: vi.fn() } }));
 
 describe("theme persistence", () => {
   beforeAll(async () => {
@@ -118,7 +118,7 @@ describe("theme persistence", () => {
   ] as const)(
     "identifies a startup settings failure in %s without exposing backend details",
     async (locale, title, description) => {
-      const { applyLanguagePreference } = await import("$lib/i18n");
+      const { applyLanguagePreference } = await import("#lib/i18n/index.js");
       applyLanguagePreference(locale);
       mocks.invoke.mockRejectedValueOnce("private database path");
       const { initializeTheme, themeState } =

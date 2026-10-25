@@ -9,13 +9,13 @@
     fetchPreview,
     fetchPreviewImage,
     type LinkPreview,
-  } from "$lib/link-preview";
+  } from "#lib/link-preview.js";
   import {
     parseCommandError,
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
-  import * as m from "$lib/paraglide/messages";
+  } from "#lib/command-errors.js";
+  import * as m from "#lib/paraglide/messages.js";
 
   let {
     href,

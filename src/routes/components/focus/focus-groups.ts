@@ -1,4 +1,4 @@
-import { m } from "$lib/paraglide/messages.js";
+import { m } from "#lib/paraglide/messages.js";
 
 import type { AllTaskItem } from "../../board-base.svelte";
 import { priority_label, TASK_PRIORITIES } from "../../type/task.svelte";

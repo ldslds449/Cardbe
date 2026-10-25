@@ -1,5 +1,5 @@
 ﻿<script lang="ts">
-  import { m } from "$lib/paraglide/messages";
+  import { m } from "#lib/paraglide/messages.js";
   import { untrack } from "svelte";
   import "./markdown-content.css";
   import type { Editor } from "@tiptap/core";
@@ -11,12 +11,12 @@
     text_target_prefixes,
     type TextTarget,
   } from "../../../routes/utils/markdown-outline";
-  import { cn } from "$lib/utils.js";
+  import { cn } from "#lib/utils.js";
   import { filterSlashCommands } from "./commands/slashCommands";
   import { createEditorExtensions } from "./extensions";
   import EditorToolbar from "./menus/editor-toolbar.svelte";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import {
     markdownInsertionContent,
     serializeMarkdown,

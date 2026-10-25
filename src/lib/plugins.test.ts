@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { m } from "$lib/paraglide/messages.js";
+import { m } from "#lib/paraglide/messages.js";
 import {
   canonicalPluginDomain,
   invalidPluginSettings,
@@ -302,11 +302,11 @@ import {
   formatNumber,
   getLocale,
   language,
-} from "$lib/i18n";
+} from "#lib/i18n/index.js";
 import {
   getLocale as runtimeGetLocale,
   overwriteGetLocale,
-} from "$lib/paraglide/runtime.js";
+} from "#lib/paraglide/runtime.js";
 import en from "../../messages/en.json";
 import zh from "../../messages/zh-TW.json";
 

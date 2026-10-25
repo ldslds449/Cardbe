@@ -1,10 +1,10 @@
 ﻿<script lang="ts">
-  import { m } from "$lib/paraglide/messages";
+  import { m } from "#lib/paraglide/messages.js";
   import { tick, untrack, type ComponentProps } from "svelte";
   import EditorControls from "./editor-controls.svelte";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { cn } from "$lib/utils.js";
+  import { Textarea } from "#lib/components/ui/textarea/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { cn } from "#lib/utils.js";
   import RichTextSurface from "./rich-text-surface.svelte";
   import { editorMode } from "./mode";
   import { caretTop } from "./textarea-caret";

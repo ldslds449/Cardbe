@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node } from "@tiptap/pm/model";
 import { bundledLanguages } from "shiki/langs";
-import { logger } from "$lib/logger";
+import { logger } from "#lib/logger.js";
 import {
   getHighlighter,
   loadHighlightLanguage,

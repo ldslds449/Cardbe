@@ -1,19 +1,19 @@
 <script lang="ts">
-  import { translateCommandError } from "$lib/command-errors";
-  import * as m from "$lib/paraglide/messages.js";
+  import { translateCommandError } from "#lib/command-errors.js";
+  import * as m from "#lib/paraglide/messages.js";
   import { invoke } from "@tauri-apps/api/core";
   import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
-  import GithubIcon from "@lucide/svelte/icons/github";
+  import FolderGitIcon from "@lucide/svelte/icons/folder-git-2";
   import InfoIcon from "@lucide/svelte/icons/info";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import { toast } from "svelte-sonner";
 
-  import * as Card from "$lib/components/ui/card/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { logger } from "$lib/logger";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import { logger } from "#lib/logger.js";
   import updateConfig from "../../../config/update.json";
   import type { DiagnosticInfo } from "./diagnostics";
 
@@ -140,7 +140,7 @@
         onclick={() => void open_external_url(github_url, "help.github.failed")}
       >
         <span class="flex items-center gap-2">
-          <GithubIcon class="size-4" />
+          <FolderGitIcon class="size-4" />
           {m.ui_github_repository()}
         </span>
         <ExternalLinkIcon class="size-4 text-muted-foreground" />

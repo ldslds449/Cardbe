@@ -2,19 +2,19 @@
   import {
     parseCommandError,
     translateCommandError,
-  } from "$lib/command-errors";
-  import { getLocale, formatNumber } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
-  import { logger } from "$lib/logger";
+  } from "#lib/command-errors.js";
+  import { getLocale, formatNumber } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
+  import { logger } from "#lib/logger.js";
   import { tick, untrack } from "svelte";
   import { toast } from "svelte-sonner";
   import DownloadIcon from "@lucide/svelte/icons/download";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
   import SearchIcon from "@lucide/svelte/icons/search";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
   import type { Archive } from "../../type/archive.svelte";
   import type { Column } from "../../type/column.svelte";
   import { is_date_only } from "../../utils/task-date-range";

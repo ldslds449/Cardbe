@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { beforeNavigate, goto } from "$app/navigation";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog";
-  import * as m from "$lib/paraglide/messages.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import {
     confirmUnsavedChanges,
     hasUnsavedChanges,
     setUnsavedChangesPrompt,
-  } from "$lib/unsaved-changes";
+  } from "#lib/unsaved-changes.js";
 
   let open = $state(false);
   let resolve: ((discard: boolean) => void) | undefined;
@@ -36,7 +36,12 @@
   });
 
   beforeNavigate((navigation) => {
-    if (navigating || !hasUnsavedChanges() || navigation.willUnload) {
+    if (
+      navigation.shallow ||
+      navigating ||
+      !hasUnsavedChanges() ||
+      navigation.willUnload
+    ) {
       return;
     }
     navigation.cancel();

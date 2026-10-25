@@ -1,12 +1,12 @@
 <script lang="ts">
   import TaskActionItems from "../task/task_action_items.svelte";
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import { formatNumber } from "$lib/i18n";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import { useSortable } from "@dnd-kit-svelte/svelte/sortable";
   import type { Attachment } from "svelte/attachments";
 
@@ -30,7 +30,7 @@
   import SquareCheckIcon from "@lucide/svelte/icons/square-check";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import MoveTaskDialog from "../dialog/move_task_dialog.svelte";
-  import { cn } from "$lib/utils";
+  import { cn } from "#lib/utils.js";
 
   import {
     is_task_priority,

@@ -1,16 +1,16 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import {
     parseCommandError,
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
+  } from "#lib/command-errors.js";
   import {
     decode_floating_focus_id,
     forget_floating_focus,
-  } from "$lib/floating-focuses";
-  import { formatNumber } from "$lib/i18n";
-  import { logger } from "$lib/logger";
+  } from "#lib/floating-focuses.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -19,8 +19,8 @@
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import ListFilterIcon from "@lucide/svelte/icons/list-filter";
 
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import type { AllTaskItem, BoardSummary } from "../board-base.svelte";
   import type { Focus } from "../type/focus";
   import { get_task_id } from "../type/task.svelte";

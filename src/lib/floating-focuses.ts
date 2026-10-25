@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { parseCommandError } from "$lib/command-errors";
-import { logger } from "$lib/logger";
+import { parseCommandError } from "#lib/command-errors.js";
+import { logger } from "#lib/logger.js";
 
 // Like floating tasks, floating Focuses are a device-local convenience
 // kept in WebView storage. Window position and size are restored by the

@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { formatNumber } from "$lib/i18n";
-  import { getLocale, formatDate } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { getLocale, formatDate } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import ArchiveIcon from "@lucide/svelte/icons/archive";
   import CalendarClockIcon from "@lucide/svelte/icons/calendar-clock";
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
@@ -20,17 +20,17 @@
   import Undo2Icon from "@lucide/svelte/icons/undo-2";
   import XIcon from "@lucide/svelte/icons/x";
 
-  import * as Empty from "$lib/components/ui/empty/index.js";
-  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
-  import * as InputGroup from "$lib/components/ui/input-group/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import * as Sheet from "$lib/components/ui/sheet/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { Spinner } from "$lib/components/ui/spinner/index.js";
+  import * as Empty from "#lib/components/ui/empty/index.js";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
+  import * as InputGroup from "#lib/components/ui/input-group/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import * as Sheet from "#lib/components/ui/sheet/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { Spinner } from "#lib/components/ui/spinner/index.js";
   import DateFilterPicker from "./date_filter_picker.svelte";
-  import { cn } from "$lib/utils.js";
+  import { cn } from "#lib/utils.js";
 
   import type { AllTaskItem, BoardSummary } from "../../board.svelte";
   import type { Column } from "../../type/column.svelte";

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import TableOfContentsIcon from "@lucide/svelte/icons/table-of-contents";
 
   import type { MarkdownHeading } from "../utils/markdown-outline";

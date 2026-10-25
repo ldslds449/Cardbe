@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   let {
     contentDOM = $bindable<HTMLElement | null>(null),
   }: { contentDOM?: HTMLElement | null } = $props();

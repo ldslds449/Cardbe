@@ -2,9 +2,9 @@ import {
   parseCommandError,
   translateCommandError,
   type CommandError,
-} from "$lib/command-errors";
-import { m } from "$lib/paraglide/messages.js";
-import { logger } from "$lib/logger";
+} from "#lib/command-errors.js";
+import { m } from "#lib/paraglide/messages.js";
+import { logger } from "#lib/logger.js";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 import { BoardStoreBase, type BoardSummary } from "./board-base.svelte";

@@ -1,6 +1,6 @@
-import { translateCommandError } from "$lib/command-errors";
-import { m } from "$lib/paraglide/messages.js";
-import { logger } from "$lib/logger";
+import { translateCommandError } from "#lib/command-errors.js";
+import { m } from "#lib/paraglide/messages.js";
+import { logger } from "#lib/logger.js";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 import {
@@ -22,7 +22,7 @@ import {
 } from "./type/task.svelte";
 import { addMission } from "./utils/mission.svelte";
 import { IrohBoardStore } from "./board-iroh.svelte";
-import { open_floating_task } from "$lib/floating-tasks";
+import { open_floating_task } from "#lib/floating-tasks.js";
 import {
   appended_layout,
   tab_label,

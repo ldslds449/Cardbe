@@ -13,12 +13,16 @@ import {
   it,
   vi,
 } from "vite-plus/test";
-import { applyLanguagePreference, getLocale, language } from "$lib/i18n";
+import {
+  applyLanguagePreference,
+  getLocale,
+  language,
+} from "#lib/i18n/index.js";
 import {
   getLocale as runtimeGetLocale,
   overwriteGetLocale,
-} from "$lib/paraglide/runtime";
-import { translateCommandError } from "$lib/command-errors";
+} from "#lib/paraglide/runtime.js";
+import { translateCommandError } from "#lib/command-errors.js";
 
 import { BoardStore } from "./board.svelte";
 import { create_task } from "./type/task.svelte";

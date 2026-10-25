@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { formatNumber } from "$lib/i18n";
+import { formatNumber } from "#lib/i18n/index.js";
 
 export interface UsageGroup {
   /** Share of all logical processors, 0–100; null before a second sample. */

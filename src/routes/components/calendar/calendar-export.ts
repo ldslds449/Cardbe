@@ -1,5 +1,5 @@
-import * as m from "$lib/paraglide/messages.js";
-import { getLocale, formatNumber } from "$lib/i18n";
+import * as m from "#lib/paraglide/messages.js";
+import { getLocale, formatNumber } from "#lib/i18n/index.js";
 import { join } from "@tauri-apps/api/path";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { exists, writeFile } from "@tauri-apps/plugin-fs";
@@ -1508,7 +1508,9 @@ export async function render_calendar_export(
       options.pdf_paper,
       outline_font,
     );
-    return new Blob([pdf], { type: "application/pdf" });
+    return new Blob([pdf as Uint8Array<ArrayBuffer>], {
+      type: "application/pdf",
+    });
   }
 
   const estimate = estimate_calendar_export(periods, title, format, {
@@ -1543,7 +1545,8 @@ export async function render_calendar_export(
   const png = new Uint8Array(
     await (await canvas_blob(output, "image/png")).arrayBuffer(),
   );
-  return new Blob([add_png_dpi_metadata(png, normalized_dpi(options.dpi))], {
+  const metadata = add_png_dpi_metadata(png, normalized_dpi(options.dpi));
+  return new Blob([metadata as Uint8Array<ArrayBuffer>], {
     type: "image/png",
   });
 }

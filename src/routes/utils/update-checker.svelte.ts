@@ -1,6 +1,6 @@
-import { m } from "$lib/paraglide/messages.js";
-import { translateCommandError } from "$lib/command-errors";
-import { logger } from "$lib/logger";
+import { m } from "#lib/paraglide/messages.js";
+import { translateCommandError } from "#lib/command-errors.js";
+import { logger } from "#lib/logger.js";
 import { getName, getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { useSvelteFlow } from "@xyflow/svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
   import { clamp_scale } from "./flow";
   let {
     id,

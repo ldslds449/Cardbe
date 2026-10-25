@@ -15,9 +15,9 @@
 </script>
 
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import { Time } from "@internationalized/date";
-  import * as Select from "$lib/components/ui/select";
+  import * as Select from "#lib/components/ui/select/index.js";
   import { getDateByType, setDateByType } from "./time-picker-utils";
 
   let {

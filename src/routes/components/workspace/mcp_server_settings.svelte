@@ -1,19 +1,19 @@
 <script lang="ts">
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button";
-  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { Spinner } from "$lib/components/ui/spinner/index.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
-  import { m } from "$lib/paraglide/messages";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { Spinner } from "#lib/components/ui/spinner/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.js";
+  import { m } from "#lib/paraglide/messages.js";
   import {
     parseCommandError,
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
-  import { logger } from "$lib/logger";
+  } from "#lib/command-errors.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";

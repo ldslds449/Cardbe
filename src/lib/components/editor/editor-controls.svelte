@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages";
+  import { m } from "#lib/paraglide/messages.js";
   import { tick } from "svelte";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import Settings2Icon from "@lucide/svelte/icons/settings-2";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import Columns2Icon from "@lucide/svelte/icons/columns-2";

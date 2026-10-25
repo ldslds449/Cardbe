@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { translateCommandError } from "$lib/command-errors";
-  import { m } from "$lib/paraglide/messages.js";
-  import * as Card from "$lib/components/ui/card/index.js";
+  import { translateCommandError } from "#lib/command-errors.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import * as Card from "#lib/components/ui/card/index.js";
   import BugIcon from "@lucide/svelte/icons/bug";
 
   let { error }: { error: unknown } = $props();

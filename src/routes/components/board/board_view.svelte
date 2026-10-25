@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
   import {
     DragDropProvider,
     KeyboardSensor,
@@ -8,8 +8,8 @@
   } from "@dnd-kit-svelte/svelte";
   import SquirrelIcon from "@lucide/svelte/icons/squirrel";
   import { onDestroy } from "svelte";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Empty from "$lib/components/ui/empty/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Empty from "#lib/components/ui/empty/index.js";
 
   import { board } from "../../board.svelte";
   import {

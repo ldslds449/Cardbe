@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { canonicalPluginDomain } from "$lib/plugins";
+  import { canonicalPluginDomain } from "#lib/plugins.js";
   import { tick, untrack } from "svelte";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import {
@@ -7,15 +7,15 @@
     type DragDropEvent,
   } from "@tauri-apps/api/webview";
   import { open as openFile } from "@tauri-apps/plugin-dialog";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import * as Popover from "$lib/components/ui/popover/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
   import { Tabs } from "bits-ui";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import * as Empty from "$lib/components/ui/empty/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import * as Empty from "#lib/components/ui/empty/index.js";
   import FileArchiveIcon from "@lucide/svelte/icons/file-archive";
   import LinkIcon from "@lucide/svelte/icons/link";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -23,15 +23,15 @@
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
-  import { Spinner } from "$lib/components/ui/spinner/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
-  import { m } from "$lib/paraglide/messages.js";
-  import { formatDateTime, formatNumber } from "$lib/i18n";
-  import { parseCommandError, type CommandError } from "$lib/command-errors";
+  import { Spinner } from "#lib/components/ui/spinner/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import * as Field from "#lib/components/ui/field/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import { formatDateTime, formatNumber } from "#lib/i18n/index.js";
+  import { parseCommandError, type CommandError } from "#lib/command-errors.js";
   import {
     invalidPluginSettings,
     invalidPluginCredentialSettings,
@@ -50,7 +50,7 @@
     type PluginInstance,
     type PluginRun,
     type PluginSetting,
-  } from "$lib/plugins";
+  } from "#lib/plugins.js";
   import { board, type BoardSummary } from "../../board.svelte";
 
   let {

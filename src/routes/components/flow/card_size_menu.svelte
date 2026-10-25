@@ -1,11 +1,11 @@
 <script lang="ts">
-  import * as ContextMenu from "$lib/components/ui/context-menu";
-  import * as m from "$lib/paraglide/messages";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import ScalingIcon from "@lucide/svelte/icons/scaling";
   import ZoomInIcon from "@lucide/svelte/icons/zoom-in";
   import ZoomOutIcon from "@lucide/svelte/icons/zoom-out";
   import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
-  import { formatNumber } from "$lib/i18n";
+  import { formatNumber } from "#lib/i18n/index.js";
   import { clamp_scale } from "./flow";
   let {
     scale,

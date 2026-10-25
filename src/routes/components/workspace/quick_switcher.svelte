@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { formatNumber } from "$lib/i18n";
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
   import CheckIcon from "@lucide/svelte/icons/check";
   import HouseIcon from "@lucide/svelte/icons/house";
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import ListFilterIcon from "@lucide/svelte/icons/list-filter";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import UsersIcon from "@lucide/svelte/icons/users";
-  import * as Command from "$lib/components/ui/command/index.js";
+  import * as Command from "#lib/components/ui/command/index.js";
   import type { Focus } from "../../type/focus";
   import type { BoardItem } from "./board_sidebar.svelte";
   import { HOME_PAGE_ID, NOTES_PAGE_ID } from "./workspace";

@@ -3,8 +3,8 @@
     parseCommandError,
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
-  import * as m from "$lib/paraglide/messages.js";
+  } from "#lib/command-errors.js";
+  import * as m from "#lib/paraglide/messages.js";
   import { invoke } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
   import CopyIcon from "@lucide/svelte/icons/copy";
@@ -14,12 +14,12 @@
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
   import { toast } from "svelte-sonner";
 
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { logger } from "$lib/logger";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { logger } from "#lib/logger.js";
   import { platformLabel, type DiagnosticInfo } from "./diagnostics";
 
   let { open = $bindable(false) }: { open?: boolean } = $props();

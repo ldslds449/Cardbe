@@ -1,6 +1,6 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
-  import { formatDate, formatNumber } from "$lib/i18n";
+  import * as m from "#lib/paraglide/messages.js";
+  import { formatDate, formatNumber } from "#lib/i18n/index.js";
   import type { Column } from "../../type/column.svelte";
   import { flow_groups, type FlowPoint } from "./lifecycle-flow";
 

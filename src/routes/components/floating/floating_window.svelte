@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { logger } from "$lib/logger";
+  import { logger } from "#lib/logger.js";
   import { Menu } from "@tauri-apps/api/menu";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount, type Snippet } from "svelte";

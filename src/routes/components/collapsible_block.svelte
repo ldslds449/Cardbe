@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { cn } from "$lib/utils.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { cn } from "#lib/utils.js";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ChevronUpIcon from "@lucide/svelte/icons/chevron-up";
 

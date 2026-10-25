@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { formatNumber } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import { DragDropProvider } from "@dnd-kit-svelte/svelte";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
 
   import type { Column } from "../../type/column.svelte";
   import type { Task } from "../../type/task.svelte";

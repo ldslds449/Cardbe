@@ -1,15 +1,15 @@
 <script lang="ts">
   import type { NodeProps } from "@xyflow/svelte";
   import type { AnnotationNode } from "./flow";
-  import * as ContextMenu from "$lib/components/ui/context-menu";
-  import * as m from "$lib/paraglide/messages";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import Markdown from "../markdown.svelte";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import CardSizeMenu from "./card_size_menu.svelte";
   import CardScaleHandle from "./card_scale_handle.svelte";
   import { onMount, tick, untrack } from "svelte";
-  import { registerUnsavedChanges } from "$lib/unsaved-changes";
-  import { Textarea } from "$lib/components/ui/textarea";
+  import { registerUnsavedChanges } from "#lib/unsaved-changes.js";
+  import { Textarea } from "#lib/components/ui/textarea/index.js";
   let { id, data, selected }: NodeProps<AnnotationNode> = $props();
   let draft = $state("");
   let editor = $state<HTMLTextAreaElement | null>(null);

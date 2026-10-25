@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { confirmUnsavedChanges } from "$lib/unsaved-changes";
-  import * as m from "$lib/paraglide/messages.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import { confirmUnsavedChanges } from "#lib/unsaved-changes.js";
+  import * as m from "#lib/paraglide/messages.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import { Textarea } from "#lib/components/ui/textarea/index.js";
 
   let {
     export_open = $bindable(),

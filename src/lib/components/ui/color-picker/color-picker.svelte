@@ -1,12 +1,12 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
-  import { cn } from "$lib/utils";
-  import { Button } from "$lib/components/ui/button";
+  import * as m from "#lib/paraglide/messages.js";
+  import { cn } from "#lib/utils.js";
+  import { Button } from "#lib/components/ui/button/index.js";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-  import * as Popover from "$lib/components/ui/popover";
-  import * as Command from "$lib/components/ui/command";
-  import * as ButtonGroup from "$lib/components/ui/button-group";
-  import { Input } from "$lib/components/ui/input";
+  import * as Popover from "#lib/components/ui/popover/index.js";
+  import * as Command from "#lib/components/ui/command/index.js";
+  import * as ButtonGroup from "#lib/components/ui/button-group/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
   import { onDestroy, untrack } from "svelte";
 
   type ColorFormat = "hex" | "rgb" | "hsl" | "oklch";

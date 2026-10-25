@@ -1,20 +1,20 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import {
     getLocale,
     language,
     applyLanguagePreference,
     isLanguagePreference,
-  } from "$lib/i18n";
-  import * as Select from "$lib/components/ui/select/index.js";
+  } from "#lib/i18n/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import {
     parseCommandError,
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
-  import { logger } from "$lib/logger";
+  } from "#lib/command-errors.js";
+  import { logger } from "#lib/logger.js";
   import { onMount } from "svelte";
-  import { toggleTheme as toggleMode } from "$lib/theme/theme-manager.svelte";
+  import { toggleTheme as toggleMode } from "#lib/theme/theme-manager.svelte.js";
   import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
   import KanbanIcon from "@lucide/svelte/icons/kanban";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
@@ -23,8 +23,8 @@
   import SunIcon from "@lucide/svelte/icons/sun";
   import WifiIcon from "@lucide/svelte/icons/wifi";
 
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
   import CalendarView from "../../components/calendar/calendar_view.svelte";
   import ViewTaskDialog from "../../components/dialog/view_task_dialog.svelte";
   import ReadonlyBoardView from "../../components/share/readonly_board_view.svelte";

@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { listen } from "@tauri-apps/api/event";
-  import * as InputGroup from "$lib/components/ui/input-group";
-  import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import * as InputGroup from "#lib/components/ui/input-group/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import SearchIcon from "@lucide/svelte/icons/search";
-  import { Checkbox } from "$lib/components/ui/checkbox";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
   import AnnotationNodeComponent from "./annotation_node.svelte";
   import { invoke } from "@tauri-apps/api/core";
   import {
@@ -19,10 +19,10 @@
     type OnBeforeDelete,
   } from "@xyflow/svelte";
   import "@xyflow/svelte/dist/style.css";
-  import { Button, buttonVariants } from "$lib/components/ui/button";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import * as ContextMenu from "$lib/components/ui/context-menu";
-  import * as Popover from "$lib/components/ui/popover";
+  import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import * as ContextMenu from "#lib/components/ui/context-menu/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import CircleHelpIcon from "@lucide/svelte/icons/circle-help";
@@ -30,20 +30,20 @@
   import TypeIcon from "@lucide/svelte/icons/type";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import UnlinkIcon from "@lucide/svelte/icons/unlink";
-  import * as Dialog from "$lib/components/ui/dialog";
-  import * as AlertDialog from "$lib/components/ui/alert-dialog";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
   import FlowTabs from "./flow_tabs.svelte";
-  import { Separator } from "$lib/components/ui/separator";
-  import * as Field from "$lib/components/ui/field";
-  import * as Empty from "$lib/components/ui/empty";
+  import { Separator } from "#lib/components/ui/separator/index.js";
+  import * as Field from "#lib/components/ui/field/index.js";
+  import * as Empty from "#lib/components/ui/empty/index.js";
   import TaskSelectionPicker from "../task/task_selection_picker.svelte";
   import { toast } from "svelte-sonner";
   import {
     parseCommandError,
     translateCommandError,
-  } from "$lib/command-errors";
-  import { formatNumber } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages";
+  } from "#lib/command-errors.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import type { Column } from "../../type/column.svelte";
   import {
     get_task_id,

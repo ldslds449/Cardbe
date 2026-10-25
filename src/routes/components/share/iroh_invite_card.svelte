@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { formatNumber, getLocale } from "$lib/i18n";
-  import * as m from "$lib/paraglide/messages.js";
+  import { formatNumber, getLocale } from "#lib/i18n/index.js";
+  import * as m from "#lib/paraglide/messages.js";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ShieldCheckIcon from "@lucide/svelte/icons/shield-check";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import * as Card from "$lib/components/ui/card/index.js";
-  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
+  import { Badge } from "#lib/components/ui/badge/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import * as Card from "#lib/components/ui/card/index.js";
+  import * as Collapsible from "#lib/components/ui/collapsible/index.js";
+  import { Label } from "#lib/components/ui/label/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.js";
   import {
     IrohDeviceStatus,
     type IrohConnectionDetails,

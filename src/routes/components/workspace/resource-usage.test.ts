@@ -6,7 +6,7 @@ import {
   it,
   vi,
 } from "vite-plus/test";
-import { applyLanguagePreference } from "$lib/i18n";
+import { applyLanguagePreference } from "#lib/i18n/index.js";
 import {
   format_cpu,
   format_memory,

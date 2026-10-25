@@ -1,5 +1,5 @@
-import { m } from "$lib/paraglide/messages.js";
-import "$lib/i18n/locale.svelte";
+import { m } from "#lib/paraglide/messages.js";
+import "#lib/i18n/locale.svelte.js";
 
 export interface TaskItem {
   id: string;

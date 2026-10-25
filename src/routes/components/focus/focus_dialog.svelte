@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Input } from "$lib/components/ui/input/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { TagInput } from "$lib/components/ui/tag-input/index.js";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as Field from "#lib/components/ui/field/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { Input } from "#lib/components/ui/input/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { TagInput } from "#lib/components/ui/tag-input/index.js";
 
   import {
     clone_focus,

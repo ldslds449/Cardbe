@@ -53,15 +53,15 @@
 </script>
 
 <script lang="ts">
-  import { m } from "$lib/paraglide/messages.js";
-  import "$lib/i18n/locale.svelte";
-  import { formatDate, formatNumber } from "$lib/i18n";
-  import { logger } from "$lib/logger";
+  import { m } from "#lib/paraglide/messages.js";
+  import "#lib/i18n/locale.svelte.js";
+  import { formatDate, formatNumber } from "#lib/i18n/index.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { untrack } from "svelte";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { Button } from "#lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { by_recent, read_recent } from "./recent";
 
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Checkbox } from "$lib/components/ui/checkbox/index.js";
-  import * as Field from "$lib/components/ui/field/index.js";
-  import * as Select from "$lib/components/ui/select/index.js";
-  import { Separator } from "$lib/components/ui/separator/index.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
-  import { m } from "$lib/paraglide/messages.js";
+  import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import * as Field from "#lib/components/ui/field/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
+  import { Separator } from "#lib/components/ui/separator/index.js";
+  import { Switch } from "#lib/components/ui/switch/index.js";
+  import { m } from "#lib/paraglide/messages.js";
   import { board } from "../../board.svelte";
   import { reminderLabel, reminderMinutes } from "./notification-reminders";
 

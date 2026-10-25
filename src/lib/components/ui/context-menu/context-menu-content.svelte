@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ContextMenu as ContextMenuPrimitive } from "bits-ui";
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import { cn } from "$lib/utils.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import { cn } from "#lib/utils.js";
 
   let {
     ref = $bindable(null),

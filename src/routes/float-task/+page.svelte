@@ -1,10 +1,10 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages.js";
+  import * as m from "#lib/paraglide/messages.js";
   import {
     parseCommandError,
     translateCommandError,
     type CommandError,
-  } from "$lib/command-errors";
+  } from "#lib/command-errors.js";
   import {
     clamp_floating_zoom,
     forget_floating_task,
@@ -12,9 +12,9 @@
     read_floating_zoom,
     write_floating_height,
     write_floating_zoom,
-  } from "$lib/floating-tasks";
-  import { formatNumber } from "$lib/i18n";
-  import { logger } from "$lib/logger";
+  } from "#lib/floating-tasks.js";
+  import { formatNumber } from "#lib/i18n/index.js";
+  import { logger } from "#lib/logger.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -23,7 +23,7 @@
 
   import Repeat2Icon from "@lucide/svelte/icons/repeat-2";
 
-  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import {
     deserialize_column,
     type ColumnSerialized,
