@@ -129,7 +129,7 @@
       <span class="me-1.5 shrink-0 text-sm font-semibold">Cardbe</span>
     {/if}
 
-    <div class="flex min-w-0 flex-1 items-center">
+    <div class="flex flex-1 items-center">
       <div
         class="flex flex-row items-center gap-0.5 rounded-md border bg-muted/30 p-0.5"
       >
