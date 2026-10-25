@@ -391,8 +391,12 @@
         size="icon-sm"
         class="flex-none"
         aria-pressed={note_open}
+        aria-keyshortcuts="Control+Shift+N"
         aria-label={note_open ? m.notes_close() : m.notes_open()}
-        title={note_open ? m.notes_close() : m.notes_open()}
+        title={m.workspace_view_shortcut({
+          view: note_open ? m.notes_close() : m.notes_open(),
+          shortcut: "Ctrl+Shift+N",
+        })}
       >
         <StickyNoteIcon />
       </Button>

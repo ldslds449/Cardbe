@@ -184,6 +184,36 @@ fn search_params(filter: &TaskExplorerQuery) -> StorageResult<Vec<rusqlite::type
     ])
 }
 
+fn initialize_note_search_index(connection: &Connection) -> StorageResult<()> {
+    let index_exists = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cardbe_note_fts')",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    connection.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS cardbe_note_fts USING fts5(
+             title,content,content='notes',content_rowid='id',tokenize='trigram'
+         );
+         CREATE TRIGGER IF NOT EXISTS cardbe_notes_ai AFTER INSERT ON notes BEGIN
+             INSERT INTO cardbe_note_fts(rowid,title,content) VALUES(new.id,new.title,new.content);
+         END;
+         CREATE TRIGGER IF NOT EXISTS cardbe_notes_ad AFTER DELETE ON notes BEGIN
+             INSERT INTO cardbe_note_fts(cardbe_note_fts,rowid,title,content)
+             VALUES('delete',old.id,old.title,old.content);
+         END;
+         CREATE TRIGGER IF NOT EXISTS cardbe_notes_au AFTER UPDATE OF id,title,content ON notes BEGIN
+             INSERT INTO cardbe_note_fts(cardbe_note_fts,rowid,title,content)
+             VALUES('delete',old.id,old.title,old.content);
+             INSERT INTO cardbe_note_fts(rowid,title,content) VALUES(new.id,new.title,new.content);
+         END;",
+    )?;
+    if !index_exists {
+        connection
+            .execute_batch("INSERT INTO cardbe_note_fts(cardbe_note_fts) VALUES('rebuild');")?;
+    }
+    Ok(())
+}
+
 fn hybrid_search(
     connection: &Connection,
     filter: &TaskExplorerQuery,
@@ -492,6 +522,7 @@ impl Database {
              );
              ",
         )?;
+        initialize_note_search_index(&connection)?;
         let has_sort_order = connection
             .prepare("PRAGMA table_info(columns)")?
             .query_map([], |row| row.get::<_, String>(1))?
@@ -661,6 +692,54 @@ impl Database {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(notes)
+    }
+
+    /// Note IDs ranked by fused trigram FTS (title and content) and fuzzy title matching.
+    pub fn search_notes(
+        &self,
+        query: &str,
+        options: crate::search::SearchOptions,
+    ) -> StorageResult<Vec<i64>> {
+        use crate::search::{fuse, title_priority, FuzzySearch};
+        let query = query.trim();
+        if !options.valid() {
+            return Err(DomainError::InvalidArgument.into());
+        }
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let lowercase_query = query.to_lowercase();
+        let limit = i64::try_from(options.candidate_limit)?;
+        let (sql, pattern) = if query.chars().count() < 3 {
+            (
+                "SELECT id,title FROM notes
+                 WHERE instr(lower(title || ' ' || content),lower(?1))>0 ORDER BY id LIMIT ?2",
+                query.to_owned(),
+            )
+        } else {
+            (
+                "SELECT n.id,n.title FROM cardbe_note_fts JOIN notes n ON n.id=cardbe_note_fts.rowid
+                 WHERE cardbe_note_fts MATCH ?1 ORDER BY bm25(cardbe_note_fts),n.id LIMIT ?2",
+                format!("\"{}\"", query.replace('"', "\"\"")),
+            )
+        };
+        let fts = self
+            .connection
+            .prepare(sql)?
+            .query_map(params![pattern, limit], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    title_priority(&row.get::<_, String>(1)?, &lowercase_query),
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut statement = self.connection.prepare("SELECT id,title FROM notes")?;
+        let mut rows = statement.query([])?;
+        let mut fuzzy = FuzzySearch::new(query, options.candidate_limit);
+        while let Some(row) = rows.next()? {
+            fuzzy.push(row.get(0)?, &row.get::<_, String>(1)?);
+        }
+        Ok(fuse(&fts, &fuzzy.finish(), options))
     }
 
     pub fn create_note(&mut self, now: i64) -> StorageResult<Note> {
@@ -6569,6 +6648,66 @@ mod tests {
             vec![("Shared", 9)]
         );
         drop(loaded);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn note_search_fuses_content_and_fuzzy_title_matches() {
+        use crate::search::SearchOptions;
+        let dir = test_dir("note-search");
+        fs::create_dir_all(&dir).unwrap();
+        let mut database = Database::open(dir.join("data.sqlite3")).unwrap();
+        let mut note = |title: &str, content: &str| {
+            database
+                .create_note_with_content(1, title.into(), content.into())
+                .unwrap()
+                .id
+        };
+        let body = note("Weekly", "Release checklist for alpha");
+        let fuzzy = note("Annual planning", "");
+        let prefix = note("Release notes", "");
+        let exact = note("release", "");
+        let chinese = note("會議紀錄", "討論 🚀 上線時程");
+        let search = |database: &Database, query: &str| {
+            database
+                .search_notes(query, SearchOptions::default())
+                .unwrap()
+        };
+
+        assert_eq!(search(&database, "release"), vec![exact, prefix, body]);
+        assert_eq!(search(&database, "anpl"), vec![fuzzy]);
+        assert_eq!(search(&database, "會紀"), vec![chinese]);
+        assert_eq!(search(&database, "上線時程"), vec![chinese]);
+        assert_eq!(search(&database, "🚀"), vec![chinese]);
+        assert_eq!(search(&database, "ch"), vec![body]);
+        assert!(search(&database, "  ").is_empty());
+        assert!(search(&database, "missing-xyz").is_empty());
+
+        let mut edited = database
+            .get_notes()
+            .unwrap()
+            .into_iter()
+            .find(|note| note.id == body)
+            .unwrap();
+        edited.content = "Nothing here".into();
+        database.update_note(&edited).unwrap();
+        database.delete_note(exact).unwrap();
+        assert_eq!(search(&database, "release"), vec![prefix]);
+        assert!(search(&database, "checklist").is_empty());
+        assert!(database
+            .search_notes(
+                "release",
+                SearchOptions {
+                    candidate_limit: 0,
+                    ..SearchOptions::default()
+                }
+            )
+            .is_err());
+
+        drop(database);
+        let reopened = Database::open(dir.join("data.sqlite3")).unwrap();
+        assert_eq!(search(&reopened, "release"), vec![prefix]);
+        drop(reopened);
         fs::remove_dir_all(dir).unwrap();
     }
 

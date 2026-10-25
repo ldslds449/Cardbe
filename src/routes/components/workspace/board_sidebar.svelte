@@ -9,6 +9,7 @@
   import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import SearchIcon from "@lucide/svelte/icons/search";
+  import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import UsersIcon from "@lucide/svelte/icons/users";
   import ListFilterIcon from "@lucide/svelte/icons/list-filter";
@@ -24,7 +25,7 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import type { Snippet } from "svelte";
   import type { BoardRole } from "../../board.svelte";
-  import { HOME_PAGE_ID } from "./workspace";
+  import { HOME_PAGE_ID, NOTES_PAGE_ID } from "./workspace";
   import { MAX_FOCUSES, type Focus } from "../../type/focus";
 
   export interface BoardItem {
@@ -48,6 +49,7 @@
     active_focus_id,
     onOpenFocus,
     onOpenHome,
+    onOpenNotes,
     onCreateFocus,
     onEditFocus,
     onFloatFocus,
@@ -66,6 +68,7 @@
     active_focus_id: string | null;
     onOpenFocus: (id: string) => void;
     onOpenHome: () => void;
+    onOpenNotes: () => void;
     onCreateFocus: () => void;
     onEditFocus: (id: string) => void;
     onFloatFocus: (id: string) => void;
@@ -114,7 +117,7 @@
     onOpenFocus(id);
     open = false;
   }
-  function open_create_dialog() {
+  export function open_create_dialog() {
     new_name = "";
     create_open = true;
   }
@@ -408,6 +411,23 @@
                 >
               </Kbd.Group>
             </span>
+          </button>
+          <button
+            type="button"
+            class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-3 pe-2 text-left text-sm transition-colors ${active_focus_id === NOTES_PAGE_ID ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+            aria-current={active_focus_id === NOTES_PAGE_ID
+              ? "page"
+              : undefined}
+            onclick={() => {
+              onOpenNotes();
+              open = false;
+            }}
+          >
+            <StickyNoteIcon
+              class="size-4 shrink-0 text-primary"
+              aria-hidden="true"
+            />
+            <span class="min-w-0 flex-1 truncate">{m.note_title()}</span>
           </button>
           <Separator class="my-3" />
           <section

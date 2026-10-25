@@ -15,6 +15,14 @@
     tone: keyof typeof tone_class;
   }
 
+  interface NoteOverview {
+    id: number;
+    title: string;
+    content: string;
+    pinned: boolean;
+    updated_at: number;
+  }
+
   interface FocusOverview {
     count: number;
     more: boolean;
@@ -41,6 +49,7 @@
   // refreshes instead of growing the tiles as they load.
   let cached_columns: Map<number, ColumnOverview[]> | null = null;
   let cached_focuses = new Map<string, FocusOverview>();
+  let cached_notes: NoteOverview[] | null = null;
 </script>
 
 <script lang="ts">
@@ -51,10 +60,14 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { untrack } from "svelte";
+  import { Button } from "$lib/components/ui/button/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
+  import { by_recent, read_recent } from "./recent";
 
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import ListFilterIcon from "@lucide/svelte/icons/list-filter";
+  import PinIcon from "@lucide/svelte/icons/pin";
+  import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import UsersIcon from "@lucide/svelte/icons/users";
   import type { Component } from "svelte";
@@ -68,6 +81,9 @@
   const PREVIEW_ROWS = 5;
   // Tasks read per Focus; more are shown as a lower bound.
   const COUNT_LIMIT = 100;
+  // Tiles per section, two rows on wide windows; the rest are behind
+  // "Show all" (in place) or "View all" (the Notes page).
+  const SECTION_TILES = 6;
 
   let {
     focuses,
@@ -75,6 +91,10 @@
     onOpenFocus,
     onCreateFocus,
     onOpenBoard,
+    onCreateBoard,
+    onOpenNotes,
+    onOpenNote,
+    onCreateNote,
   }: {
     focuses: Focus[];
     boards: {
@@ -86,12 +106,34 @@
     onOpenFocus: (id: string) => void;
     onCreateFocus: () => void;
     onOpenBoard: (board_id: number) => void;
+    onCreateBoard: () => void;
+    onOpenNotes: () => void;
+    onOpenNote: (note_id: number) => void;
+    onCreateNote: () => void;
   } = $props();
 
   let now = $state(new Date());
   // Null until the first load.
   let columns = $state<Map<number, ColumnOverview[]> | null>(cached_columns);
   let focus_overviews = $state(cached_focuses);
+  let notes = $state<NoteOverview[] | null>(cached_notes);
+  let recent = $state(read_recent());
+  let show_all = $state({ focus: false, board: false });
+
+  // Recently viewed first. Pinned notes stay on top, and a note counts as
+  // recent when it was last viewed or edited.
+  const sorted_focuses = $derived(
+    by_recent(focuses, (view) => recent.focus[view.id]),
+  );
+  const sorted_boards = $derived(
+    by_recent(boards, (item) => recent.board[item.id]),
+  );
+  const sorted_notes = $derived(
+    notes &&
+      by_recent(notes, (note) =>
+        Math.max(note.updated_at, recent.note[note.id] ?? 0),
+      ).sort((left, right) => Number(right.pinned) - Number(left.pinned)),
+  );
   let request = 0;
 
   let greeting = $derived(
@@ -170,11 +212,14 @@
   async function refresh() {
     const current = ++request;
     now = new Date();
+    recent = read_recent();
     const at = now;
-    const [loaded_columns, loaded_focuses] = await Promise.allSettled([
-      load_columns(),
-      Promise.all(focuses.map((view) => load_focus_overview(view, at))),
-    ]);
+    const [loaded_columns, loaded_focuses, loaded_notes] =
+      await Promise.allSettled([
+        load_columns(),
+        Promise.all(focuses.map((view) => load_focus_overview(view, at))),
+        invoke<NoteOverview[]>("get_notes"),
+      ]);
     if (current !== request) {
       return;
     }
@@ -187,6 +232,11 @@
       focus_overviews = cached_focuses = new Map(loaded_focuses.value);
     } else {
       logger.error("home.focuses.failed", loaded_focuses.reason);
+    }
+    if (loaded_notes.status === "fulfilled") {
+      notes = cached_notes = loaded_notes.value;
+    } else {
+      logger.error("home.notes.failed", loaded_notes.reason);
     }
   }
 
@@ -209,6 +259,15 @@
     return overview.more
       ? m.home_cards_more({ count: overview.count })
       : m.home_board_cards({ count: overview.count });
+  }
+
+  /** The first line of a note's Markdown, without its leading markers. */
+  function note_excerpt(content: string) {
+    const line = content
+      .split("\n")
+      .map((text) => text.replace(/^\s*(?:[#>*+-]+|\d+\.|- \[[ xX]\])\s*/, ""))
+      .find((text) => text.trim());
+    return line?.trim() ?? "";
   }
 
   const tile =
@@ -257,6 +316,64 @@
   {/if}
 {/snippet}
 
+{#snippet section_header(
+  id: string,
+  title: string,
+  count: number | null,
+  more: "focus" | "board" | "notes" | null,
+  add: {
+    label: string;
+    onclick: () => void;
+    disabled?: boolean;
+    hint?: string;
+  },
+)}
+  <div class="mb-3 flex min-h-8 items-center gap-2">
+    <h2 {id} class="min-w-0 flex-1 font-semibold tracking-tight">
+      {title}
+      {#if count !== null}
+        <span class="font-normal text-muted-foreground"
+          >· {formatNumber(count)}</span
+        >
+      {/if}
+    </h2>
+    {#if more === "notes"}
+      <Button variant="ghost" size="sm" onclick={onOpenNotes}>
+        {m.home_view_all()}
+      </Button>
+    {:else if more}
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-expanded={show_all[more]}
+        onclick={() => (show_all[more] = !show_all[more])}
+      >
+        {show_all[more] ? m.home_show_less() : m.home_show_all()}
+      </Button>
+    {/if}
+    <!-- A disabled button gets no pointer events, so its wrapper keeps the hint. -->
+    <span class="shrink-0" title={add.hint ?? add.label}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={add.label}
+        disabled={add.disabled}
+        onclick={add.onclick}
+      >
+        <PlusIcon />
+      </Button>
+    </span>
+  </div>
+{/snippet}
+
+{#snippet section_empty(label: string)}
+  <p
+    class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground"
+  >
+    {label}
+  </p>
+{/snippet}
+
 {#snippet preview_empty(label: string)}
   <span
     class="flex flex-1 items-center justify-center py-3 text-center text-xs text-muted-foreground"
@@ -274,70 +391,77 @@
     </header>
 
     <section aria-labelledby="home-focuses">
-      <h2 id="home-focuses" class="mb-3 font-semibold tracking-tight">
-        {m.focus_section()}
-      </h2>
-      <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {#each focuses as view (view.id)}
-          {@const overview = focus_overviews.get(view.id)}
-          <li>
-            <button
-              type="button"
-              class={[tile, "h-full flex-col items-stretch"]}
-              title={view.name}
-              onclick={() => onOpenFocus(view.id)}
-            >
-              <span class="flex min-w-0 items-center gap-3">
-                {@render tile_header(
-                  ListFilterIcon,
-                  view.name,
-                  focus_detail(overview),
-                )}
-              </span>
-              {#if overview && overview.count === 0}
-                {@render preview_empty(m.focus_empty())}
-              {:else if overview && overview.rows.length > 0}
-                {@render preview(overview.rows, (count) =>
-                  m.home_more_groups({ count }),
-                )}
-              {:else if overview}
-                <span class="block w-full space-y-1 text-xs">
-                  {#each overview.titles as title, index (index)}
-                    <span class="flex min-w-0 items-center gap-2">
-                      <span
-                        class="size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
-                        aria-hidden="true"
-                      ></span>
-                      <span class="truncate">{title}</span>
-                    </span>
-                  {/each}
+      {@render section_header(
+        "home-focuses",
+        m.focus_section(),
+        focuses.length,
+        sorted_focuses.length > SECTION_TILES ? "focus" : null,
+        {
+          label: m.focus_new(),
+          onclick: onCreateFocus,
+          disabled: focuses.length >= MAX_FOCUSES,
+          hint:
+            focuses.length >= MAX_FOCUSES
+              ? m.focus_limit_reached({ count: MAX_FOCUSES })
+              : undefined,
+        },
+      )}
+      {#if focuses.length === 0}
+        {@render section_empty(m.focus_list_empty())}
+      {:else}
+        <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {#each show_all.focus ? sorted_focuses : sorted_focuses.slice(0, SECTION_TILES) as view (view.id)}
+            {@const overview = focus_overviews.get(view.id)}
+            <li>
+              <button
+                type="button"
+                class={[tile, "h-full flex-col items-stretch"]}
+                title={view.name}
+                onclick={() => onOpenFocus(view.id)}
+              >
+                <span class="flex min-w-0 items-center gap-3">
+                  {@render tile_header(
+                    ListFilterIcon,
+                    view.name,
+                    focus_detail(overview),
+                  )}
                 </span>
-              {/if}
-            </button>
-          </li>
-        {/each}
-        <li>
-          <button
-            type="button"
-            class={[
-              tile,
-              "h-full justify-center border-dashed bg-transparent shadow-none",
-            ]}
-            disabled={focuses.length >= MAX_FOCUSES}
-            onclick={onCreateFocus}
-          >
-            {@render tile_header(PlusIcon, m.focus_new())}
-          </button>
-        </li>
-      </ul>
+                {#if overview && overview.count === 0}
+                  {@render preview_empty(m.focus_empty())}
+                {:else if overview && overview.rows.length > 0}
+                  {@render preview(overview.rows, (count) =>
+                    m.home_more_groups({ count }),
+                  )}
+                {:else if overview}
+                  <span class="block w-full space-y-1 text-xs">
+                    {#each overview.titles as title, index (index)}
+                      <span class="flex min-w-0 items-center gap-2">
+                        <span
+                          class="size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
+                          aria-hidden="true"
+                        ></span>
+                        <span class="truncate">{title}</span>
+                      </span>
+                    {/each}
+                  </span>
+                {/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </section>
 
     <section aria-labelledby="home-boards">
-      <h2 id="home-boards" class="mb-3 font-semibold tracking-tight">
-        {m.board_list()}
-      </h2>
+      {@render section_header(
+        "home-boards",
+        m.board_list(),
+        boards.length,
+        sorted_boards.length > SECTION_TILES ? "board" : null,
+        { label: m.board_new(), onclick: onCreateBoard },
+      )}
       <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {#each boards as item (item.id)}
+        {#each show_all.board ? sorted_boards : sorted_boards.slice(0, SECTION_TILES) as item (item.id)}
           {@const board_columns = columns?.get(item.id) ?? []}
           <li>
             <button
@@ -366,6 +490,55 @@
           </li>
         {/each}
       </ul>
+    </section>
+
+    <section aria-labelledby="home-notes">
+      {@render section_header(
+        "home-notes",
+        m.note_title(),
+        notes?.length ?? null,
+        sorted_notes && sorted_notes.length > SECTION_TILES ? "notes" : null,
+        { label: m.note_new(), onclick: onCreateNote },
+      )}
+      {#if sorted_notes?.length === 0}
+        {@render section_empty(m.note_none())}
+      {:else if sorted_notes}
+        <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {#each sorted_notes.slice(0, SECTION_TILES) as note (note.id)}
+            {@const title = note.title.trim() || m.note_untitled()}
+            {@const excerpt = note_excerpt(note.content)}
+            <li>
+              <button
+                type="button"
+                class={[tile, "h-full flex-col items-stretch"]}
+                {title}
+                onclick={() => onOpenNote(note.id)}
+              >
+                <span class="flex min-w-0 items-center gap-3">
+                  {@render tile_header(
+                    StickyNoteIcon,
+                    title,
+                    formatDate(note.updated_at, {
+                      month: "short",
+                      day: "numeric",
+                    }),
+                  )}
+                  {#if note.pinned}
+                    <PinIcon
+                      class="size-3.5 shrink-0 fill-current text-muted-foreground"
+                      aria-label={m.note_pinned()}
+                    />
+                  {/if}
+                </span>
+                <span
+                  class="line-clamp-2 text-xs break-normal [overflow-wrap:anywhere] text-muted-foreground"
+                  >{excerpt || m.note_empty()}</span
+                >
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </section>
   </div>
 </ScrollArea>

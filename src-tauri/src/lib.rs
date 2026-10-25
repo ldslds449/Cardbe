@@ -586,6 +586,7 @@ pub fn run() {
             commands::focuses::open_floating_focus,
             commands::focuses::open_focus_in_main_window,
             notes::get_notes,
+            notes::search_notes,
             notes::create_note,
             notes::create_quick_note,
             notes::update_note,

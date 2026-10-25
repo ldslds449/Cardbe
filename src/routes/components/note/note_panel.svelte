@@ -9,12 +9,15 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { toast } from "svelte-sonner";
-  import { onDestroy, onMount, tick, untrack } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
   import { create_note_queue } from "./note-queue";
+  import { StoredWidth } from "./stored-width.svelte";
+  import { mark_recent } from "../home/recent";
 
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Maximize2Icon from "@lucide/svelte/icons/maximize-2";
-  import Minimize2Icon from "@lucide/svelte/icons/minimize-2";
+  import PanelLeftCloseIcon from "@lucide/svelte/icons/panel-left-close";
+  import PanelLeftOpenIcon from "@lucide/svelte/icons/panel-left-open";
   import SearchIcon from "@lucide/svelte/icons/search";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
   import PinIcon from "@lucide/svelte/icons/pin";
@@ -22,10 +25,8 @@
   import XIcon from "@lucide/svelte/icons/x";
 
   import { Button } from "$lib/components/ui/button/index.js";
-  import * as Dialog from "$lib/components/ui/dialog/index.js";
   import * as InputGroup from "$lib/components/ui/input-group/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-  import * as Sheet from "$lib/components/ui/sheet/index.js";
   import { Textarea } from "$lib/components/ui/textarea/index.js";
   import EditorControls from "$lib/components/editor/editor-controls.svelte";
   import CardReferencePicker, {
@@ -48,30 +49,48 @@
   }
 
   let {
+    variant = "panel",
     requested_note = null,
     onNotesChanged,
+    onOpenPage,
     open = $bindable(false),
+    selected_id = $bindable(null),
     card_reference_options = [],
   }: {
+    /** A side panel docked beside the board, or the full Notes page. */
+    variant?: "panel" | "page";
     open: boolean;
+    selected_id?: number | null;
     card_reference_options?: CardReferenceOption[];
     requested_note?: { id: number } | null;
     onNotesChanged?: () => void;
+    onOpenPage?: () => void;
   } = $props();
 
+  const panel_width = new StoredWidth(
+    "cardbe.note-panel-width",
+    480,
+    320,
+    960,
+    -1,
+  );
+  // The page has more room, so its list keeps its own width.
+  const list_width = untrack(() =>
+    variant === "page"
+      ? new StoredWidth("cardbe.note-list-width.page", 256, 160, 480, 1)
+      : new StoredWidth("cardbe.note-list-width.panel", 208, 160, 360, 1),
+  );
+
   let notes = $state<Note[]>([]);
-  let selected_id = $state<number | null>(null);
   let search_text = $state("");
   let loading = $state(false);
   let loaded = $state(false);
   let creating = $state(false);
   let deleting_id = $state<number | null>(null);
   const enqueue = create_note_queue();
-  let note_expanded = $state(false);
-  let expanded_note_ref = $state<RichTextEditorHandle | null>(null);
+  let list_collapsed = $state(false);
   let note_ref = $state<RichTextEditorHandle | null>(null);
   let note_language = $state<string | null>(null);
-  let expanded_note_language = $state<string | null>(null);
   let note_previewing = $state(false);
   let reference_open = $state(false);
   let reference_start = $state<number | undefined>(undefined);
@@ -82,6 +101,11 @@
   let edit_generation = 0;
 
   const selected_note = $derived(notes.find((note) => note.id === selected_id));
+  $effect(() => {
+    if (selected_note) {
+      mark_recent("note", selected_note.id);
+    }
+  });
   $effect(() => {
     const request = requested_note;
     if (request) {
@@ -100,7 +124,7 @@
     }
     selected_note.content = content;
     queue_save(selected_note);
-    const handle = note_expanded ? expanded_note_ref : note_ref;
+    const handle = note_ref;
     if (
       card_reference_options.length &&
       handle?.getTextBeforeCursor(2) === "[["
@@ -119,26 +143,54 @@
     selected_note.title = title;
     queue_save(selected_note);
   }
+  // Ranked note IDs from `search_notes`; null until the current query resolves.
+  let search_results = $state<number[] | null>(null);
+  let search_revision = $state(0);
+  let search_generation = 0;
+  $effect(() => {
+    const query = search_text.trim();
+    void search_revision;
+    const generation = ++search_generation;
+    if (!query) {
+      search_results = null;
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const ids = await invoke<number[]>("search_notes", { query });
+        if (generation === search_generation) {
+          search_results = ids;
+        }
+      } catch (error) {
+        if (generation === search_generation) {
+          logger.error("note.search.failed", error);
+          toast.error(translateCommandError(error));
+        }
+      }
+    }, 160);
+    return () => clearTimeout(timer);
+  });
   const filtered_notes = $derived.by(() => {
     const query = search_text.trim().toLocaleLowerCase();
-    return query
-      ? notes.filter((note) =>
-          `${note.title}\n${note.content}`.toLocaleLowerCase().includes(query),
-        )
-      : notes;
+    if (!query) {
+      return notes;
+    }
+    if (search_results === null) {
+      return notes.filter((note) =>
+        `${note.title}\n${note.content}`.toLocaleLowerCase().includes(query),
+      );
+    }
+    const by_id = new Map(notes.map((note) => [note.id, note]));
+    return search_results.flatMap((id) => by_id.get(id) ?? []);
   });
 
   $effect(() => {
-    if (!selected_note) {
-      note_expanded = false;
-    }
     const is_open = open;
     untrack(() => {
       if (is_open && !loaded && !loading) {
         void load_notes();
       }
       if (!is_open) {
-        note_expanded = false;
         flush_saves();
       }
     });
@@ -198,6 +250,7 @@
         return;
       }
       notes = fetched_notes;
+      search_revision++;
       selected_id = notes.some((note) => note.id === selected_id)
         ? selected_id
         : (notes[0]?.id ?? null);
@@ -270,6 +323,9 @@
         notes[index].created_at = saved.created_at;
         notes[index].updated_at = saved.updated_at;
         unsaved_notes.delete(saved.id);
+        if (search_text.trim()) {
+          search_revision++;
+        }
         if (unsaved_notes.size === 0 && reload_requested && open && !loading) {
           void load_notes();
         }
@@ -359,237 +415,213 @@
   }
 </script>
 
-<Sheet.Root bind:open={() => open, (value) => void set_open(value)}>
-  <Sheet.Content
-    class="gap-0"
-    resizable
-    defaultWidth={672}
-    minWidth={480}
-    maxWidth={1200}
-    widthStorageKey="cardbe.note-panel-width"
+{#snippet new_note_button()}
+  <Button
+    size="sm"
+    onclick={create_note}
+    disabled={creating || loading || !loaded}
   >
-    <Sheet.Header class="border-b pb-4">
-      <div class="flex items-center justify-between pr-8">
-        <div>
-          <Sheet.Title class="flex items-center gap-2">
-            <StickyNoteIcon class="size-5 text-primary" />
-            {m.note_title()}
-          </Sheet.Title>
-          <Sheet.Description>{m.note_description()}</Sheet.Description>
-        </div>
-        <Button
-          size="sm"
-          onclick={create_note}
-          disabled={creating || loading || !loaded}
-        >
-          <PlusIcon />
-          {m.note_new()}
-        </Button>
-      </div>
-    </Sheet.Header>
+    <PlusIcon />
+    {m.note_new()}
+  </Button>
+{/snippet}
 
-    <div class="note-layout grid min-h-0 flex-1">
-      <aside class="flex min-h-0 flex-col border-r">
-        <div class="p-3">
-          <InputGroup.Root>
-            <InputGroup.Input
-              placeholder={m.note_search()}
-              aria-label={m.note_search()}
-              bind:value={search_text}
-            />
-            <InputGroup.Addon><SearchIcon /></InputGroup.Addon>
-            {#if search_text}
-              <InputGroup.Addon align="inline-end">
-                <InputGroup.Button
-                  size="icon-xs"
-                  aria-label={m.board_clear_search()}
-                  onclick={() => (search_text = "")}
-                >
-                  <XIcon />
-                </InputGroup.Button>
-              </InputGroup.Addon>
-            {/if}
-          </InputGroup.Root>
-        </div>
-
-        <ScrollArea class="min-h-0 flex-1" orientation="vertical">
-          <div class="space-y-2 px-3 pb-3">
-            {#if loading}
-              <p class="py-8 text-center text-sm text-muted-foreground">
-                {m.note_loading()}
-              </p>
-            {:else if !loaded}
-              <Button variant="outline" onclick={load_notes}
-                >{m.note_retry()}</Button
-              >
-            {:else}
-              {#each filtered_notes as note (note.id)}
-                <div
-                  role="button"
-                  tabindex="0"
-                  class={cn(
-                    "w-full cursor-pointer rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                    selected_id === note.id &&
-                      "border-primary bg-accent ring-1 ring-primary/30",
-                  )}
-                  onclick={() => select_note(note.id)}
-                  onkeydown={(event) =>
-                    select_note_with_keyboard(event, note.id)}
-                >
-                  <div class="flex items-start gap-2">
-                    <span
-                      class="min-w-0 flex-1 break-normal [overflow-wrap:anywhere] text-sm font-semibold"
-                    >
-                      {note.title.trim() || m.note_untitled()}
-                    </span>
-                    {#if note.pinned}
-                      <PinIcon class="mt-0.5 size-3.5 shrink-0 fill-current" />
-                    {/if}
-                  </div>
-                  {#if note.content.trim()}
-                    <div
-                      class="pointer-events-none mt-1 max-h-10 overflow-hidden text-xs text-muted-foreground [&_*]:!m-0 [&_*]:!border-0 [&_*]:!bg-transparent [&_*]:!p-0 [&_*]:!text-xs [&_*]:!leading-5"
-                    >
-                      <Markdown md={note.content} compact />
-                    </div>
-                  {:else}
-                    <p class="mt-1 text-xs text-muted-foreground">
-                      {m.note_empty()}
-                    </p>
-                  {/if}
-                </div>
-              {:else}
-                <p class="py-8 text-center text-sm text-muted-foreground">
-                  {search_text.trim() ? m.note_no_matching() : m.note_none()}
-                </p>
-              {/each}
-            {/if}
-          </div>
-        </ScrollArea>
-      </aside>
-
-      <main class="flex min-h-0 min-w-0 flex-col">
-        {#if selected_note}
-          <div class="flex flex-wrap items-center gap-2 border-b p-3">
-            <Textarea
-              rows={1}
-              class="min-h-9 min-w-24 flex-1 resize-none break-normal border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
-              placeholder={m.note_name()}
-              aria-label={m.note_name()}
-              disabled={deleting_id === selected_note.id}
-              value={selected_note.title}
-              onkeydown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                }
-              }}
-              oninput={update_note_title}
-            />
-            <EditorControls
-              compact
-              bind:previewing={note_previewing}
-              language={note_language}
-              disabled={deleting_id === selected_note.id}
-              onlanguagechange={(language) =>
-                note_ref?.setCodeLanguage?.(language)}
-            />
-            <div class="flex shrink-0 items-center gap-2">
-              {#if card_reference_options.length}
-                <div class="size-8 shrink-0">
-                  {#if !note_expanded && !note_previewing}
-                    <CardReferencePicker
-                      compact
-                      disabled={deleting_id === selected_note.id}
-                      editor={note_ref}
-                      options={card_reference_options}
-                      bind:open={reference_open}
-                      bind:triggerStart={reference_start}
-                    />
-                  {/if}
-                </div>
-              {/if}
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={m.note_expand_editor()}
-                title={m.note_expand_editor()}
-                onclick={() => (note_expanded = true)}
-              >
-                <Maximize2Icon />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant={selected_note.pinned ? "secondary" : "ghost"}
-                aria-label={selected_note.pinned
-                  ? m.note_unpin()
-                  : m.note_pin()}
-                title={selected_note.pinned ? m.note_unpin() : m.note_pin()}
-                disabled={deleting_id === selected_note.id}
-                onclick={() => toggle_pinned(selected_note)}
-              >
-                <PinIcon class={cn(selected_note.pinned && "fill-current")} />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                class="text-destructive hover:text-destructive"
-                aria-label={m.note_delete()}
-                title={m.note_delete()}
-                disabled={deleting_id !== null}
-                onclick={() => delete_note(selected_note)}
-              >
-                <Trash2Icon />
-              </Button>
-            </div>
-          </div>
-          <div class="flex min-h-0 flex-1 flex-col gap-3 bg-background p-2">
-            {#key selected_note.id}
-              <RichTextEditor
-                bind:ref={note_ref}
-                bind:language={note_language}
-                bind:previewing={note_previewing}
-                showControls={false}
-                containerClass="flex min-h-0 flex-1 flex-col"
-                class="min-h-0 flex-1 overflow-y-auto rounded-md border-0 bg-transparent px-3 py-2 font-sans text-base leading-6 shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
-                placeholder={m.note_write()}
-                aria-label={m.note_content()}
-                disabled={deleting_id === selected_note.id}
-                value={selected_note.content}
-                onvaluechange={handle_note_change}
-              />
-            {/key}
-          </div>
-        {:else}
-          <div
-            class="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground"
-          >
-            <StickyNoteIcon class="size-10 opacity-50" />
-            <p class="text-sm">{m.note_choose()}</p>
-          </div>
-        {/if}
-      </main>
-    </div>
-  </Sheet.Content>
-</Sheet.Root>
-
-{#if selected_note}
-  <Dialog.Root bind:open={note_expanded}>
-    <Dialog.Content
-      class="flex h-[min(90vh,56rem)] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
-      showCloseButton={false}
-      onOpenAutoFocus={(event) => {
-        event.preventDefault();
-        void tick().then(() => expanded_note_ref?.focus());
-      }}
+{#if variant === "panel"}
+  <aside
+    class="relative flex min-h-0 shrink-0 flex-col border-l bg-background"
+    style:width="min({panel_width.value}px, 60%, calc(100% - 20rem))"
+    aria-labelledby="note-panel-title"
+  >
+    <button
+      type="button"
+      class="group absolute inset-y-0 -start-1.5 z-10 flex w-3 cursor-ew-resize items-center justify-center outline-none"
+      aria-label={m.common_resize_panel()}
+      title={m.common_resize_panel_hint()}
+      onpointerdown={(event) => panel_width.start(event)}
+      onkeydown={(event) => panel_width.keydown(event)}
+      ondblclick={() => panel_width.reset()}
     >
-      <Dialog.Header class="shrink-0 border-b px-4 py-3 text-start sm:px-6">
-        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-          <Dialog.Title class="sr-only"
-            >{selected_note.title.trim() || "Untitled note"}</Dialog.Title
+      <span
+        class="h-full w-px transition-all group-hover:w-0.5 group-hover:bg-ring group-focus-visible:w-0.5 group-focus-visible:bg-ring"
+      ></span>
+    </button>
+    <header class="flex items-center gap-2 border-b px-3 py-2">
+      <h2
+        id="note-panel-title"
+        class="flex min-w-0 flex-1 items-center gap-2 font-semibold"
+      >
+        <StickyNoteIcon class="size-4 shrink-0 text-primary" />
+        <span class="truncate">{m.note_title()}</span>
+      </h2>
+      {@render new_note_button()}
+      {#if onOpenPage}
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label={m.note_open_page()}
+          title={m.note_open_page()}
+          onclick={onOpenPage}
+        >
+          <Maximize2Icon />
+        </Button>
+      {/if}
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label={m.notes_close()}
+        title={m.notes_close()}
+        onclick={() => void set_open(false)}
+      >
+        <XIcon />
+      </Button>
+    </header>
+    {@render workspace()}
+  </aside>
+{:else}
+  <section
+    class="flex min-h-0 min-w-0 flex-1 flex-col"
+    aria-labelledby="note-page-title"
+  >
+    <header class="flex items-center justify-between gap-3 border-b px-6 py-4">
+      <div class="min-w-0">
+        <h1
+          id="note-page-title"
+          class="flex items-center gap-2 text-lg font-semibold tracking-tight"
+        >
+          <StickyNoteIcon class="size-5 text-primary" />
+          {m.note_title()}
+        </h1>
+        <p class="text-sm text-muted-foreground">{m.note_description()}</p>
+      </div>
+      {@render new_note_button()}
+    </header>
+    {@render workspace()}
+  </section>
+{/if}
+
+{#snippet workspace()}
+  <div
+    class="grid min-h-0 flex-1"
+    style:grid-template-columns={list_collapsed
+      ? "minmax(0, 1fr)"
+      : `min(${list_width.value}px, 50%) minmax(0, 1fr)`}
+  >
+    <div
+      class="relative flex min-h-0 flex-col border-r"
+      hidden={list_collapsed}
+    >
+      <button
+        type="button"
+        class="group absolute inset-y-0 -end-1.5 z-10 flex w-3 cursor-ew-resize justify-center outline-none"
+        aria-label={m.note_resize_list()}
+        title={m.common_resize_panel_hint()}
+        onpointerdown={(event) => list_width.start(event)}
+        onkeydown={(event) => list_width.keydown(event)}
+        ondblclick={() => list_width.reset()}
+      >
+        <span
+          class="h-full w-0.5 transition-colors group-hover:bg-ring group-focus-visible:bg-ring"
+        ></span>
+      </button>
+      <div class="p-3">
+        <InputGroup.Root>
+          <InputGroup.Input
+            placeholder={m.note_search()}
+            aria-label={m.note_search()}
+            bind:value={search_text}
+          />
+          <InputGroup.Addon><SearchIcon /></InputGroup.Addon>
+          {#if search_text}
+            <InputGroup.Addon align="inline-end">
+              <InputGroup.Button
+                size="icon-xs"
+                aria-label={m.board_clear_search()}
+                onclick={() => (search_text = "")}
+              >
+                <XIcon />
+              </InputGroup.Button>
+            </InputGroup.Addon>
+          {/if}
+        </InputGroup.Root>
+      </div>
+
+      <ScrollArea class="min-h-0 flex-1" orientation="vertical">
+        <div class="space-y-2 px-3 pb-3">
+          {#if loading}
+            <p class="py-8 text-center text-sm text-muted-foreground">
+              {m.note_loading()}
+            </p>
+          {:else if !loaded}
+            <Button variant="outline" onclick={load_notes}
+              >{m.note_retry()}</Button
+            >
+          {:else}
+            {#each filtered_notes as note (note.id)}
+              <div
+                role="button"
+                tabindex="0"
+                class={cn(
+                  "w-full cursor-pointer rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                  selected_id === note.id &&
+                    "border-primary bg-accent ring-1 ring-primary/30",
+                )}
+                onclick={() => select_note(note.id)}
+                onkeydown={(event) => select_note_with_keyboard(event, note.id)}
+              >
+                <div class="flex items-start gap-2">
+                  <span
+                    class="min-w-0 flex-1 break-normal [overflow-wrap:anywhere] text-sm font-semibold"
+                  >
+                    {note.title.trim() || m.note_untitled()}
+                  </span>
+                  {#if note.pinned}
+                    <PinIcon class="mt-0.5 size-3.5 shrink-0 fill-current" />
+                  {/if}
+                </div>
+                {#if note.content.trim()}
+                  <div
+                    class="pointer-events-none mt-1 max-h-10 overflow-hidden text-xs text-muted-foreground [&_*]:!m-0 [&_*]:!border-0 [&_*]:!bg-transparent [&_*]:!p-0 [&_*]:!text-xs [&_*]:!leading-5"
+                  >
+                    <Markdown md={note.content} compact />
+                  </div>
+                {:else}
+                  <p class="mt-1 text-xs text-muted-foreground">
+                    {m.note_empty()}
+                  </p>
+                {/if}
+              </div>
+            {:else}
+              <p class="py-8 text-center text-sm text-muted-foreground">
+                {search_text.trim() ? m.note_no_matching() : m.note_none()}
+              </p>
+            {/each}
+          {/if}
+        </div>
+      </ScrollArea>
+    </div>
+
+    <div class="flex min-h-0 min-w-0 flex-col">
+      {#if selected_note}
+        <div class="flex flex-wrap items-center gap-2 border-b p-3">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={list_collapsed
+              ? m.note_show_list()
+              : m.note_hide_list()}
+            title={list_collapsed ? m.note_show_list() : m.note_hide_list()}
+            aria-pressed={!list_collapsed}
+            onclick={() => (list_collapsed = !list_collapsed)}
           >
+            {#if list_collapsed}
+              <PanelLeftOpenIcon />
+            {:else}
+              <PanelLeftCloseIcon />
+            {/if}
+          </Button>
           <Textarea
             rows={1}
-            class="min-h-9 min-w-0 resize-none break-normal border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
+            class="min-h-9 min-w-24 flex-1 resize-none break-normal border-0 bg-transparent px-0 py-1 text-lg font-semibold leading-7 shadow-none [overflow-wrap:anywhere] focus-visible:ring-0 md:text-lg dark:bg-transparent"
             placeholder={m.note_name()}
             aria-label={m.note_name()}
             disabled={deleting_id === selected_note.id}
@@ -601,14 +633,22 @@
             }}
             oninput={update_note_title}
           />
-          <div class="flex items-center gap-2">
+          <EditorControls
+            compact
+            bind:previewing={note_previewing}
+            language={note_language}
+            disabled={deleting_id === selected_note.id}
+            onlanguagechange={(language) =>
+              note_ref?.setCodeLanguage?.(language)}
+          />
+          <div class="flex shrink-0 items-center gap-2">
             {#if card_reference_options.length}
               <div class="size-8 shrink-0">
                 {#if !note_previewing}
                   <CardReferencePicker
                     compact
                     disabled={deleting_id === selected_note.id}
-                    editor={expanded_note_ref}
+                    editor={note_ref}
                     options={card_reference_options}
                     bind:open={reference_open}
                     bind:triggerStart={reference_start}
@@ -616,54 +656,58 @@
                 {/if}
               </div>
             {/if}
-            <EditorControls
-              compact
-              bind:previewing={note_previewing}
-              language={expanded_note_language}
-              disabled={deleting_id === selected_note.id}
-              onlanguagechange={(language) =>
-                expanded_note_ref?.setCodeLanguage?.(language)}
-            />
             <Button
-              type="button"
-              variant="ghost"
               size="icon-sm"
-              aria-label="Collapse note editor"
-              title="Collapse note editor"
-              onclick={() => (note_expanded = false)}
+              variant={selected_note.pinned ? "secondary" : "ghost"}
+              aria-label={selected_note.pinned ? m.note_unpin() : m.note_pin()}
+              title={selected_note.pinned ? m.note_unpin() : m.note_pin()}
+              disabled={deleting_id === selected_note.id}
+              onclick={() => toggle_pinned(selected_note)}
             >
-              <Minimize2Icon />
+              <PinIcon class={cn(selected_note.pinned && "fill-current")} />
+            </Button>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              class="text-destructive hover:text-destructive"
+              aria-label={m.note_delete()}
+              title={m.note_delete()}
+              disabled={deleting_id !== null}
+              onclick={() => delete_note(selected_note)}
+            >
+              <Trash2Icon />
             </Button>
           </div>
         </div>
-        <Dialog.Description class="sr-only"
-          >{m.editor_expanded_description()}</Dialog.Description
+        <div class="flex min-h-0 flex-1 flex-col bg-background p-2">
+          {#key selected_note.id}
+            <RichTextEditor
+              bind:ref={note_ref}
+              bind:language={note_language}
+              bind:previewing={note_previewing}
+              showControls={false}
+              containerClass={cn(
+                "flex min-h-0 flex-1 flex-col",
+                variant === "page" && "mx-auto w-full max-w-4xl",
+              )}
+              class="min-h-0 flex-1 overflow-y-auto rounded-md border-0 bg-transparent px-3 py-2 font-sans text-base leading-6 shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
+              placeholder={m.note_write()}
+              showToolbar={variant === "page"}
+              aria-label={m.note_content()}
+              disabled={deleting_id === selected_note.id}
+              value={selected_note.content}
+              onvaluechange={handle_note_change}
+            />
+          {/key}
+        </div>
+      {:else}
+        <div
+          class="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground"
         >
-      </Dialog.Header>
-      <div class="min-h-0 flex-1 p-3 sm:p-5">
-        {#key selected_note.id}
-          <RichTextEditor
-            bind:ref={expanded_note_ref}
-            bind:language={expanded_note_language}
-            bind:previewing={note_previewing}
-            showControls={false}
-            containerClass="flex h-full min-h-0 flex-col overflow-hidden rounded-md border bg-background"
-            class="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
-            placeholder={m.note_write()}
-            showToolbar
-            aria-label={m.note_content()}
-            disabled={deleting_id === selected_note.id}
-            value={selected_note.content}
-            onvaluechange={handle_note_change}
-          />
-        {/key}
-      </div>
-    </Dialog.Content>
-  </Dialog.Root>
-{/if}
-
-<style>
-  .note-layout {
-    grid-template-columns: clamp(10rem, 36%, 15rem) minmax(0, 1fr);
-  }
-</style>
+          <StickyNoteIcon class="size-10 opacity-50" />
+          <p class="text-sm">{m.note_choose()}</p>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/snippet}

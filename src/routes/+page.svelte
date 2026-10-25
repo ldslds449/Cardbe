@@ -36,6 +36,7 @@
   import AllTaskExplorer from "./components/task/all_task_explorer.svelte";
   import FocusPage from "./components/focus/focus_page.svelte";
   import HomePage from "./components/home/home_page.svelte";
+  import { mark_recent } from "./components/home/recent";
   import FocusDialog from "./components/focus/focus_dialog.svelte";
   import { FocusStore } from "./focuses.svelte";
   import {
@@ -71,6 +72,7 @@
   import WorkspaceTabs from "./components/workspace/workspace_tabs.svelte";
   import {
     HOME_PAGE_ID,
+    NOTES_PAGE_ID,
     WORKSPACE_VIEWS,
     type WorkspaceView,
   } from "./components/workspace/workspace";
@@ -150,6 +152,7 @@
   const focuses = new FocusStore();
   let active_focus_id = $state<string | null>(HOME_PAGE_ID);
   const home_open = $derived(active_focus_id === HOME_PAGE_ID);
+  const notes_page_open = $derived(active_focus_id === NOTES_PAGE_ID);
   const active_focus = $derived(
     active_focus_id === null ? undefined : focuses.find(active_focus_id),
   );
@@ -240,9 +243,53 @@
     void switch_board(id);
   }
 
+  // Remember what was last in view so the home page lists it first. A board
+  // is marked again when it is left, so a long editing session counts too.
+  $effect(() => {
+    const focus_id = active_focus_id;
+    const board_id = board.active_board_id;
+    if (focus_id === null && board_id !== null) {
+      mark_recent("board", board_id);
+      return () => mark_recent("board", board_id);
+    }
+    if (
+      focus_id !== null &&
+      focus_id !== HOME_PAGE_ID &&
+      focus_id !== NOTES_PAGE_ID
+    ) {
+      mark_recent("focus", focus_id);
+    }
+  });
+
+  let board_sidebar = $state<ReturnType<typeof BoardSidebar> | null>(null);
+
+  async function create_note_from_home() {
+    try {
+      const note = await invoke<{ id: number }>("create_note");
+      note_selected_id = note.id;
+      open_notes_page();
+    } catch (error) {
+      logger.error("note.create.failed", error);
+      toast.error(translateCommandError(error));
+    }
+  }
+
   // quick notes panel
   let note_open = $state(false);
   let requested_note = $state<{ id: number } | null>(null);
+  let note_selected_id = $state<number | null>(null);
+
+  // The panel and the Notes page show the same notes, so only one is open:
+  // opening the panel from the page returns to the board beside it.
+  function open_notes_page() {
+    note_open = false;
+    open_focus(NOTES_PAGE_ID);
+  }
+  $effect(() => {
+    if (note_open && notes_page_open) {
+      untrack(() => (active_focus_id = null));
+    }
+  });
   let note_revision = $state(0);
 
   // column dialog
@@ -647,6 +694,15 @@
       ) {
         event.preventDefault();
         open_add_column_dialog();
+      } else if (
+        event.code === "KeyN" &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
+        event.preventDefault();
+        note_open = !note_open;
       } else if (
         event.code === "Comma" &&
         event.ctrlKey &&
@@ -1275,6 +1331,7 @@
     </Empty.Root>
   {:else}
     <BoardSidebar
+      bind:this={board_sidebar}
       bind:open={board_panel_open}
       boards={board.boards}
       active_board_id={board.active_board_id}
@@ -1287,6 +1344,7 @@
       {active_focus_id}
       onOpenFocus={open_focus}
       onOpenHome={() => open_focus(HOME_PAGE_ID)}
+      onOpenNotes={open_notes_page}
       onCreateFocus={() => edit_focus(null)}
       onEditFocus={(id) => edit_focus(focuses.find(id) ?? null)}
       onFloatFocus={(id) => void float_focus(id)}
@@ -1367,192 +1425,229 @@
         onCheckForUpdates={(manual) => updates.check(manual)}
       />
 
-      {#if home_open}
-        <HomePage
-          focuses={focuses.views}
-          boards={board.boards}
-          onOpenFocus={open_focus}
-          onCreateFocus={() => edit_focus(null)}
-          onOpenBoard={open_board}
-        />
-      {:else if active_focus}
-        <FocusPage
-          view={active_focus}
-          boards={board.boards}
-          paused={task_dialog_open || view_task_dialog_open}
-          onEdit={() => edit_focus(active_focus)}
-          onFloat={() => void float_focus(active_focus.id)}
-          onOpenTask={(item) => void open_focus_task(item)}
-          onOpenBoard={open_board}
-        />
-      {:else}
-        <WorkspaceTabs
-          {selected_view}
-          active_board_name={board.boards.find(
-            (item) => item.id === board.active_board_id,
-          )?.name ?? m.board_title()}
-          shared_role={active_board_summary?.shared_role}
-          sync_status={active_board_summary?.sync_status}
-          last_synced_at={active_board_summary
-            ? board.iroh_last_synced_at[active_board_summary.id]
-            : undefined}
-          onSync={active_board_summary &&
-          (active_board_summary.shared_role === "editor" ||
-            (active_board_summary.shared_role === "owner" &&
-              active_board_summary.is_shared))
-            ? () => void board.sync_iroh_board(active_board_summary.id)
-            : undefined}
-          onSwitchView={switch_view}
-        />
-
-        {#if !board.column_fetch_finish}
-          <!-- The previous board's columns stay out of view while switching;
-               the spinner shows only when loading is slow enough to notice. -->
-          <div
-            class="flex min-h-0 min-w-0 flex-1 animate-in items-center justify-center delay-300 fill-mode-backwards fade-in-0"
-            role="status"
-          >
-            <Spinner />
-            <span class="sr-only">{m.board_loading()}</span>
-          </div>
-        {:else if active_view === "flow" && board.active_board_id !== null}
-          <div class="min-h-0 min-w-0 flex-1">
-            {#key board.active_board_id}
-              <FlowView
-                {note_revision}
-                onOpenNote={(id) => {
-                  requested_note = { id };
-                  note_open = true;
-                }}
-                board_id={board.active_board_id}
-                columns={board.columns}
-                archives={board.archives}
-                onViewArchivedTask={view_archived_task}
-                onArchiveTask={(task) => board.archive_task(task.id)}
-                onDeleteTask={(task) => void board.delete_task(task.id)}
-                search_task_ids={board.search_task_ids}
-                onViewTask={view_task_by_id}
-                onEditTask={edit_task_by_id}
-                read_only={active_board_read_only}
-              />
-            {/key}
-          </div>
-        {:else if active_view === "gantt" && !(search_text.trim() && (board.search_pending || board.search_error))}
-          <!-- The Gantt chart scrolls itself to keep its header and task list in view. -->
-          <div class="min-h-0 min-w-0 flex-1">
-            <GanttView
-              columns={board.columns}
-              archives={board.archives}
-              {search_text}
-              search_task_ids={board.search_task_ids}
-              bind:scale={gantt_scale}
-              bind:show_archived={gantt_show_archived}
-              onViewTask={view_task_by_id}
-              onViewArchivedTask={view_archived_task}
-              onEditTask={edit_task_by_id}
-              onDuplicateTask={(task) => board.duplicate_task(task.id)}
-              onSaveAsTemplate={open_save_template_dialog}
-              onExportTask={share_task}
-              onArchiveTask={(task) => board.archive_task(task.id)}
-              onUnarchiveTask={(column_id, task_id) =>
-                board.unarchive_task(column_id, task_id)}
-              onDeleteTask={(task) => board.delete_task(task.id)}
-              onRescheduleTask={reschedule_task}
-              read_only={active_board_read_only}
+      <div class="flex min-h-0 min-w-0 flex-1">
+        <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+          {#if notes_page_open}
+            <NotePanel
+              variant="page"
+              open
+              {requested_note}
+              onNotesChanged={() => note_revision++}
+              bind:selected_id={note_selected_id}
+              card_reference_options={board.columns.flatMap((column) =>
+                column.tasks.map((task) => ({
+                  task,
+                  column_name: column.name,
+                })),
+              )}
             />
-          </div>
-        {:else}
-          <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="both">
-            <div
-              class={active_view === "board"
-                ? "min-h-full px-5 pb-5 pt-7"
-                : "min-h-full p-5"}
-            >
-              {#if active_view === "statistics"}
-                <StatisticsView
-                  board_id={board.active_board_id}
-                  archives={board.archives}
-                  columns={board.columns}
-                  loaded={board.archives_loaded}
-                  loading={board.archives_loading}
-                  onRetry={() => void board.get_archives()}
-                  onViewTask={(task) => view_task_by_id(task)}
-                />
-              {:else if search_text.trim() && board.search_pending}
-                <div
-                  class="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground"
-                  role="status"
-                >
-                  {m.board_searching_cards()}
-                </div>
-              {:else if search_text.trim() && board.search_error}
-                <div
-                  class="flex min-h-[50vh] flex-col items-center justify-center gap-2 text-sm text-destructive"
-                  role="alert"
-                >
-                  <span>{m.board_search_unavailable()}</span>
-                  <Button
-                    variant="link"
-                    size="sm"
-                    onclick={() => board.search_tasks(search_text)}
-                  >
-                    {m.board_search_retry()}
-                  </Button>
-                </div>
-              {:else if active_view === "calendar"}
-                <CalendarView
+          {:else if home_open}
+            <HomePage
+              focuses={focuses.views}
+              boards={board.boards}
+              onOpenFocus={open_focus}
+              onCreateFocus={() => edit_focus(null)}
+              onOpenBoard={open_board}
+              onCreateBoard={() => board_sidebar?.open_create_dialog()}
+              onCreateNote={() => void create_note_from_home()}
+              onOpenNotes={open_notes_page}
+              onOpenNote={(id) => {
+                note_selected_id = id;
+                open_notes_page();
+              }}
+            />
+          {:else if active_focus}
+            <FocusPage
+              view={active_focus}
+              boards={board.boards}
+              paused={task_dialog_open || view_task_dialog_open}
+              onEdit={() => edit_focus(active_focus)}
+              onFloat={() => void float_focus(active_focus.id)}
+              onOpenTask={(item) => void open_focus_task(item)}
+              onOpenBoard={open_board}
+            />
+          {:else}
+            <WorkspaceTabs
+              {selected_view}
+              active_board_name={board.boards.find(
+                (item) => item.id === board.active_board_id,
+              )?.name ?? m.board_title()}
+              shared_role={active_board_summary?.shared_role}
+              sync_status={active_board_summary?.sync_status}
+              last_synced_at={active_board_summary
+                ? board.iroh_last_synced_at[active_board_summary.id]
+                : undefined}
+              onSync={active_board_summary &&
+              (active_board_summary.shared_role === "editor" ||
+                (active_board_summary.shared_role === "owner" &&
+                  active_board_summary.is_shared))
+                ? () => void board.sync_iroh_board(active_board_summary.id)
+                : undefined}
+              onSwitchView={switch_view}
+            />
+
+            {#if !board.column_fetch_finish}
+              <!-- The previous board's columns stay out of view while switching;
+               the spinner shows only when loading is slow enough to notice. -->
+              <div
+                class="flex min-h-0 min-w-0 flex-1 animate-in items-center justify-center delay-300 fill-mode-backwards fade-in-0"
+                role="status"
+              >
+                <Spinner />
+                <span class="sr-only">{m.board_loading()}</span>
+              </div>
+            {:else if active_view === "flow" && board.active_board_id !== null}
+              <div class="min-h-0 min-w-0 flex-1">
+                {#key board.active_board_id}
+                  <FlowView
+                    {note_revision}
+                    onOpenNote={(id) => {
+                      requested_note = { id };
+                      note_open = true;
+                    }}
+                    board_id={board.active_board_id}
+                    columns={board.columns}
+                    archives={board.archives}
+                    onViewArchivedTask={view_archived_task}
+                    onArchiveTask={(task) => board.archive_task(task.id)}
+                    onDeleteTask={(task) => void board.delete_task(task.id)}
+                    search_task_ids={board.search_task_ids}
+                    onViewTask={view_task_by_id}
+                    onEditTask={edit_task_by_id}
+                    read_only={active_board_read_only}
+                  />
+                {/key}
+              </div>
+            {:else if active_view === "gantt" && !(search_text.trim() && (board.search_pending || board.search_error))}
+              <!-- The Gantt chart scrolls itself to keep its header and task list in view. -->
+              <div class="min-h-0 min-w-0 flex-1">
+                <GanttView
                   columns={board.columns}
                   archives={board.archives}
                   {search_text}
                   search_task_ids={board.search_task_ids}
-                  bind:visible_date={calendar_visible_date}
-                  bind:view_mode={calendar_view_mode}
-                  bind:show_archived={calendar_show_archived}
-                  bind:show_recurring_previews={
-                    calendar_show_recurring_previews
-                  }
-                  expand_all={board.calendar_expand_all}
-                  onExpandAllChange={(expanded) =>
-                    void board.set_calendar_expand_all(expanded)}
+                  bind:scale={gantt_scale}
+                  bind:show_archived={gantt_show_archived}
                   onViewTask={view_task_by_id}
                   onViewArchivedTask={view_archived_task}
                   onEditTask={edit_task_by_id}
                   onDuplicateTask={(task) => board.duplicate_task(task.id)}
                   onSaveAsTemplate={open_save_template_dialog}
                   onExportTask={share_task}
-                  onAddTask={open_add_task_for_date}
                   onArchiveTask={(task) => board.archive_task(task.id)}
-                  onCompleteTask={(task) =>
-                    void board.complete_tasks([task.id])}
                   onUnarchiveTask={(column_id, task_id) =>
                     board.unarchive_task(column_id, task_id)}
                   onDeleteTask={(task) => board.delete_task(task.id)}
                   onRescheduleTask={reschedule_task}
                   read_only={active_board_read_only}
                 />
-              {:else}
-                <BoardView
-                  {search_text}
-                  search_task_ids={board.search_task_ids}
-                  task_expand_mode={board.task_expand_mode}
-                  onAddColumn={open_add_column_dialog}
-                  onAddTask={add_task_routine}
-                  onImportTask={(column_id) =>
-                    void prepare_task_import(column_id)}
-                  onViewTask={(task, column_idx, task_idx) =>
-                    view_task_routine(task, () =>
-                      edit_task_routine(column_idx, task_idx),
-                    )}
-                  onEditTask={edit_task_routine}
-                  onSaveAsTemplate={open_save_template_dialog}
-                  onExportTask={share_task}
-                  read_only={active_board_read_only}
-                />
-              {/if}
-            </div>
-          </ScrollArea>
+              </div>
+            {:else}
+              <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="both">
+                <div
+                  class={active_view === "board"
+                    ? "min-h-full px-5 pb-5 pt-7"
+                    : "min-h-full p-5"}
+                >
+                  {#if active_view === "statistics"}
+                    <StatisticsView
+                      board_id={board.active_board_id}
+                      archives={board.archives}
+                      columns={board.columns}
+                      loaded={board.archives_loaded}
+                      loading={board.archives_loading}
+                      onRetry={() => void board.get_archives()}
+                      onViewTask={(task) => view_task_by_id(task)}
+                    />
+                  {:else if search_text.trim() && board.search_pending}
+                    <div
+                      class="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground"
+                      role="status"
+                    >
+                      {m.board_searching_cards()}
+                    </div>
+                  {:else if search_text.trim() && board.search_error}
+                    <div
+                      class="flex min-h-[50vh] flex-col items-center justify-center gap-2 text-sm text-destructive"
+                      role="alert"
+                    >
+                      <span>{m.board_search_unavailable()}</span>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onclick={() => board.search_tasks(search_text)}
+                      >
+                        {m.board_search_retry()}
+                      </Button>
+                    </div>
+                  {:else if active_view === "calendar"}
+                    <CalendarView
+                      columns={board.columns}
+                      archives={board.archives}
+                      {search_text}
+                      search_task_ids={board.search_task_ids}
+                      bind:visible_date={calendar_visible_date}
+                      bind:view_mode={calendar_view_mode}
+                      bind:show_archived={calendar_show_archived}
+                      bind:show_recurring_previews={
+                        calendar_show_recurring_previews
+                      }
+                      expand_all={board.calendar_expand_all}
+                      onExpandAllChange={(expanded) =>
+                        void board.set_calendar_expand_all(expanded)}
+                      onViewTask={view_task_by_id}
+                      onViewArchivedTask={view_archived_task}
+                      onEditTask={edit_task_by_id}
+                      onDuplicateTask={(task) => board.duplicate_task(task.id)}
+                      onSaveAsTemplate={open_save_template_dialog}
+                      onExportTask={share_task}
+                      onAddTask={open_add_task_for_date}
+                      onArchiveTask={(task) => board.archive_task(task.id)}
+                      onCompleteTask={(task) =>
+                        void board.complete_tasks([task.id])}
+                      onUnarchiveTask={(column_id, task_id) =>
+                        board.unarchive_task(column_id, task_id)}
+                      onDeleteTask={(task) => board.delete_task(task.id)}
+                      onRescheduleTask={reschedule_task}
+                      read_only={active_board_read_only}
+                    />
+                  {:else}
+                    <BoardView
+                      {search_text}
+                      search_task_ids={board.search_task_ids}
+                      task_expand_mode={board.task_expand_mode}
+                      onAddColumn={open_add_column_dialog}
+                      onAddTask={add_task_routine}
+                      onImportTask={(column_id) =>
+                        void prepare_task_import(column_id)}
+                      onViewTask={(task, column_idx, task_idx) =>
+                        view_task_routine(task, () =>
+                          edit_task_routine(column_idx, task_idx),
+                        )}
+                      onEditTask={edit_task_routine}
+                      onSaveAsTemplate={open_save_template_dialog}
+                      onExportTask={share_task}
+                      read_only={active_board_read_only}
+                    />
+                  {/if}
+                </div>
+              </ScrollArea>
+            {/if}
+          {/if}
+        </div>
+        {#if note_open && !notes_page_open}
+          <NotePanel
+            bind:open={note_open}
+            onOpenPage={open_notes_page}
+            {requested_note}
+            onNotesChanged={() => note_revision++}
+            bind:selected_id={note_selected_id}
+            card_reference_options={board.columns.flatMap((column) =>
+              column.tasks.map((task) => ({ task, column_name: column.name })),
+            )}
+          />
         {/if}
-      {/if}
+      </div>
 
       <!-- Dialogs stay mounted while a Focus is shown: it opens tasks in them,
            and toolbar actions use them. -->
@@ -1586,15 +1681,6 @@
         bind:name={dialog_column_name}
         bind:title_error={column_dialog_title_error}
         onSubmit={handle_add_column}
-      />
-
-      <NotePanel
-        {requested_note}
-        onNotesChanged={() => note_revision++}
-        bind:open={note_open}
-        card_reference_options={board.columns.flatMap((column) =>
-          column.tasks.map((task) => ({ task, column_name: column.name })),
-        )}
       />
 
       <BoardShareDialog

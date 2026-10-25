@@ -2057,7 +2057,10 @@
   "share_access_revoked": "Access revoked",
   "share_enabled": "Sharing enabled",
   "share_settings_help": "Changes apply immediately. Turning sharing off stops sync for every device using this invitation.",
-  "note_expand_editor": "Expand note editor",
+  "note_open_page": "Open the Notes page",
+  "note_resize_list": "Resize note list",
+  "note_show_list": "Show note list",
+  "note_hide_list": "Hide note list",
   "editor_expand": "Expand",
   "share_creation_date_unavailable": "Creation date unavailable",
   "share_connection_details_unavailable": "Connection details are unavailable. They will update on the next check.",
@@ -2680,7 +2683,9 @@
         "local msFormatted = ms: number"
       ],
       "selectors": ["msPlural"],
-      "match": { "msPlural=*": "{msFormatted} ms" }
+      "match": {
+        "msPlural=*": "{msFormatted} ms"
+      }
     }
   ],
   "focus_section": "Focus",
@@ -2766,5 +2771,17 @@
   "explorer_save_as_focus_hint": "Create a Focus with these conditions",
   "focus_from_explorer_partial": "Some conditions, such as a column, a custom date range, or sorting by column, can’t be kept in a Focus and were left out.",
   "focus_actions": "Actions for “{name}”",
-  "board_actions": "Actions for “{name}”"
+  "board_actions": "Actions for “{name}”",
+  "note_pinned": "Pinned",
+  "home_show_all": "Show all",
+  "home_show_less": "Show less",
+  "home_view_all": "View all",
+  "focus_limit_reached": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "You can create up to {countFormatted} Focuses."
+      }
+    }
+  ]
 }

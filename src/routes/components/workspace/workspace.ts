@@ -11,3 +11,6 @@ export type WorkspaceView = (typeof WORKSPACE_VIEWS)[number];
 
 /** Shown in place of the board like a Focus, under an ID no Focus uses. */
 export const HOME_PAGE_ID = "home";
+
+/** The full Notes page, shown in place of the board like the home page. */
+export const NOTES_PAGE_ID = "notes";

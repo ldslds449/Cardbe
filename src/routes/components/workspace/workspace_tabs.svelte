@@ -9,6 +9,7 @@
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
+  import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import type { WorkspaceView } from "./workspace";
   import type { BoardRole } from "../../board.svelte";
   import { formatDateTime } from "$lib/i18n";
@@ -54,33 +55,41 @@
   class="flex h-10 shrink-0 items-end border-b px-4"
   aria-label={m.workspace_navigation()}
 >
-  <div
-    class="flex h-full shrink-0 items-end"
-    aria-label={m.workspace_views()}
-    role="tablist"
+  <!-- Tabs scroll sideways when the board area narrows, such as beside the
+       notes panel. -->
+  <ScrollArea
+    class="h-full min-w-0 flex-1"
+    orientation="horizontal"
+    scrollbarXClasses="h-1.5"
   >
-    {#each views as view, index (view.id)}
-      {@const Icon = view.icon}
-      <Button
-        variant="ghost"
-        class={`h-10 rounded-none border-b-2 px-4 text-sm transition-colors ${selected_view === view.id ? "border-b-primary text-foreground" : "border-b-transparent text-muted-foreground hover:text-foreground"}`}
-        role="tab"
-        aria-selected={selected_view === view.id}
-        aria-keyshortcuts="Control+{index + 1}"
-        title={m.workspace_view_shortcut({
-          view: view.label,
-          shortcut: `Ctrl+${index + 1}`,
-        })}
-        onclick={() => onSwitchView(view.id)}
-      >
-        <Icon />
-        {view.label}
-      </Button>
-    {/each}
-  </div>
+    <div
+      class="flex h-10 w-max items-end"
+      aria-label={m.workspace_views()}
+      role="tablist"
+    >
+      {#each views as view, index (view.id)}
+        {@const Icon = view.icon}
+        <Button
+          variant="ghost"
+          class={`h-10 rounded-none border-b-2 px-4 text-sm transition-colors ${selected_view === view.id ? "border-b-primary text-foreground" : "border-b-transparent text-muted-foreground hover:text-foreground"}`}
+          role="tab"
+          aria-selected={selected_view === view.id}
+          aria-keyshortcuts="Control+{index + 1}"
+          title={m.workspace_view_shortcut({
+            view: view.label,
+            shortcut: `Ctrl+${index + 1}`,
+          })}
+          onclick={() => onSwitchView(view.id)}
+        >
+          <Icon />
+          {view.label}
+        </Button>
+      {/each}
+    </div>
+  </ScrollArea>
 
   <div
-    class="ml-auto flex min-w-0 max-w-[45%] self-center items-center gap-2 text-sm"
+    class="ml-2 flex min-w-0 max-w-[45%] shrink-0 self-center items-center gap-2 text-sm"
     aria-label={m.workspace_current_board({ name: active_board_name })}
   >
     <span class="truncate font-medium text-foreground" title={active_board_name}

@@ -1763,7 +1763,10 @@
   "share_access_revoked": "存取權已撤銷",
   "share_enabled": "啟用分享",
   "share_settings_help": "變更會立即生效。關閉分享會停止所有使用此邀請的裝置同步。",
-  "note_expand_editor": "展開筆記編輯器",
+  "note_open_page": "在筆記頁面開啟",
+  "note_resize_list": "調整筆記清單寬度",
+  "note_show_list": "顯示筆記清單",
+  "note_hide_list": "隱藏筆記清單",
   "editor_expand": "展開",
   "share_creation_date_unavailable": "無法取得建立日期",
   "share_connection_details_unavailable": "目前無法取得連線資訊，將於下次檢查時更新。",
@@ -2359,7 +2362,9 @@
         "local msFormatted = ms: number"
       ],
       "selectors": ["msPlural"],
-      "match": { "msPlural=*": "{msFormatted} 毫秒" }
+      "match": {
+        "msPlural=*": "{msFormatted} 毫秒"
+      }
     }
   ],
   "focus_section": "焦點",
@@ -2439,5 +2444,17 @@
   "explorer_save_as_focus_hint": "以目前的條件建立焦點",
   "focus_from_explorer_partial": "欄位、自訂日期範圍、依欄位排序等條件無法存進焦點，已略過。",
   "focus_actions": "「{name}」的操作",
-  "board_actions": "「{name}」的操作"
+  "board_actions": "「{name}」的操作",
+  "note_pinned": "已釘選",
+  "home_show_all": "顯示全部",
+  "home_show_less": "收合",
+  "home_view_all": "查看全部",
+  "focus_limit_reached": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "最多只能建立 {countFormatted} 個焦點。"
+      }
+    }
+  ]
 }

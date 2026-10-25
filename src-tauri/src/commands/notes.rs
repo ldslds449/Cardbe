@@ -4,7 +4,7 @@ use crate::{
     state::{lock_app, SharedAppData},
 };
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::State;
+use tauri::{Manager, State};
 
 fn now_millis() -> Result<i64, DomainError> {
     let millis = SystemTime::now()
@@ -18,6 +18,30 @@ fn now_millis() -> Result<i64, DomainError> {
 pub fn get_notes(state: State<'_, SharedAppData>) -> Result<Vec<Note>, CommandError> {
     let guard = lock_app(&state)?;
     guard.database.get_notes().map_err(CommandError::repository)
+}
+
+#[tauri::command]
+pub async fn search_notes(
+    app: tauri::AppHandle,
+    query: String,
+    options: Option<crate::search::SearchOptions>,
+) -> Result<Vec<i64>, CommandError> {
+    let options = options.unwrap_or_default();
+    if !options.valid() {
+        return Err(CommandError::InvalidArgument);
+    }
+    let path = {
+        let state = app.state::<SharedAppData>();
+        let guard = lock_app(&state)?;
+        guard.database.path().to_owned()
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::storage::Database::open_search_reader(path)
+            .and_then(|reader| reader.search_notes(&query, options))
+            .map_err(CommandError::repository)
+    })
+    .await
+    .map_err(CommandError::internal)?
 }
 
 #[tauri::command]
