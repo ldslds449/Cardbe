@@ -5,6 +5,8 @@
   import "$lib/i18n/locale.svelte";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import HouseIcon from "@lucide/svelte/icons/house";
+  import PanelLeftCloseIcon from "@lucide/svelte/icons/panel-left-close";
+  import PanelLeftOpenIcon from "@lucide/svelte/icons/panel-left-open";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -23,10 +25,12 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
+  import * as Sheet from "$lib/components/ui/sheet/index.js";
   import type { Snippet } from "svelte";
   import type { BoardRole } from "../../board.svelte";
   import { HOME_PAGE_ID, NOTES_PAGE_ID } from "./workspace";
   import { MAX_FOCUSES, type Focus } from "../../type/focus";
+  import { StoredWidth } from "../note/stored-width.svelte";
 
   export interface BoardItem {
     id: number;
@@ -39,7 +43,11 @@
   let {
     boards,
     active_board_id,
-    open = $bindable(),
+    expanded,
+    compact,
+    sheet_open = $bindable(),
+    onQuickSwitch,
+    onToggle,
     onSwitch,
     onCreate,
     onRename,
@@ -57,7 +65,14 @@
   }: {
     boards: BoardItem[];
     active_board_id: number | null;
-    open: boolean;
+    /** Wide windows keep the sidebar beside the content, or as an icon rail. */
+    expanded: boolean;
+    /** Narrow windows show the sidebar only as a sheet. */
+    compact: boolean;
+    sheet_open: boolean;
+    onQuickSwitch: () => void;
+    /** Collapses or expands the sidebar on wide windows. */
+    onToggle: () => void;
     onSwitch: (id: number) => void;
     onCreate: (name: string) => Promise<boolean>;
     onRename: (id: number, name: string) => Promise<boolean>;
@@ -75,25 +90,21 @@
     onDeleteFocus: (id: string) => Promise<boolean>;
   } = $props();
 
+  const sidebar_width = new StoredWidth(
+    "cardbe.sidebar-width",
+    240,
+    200,
+    400,
+    1,
+  );
   let create_open = $state(false);
   let rename_open = $state(false);
   let delete_open = $state(false);
   let new_name = $state("");
   let rename_name = $state("");
-  let search = $state("");
   let selected_board = $state<BoardItem | null>(null);
   let archived_count = $state<number | null>(null);
   let saving = $state(false);
-  const filtered_boards = $derived(
-    boards.filter((item) =>
-      item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
-    ),
-  );
-  const filtered_focuses = $derived(
-    focuses.filter((view) =>
-      view.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
-    ),
-  );
   let delete_view_open = $state(false);
   let selected_view = $state<Focus | null>(null);
   function open_delete_view_dialog(view: Focus) {
@@ -115,7 +126,19 @@
   }
   function select_view(id: string) {
     onOpenFocus(id);
-    open = false;
+    sheet_open = false;
+  }
+  function open_home() {
+    onOpenHome();
+    sheet_open = false;
+  }
+  function open_notes() {
+    onOpenNotes();
+    sheet_open = false;
+  }
+  function quick_switch() {
+    sheet_open = false;
+    onQuickSwitch();
   }
   export function open_create_dialog() {
     new_name = "";
@@ -138,19 +161,7 @@
   }
   function select_board(id: number) {
     onSwitch(id);
-    open = false;
-  }
-  function handle_keydown(event: KeyboardEvent) {
-    if (
-      event.key === "Escape" &&
-      open &&
-      !create_open &&
-      !rename_open &&
-      !delete_open &&
-      !delete_view_open
-    ) {
-      open = false;
-    }
+    sheet_open = false;
   }
   async function create() {
     if (!new_name.trim() || saving) {
@@ -160,7 +171,7 @@
     try {
       if (await onCreate(new_name.trim())) {
         create_open = false;
-        open = false;
+        sheet_open = false;
       }
     } finally {
       saving = false;
@@ -193,8 +204,6 @@
     }
   }
 </script>
-
-<svelte:window onkeydown={handle_keydown} />
 
 <!-- The ⋯ button offers the right-click menu to pointer and keyboard users. -->
 {#snippet actions_button(
@@ -244,7 +253,7 @@
     <Item
       onclick={() => {
         onEditFocus(view.id);
-        open = false;
+        sheet_open = false;
       }}
       ><PencilIcon />
       {m.common_edit()}</Item
@@ -350,155 +359,250 @@
   </ContextMenu.Root>
 {/snippet}
 
-{#if open}
-  <div class="fixed inset-0 z-30" aria-label={m.board_navigation()}>
-    <button
-      class="absolute inset-0 cursor-default bg-black/10"
-      aria-label={m.board_close()}
-      onclick={() => (open = false)}
-    ></button>
-    <section
-      id="board-drawer"
-      class="fixed top-12 left-4 z-40 flex h-[min(60dvh,calc(100dvh-4rem))] w-64 flex-col overflow-hidden rounded-md border bg-board-sidebar shadow-xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150"
-      role="navigation"
-      aria-label={m.board_drawer_title()}
-    >
-      <header class="flex h-11 shrink-0 items-center border-b px-3">
-        <span class="text-sm font-semibold">{m.board_drawer_title()}</span>
-      </header>
-      <div class="relative shrink-0 px-3 py-3">
-        <SearchIcon
-          class="pointer-events-none absolute top-5.5 left-5.5 size-4 text-muted-foreground"
-        />
-        <Input
-          bind:value={search}
-          class="h-8 pl-8"
-          placeholder={m.board_drawer_search()}
-          aria-label={m.board_drawer_search()}
-        />
-      </div>
-      <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="vertical">
-        <nav class="min-w-0 px-2 py-2" aria-label={m.board_list_navigation()}>
-          <button
-            type="button"
-            class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-3 pe-2 text-left text-sm transition-colors ${active_focus_id === HOME_PAGE_ID ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
-            aria-current={active_focus_id === HOME_PAGE_ID ? "page" : undefined}
-            aria-keyshortcuts="Control+0"
-            onclick={() => {
-              onOpenHome();
-              open = false;
-            }}
-          >
-            <HouseIcon
-              class="size-4 shrink-0 text-primary"
-              aria-hidden="true"
-            />
-            <span class="min-w-0 flex-1 truncate">{m.home_title()}</span>
-            <!-- Styled as menu shortcuts; keys stay visible on the selected row. -->
-            <span
-              class="ms-auto text-xs font-normal tracking-widest text-muted-foreground"
-            >
-              <Kbd.Group>
-                <Kbd.Root
-                  class={active_focus_id === HOME_PAGE_ID
-                    ? "bg-background"
-                    : undefined}>Ctrl</Kbd.Root
-                >
-                <Kbd.Root
-                  class={active_focus_id === HOME_PAGE_ID
-                    ? "bg-background"
-                    : undefined}>0</Kbd.Root
-                >
-              </Kbd.Group>
-            </span>
-          </button>
-          <button
-            type="button"
-            class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-3 pe-2 text-left text-sm transition-colors ${active_focus_id === NOTES_PAGE_ID ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
-            aria-current={active_focus_id === NOTES_PAGE_ID
-              ? "page"
-              : undefined}
-            onclick={() => {
-              onOpenNotes();
-              open = false;
-            }}
-          >
-            <StickyNoteIcon
-              class="size-4 shrink-0 text-primary"
-              aria-hidden="true"
-            />
-            <span class="min-w-0 flex-1 truncate">{m.note_title()}</span>
-          </button>
-          <Separator class="my-3" />
-          <section
-            class="rounded-md bg-muted/50 p-1"
-            aria-labelledby="drawer-focuses"
-          >
-            <div class="flex h-8 items-center justify-between ps-2 pe-1">
-              <h3
-                id="drawer-focuses"
-                class="flex items-center gap-1.5 text-xs font-semibold text-foreground"
-              >
-                <ListFilterIcon class="size-3.5 text-primary" />
-                {m.focus_section()}
-                <span class="font-normal text-muted-foreground"
-                  >· {formatNumber(focuses.length)}</span
-                >
-              </h3>
-              {@render add_button(
-                m.focus_new(),
-                focuses.length >= MAX_FOCUSES,
-                () => {
-                  onCreateFocus();
-                  open = false;
-                },
-              )}
-            </div>
-            {#if filtered_focuses.length > 0}
-              <div class="space-y-0.5">
-                {#each filtered_focuses as view (view.id)}
-                  {@render focus_row(view)}
-                {/each}
-              </div>
-            {:else}
-              <p class="px-2 py-3 text-center text-xs text-muted-foreground">
-                {focuses.length > 0
-                  ? m.focus_list_no_match()
-                  : m.focus_list_empty()}
-              </p>
-            {/if}
-          </section>
-          <Separator class="my-3" />
-          <section aria-labelledby="drawer-boards">
-            <div class="flex h-8 items-center justify-between ps-3 pe-1">
-              <h3
-                id="drawer-boards"
-                class="flex items-center gap-1.5 text-xs font-semibold text-foreground"
-              >
-                <LayoutDashboardIcon class="size-3.5 text-primary" />
-                {m.board_list()}
-                <span class="font-normal text-muted-foreground"
-                  >· {formatNumber(boards.length)}</span
-                >
-              </h3>
-              {@render add_button(m.board_new(), false, open_create_dialog)}
-            </div>
-            {#if filtered_boards.length > 0}
-              <div class="space-y-0.5">
-                {#each filtered_boards as item (item.id)}
-                  {@render board_row(item)}
-                {/each}
-              </div>
-            {:else}
-              <p class="px-3 py-8 text-center text-sm text-muted-foreground">
-                {m.board_empty()}
-              </p>
-            {/if}
-          </section>
-        </nav>
-      </ScrollArea>
-    </section>
+{#snippet toggle_button()}
+  {@const label = expanded ? m.sidebar_hide() : m.sidebar_show()}
+  <Button
+    variant="ghost"
+    size="icon-sm"
+    class="shrink-0 text-muted-foreground"
+    onclick={onToggle}
+    aria-label={label}
+    aria-expanded={expanded}
+    aria-controls="board-drawer"
+    aria-keyshortcuts="Control+B"
+    title={`${label} (Ctrl+B)`}
+  >
+    {#if expanded}
+      <PanelLeftCloseIcon />
+    {:else}
+      <PanelLeftOpenIcon />
+    {/if}
+  </Button>
+{/snippet}
+
+<!-- The sheet has its own close button, so only the docked sidebar toggles. -->
+{#snippet brand(toggle: boolean)}
+  <div
+    class="flex h-12 shrink-0 items-center gap-1.5 border-b ps-4 pe-2 text-sm font-semibold"
+  >
+    <LayoutDashboardIcon class="size-4 text-primary" aria-hidden="true" />
+    <span class="min-w-0 flex-1 truncate">Cardbe</span>
+    {#if toggle}
+      {@render toggle_button()}
+    {/if}
   </div>
+{/snippet}
+
+{#snippet navigation()}
+  <div class="shrink-0 px-3 py-3">
+    <Button
+      variant="outline"
+      size="sm"
+      class="w-full justify-start gap-2 font-normal text-muted-foreground"
+      aria-keyshortcuts="Control+K"
+      onclick={quick_switch}
+    >
+      <SearchIcon />
+      <span class="min-w-0 flex-1 truncate text-start"
+        >{m.quick_switch_open()}</span
+      >
+      <Kbd.Group>
+        <Kbd.Root>Ctrl</Kbd.Root>
+        <Kbd.Root>K</Kbd.Root>
+      </Kbd.Group>
+    </Button>
+  </div>
+  <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="vertical">
+    <nav class="min-w-0 px-2 pb-2" aria-label={m.board_list_navigation()}>
+      <button
+        type="button"
+        class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-3 pe-2 text-left text-sm transition-colors ${active_focus_id === HOME_PAGE_ID ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+        aria-current={active_focus_id === HOME_PAGE_ID ? "page" : undefined}
+        aria-keyshortcuts="Control+0"
+        onclick={open_home}
+      >
+        <HouseIcon class="size-4 shrink-0 text-primary" aria-hidden="true" />
+        <span class="min-w-0 flex-1 truncate">{m.home_title()}</span>
+        <!-- Styled as menu shortcuts; keys stay visible on the selected row. -->
+        <span
+          class="ms-auto text-xs font-normal tracking-widest text-muted-foreground"
+        >
+          <Kbd.Group>
+            <Kbd.Root
+              class={active_focus_id === HOME_PAGE_ID
+                ? "bg-background"
+                : undefined}>Ctrl</Kbd.Root
+            >
+            <Kbd.Root
+              class={active_focus_id === HOME_PAGE_ID
+                ? "bg-background"
+                : undefined}>0</Kbd.Root
+            >
+          </Kbd.Group>
+        </span>
+      </button>
+      <button
+        type="button"
+        class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-3 pe-2 text-left text-sm transition-colors ${active_focus_id === NOTES_PAGE_ID ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+        aria-current={active_focus_id === NOTES_PAGE_ID ? "page" : undefined}
+        onclick={open_notes}
+      >
+        <StickyNoteIcon
+          class="size-4 shrink-0 text-primary"
+          aria-hidden="true"
+        />
+        <span class="min-w-0 flex-1 truncate">{m.note_title()}</span>
+      </button>
+      <Separator class="my-3" />
+      <section
+        class="rounded-md bg-muted/50 p-1"
+        aria-labelledby="drawer-focuses"
+      >
+        <div class="flex h-8 items-center justify-between ps-2 pe-1">
+          <h3
+            id="drawer-focuses"
+            class="flex items-center gap-1.5 text-xs font-semibold text-foreground"
+          >
+            <ListFilterIcon class="size-3.5 text-primary" />
+            {m.focus_section()}
+            <span class="font-normal text-muted-foreground"
+              >· {formatNumber(focuses.length)}</span
+            >
+          </h3>
+          {@render add_button(
+            m.focus_new(),
+            focuses.length >= MAX_FOCUSES,
+            () => {
+              onCreateFocus();
+              sheet_open = false;
+            },
+          )}
+        </div>
+        {#if focuses.length > 0}
+          <div class="space-y-0.5">
+            {#each focuses as view (view.id)}
+              {@render focus_row(view)}
+            {/each}
+          </div>
+        {:else}
+          <p class="px-2 py-3 text-center text-xs text-muted-foreground">
+            {m.focus_list_empty()}
+          </p>
+        {/if}
+      </section>
+      <Separator class="my-3" />
+      <section aria-labelledby="drawer-boards">
+        <div class="flex h-8 items-center justify-between ps-3 pe-1">
+          <h3
+            id="drawer-boards"
+            class="flex items-center gap-1.5 text-xs font-semibold text-foreground"
+          >
+            <LayoutDashboardIcon class="size-3.5 text-primary" />
+            {m.board_list()}
+            <span class="font-normal text-muted-foreground"
+              >· {formatNumber(boards.length)}</span
+            >
+          </h3>
+          {@render add_button(m.board_new(), false, open_create_dialog)}
+        </div>
+        {#if boards.length > 0}
+          <div class="space-y-0.5">
+            {#each boards as item (item.id)}
+              {@render board_row(item)}
+            {/each}
+          </div>
+        {:else}
+          <p class="px-3 py-8 text-center text-sm text-muted-foreground">
+            {m.board_empty()}
+          </p>
+        {/if}
+      </section>
+    </nav>
+  </ScrollArea>
+{/snippet}
+
+{#if compact}
+  <Sheet.Root bind:open={sheet_open}>
+    <Sheet.Content
+      id="board-drawer"
+      side="left"
+      class="w-72 gap-0 bg-board-sidebar p-0 sm:max-w-72"
+    >
+      <Sheet.Header class="sr-only">
+        <Sheet.Title>{m.board_drawer_title()}</Sheet.Title>
+        <Sheet.Description>{m.board_list_navigation()}</Sheet.Description>
+      </Sheet.Header>
+      {@render brand(false)}
+      {@render navigation()}
+    </Sheet.Content>
+  </Sheet.Root>
+{:else if expanded}
+  <aside
+    id="board-drawer"
+    class="relative flex h-full shrink-0 flex-col border-e bg-board-sidebar"
+    style:width="min({sidebar_width.value}px, 40%)"
+    aria-label={m.board_drawer_title()}
+  >
+    <button
+      type="button"
+      class="group absolute inset-y-0 -end-1.5 z-10 flex w-3 cursor-ew-resize justify-center outline-none"
+      aria-label={m.sidebar_resize()}
+      title={m.common_resize_panel_hint()}
+      onpointerdown={(event) => sidebar_width.start(event)}
+      onkeydown={(event) => sidebar_width.keydown(event)}
+      ondblclick={() => sidebar_width.reset()}
+    >
+      <span
+        class="h-full w-px transition-all group-hover:w-0.5 group-hover:bg-ring group-focus-visible:w-0.5 group-focus-visible:bg-ring"
+      ></span>
+    </button>
+    {@render brand(true)}
+    {@render navigation()}
+  </aside>
+{:else}
+  <!-- The collapsed rail keeps Home, Notes and quick switching one click away. -->
+  <aside
+    id="board-drawer"
+    class="flex h-full w-12 shrink-0 flex-col items-center gap-1 border-e bg-board-sidebar"
+    aria-label={m.board_drawer_title()}
+  >
+    <div
+      class="mb-1 flex h-12 w-full shrink-0 items-center justify-center border-b"
+    >
+      {@render toggle_button()}
+    </div>
+    <Button
+      variant={active_focus_id === HOME_PAGE_ID ? "secondary" : "ghost"}
+      size="icon-sm"
+      aria-label={m.home_title()}
+      aria-current={active_focus_id === HOME_PAGE_ID ? "page" : undefined}
+      aria-keyshortcuts="Control+0"
+      title={`${m.home_title()} (Ctrl+0)`}
+      onclick={open_home}
+    >
+      <HouseIcon />
+    </Button>
+    <Button
+      variant={active_focus_id === NOTES_PAGE_ID ? "secondary" : "ghost"}
+      size="icon-sm"
+      aria-label={m.note_title()}
+      aria-current={active_focus_id === NOTES_PAGE_ID ? "page" : undefined}
+      title={m.note_title()}
+      onclick={open_notes}
+    >
+      <StickyNoteIcon />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={m.quick_switch_open()}
+      aria-keyshortcuts="Control+K"
+      title={`${m.quick_switch_open()} (Ctrl+K)`}
+      onclick={quick_switch}
+    >
+      <SearchIcon />
+    </Button>
+  </aside>
 {/if}
 
 <Dialog.Root bind:open={create_open} draft={new_name} busy={saving}

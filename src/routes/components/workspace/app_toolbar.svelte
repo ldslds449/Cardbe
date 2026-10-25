@@ -4,12 +4,12 @@
   import "$lib/i18n/locale.svelte";
   import BellIcon from "@lucide/svelte/icons/bell";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import EyeIcon from "@lucide/svelte/icons/eye";
   import EyeClosedIcon from "@lucide/svelte/icons/eye-closed";
-  import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
+  import PanelLeftCloseIcon from "@lucide/svelte/icons/panel-left-close";
+  import PanelLeftOpenIcon from "@lucide/svelte/icons/panel-left-open";
   import LinkIcon from "@lucide/svelte/icons/link";
   import ListTodoIcon from "@lucide/svelte/icons/list-todo";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
@@ -35,7 +35,8 @@
   import { board } from "../../board.svelte";
 
   let {
-    board_panel_open = $bindable(),
+    sidebar_open,
+    sidebar_compact,
     search_text = $bindable(),
     search_pending = false,
     search_error = false,
@@ -62,8 +63,11 @@
     onAddTask,
     onAddColumn,
     onCheckForUpdates,
+    onToggleSidebar,
   }: {
-    board_panel_open: boolean;
+    sidebar_open: boolean;
+    /** Wide windows toggle the sidebar from the sidebar itself. */
+    sidebar_compact: boolean;
     search_text: string;
     search_pending?: boolean;
     search_error?: boolean;
@@ -91,6 +95,7 @@
     onAddTask: () => void;
     onAddColumn: () => void;
     onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
+    onToggleSidebar: () => void;
   } = $props();
   let about_open = $state(false);
   let search_requested = false;
@@ -100,25 +105,29 @@
 
 <Menubar.Root class="h-12 shrink-0 rounded-none border-x-0 border-t-0 px-3">
   <div class="flex h-full w-full flex-row items-center gap-1.5">
-    <Button
-      variant={board_panel_open ? "secondary" : "ghost"}
-      size="sm"
-      class="h-8 shrink-0 gap-1.5 px-2.5 text-sm font-semibold"
-      onclick={() => (board_panel_open = !board_panel_open)}
-      aria-label={board_panel_open ? m.board_close() : m.board_open()}
-      aria-expanded={board_panel_open}
-      aria-controls="board-drawer"
-      title={board_panel_open ? m.board_close() : m.board_open()}
-    >
-      <LayoutDashboardIcon class="size-4" />
-      <span>Cardbe</span>
-      <ChevronDownIcon
-        class={cn(
-          "size-3.5 transition-transform",
-          board_panel_open && "rotate-180",
-        )}
-      />
-    </Button>
+    {#if sidebar_compact}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        class="shrink-0"
+        onclick={onToggleSidebar}
+        aria-label={sidebar_open ? m.sidebar_hide() : m.sidebar_show()}
+        aria-expanded={sidebar_open}
+        aria-controls="board-drawer"
+        aria-keyshortcuts="Control+B"
+        title={`${sidebar_open ? m.sidebar_hide() : m.sidebar_show()} (Ctrl+B)`}
+      >
+        {#if sidebar_open}
+          <PanelLeftCloseIcon />
+        {:else}
+          <PanelLeftOpenIcon />
+        {/if}
+      </Button>
+    {/if}
+    <!-- The expanded sidebar and sheet show the name in their headers. -->
+    {#if !sidebar_open}
+      <span class="me-1.5 shrink-0 text-sm font-semibold">Cardbe</span>
+    {/if}
 
     <div class="flex min-w-0 flex-1 items-center">
       <div
