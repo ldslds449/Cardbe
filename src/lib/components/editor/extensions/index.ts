@@ -1,4 +1,4 @@
-import Image from "@tiptap/extension-image";
+import { EditorImageExtension } from "./image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
@@ -11,10 +11,11 @@ import { isInTable, selectedRect } from "@tiptap/pm/tables";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import { Markdown } from "@tiptap/markdown";
-import { Extension } from "@tiptap/core";
+import { Extension, Mark } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { CodeHighlight } from "./code-highlight";
 import { CodeScroll } from "./code-scroll";
+import { MathInline, MathBlock, withMathMarks } from "./math";
 import { CardReference } from "./card-reference";
 import {
   FootnoteDefinition,
@@ -123,13 +124,21 @@ const AlignedTable = Table.extend({
 
 export function createEditorExtensions(placeholder = "Start writing…") {
   return [
-    StarterKit.configure({
+    StarterKit.extend({
+      addExtensions() {
+        return this.parent!().map((extension) =>
+          extension instanceof Mark ? withMathMarks(extension) : extension,
+        );
+      },
+    }).configure({
       link: false,
     }),
     CodeHighlight,
     CodeScroll,
+    MathInline,
+    MathBlock,
     CardReference,
-    Image.configure({ inline: true }),
+    EditorImageExtension.configure({ inline: true }),
     ImageParagraph,
     RawHtmlInline,
     RawHtmlBlock,
@@ -144,7 +153,7 @@ export function createEditorExtensions(placeholder = "Start writing…") {
       nested: true,
       HTMLAttributes: { "data-type": "taskItem" },
     }),
-    Link.configure({
+    withMathMarks(Link).configure({
       autolink: true,
       linkOnPaste: true,
       markdownLinks: true,

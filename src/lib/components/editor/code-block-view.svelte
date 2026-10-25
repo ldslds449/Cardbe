@@ -1,10 +1,19 @@
 <script lang="ts">
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import type { Readable } from "svelte/store";
+  import MermaidDiagram from "./mermaid-diagram.svelte";
   let {
     contentDOM = $bindable<HTMLElement | null>(null),
-  }: { contentDOM?: HTMLElement | null } = $props();
+    content,
+  }: {
+    contentDOM?: HTMLElement | null;
+    content: Readable<{ source: string; language: string }>;
+  } = $props();
 </script>
 
+{#if $content.language === "mermaid"}
+  <MermaidDiagram source={$content.source} showSource={false} />
+{/if}
 <ScrollArea
   type="auto"
   orientation="horizontal"

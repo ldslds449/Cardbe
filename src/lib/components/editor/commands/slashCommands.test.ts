@@ -14,6 +14,9 @@ describe("slash commands", () => {
       "task-list",
       "blockquote",
       "code-block",
+      "mermaid",
+      "math-inline",
+      "math-block",
       "table",
       "horizontal-rule",
     ]);

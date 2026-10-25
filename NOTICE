@@ -10,6 +10,19 @@ copyright and license terms remain applicable to those components.
 JavaScript / TypeScript dependencies
 ------------------------------------
 
+pele
+  MIT License
+  Copyright 2026 kepano
+  https://github.com/obsidianmd/pele
+
+katex
+  MIT License
+  Copyright 2013-2020 Khan Academy and other contributors
+  https://github.com/KaTeX/KaTeX
+
+@tiptap/extension-mathematics, remark-math
+  MIT License
+
 @dnd-kit-svelte/core, @dnd-kit-svelte/modifiers,
 @dnd-kit-svelte/sortable, @dnd-kit-svelte/svelte, and
 @dnd-kit-svelte/utilities

@@ -62,6 +62,8 @@
 
 - Use a global keyboard shortcut to add a task or a note from anywhere, even when Cardbe is in the background.
 - Keep quick Markdown notes alongside your boards.
+- Write formulas with `$...$` inline or `$$...$$` as a display formula (on one line or across multiple lines), and diagrams in fenced `mermaid` blocks. KaTeX and Pele render them offline in task descriptions and notes. In the rich text editor, use `/math` or `/mermaid` to insert them, type `$$` and press Enter for a formula block, and select a formula to edit its LaTeX.
+- Pasted URLs become links, including image URLs. Use Markdown image syntax (`![description](URL)`) to display an image explicitly. Desktop images use the existing safe preview loader (public HTTP/HTTPS destinations, supported raster formats, up to 512 KiB); external images require a connection.
 - Pop a task out into a small floating window to keep it in sight while you work.
 
 <p align="center">

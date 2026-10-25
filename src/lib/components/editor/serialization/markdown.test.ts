@@ -42,6 +42,123 @@ afterEach(() => {
 });
 
 describe("Markdown editor serialization", () => {
+  it("keeps user text resembling formula placeholders", () => {
+    const source = "Literal \uE0010\uE002 and $x$";
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    expect(serializeMarkdown(editor)).toBe(source);
+  });
+  it.each(["inlineMath", "blockMath"])(
+    "keeps dollar characters entered in a %s formula",
+    (type) => {
+      const editor = new Editor({
+        element: null,
+        extensions: createEditorExtensions(),
+        content: { type: "doc", content: [{ type: "paragraph" }] },
+      });
+      editors.push(editor);
+      const formula = { type, attrs: { latex: "\\$ + $$" } };
+      editor.commands.setContent({
+        type: "doc",
+        content:
+          type === "inlineMath"
+            ? [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Before " }, formula],
+                },
+              ]
+            : [formula],
+      });
+      const reloaded = new Editor({
+        element: null,
+        extensions: createEditorExtensions(),
+        content: serializeMarkdown(editor),
+        contentType: "markdown",
+      });
+      editors.push(reloaded);
+      const content = reloaded.getJSON().content?.[0];
+      expect(
+        type === "inlineMath" ? content?.content?.[1] : content,
+      ).toMatchObject(formula);
+      expect(serializeMarkdown(reloaded)).toBe(serializeMarkdown(editor));
+    },
+  );
+  it.each([
+    "Inline $$x^2$$ and $y$",
+    "Inline $$a$b$$",
+    "Inline $a\nb$",
+    "**Bold $x^2$** and [formula $y$](https://example.com)",
+    "# Heading $x^2$",
+    "- Formula $x^2$\n- Next",
+  ])("keeps formula syntax stable: %s", (source) => {
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    expect(serializeMarkdown(editor)).toBe(source);
+    const reloaded = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: serializeMarkdown(editor),
+      contentType: "markdown",
+    });
+    editors.push(reloaded);
+    expect(reloaded.getJSON()).toEqual(editor.getJSON());
+  });
+  it("preserves formulas and Mermaid after editing surrounding text", () => {
+    const source =
+      "公式 $x^2$ 😀\n\n$$\n\\begin{aligned}\na &= b \\\\\n c &= d\n\\end{aligned}\n$$\n\n```mermaid\nflowchart LR\n A[開始] --> B[完成]\n```";
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    expect(editor.getJSON().content?.map((node) => node.type)).toEqual([
+      "paragraph",
+      "blockMath",
+      "codeBlock",
+    ]);
+    expect(serializeMarkdown(editor)).toBe(source);
+    editor.commands.insertContentAt(1, { type: "text", text: "Edited " });
+    expect(serializeMarkdown(editor)).toBe(`Edited ${source}`);
+    const reloaded = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: serializeMarkdown(editor),
+      contentType: "markdown",
+    });
+    editors.push(reloaded);
+    expect(reloaded.getJSON()).toEqual(editor.getJSON());
+  });
+
+  it("keeps literal dollars escaped outside formulas and code", () => {
+    const source = "\\$literal\\$ and `$code$`\n\n```text\n$code$\n```";
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    expect(serializeMarkdown(editor)).toBe(source);
+    expect(
+      editor
+        .getJSON()
+        .content?.[0]?.content?.every((node) => node.type === "text"),
+    ).toBe(true);
+  });
+
   it("accepts link destinations without requiring an absolute URL", () => {
     const editor = new Editor({
       element: null,

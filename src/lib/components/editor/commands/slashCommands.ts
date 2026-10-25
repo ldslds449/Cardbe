@@ -78,6 +78,30 @@ export function getSlashCommands(): SlashCommand[] {
       action: (editor) => editor.chain().focus().toggleCodeBlock().run(),
     },
     {
+      id: "mermaid",
+      label: m.editor_mermaid(),
+      description: m.editor_slash_mermaid_description(),
+      keywords: ["mermaid", "diagram", "flowchart"],
+      action: (editor) =>
+        editor.chain().focus().setCodeBlock({ language: "mermaid" }).run(),
+    },
+    {
+      id: "math-inline",
+      label: m.editor_math_inline(),
+      description: m.editor_slash_math_inline_description(),
+      keywords: ["math", "latex", "formula", "inline"],
+      action: (editor) =>
+        editor.chain().focus().insertInlineMath({ latex: "x^2" }).run(),
+    },
+    {
+      id: "math-block",
+      label: m.editor_math_block(),
+      description: m.editor_slash_math_block_description(),
+      keywords: ["math", "latex", "formula", "equation"],
+      action: (editor) =>
+        editor.chain().focus().insertBlockMath({ latex: "x^2" }).run(),
+    },
+    {
       id: "table",
       label: m.editor_table(),
       description: m.editor_slash_table_description(),

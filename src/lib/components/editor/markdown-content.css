@@ -24,6 +24,46 @@
   overflow-wrap: anywhere;
   line-height: 1.5rem;
 }
+.mermaid-diagram {
+  --pele-bg: var(--background);
+  --pele-fg: var(--foreground);
+  --pele-muted: var(--muted-foreground);
+  --pele-line: var(--foreground);
+  --pele-surface: var(--muted);
+  --pele-surface-alt: var(--secondary);
+  --pele-border: var(--border);
+  --pele-accent: var(--primary);
+  --pele-critical: var(--destructive);
+  --pele-error: var(--destructive);
+  --pele-series-1: var(--chart-1);
+  --pele-series-2: var(--chart-2);
+  --pele-series-3: var(--chart-3);
+  --pele-series-4: var(--chart-4);
+  --pele-series-5: var(--chart-5);
+  --pele-series-6: var(--chart-1);
+  --pele-series-7: var(--chart-2);
+  --pele-series-8: var(--chart-3);
+  margin: 0.75rem 0;
+}
+.mermaid-diagram svg {
+  display: block;
+  margin-inline: auto;
+}
+.math-scroll [data-slot="scroll-area-viewport"] > div {
+  display: block !important;
+}
+.math-node-block {
+  display: block;
+  margin: 0.75rem 0;
+  text-align: center;
+}
+.math-trigger .katex-display {
+  margin: 0;
+}
+.math-node.ProseMirror-selectednode,
+.ProseMirror-selectednode > .math-node {
+  outline: 2px solid var(--ring);
+}
 .markdown-content :is(h1, h2, h3, h4, h5, h6) {
   margin: 1rem 0 0.5rem;
   line-height: 1.25;
@@ -160,7 +200,7 @@
   border-radius: 0.375rem;
   background: var(--code-background);
   padding: 0.75rem;
-  overflow-x: auto;
+  overflow: hidden;
   white-space: pre;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.875rem;
@@ -239,6 +279,7 @@
   vertical-align: bottom;
 }
 .markdown-content img.ProseMirror-selectednode,
+.markdown-content .editor-image.ProseMirror-selectednode,
 .markdown-content .markdown-raw.ProseMirror-selectednode {
   outline: 2px solid var(--ring);
   outline-offset: 1px;

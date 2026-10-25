@@ -14,6 +14,11 @@
   import Markdown from "svelte-exmarkdown";
   import type { HastNode, Plugin } from "svelte-exmarkdown";
   import { gfmPlugin } from "svelte-exmarkdown/gfm";
+  import remarkMath from "remark-math";
+  import { markdownSpecial } from "#lib/components/editor/markdown-special.js";
+  import MathContent from "#lib/components/editor/math-content.svelte";
+  import MermaidDiagram from "#lib/components/editor/mermaid-diagram.svelte";
+  import EditorImage from "#lib/components/editor/editor-image.svelte";
 
   // code highlight
   import rehypeShikiFromHighlighter from "@shikijs/rehype/core";
@@ -191,10 +196,28 @@
     plugins={[
       gfmPlugin(),
       safeMarkdownPlugin,
+      {
+        remarkPlugin: remarkMath,
+        rehypePlugin: [markdownSpecial, md],
+        renderer: {
+          "math-formula": MathContent,
+          "mermaid-diagram": MermaidDiagram,
+        },
+      },
       languageLoaderPlugin,
       shikiPlugin,
     ]}
   >
+    {#snippet img(props)}
+      <EditorImage
+        src={props.src}
+        alt={props.alt}
+        title={props.title}
+        width={props.width}
+        height={props.height}
+        class={props.class}
+      />
+    {/snippet}
     {#snippet pre(props)}
       {@const { children, class: className, ...rest } = props}
       <!-- Board drags skip this region so its text can be selected. -->
