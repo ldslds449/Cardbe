@@ -35,6 +35,7 @@ const coreMessages = {
   SHORTCUT_ALREADY_ASSIGNED: () => m.error_shortcut_already_assigned(),
   TASK_NOT_FOUND: () => m.error_task_not_found(),
   BOARD_NOT_FOUND: () => m.error_board_not_found(),
+  BOARD_LINK_UNAVAILABLE: () => m.error_board_link_unavailable(),
   COLUMN_NOT_FOUND: () => m.error_column_not_found(),
   BOARD_NAME_REQUIRED: () => m.error_board_name_required(),
   LAST_BOARD_REQUIRED: () => m.error_last_board_required(),

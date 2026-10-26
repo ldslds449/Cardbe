@@ -57,6 +57,7 @@
     <TaskActionItems
       context
       onView={() => data.onOpen(data.task)}
+      onCopyLink={data.onCopyLink && (() => data.onCopyLink?.(data.task))}
       onEdit={!data.locked && !data.archived
         ? () => data.onEdit(data.task)
         : undefined}

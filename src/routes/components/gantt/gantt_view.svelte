@@ -11,6 +11,7 @@
   import ChartGanttIcon from "@lucide/svelte/icons/chart-gantt";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+  import LinkIcon from "@lucide/svelte/icons/link";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import PlayIcon from "@lucide/svelte/icons/play";
   import Share2Icon from "@lucide/svelte/icons/share-2";
@@ -76,6 +77,7 @@
     show_archived?: boolean;
     onViewTask?: (task: Task) => void;
     onViewArchivedTask?: (task: Task) => void;
+    onCopyTaskLink?: (task: Task) => void;
     onEditTask?: (task: Task) => void;
     onDuplicateTask?: (task: Task) => void;
     onSaveAsTemplate?: (task: Task) => void;
@@ -96,6 +98,7 @@
     show_archived = $bindable(false),
     onViewTask = () => {},
     onViewArchivedTask = () => {},
+    onCopyTaskLink,
     onEditTask = () => {},
     onDuplicateTask = () => {},
     onSaveAsTemplate = () => {},
@@ -1063,6 +1066,12 @@
           <FullscreenIcon />
           {m.task_view_details()}
         </ContextMenu.Item>
+        {#if onCopyTaskLink}
+          <ContextMenu.Item onclick={() => onCopyTaskLink(entry.task)}>
+            <LinkIcon />
+            {m.deep_link_copy_task()}
+          </ContextMenu.Item>
+        {/if}
         {#if !read_only}
           <ContextMenu.Item onclick={() => ask_to_unarchive(entry.task)}>
             <UndoIcon />
@@ -1073,6 +1082,7 @@
         <TaskActionItems
           context
           onView={() => open_entry(entry)}
+          onCopyLink={onCopyTaskLink && (() => onCopyTaskLink(entry.task))}
           onEdit={editable ? () => onEditTask(entry.task) : undefined}
           onArchive={editable ? () => onArchiveTask(entry.task) : undefined}
           onDelete={editable ? () => ask_to_delete(entry.task) : undefined}

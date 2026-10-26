@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { copyBoardLink, type DeepLink } from "#lib/deep-link.js";
   import { confirmUnsavedChanges } from "#lib/unsaved-changes.js";
   import { translateCommandError } from "#lib/command-errors.js";
   import { getLocale } from "#lib/i18n/index.js";
@@ -27,6 +28,7 @@
     reset_task,
     clone_task,
     task_from_template,
+    get_task_id,
     type Task,
   } from "./type/task.svelte";
   import {
@@ -594,8 +596,93 @@
     }
   }
 
+  let deep_link_ticket = $state("");
   onMount(() => {
     let disposed = false;
+    let links_ready = false;
+    let handling_links = false;
+    let links_pending = false;
+    const processing = new Set<string>();
+    async function process_links() {
+      links_pending = true;
+      if (!links_ready || handling_links || disposed) {
+        return;
+      }
+      handling_links = true;
+      try {
+        for (;;) {
+          links_pending = false;
+          const links = await invoke<DeepLink[]>("take_deep_links");
+          if (disposed) {
+            break;
+          }
+          if (!links.length) {
+            if (links_pending) {
+              continue;
+            }
+            break;
+          }
+          for (const link of links) {
+            const key = JSON.stringify(link);
+            if (processing.has(key)) {
+              continue;
+            }
+            processing.add(key);
+            if (link.kind === "invite") {
+              deep_link_ticket = link.ticket;
+              iroh_show_requests = false;
+              iroh_show_received = false;
+              iroh_share_dialog_open = true;
+            } else if (link.kind === "board") {
+              try {
+                const id = await invoke<number>("resolve_board_link", {
+                  reference: link.reference,
+                });
+                await switch_board(id);
+                if (board.active_board_id !== id) {
+                  continue;
+                }
+                active_focus_id = null;
+                view_task_dialog_open = false;
+                if (link.task_id !== null) {
+                  const taskId = "task_" + link.task_id;
+                  const task = await board.get_expired_task_detail(taskId);
+                  if (board.active_board_id !== id) {
+                    continue;
+                  }
+                  if (task) {
+                    view_task_by_id(task);
+                  } else {
+                    const archived = await board.get_archive_detail(taskId);
+                    if (board.active_board_id !== id) {
+                      continue;
+                    }
+                    if (archived) {
+                      view_archived_task(archived);
+                    } else {
+                      toast.error(m.task_missing());
+                    }
+                  }
+                }
+              } catch (error) {
+                toast.error(translateCommandError(error));
+              }
+            } else {
+              toast.error(m.deep_link_invalid());
+            }
+          }
+        }
+      } catch (error) {
+        toast.error(translateCommandError(error));
+      } finally {
+        processing.clear();
+        handling_links = false;
+      }
+    }
+    const deep_link_listener = listen(
+      "cardbe:deep-link",
+      () => void process_links(),
+    );
     void invoke<unknown>("get_startup_error")
       .then((error) => {
         if (disposed) {
@@ -614,6 +701,9 @@
           if (disposed) {
             return;
           }
+          await deep_link_listener;
+          links_ready = true;
+          void process_links();
           void focuses.load();
           void restore_floating_tasks();
           void restore_floating_focuses();
@@ -901,6 +991,7 @@
       disposed = true;
       window.clearTimeout(update_check_timeout);
       window.clearInterval(update_check_interval);
+      void deep_link_listener.then((unlisten) => unlisten());
       void data_changed_listener.then((unlisten) => unlisten());
       void iroh_remote_push_listener.then((unlisten) => unlisten());
       void open_task_listener.then((unlisten) => unlisten());
@@ -1259,6 +1350,12 @@
     task_column_dialog_open = true;
   }
 
+  function copy_task_link(task: Task) {
+    if (board.active_board_id !== null) {
+      void copyBoardLink(board.active_board_id, get_task_id(task.id));
+    }
+  }
+
   async function share_task(task: Task) {
     try {
       task_share_text = await serialize_portable_task(task);
@@ -1584,6 +1681,7 @@
                       columns={board.columns}
                       archives={board.archives}
                       onViewArchivedTask={view_archived_task}
+                      onCopyTaskLink={copy_task_link}
                       onArchiveTask={(task) => board.archive_task(task.id)}
                       onDeleteTask={(task) => void board.delete_task(task.id)}
                       search_task_ids={board.search_task_ids}
@@ -1605,6 +1703,7 @@
                     bind:show_archived={gantt_show_archived}
                     onViewTask={view_task_by_id}
                     onViewArchivedTask={view_archived_task}
+                    onCopyTaskLink={copy_task_link}
                     onEditTask={edit_task_by_id}
                     onDuplicateTask={(task) => board.duplicate_task(task.id)}
                     onSaveAsTemplate={open_save_template_dialog}
@@ -1672,6 +1771,7 @@
                           void board.set_calendar_expand_all(expanded)}
                         onViewTask={view_task_by_id}
                         onViewArchivedTask={view_archived_task}
+                        onCopyTaskLink={copy_task_link}
                         onEditTask={edit_task_by_id}
                         onDuplicateTask={(task) =>
                           board.duplicate_task(task.id)}
@@ -1701,6 +1801,7 @@
                             edit_task_routine(column_idx, task_idx),
                           )}
                         onEditTask={edit_task_routine}
+                        onCopyTaskLink={copy_task_link}
                         onSaveAsTemplate={open_save_template_dialog}
                         onExportTask={share_task}
                         read_only={active_board_read_only}
@@ -1792,6 +1893,7 @@
         />
         <IrohShareDialog
           bind:open={iroh_share_dialog_open}
+          bind:initial_ticket={deep_link_ticket}
           show_requests={iroh_show_requests}
           show_received={iroh_show_received}
           onRequestsChanged={() => void refresh_device_requests()}

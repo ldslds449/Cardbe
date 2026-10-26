@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { copyBoardLink } from "#lib/deep-link.js";
+  import LinkIcon from "@lucide/svelte/icons/link";
   import { confirmUnsavedChanges } from "#lib/unsaved-changes.js";
   import { formatNumber } from "#lib/i18n/index.js";
   import { m } from "#lib/paraglide/messages.js";
@@ -296,6 +298,9 @@
     {@const Item = kind === "context" ? ContextMenu.Item : DropdownMenu.Item}
     {@const Separator =
       kind === "context" ? ContextMenu.Separator : DropdownMenu.Separator}
+    <Item onclick={() => void copyBoardLink(item.id)}
+      ><LinkIcon />{m.deep_link_copy_board()}</Item
+    >
     {#if item.shared_role === "owner"}
       <Item onclick={() => open_rename_dialog(item)}
         ><PencilIcon />

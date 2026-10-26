@@ -16,6 +16,7 @@
   import PlayIcon from "@lucide/svelte/icons/play";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+  import LinkIcon from "@lucide/svelte/icons/link";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import CopyIcon from "@lucide/svelte/icons/copy";
@@ -89,6 +90,7 @@
     onExpandAllChange?: (expanded: boolean) => void;
     onViewTask?: (task: Task) => void;
     onViewArchivedTask?: (task: Task) => void;
+    onCopyTaskLink?: (task: Task) => void;
     onEditTask?: (task: Task) => void;
     onDuplicateTask?: (task: Task) => void;
     onSaveAsTemplate?: (task: Task) => void;
@@ -115,6 +117,7 @@
     onExpandAllChange,
     onViewTask = () => {},
     onViewArchivedTask = () => {},
+    onCopyTaskLink,
     onEditTask = () => {},
     onDuplicateTask = () => {},
     onSaveAsTemplate = () => {},
@@ -1131,6 +1134,12 @@
     <FullscreenIcon />
     {m.task_view_details()}
   </Item>
+  {#if onCopyTaskLink && !entry.preview}
+    <Item onclick={() => onCopyTaskLink(entry.task)}>
+      <LinkIcon />
+      {m.deep_link_copy_task()}
+    </Item>
+  {/if}
   {#if entry.archived && !read_only}
     <Item onclick={() => ask_to_unarchive(entry.task)}>
       <UndoIcon />

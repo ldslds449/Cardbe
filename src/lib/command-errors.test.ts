@@ -28,6 +28,7 @@ describe("command error boundary", () => {
     );
     const files = [
       "lib.rs",
+      "deep_link.rs",
       ...readdirSync(join(root, "commands"), { recursive: true })
         .filter((file) => file.toString().endsWith(".rs"))
         .map((file) => join("commands", file.toString())),

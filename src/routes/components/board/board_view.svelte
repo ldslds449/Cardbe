@@ -42,6 +42,7 @@
     onImportTask?: (column_id: string) => void;
     onViewTask?: (task: Task, column_idx: number, task_idx: number) => void;
     onEditTask?: (column_idx: number, task_idx: number) => void;
+    onCopyTaskLink?: (task: Task) => void;
     onSaveAsTemplate?: (task: Task) => void;
     onExportTask?: (task: Task) => void;
     read_only?: boolean;
@@ -56,6 +57,7 @@
     onImportTask = () => {},
     onViewTask = () => {},
     onEditTask = () => {},
+    onCopyTaskLink,
     onSaveAsTemplate = () => {},
     onExportTask = () => {},
     read_only = false,
@@ -519,6 +521,7 @@
                   board.task_expansion.toggle(board.active_board_id, task.id)}
                 onViewTask={() => onViewTask(task, column_idx, task_idx)}
                 onEditTask={() => onEditTask(column_idx, task_idx)}
+                onCopyLink={onCopyTaskLink && (() => onCopyTaskLink(task))}
                 onDuplicateTask={() => board.duplicate_task(task.id)}
                 onSaveAsTemplate={() => onSaveAsTemplate(task)}
                 onExportTask={() => onExportTask(task)}

@@ -141,6 +141,7 @@ async fn join_iroh_invite_inner(
     if !snapshot.ok {
         return Err(snapshot_failure(&snapshot, device_id));
     }
+    validate_sync_snapshot(&snapshot)?;
     let mut guard = lock_app(&app)?;
     ensure_invite_not_joined(&guard.database, &ticket)?;
     let board = guard
@@ -153,6 +154,10 @@ async fn join_iroh_invite_inner(
             &serde_json::to_string(&RemoteInvitation::from(&ticket)).map_err(|e| e.to_string())?,
             Some(&snapshot.loro_update),
         )
+        .map_err(DomainError::repository)?;
+    guard
+        .database
+        .save_board_link_reference(board.id, snapshot.board_reference.as_deref())
         .map_err(DomainError::repository)?;
     guard.boards.push(board.clone());
     Ok(board)
@@ -234,6 +239,10 @@ async fn request_iroh_board_access_inner(
         "Owner sent an invalid response"
     })?;
     if snapshot.ok {
+        lock_app(&app)?
+            .database
+            .save_board_link_reference(board_id, snapshot.board_reference.as_deref())
+            .map_err(DomainError::repository)?;
         let refresh_conflict = {
             let guard = lock_app(&app)?;
             guard
@@ -557,6 +566,12 @@ async fn sync_iroh_board_inner(
     validate_sync_snapshot(&snapshot)
         .map_err(|_| snapshot_failure(&snapshot, device_id.clone()))?;
     let mut guard = lock_app(&app)?;
+    if snapshot.ok {
+        guard
+            .database
+            .save_board_link_reference(board_id, snapshot.board_reference.as_deref())
+            .map_err(DomainError::repository)?;
+    }
     if recovering_conflict {
         if !snapshot.ok || snapshot.unchanged {
             return Err(snapshot_failure(&snapshot, device_id.clone()));

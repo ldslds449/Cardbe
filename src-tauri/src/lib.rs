@@ -2,6 +2,7 @@ mod blocking;
 mod board_mutations;
 mod commands;
 mod completion;
+mod deep_link;
 #[cfg(desktop)]
 mod desktop;
 mod errors;
@@ -316,6 +317,7 @@ pub fn run() {
             receiver: startup_receiver,
         })
         .manage(resource_usage::ResourceMonitorState::default())
+        .manage(deep_link::Pending::default())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(if cfg!(debug_assertions) {
@@ -331,7 +333,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init());
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_deep_link::init());
 
     #[cfg(desktop)]
     {
@@ -348,7 +351,13 @@ pub fn run() {
         );
         #[cfg(not(debug_assertions))]
         {
-            builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+                deep_link::receive(
+                    app,
+                    args.into_iter()
+                        .skip(1)
+                        .filter(|arg| arg.starts_with("cardbe:")),
+                );
                 desktop::show_main_window(app)
             }));
         }
@@ -356,6 +365,14 @@ pub fn run() {
 
     builder
         .setup(move |app| {
+            use tauri_plugin_deep_link::DeepLinkExt;
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                deep_link::receive(&handle, event.urls().into_iter().map(|url| url.to_string()));
+            });
+            if let Some(urls) = app.deep_link().get_current()? {
+                deep_link::receive(app.handle(), urls.into_iter().map(|url| url.to_string()));
+            }
             log::info!(
                 target: "startup",
                 "Starting Cardbe {} on {} {}",
@@ -611,6 +628,9 @@ pub fn run() {
             settings::set_desktop_menu_labels,
             settings::take_recovery_messages,
             get_startup_error,
+            deep_link::take_deep_links,
+            deep_link::create_board_link,
+            deep_link::resolve_board_link,
             share::publish_lan_share,
             share::revoke_lan_share,
             templates::copy_task_template_to_board,

@@ -180,7 +180,9 @@ function rust_commands(): Map<string, Map<string, boolean>> {
         item.slice(open + 1, close),
       )) {
         const [binding, type] = parameter.split(/:(.*)/s).map((s) => s.trim());
-        if (/^(?:tauri::)?(?:State|AppHandle)\b/.test(type)) {
+        if (
+          /^(?:tauri::)?(?:State|AppHandle|WebviewWindow|Window)\b/.test(type)
+        ) {
           continue;
         }
         parameters.set(

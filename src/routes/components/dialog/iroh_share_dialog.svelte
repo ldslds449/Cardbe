@@ -56,12 +56,14 @@
   let {
     open = $bindable(),
     board,
+    initial_ticket = $bindable(""),
     show_requests = false,
     show_received = false,
     onRequestsChanged = () => {},
   }: {
     open: boolean;
     board: BoardStore;
+    initial_ticket?: string;
     show_requests?: boolean;
     show_received?: boolean;
     onRequestsChanged?: () => void;
@@ -400,6 +402,21 @@
     qr_error = null;
     qr_loading = false;
   }
+  $effect(() => {
+    if (open && initial_ticket) {
+      const value = initial_ticket;
+      untrack(() => {
+        wait_generation++;
+        received_waiting_id = null;
+        approval_open = false;
+        revoke_open = false;
+        delete_confirm_open = false;
+        open_join();
+        ticket = value;
+        initial_ticket = "";
+      });
+    }
+  });
   function open_join() {
     ticket = "";
     waiting_device_id = null;
@@ -801,6 +818,535 @@
   </div>
 {/snippet}
 
+{#snippet dialog_body()}
+  <div
+    class={(flow === "manage" || flow === "share") &&
+    received_waiting_id === null
+      ? "flex min-h-0 flex-1 flex-col gap-4"
+      : flow === "home"
+        ? "grid gap-2"
+        : "grid gap-4"}
+  >
+    {#if flow !== "home" && !waiting_device_id && received_waiting_id === null && !(flow === "manage" && managed_board)}
+      <Button
+        variant="outline"
+        size="sm"
+        class="w-fit shrink-0"
+        onclick={() => (flow === "share" ? leave_share() : (flow = "home"))}
+        ><ArrowLeftIcon />{flow === "share" && share_return_to_manage
+          ? managed_board
+            ? m.share_back_to_board()
+            : m.share_back_to_overview()
+          : m.share_back_to_sharing()}</Button
+      >
+    {/if}
+    {#if received_waiting_id !== null || waiting_device_id}
+      {@const device_id =
+        waiting_device_id ?? received_pending[received_waiting_id!]}
+      <Card.Root
+        class="items-center gap-4 border-primary/25 bg-primary/5 px-5 py-7 text-center shadow-none"
+        role="status"
+        ><div
+          class="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary"
+        >
+          <LoaderCircleIcon class="size-6 animate-spin" />
+        </div>
+        <div class="space-y-1">
+          <Card.Title>{m.ui_waiting_for_approval()}</Card.Title
+          ><Card.Description
+            >{m.share_device_wait_description()}</Card.Description
+          >
+        </div>
+        {#if device_id}
+          <div class="w-full rounded-lg border bg-background p-3 text-left">
+            <p class="mb-2 text-xs font-medium text-muted-foreground">
+              {m.ui_your_device_id_compare_this_with_the_owner()}
+            </p>
+            <code class="block break-all text-sm leading-relaxed select-all"
+              >{verification_id(device_id)}</code
+            >
+          </div>
+          <Button
+            variant="outline"
+            onclick={() => void copy_device_id(device_id)}
+            ><ClipboardIcon />
+            {m.ui_copy_device_id()}</Button
+          >
+        {/if}
+        <div class="w-full text-left">
+          <IrohConnectionInfo
+            info={received_waiting_id !== null
+              ? connection_details.boards[received_waiting_id]
+              : connection_details.invitation}
+            waiting_for_approval
+          />
+          {#if connection_details_error}
+            <p class="mt-2 text-xs text-muted-foreground">
+              {translateCommandError(connection_details_error)}
+            </p>
+          {/if}
+        </div></Card.Root
+      >
+      <Button
+        variant="outline"
+        onclick={() => {
+          if (received_waiting_id !== null) {
+            stopped_waiting.add(received_waiting_id);
+            delete received_pending[received_waiting_id];
+            received_waiting_id = null;
+          } else {
+            wait_generation++;
+            waiting_device_id = null;
+            board.iroh_last_error = null;
+          }
+        }}>{m.ui_cancel_waiting()}</Button
+      >
+    {:else if flow === "home"}
+      {#if !board.iroh_enabled}
+        <p class="text-muted-foreground text-sm">
+          {m.share_iroh_disabled()}
+        </p>
+      {/if}
+      <div class="grid gap-3 sm:grid-cols-2">
+        <button
+          class="rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onclick={() => open_share()}
+        >
+          <Card.Root class="h-full gap-2 p-4 transition-colors hover:bg-accent"
+            ><UsersIcon class="size-5 text-primary" />
+            <Card.Title class="text-base">{m.ui_share_a_board()}</Card.Title
+            ><Card.Description
+              >{m.ui_choose_a_board_and_give_people_viewing_or_editing_access()}</Card.Description
+            ></Card.Root
+          >
+        </button><button
+          class="rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onclick={open_join}
+        >
+          <Card.Root class="h-full gap-2 p-4 transition-colors hover:bg-accent"
+            ><LinkIcon class="size-5 text-primary" />
+            <Card.Title class="text-base"
+              >{m.ui_join_a_shared_board()}</Card.Title
+            ><Card.Description
+              >{m.ui_paste_an_invitation_link_to_join()}</Card.Description
+            ></Card.Root
+          >
+        </button>
+      </div>
+      <Button
+        variant="outline"
+        onclick={() => {
+          void load();
+          flow = "manage";
+        }}
+        ><Settings2Icon />
+        {m.ui_manage_sharing()}</Button
+      >
+      <Button variant="outline" onclick={open_network_settings}
+        ><Settings2Icon />
+        {m.share_connection_settings()}</Button
+      >
+    {:else if flow === "share"}
+      <ScrollArea
+        class="min-h-0 [&>[data-slot=scroll-area-viewport]]:max-h-[calc(100dvh-15rem)]"
+        orientation="vertical"
+        scrollbarYClasses="w-2"
+      >
+        <div class="grid gap-4 pr-3 pb-1">
+          <label class="grid gap-2 text-sm font-medium"
+            >{m.board_title()}<Select.Root
+              type="single"
+              disabled={creating}
+              value={selected_board_id?.toString() ?? ""}
+              onValueChange={(v) => {
+                selected_board_id = v ? Number(v) : null;
+                invalidate();
+              }}
+              ><Select.Trigger class="w-full"
+                >{selected_board?.name ?? m.ui_choose_a_board()}</Select.Trigger
+              ><Select.Content
+                >{#each owned_boards as item}
+                  <Select.Item value={item.id.toString()}
+                    >{item.name}</Select.Item
+                  >
+                {/each}</Select.Content
+              ></Select.Root
+            ></label
+          ><label class="grid gap-2 text-sm font-medium"
+            >{m.ui_permission()}<Select.Root
+              type="single"
+              disabled={creating}
+              value={permission}
+              onValueChange={(v) => {
+                permission = v as "viewer" | "editor";
+                invalidate();
+              }}
+              ><Select.Trigger class="w-full"
+                >{permission === "viewer"
+                  ? m.board_read_only()
+                  : m.board_can_edit()}</Select.Trigger
+              ><Select.Content
+                ><Select.Item value="viewer">{m.board_read_only()}</Select.Item
+                ><Select.Item value="editor">{m.board_can_edit()}</Select.Item
+                ></Select.Content
+              ></Select.Root
+            ></label
+          >
+          {#if generated}
+            <Card.Root class="gap-3 bg-muted/30 p-4 shadow-none"
+              ><div class="flex items-center justify-between gap-2">
+                <Card.Title class="text-base">{generated.board_name}</Card.Title
+                ><Badge variant="secondary"
+                  >{generated.permission === "viewer"
+                    ? m.board_read_only()
+                    : m.board_can_edit()}</Badge
+                >
+              </div>
+              {#if generated.qr}<div
+                  class="qr mx-auto aspect-square w-full max-w-56 overflow-hidden rounded-md bg-white p-2"
+                >
+                  {@html generated.qr}
+                </div>
+              {:else if qr_loading}
+                <p
+                  class="flex items-center gap-2 text-sm text-muted-foreground"
+                  role="status"
+                >
+                  <LoaderCircleIcon
+                    class="size-4 animate-spin"
+                  />{m.share_qr_generating()}
+                </p>
+              {/if}
+              {#if qr_error}
+                <p class="text-sm text-muted-foreground" role="status">
+                  {m.share_qr_failed({
+                    error: translateCommandError(qr_error),
+                  })}
+                </p>
+                <Button variant="outline" onclick={() => void generate_qr()}
+                  >{m.share_qr_retry()}</Button
+                >
+              {/if}
+              <Button variant="outline" onclick={() => void copy()}
+                >{m.ui_copy_invitation_link()}</Button
+              ><Card.Description
+                >{m.share_device_invite_description()}</Card.Description
+              ></Card.Root
+            >
+          {/if}
+          {#if create_error}
+            <p
+              class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+              role="alert"
+            >
+              {translateCommandError(create_error)}
+            </p>
+          {/if}
+          <Button
+            onclick={() => void create()}
+            disabled={creating || selected_board_id === null}
+            >{creating
+              ? m.ui_creating()
+              : generated
+                ? m.ui_create_new_invitation()
+                : m.ui_create_invitation()}</Button
+          >
+        </div>
+      </ScrollArea>
+    {:else if flow === "join"}
+      <Card.Root class="gap-4 border-primary/20 bg-muted/20 p-5 shadow-none"
+        ><div class="flex items-center gap-3">
+          <span
+            class="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary"
+            ><LinkIcon class="size-5" /></span
+          >
+          <div>
+            <Card.Title class="text-base">{m.ui_invitation_link()}</Card.Title
+            ><Card.Description
+              >{m.ui_paste_the_link_from_the_board_owner()}</Card.Description
+            >
+          </div>
+        </div>
+        <Input
+          bind:value={ticket}
+          placeholder="cardbe://share/..."
+          aria-label={m.ui_invitation_link()}
+          oninput={() => (board.iroh_last_error = null)}
+        /></Card.Root
+      >
+      {#if board.iroh_last_error}
+        <p
+          class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+        >
+          {translateCommandError(board.iroh_last_error)}
+        </p>
+      {/if}
+      <Button onclick={() => void join()} disabled={!ticket.trim() || joining}
+        >{joining ? m.ui_connecting() : m.ui_request_access()}</Button
+      >
+    {:else}
+      {#if !managed_board}
+        <ButtonGroup.Root
+          class="grid shrink-0 grid-cols-2"
+          role="group"
+          aria-label={m.ui_sharing_management_views()}
+        >
+          <Button
+            bind:ref={manage_view_button}
+            variant={manage_view === "mine" ? "secondary" : "outline"}
+            aria-pressed={manage_view === "mine"}
+            onclick={() => {
+              manage_view = "mine";
+              managed_board_id = null;
+              visible_qr_id = null;
+            }}>{m.share_owned_count({ count: shared_boards.length })}</Button
+          >
+          <Button
+            variant={manage_view === "received" ? "secondary" : "outline"}
+            aria-pressed={manage_view === "received"}
+            onclick={() => {
+              manage_view = "received";
+              managed_board_id = null;
+              visible_qr_id = null;
+            }}
+            >{m.share_received_count({
+              count: received_boards.length,
+            })}</Button
+          >
+        </ButtonGroup.Root>
+      {/if}
+      <div class="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        <p class="text-xs text-muted-foreground">
+          {managed_board
+            ? m.share_board_summary({
+                invites: managed_board.invites.length,
+                devices: managed_board.approved,
+              })
+            : manage_view === "mine"
+              ? m.share_manage_auto_help()
+              : m.share_received_auto_help()}
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          class="shrink-0"
+          onclick={() => {
+            if (manage_view === "mine") {
+              open_share();
+            } else {
+              open_join();
+            }
+          }}
+          ><PlusIcon />{managed_board
+            ? m.ui_create_new_invitation()
+            : manage_view === "mine"
+              ? m.ui_share_a_board()
+              : m.ui_join_a_shared_board()}</Button
+        >
+      </div>
+      <ScrollArea
+        bind:viewport={manage_viewport}
+        class="min-h-0 flex-1"
+        orientation="vertical"
+        scrollbarYClasses="w-2"
+      >
+        <div class="grid gap-3 pr-3 pb-1">
+          {#if manage_error}
+            <div
+              class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3 text-sm text-destructive"
+              role="alert"
+            >
+              <p>{translateCommandError(manage_error)}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loading_invites}
+                onclick={() => void load()}
+              >
+                {loading_invites
+                  ? m.share_network_retrying()
+                  : m.common_retry()}
+              </Button>
+            </div>
+          {/if}
+          {#if connection_details_error}
+            <p class="text-xs text-muted-foreground" role="status">
+              {translateCommandError(connection_details_error)}
+            </p>
+          {/if}
+          {#if manage_view === "mine" && host_error}
+            <p
+              class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+              role="alert"
+            >
+              {m.share_service_unavailable()}
+            </p>
+          {/if}
+          {#if manage_view === "received"}
+            {#if received_boards.length === 0}
+              <Card.Root class="p-4 shadow-none"
+                ><Card.Description
+                  >{m.ui_no_boards_have_been_shared_with_you()}</Card.Description
+                ><Button variant="outline" onclick={open_join}
+                  >{m.ui_join_a_shared_board()}</Button
+                ></Card.Root
+              >
+            {:else}
+              {#each received_boards as shared (shared.id)}
+                <IrohReceivedBoardCard
+                  {board}
+                  {shared}
+                  pending_device_id={received_pending[shared.id]}
+                  connection={connection_details.boards[shared.id]}
+                  connection_dialog_open={connection_dialog_id === shared.id}
+                  connection_ticket={connection_tickets[shared.id] ?? ""}
+                  connection_error={connection_update_errors[shared.id]}
+                  saving_connection={saving_connection_id !== null}
+                  saving_this_connection={saving_connection_id === shared.id}
+                  onopen={() => {
+                    void board.switch_board(shared.id);
+                    open = false;
+                  }}
+                  onshowwaiting={() => (received_waiting_id = shared.id)}
+                  onrequestaccess={() =>
+                    void request_received_access(shared.id, true)}
+                  onconnectiondialogchange={(value) =>
+                    (connection_dialog_id = value ? shared.id : null)}
+                  onticketinput={(value) => {
+                    connection_tickets[shared.id] = value;
+                    delete connection_update_errors[shared.id];
+                  }}
+                  onsaveconnection={() => void update_connection(shared.id)}
+                />
+              {/each}
+            {/if}
+          {:else if loading_invites && invites.length === 0}
+            <p
+              class="flex items-center gap-2 p-4 text-sm text-muted-foreground"
+              role="status"
+            >
+              <LoaderCircleIcon
+                class="size-4 animate-spin"
+              />{m.share_loading_invitations()}
+            </p>
+          {:else if invites.length === 0}
+            <Card.Root class="p-4 shadow-none"
+              ><Card.Title class="text-base">{m.share_first_board()}</Card.Title
+              >
+              <Card.Description
+                >{m.share_first_board_description()}</Card.Description
+              ><Button onclick={() => open_share()}
+                >{m.ui_share_a_board()}</Button
+              ></Card.Root
+            >
+          {:else}
+            {#if !managed_board}
+              {#if pending_requests.length > 0}
+                <section
+                  class="grid gap-2 rounded-lg border border-primary/25 bg-primary/5 p-3"
+                  aria-label={m.share_waiting_count({
+                    count: pending_count,
+                  })}
+                >
+                  <h3 class="text-sm font-semibold">
+                    {m.share_waiting_count({ count: pending_count })}
+                  </h3>
+                  {#each pending_requests as request (request.invite.invite_id + request.device.node_id)}
+                    <div
+                      class="flex items-center gap-3 rounded-md border bg-background p-3"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate text-sm font-medium">
+                          {request.invite.board_name}
+                        </p>
+                        <p class="text-xs text-muted-foreground">
+                          {request.invite.permission === "viewer"
+                            ? m.board_read_only()
+                            : m.board_can_edit()} · {invitation_date(
+                            request.invite.created_at,
+                          )}
+                        </p>
+                        <code class="text-xs text-muted-foreground"
+                          >{request.device.node_id.slice(
+                            0,
+                            8,
+                          )}…{request.device.node_id.slice(-8)}</code
+                        >
+                        {@render invitation_identity(request.invite.invite_id)}
+                      </div>
+                      <Button
+                        size="sm"
+                        aria-haspopup="dialog"
+                        onclick={(event) =>
+                          open_device_review(
+                            request.invite,
+                            request.device.node_id,
+                            event.currentTarget,
+                          )}>{m.ui_review()}</Button
+                      >
+                    </div>
+                  {/each}
+                </section>
+              {/if}
+              {#each shared_boards as item (item.board_id)}
+                <Button
+                  variant="outline"
+                  class="h-auto w-full justify-between gap-3 p-4 text-left whitespace-normal"
+                  onclick={() => void open_managed_board(item.board_id)}
+                >
+                  <span class="grid min-w-0 gap-1"
+                    ><span class="break-words font-semibold"
+                      >{item.board_name}</span
+                    ><span class="text-xs font-normal text-muted-foreground"
+                      >{m.share_board_summary({
+                        invites: item.invites.length,
+                        devices: item.approved,
+                      })}</span
+                    ></span
+                  ><ChevronRightIcon class="shrink-0" />
+                </Button>
+              {/each}
+            {:else}
+              {#each visible_invites as invite (invite.invite_id)}
+                <IrohInviteCard
+                  {invite}
+                  updating={updating_invite_id !== null}
+                  loading_access={loading_access_id === invite.invite_id}
+                  qr_visible={visible_qr_id === invite.invite_id}
+                  qr_svg={visible_qr_id === invite.invite_id
+                    ? invite_access[invite.invite_id]?.qr_svg
+                    : undefined}
+                  devices_open={expanded_devices[invite.invite_id]}
+                  device_connections={connection_details.devices}
+                  onupdate={(change) => void update(invite, change)}
+                  oncopy={() => void copy_invite(invite)}
+                  ontoggleqr={() => void toggle_qr(invite)}
+                  ondelete={() => {
+                    pending_delete = invite;
+                    delete_confirm_open = true;
+                  }}
+                  ondevicesopenchange={(value) =>
+                    (expanded_devices = {
+                      ...expanded_devices,
+                      [invite.invite_id]: value,
+                    })}
+                  onreview={(node_id, trigger) =>
+                    open_device_review(invite, node_id, trigger)}
+                  onrevoke={(node_id) => {
+                    revoke_candidate = { invite, node_id };
+                    revoke_open = true;
+                  }}
+                />
+              {/each}
+            {/if}
+          {/if}
+        </div>
+      </ScrollArea>
+    {/if}
+  </div>
+{/snippet}
+
 <Dialog.Root bind:open>
   <Dialog.Content
     showCloseButton={!waiting_device_id && received_waiting_id === null}
@@ -824,9 +1370,7 @@
     }}
     class={flow === "manage" && received_waiting_id === null
       ? "flex h-[min(42rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-xl"
-      : flow === "share" && received_waiting_id === null
-        ? "flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-xl"
-        : "max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-xl"}
+      : "flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden sm:max-w-xl"}
   >
     {#if flow === "manage" && managed_board && received_waiting_id === null}
       <Dialog.Header class="shrink-0 gap-3 border-b pb-4 text-left">
@@ -876,536 +1420,14 @@
         {/if}
       </Dialog.Header>
     {/if}
-    <div
-      class={(flow === "manage" || flow === "share") &&
-      received_waiting_id === null
-        ? "flex min-h-0 flex-1 flex-col gap-4"
-        : flow === "home"
-          ? "grid gap-2"
-          : "grid gap-4"}
-    >
-      {#if flow !== "home" && !waiting_device_id && received_waiting_id === null && !(flow === "manage" && managed_board)}
-        <Button
-          variant="outline"
-          size="sm"
-          class="w-fit shrink-0"
-          onclick={() => (flow === "share" ? leave_share() : (flow = "home"))}
-          ><ArrowLeftIcon />{flow === "share" && share_return_to_manage
-            ? managed_board
-              ? m.share_back_to_board()
-              : m.share_back_to_overview()
-            : m.share_back_to_sharing()}</Button
-        >
-      {/if}
-      {#if received_waiting_id !== null || waiting_device_id}
-        {@const device_id =
-          waiting_device_id ?? received_pending[received_waiting_id!]}
-        <Card.Root
-          class="items-center gap-4 border-primary/25 bg-primary/5 px-5 py-7 text-center shadow-none"
-          role="status"
-          ><div
-            class="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary"
-          >
-            <LoaderCircleIcon class="size-6 animate-spin" />
-          </div>
-          <div class="space-y-1">
-            <Card.Title>{m.ui_waiting_for_approval()}</Card.Title
-            ><Card.Description
-              >{m.share_device_wait_description()}</Card.Description
-            >
-          </div>
-          {#if device_id}
-            <div class="w-full rounded-lg border bg-background p-3 text-left">
-              <p class="mb-2 text-xs font-medium text-muted-foreground">
-                {m.ui_your_device_id_compare_this_with_the_owner()}
-              </p>
-              <code class="block break-all text-sm leading-relaxed select-all"
-                >{verification_id(device_id)}</code
-              >
-            </div>
-            <Button
-              variant="outline"
-              onclick={() => void copy_device_id(device_id)}
-              ><ClipboardIcon />
-              {m.ui_copy_device_id()}</Button
-            >
-          {/if}
-          <div class="w-full text-left">
-            <IrohConnectionInfo
-              info={received_waiting_id !== null
-                ? connection_details.boards[received_waiting_id]
-                : connection_details.invitation}
-              waiting_for_approval
-            />
-            {#if connection_details_error}
-              <p class="mt-2 text-xs text-muted-foreground">
-                {translateCommandError(connection_details_error)}
-              </p>
-            {/if}
-          </div></Card.Root
-        >
-        <Button
-          variant="outline"
-          onclick={() => {
-            if (received_waiting_id !== null) {
-              stopped_waiting.add(received_waiting_id);
-              delete received_pending[received_waiting_id];
-              received_waiting_id = null;
-            } else {
-              wait_generation++;
-              waiting_device_id = null;
-              board.iroh_last_error = null;
-            }
-          }}>{m.ui_cancel_waiting()}</Button
-        >
-      {:else if flow === "home"}
-        {#if !board.iroh_enabled}
-          <p class="text-muted-foreground text-sm">{m.share_iroh_disabled()}</p>
-        {/if}
-        <div class="grid gap-3 sm:grid-cols-2">
-          <button
-            class="rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onclick={() => open_share()}
-          >
-            <Card.Root
-              class="h-full gap-2 p-4 transition-colors hover:bg-accent"
-              ><UsersIcon class="size-5 text-primary" />
-              <Card.Title class="text-base">{m.ui_share_a_board()}</Card.Title
-              ><Card.Description
-                >{m.ui_choose_a_board_and_give_people_viewing_or_editing_access()}</Card.Description
-              ></Card.Root
-            >
-          </button><button
-            class="rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onclick={open_join}
-          >
-            <Card.Root
-              class="h-full gap-2 p-4 transition-colors hover:bg-accent"
-              ><LinkIcon class="size-5 text-primary" />
-              <Card.Title class="text-base"
-                >{m.ui_join_a_shared_board()}</Card.Title
-              ><Card.Description
-                >{m.ui_paste_an_invitation_link_to_join()}</Card.Description
-              ></Card.Root
-            >
-          </button>
-        </div>
-        <Button
-          variant="outline"
-          onclick={() => {
-            void load();
-            flow = "manage";
-          }}
-          ><Settings2Icon />
-          {m.ui_manage_sharing()}</Button
-        >
-        <Button variant="outline" onclick={open_network_settings}
-          ><Settings2Icon />
-          {m.share_connection_settings()}</Button
-        >
-      {:else if flow === "share"}
-        <ScrollArea
-          class="min-h-0 [&>[data-slot=scroll-area-viewport]]:max-h-[calc(100dvh-15rem)]"
-          orientation="vertical"
-          scrollbarYClasses="w-2"
-        >
-          <div class="grid gap-4 pr-3 pb-1">
-            <label class="grid gap-2 text-sm font-medium"
-              >{m.board_title()}<Select.Root
-                type="single"
-                disabled={creating}
-                value={selected_board_id?.toString() ?? ""}
-                onValueChange={(v) => {
-                  selected_board_id = v ? Number(v) : null;
-                  invalidate();
-                }}
-                ><Select.Trigger class="w-full"
-                  >{selected_board?.name ??
-                    m.ui_choose_a_board()}</Select.Trigger
-                ><Select.Content
-                  >{#each owned_boards as item}
-                    <Select.Item value={item.id.toString()}
-                      >{item.name}</Select.Item
-                    >
-                  {/each}</Select.Content
-                ></Select.Root
-              ></label
-            ><label class="grid gap-2 text-sm font-medium"
-              >{m.ui_permission()}<Select.Root
-                type="single"
-                disabled={creating}
-                value={permission}
-                onValueChange={(v) => {
-                  permission = v as "viewer" | "editor";
-                  invalidate();
-                }}
-                ><Select.Trigger class="w-full"
-                  >{permission === "viewer"
-                    ? m.board_read_only()
-                    : m.board_can_edit()}</Select.Trigger
-                ><Select.Content
-                  ><Select.Item value="viewer"
-                    >{m.board_read_only()}</Select.Item
-                  ><Select.Item value="editor">{m.board_can_edit()}</Select.Item
-                  ></Select.Content
-                ></Select.Root
-              ></label
-            >
-            {#if generated}
-              <Card.Root class="gap-3 bg-muted/30 p-4 shadow-none"
-                ><div class="flex items-center justify-between gap-2">
-                  <Card.Title class="text-base"
-                    >{generated.board_name}</Card.Title
-                  ><Badge variant="secondary"
-                    >{generated.permission === "viewer"
-                      ? m.board_read_only()
-                      : m.board_can_edit()}</Badge
-                  >
-                </div>
-                {#if generated.qr}<div
-                    class="qr mx-auto aspect-square w-full max-w-56 overflow-hidden rounded-md bg-white p-2"
-                  >
-                    {@html generated.qr}
-                  </div>
-                {:else if qr_loading}
-                  <p
-                    class="flex items-center gap-2 text-sm text-muted-foreground"
-                    role="status"
-                  >
-                    <LoaderCircleIcon
-                      class="size-4 animate-spin"
-                    />{m.share_qr_generating()}
-                  </p>
-                {/if}
-                {#if qr_error}
-                  <p class="text-sm text-muted-foreground" role="status">
-                    {m.share_qr_failed({
-                      error: translateCommandError(qr_error),
-                    })}
-                  </p>
-                  <Button variant="outline" onclick={() => void generate_qr()}
-                    >{m.share_qr_retry()}</Button
-                  >
-                {/if}
-                <Button variant="outline" onclick={() => void copy()}
-                  >{m.ui_copy_invitation_link()}</Button
-                ><Card.Description
-                  >{m.share_device_invite_description()}</Card.Description
-                ></Card.Root
-              >
-            {/if}
-            {#if create_error}
-              <p
-                class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-                role="alert"
-              >
-                {translateCommandError(create_error)}
-              </p>
-            {/if}
-            <Button
-              onclick={() => void create()}
-              disabled={creating || selected_board_id === null}
-              >{creating
-                ? m.ui_creating()
-                : generated
-                  ? m.ui_create_new_invitation()
-                  : m.ui_create_invitation()}</Button
-            >
-          </div>
-        </ScrollArea>
-      {:else if flow === "join"}
-        <Card.Root class="gap-4 border-primary/20 bg-muted/20 p-5 shadow-none"
-          ><div class="flex items-center gap-3">
-            <span
-              class="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary"
-              ><LinkIcon class="size-5" /></span
-            >
-            <div>
-              <Card.Title class="text-base">{m.ui_invitation_link()}</Card.Title
-              ><Card.Description
-                >{m.ui_paste_the_link_from_the_board_owner()}</Card.Description
-              >
-            </div>
-          </div>
-          <Input
-            bind:value={ticket}
-            placeholder="cardbe://share/..."
-            aria-label={m.ui_invitation_link()}
-            oninput={() => (board.iroh_last_error = null)}
-          /></Card.Root
-        >
-        {#if board.iroh_last_error}
-          <p
-            class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-            role="alert"
-          >
-            {translateCommandError(board.iroh_last_error)}
-          </p>
-        {/if}
-        <Button onclick={() => void join()} disabled={!ticket.trim() || joining}
-          >{joining ? m.ui_connecting() : m.ui_request_access()}</Button
-        >
-      {:else}
-        {#if !managed_board}
-          <ButtonGroup.Root
-            class="grid shrink-0 grid-cols-2"
-            role="group"
-            aria-label={m.ui_sharing_management_views()}
-          >
-            <Button
-              bind:ref={manage_view_button}
-              variant={manage_view === "mine" ? "secondary" : "outline"}
-              aria-pressed={manage_view === "mine"}
-              onclick={() => {
-                manage_view = "mine";
-                managed_board_id = null;
-                visible_qr_id = null;
-              }}>{m.share_owned_count({ count: shared_boards.length })}</Button
-            >
-            <Button
-              variant={manage_view === "received" ? "secondary" : "outline"}
-              aria-pressed={manage_view === "received"}
-              onclick={() => {
-                manage_view = "received";
-                managed_board_id = null;
-                visible_qr_id = null;
-              }}
-              >{m.share_received_count({
-                count: received_boards.length,
-              })}</Button
-            >
-          </ButtonGroup.Root>
-        {/if}
-        <div class="flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <p class="text-xs text-muted-foreground">
-            {managed_board
-              ? m.share_board_summary({
-                  invites: managed_board.invites.length,
-                  devices: managed_board.approved,
-                })
-              : manage_view === "mine"
-                ? m.share_manage_auto_help()
-                : m.share_received_auto_help()}
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            class="shrink-0"
-            onclick={() => {
-              if (manage_view === "mine") {
-                open_share();
-              } else {
-                open_join();
-              }
-            }}
-            ><PlusIcon />{managed_board
-              ? m.ui_create_new_invitation()
-              : manage_view === "mine"
-                ? m.ui_share_a_board()
-                : m.ui_join_a_shared_board()}</Button
-          >
-        </div>
-        <ScrollArea
-          bind:viewport={manage_viewport}
-          class="min-h-0 flex-1"
-          orientation="vertical"
-          scrollbarYClasses="w-2"
-        >
-          <div class="grid gap-3 pr-3 pb-1">
-            {#if manage_error}
-              <div
-                class="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3 text-sm text-destructive"
-                role="alert"
-              >
-                <p>{translateCommandError(manage_error)}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={loading_invites}
-                  onclick={() => void load()}
-                >
-                  {loading_invites
-                    ? m.share_network_retrying()
-                    : m.common_retry()}
-                </Button>
-              </div>
-            {/if}
-            {#if connection_details_error}
-              <p class="text-xs text-muted-foreground" role="status">
-                {translateCommandError(connection_details_error)}
-              </p>
-            {/if}
-            {#if manage_view === "mine" && host_error}
-              <p
-                class="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-                role="alert"
-              >
-                {m.share_service_unavailable()}
-              </p>
-            {/if}
-            {#if manage_view === "received"}
-              {#if received_boards.length === 0}
-                <Card.Root class="p-4 shadow-none"
-                  ><Card.Description
-                    >{m.ui_no_boards_have_been_shared_with_you()}</Card.Description
-                  ><Button variant="outline" onclick={open_join}
-                    >{m.ui_join_a_shared_board()}</Button
-                  ></Card.Root
-                >
-              {:else}
-                {#each received_boards as shared (shared.id)}
-                  <IrohReceivedBoardCard
-                    {board}
-                    {shared}
-                    pending_device_id={received_pending[shared.id]}
-                    connection={connection_details.boards[shared.id]}
-                    connection_dialog_open={connection_dialog_id === shared.id}
-                    connection_ticket={connection_tickets[shared.id] ?? ""}
-                    connection_error={connection_update_errors[shared.id]}
-                    saving_connection={saving_connection_id !== null}
-                    saving_this_connection={saving_connection_id === shared.id}
-                    onopen={() => {
-                      void board.switch_board(shared.id);
-                      open = false;
-                    }}
-                    onshowwaiting={() => (received_waiting_id = shared.id)}
-                    onrequestaccess={() =>
-                      void request_received_access(shared.id, true)}
-                    onconnectiondialogchange={(value) =>
-                      (connection_dialog_id = value ? shared.id : null)}
-                    onticketinput={(value) => {
-                      connection_tickets[shared.id] = value;
-                      delete connection_update_errors[shared.id];
-                    }}
-                    onsaveconnection={() => void update_connection(shared.id)}
-                  />
-                {/each}
-              {/if}
-            {:else if loading_invites && invites.length === 0}
-              <p
-                class="flex items-center gap-2 p-4 text-sm text-muted-foreground"
-                role="status"
-              >
-                <LoaderCircleIcon
-                  class="size-4 animate-spin"
-                />{m.share_loading_invitations()}
-              </p>
-            {:else if invites.length === 0}
-              <Card.Root class="p-4 shadow-none"
-                ><Card.Title class="text-base"
-                  >{m.share_first_board()}</Card.Title
-                >
-                <Card.Description
-                  >{m.share_first_board_description()}</Card.Description
-                ><Button onclick={() => open_share()}
-                  >{m.ui_share_a_board()}</Button
-                ></Card.Root
-              >
-            {:else}
-              {#if !managed_board}
-                {#if pending_requests.length > 0}
-                  <section
-                    class="grid gap-2 rounded-lg border border-primary/25 bg-primary/5 p-3"
-                    aria-label={m.share_waiting_count({ count: pending_count })}
-                  >
-                    <h3 class="text-sm font-semibold">
-                      {m.share_waiting_count({ count: pending_count })}
-                    </h3>
-                    {#each pending_requests as request (request.invite.invite_id + request.device.node_id)}
-                      <div
-                        class="flex items-center gap-3 rounded-md border bg-background p-3"
-                      >
-                        <div class="min-w-0 flex-1">
-                          <p class="truncate text-sm font-medium">
-                            {request.invite.board_name}
-                          </p>
-                          <p class="text-xs text-muted-foreground">
-                            {request.invite.permission === "viewer"
-                              ? m.board_read_only()
-                              : m.board_can_edit()} · {invitation_date(
-                              request.invite.created_at,
-                            )}
-                          </p>
-                          <code class="text-xs text-muted-foreground"
-                            >{request.device.node_id.slice(
-                              0,
-                              8,
-                            )}…{request.device.node_id.slice(-8)}</code
-                          >
-                          {@render invitation_identity(
-                            request.invite.invite_id,
-                          )}
-                        </div>
-                        <Button
-                          size="sm"
-                          aria-haspopup="dialog"
-                          onclick={(event) =>
-                            open_device_review(
-                              request.invite,
-                              request.device.node_id,
-                              event.currentTarget,
-                            )}>{m.ui_review()}</Button
-                        >
-                      </div>
-                    {/each}
-                  </section>
-                {/if}
-                {#each shared_boards as item (item.board_id)}
-                  <Button
-                    variant="outline"
-                    class="h-auto w-full justify-between gap-3 p-4 text-left whitespace-normal"
-                    onclick={() => void open_managed_board(item.board_id)}
-                  >
-                    <span class="grid min-w-0 gap-1"
-                      ><span class="break-words font-semibold"
-                        >{item.board_name}</span
-                      ><span class="text-xs font-normal text-muted-foreground"
-                        >{m.share_board_summary({
-                          invites: item.invites.length,
-                          devices: item.approved,
-                        })}</span
-                      ></span
-                    ><ChevronRightIcon class="shrink-0" />
-                  </Button>
-                {/each}
-              {:else}
-                {#each visible_invites as invite (invite.invite_id)}
-                  <IrohInviteCard
-                    {invite}
-                    updating={updating_invite_id !== null}
-                    loading_access={loading_access_id === invite.invite_id}
-                    qr_visible={visible_qr_id === invite.invite_id}
-                    qr_svg={visible_qr_id === invite.invite_id
-                      ? invite_access[invite.invite_id]?.qr_svg
-                      : undefined}
-                    devices_open={expanded_devices[invite.invite_id]}
-                    device_connections={connection_details.devices}
-                    onupdate={(change) => void update(invite, change)}
-                    oncopy={() => void copy_invite(invite)}
-                    ontoggleqr={() => void toggle_qr(invite)}
-                    ondelete={() => {
-                      pending_delete = invite;
-                      delete_confirm_open = true;
-                    }}
-                    ondevicesopenchange={(value) =>
-                      (expanded_devices = {
-                        ...expanded_devices,
-                        [invite.invite_id]: value,
-                      })}
-                    onreview={(node_id, trigger) =>
-                      open_device_review(invite, node_id, trigger)}
-                    onrevoke={(node_id) => {
-                      revoke_candidate = { invite, node_id };
-                      revoke_open = true;
-                    }}
-                  />
-                {/each}
-              {/if}
-            {/if}
-          </div>
-        </ScrollArea>
-      {/if}
-    </div>
+
+    {#if (flow === "manage" || flow === "share") && received_waiting_id === null && !waiting_device_id}
+      {@render dialog_body()}
+    {:else}
+      <ScrollArea class="min-h-0" orientation="vertical">
+        {@render dialog_body()}
+      </ScrollArea>
+    {/if}
   </Dialog.Content>
 </Dialog.Root>
 <AlertDialog.Root bind:open={delete_confirm_open}

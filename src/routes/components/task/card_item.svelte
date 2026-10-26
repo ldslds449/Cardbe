@@ -64,6 +64,7 @@
     onToggleContent?: () => void;
     read_only?: boolean;
     onViewTask: () => void;
+    onCopyLink?: () => void;
     onEditTask: () => void;
     onDuplicateTask: () => void;
     onSaveAsTemplate?: () => void;
@@ -99,6 +100,7 @@
     onToggleContent,
     read_only = false,
     onViewTask = () => {},
+    onCopyLink,
     onEditTask = () => {},
     onDuplicateTask = () => {},
     onSaveAsTemplate,
@@ -474,6 +476,7 @@
   <TaskActionItems
     {context}
     onView={onViewTask}
+    {onCopyLink}
     onEdit={read_only ? undefined : onEditTask}
     onArchive={read_only
       ? undefined

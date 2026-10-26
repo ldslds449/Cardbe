@@ -153,6 +153,7 @@ export type TaskNode = Node<
     locked: boolean;
     archived: boolean;
     onOpen: (task: Task) => void;
+    onCopyLink?: (task: Task) => void;
     onEdit: (task: Task) => void;
     onRemove: (id: string) => void;
     onArchive: (task: Task) => void;
@@ -340,6 +341,7 @@ export function build_nodes(
     | "read_only"
     | "locked"
     | "onOpen"
+    | "onCopyLink"
     | "onEdit"
     | "onRemove"
     | "onArchive"

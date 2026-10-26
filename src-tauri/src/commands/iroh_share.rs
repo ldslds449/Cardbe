@@ -503,6 +503,8 @@ fn needs_editor_upload(role: BoardRole, status: SyncStatus) -> bool {
 }
 #[derive(Serialize, Deserialize)]
 struct Snapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    board_reference: Option<String>,
     ok: bool,
     error: Option<String>,
     #[serde(default)]
@@ -607,6 +609,13 @@ fn snapshot_failure(snapshot: &Snapshot, device_id: String) -> ShareError {
 }
 
 fn validate_sync_snapshot(snapshot: &Snapshot) -> Result<(), ShareError> {
+    if snapshot
+        .board_reference
+        .as_deref()
+        .is_some_and(|reference| !crate::deep_link::valid_reference(reference))
+    {
+        return Err(DomainError::InvalidArgument.into());
+    }
     // Rejected requests contain no board snapshot. Keep compatibility with
     // older hosts, which identify these responses by an empty name/revision.
     if !snapshot.ok
@@ -743,12 +752,7 @@ fn parse_ticket(ticket: &str) -> Result<Ticket, DomainError> {
 }
 
 fn ticket_payload(ticket: &str) -> Option<&str> {
-    let ticket = ticket.trim();
-    ticket
-        .strip_prefix("cardbe://share/")
-        // Old invitations remain usable after upgrading, but new links never
-        // expose the transport implementation in their text.
-        .or_else(|| ticket.strip_prefix("cardbe+iroh://"))
+    ticket.trim().strip_prefix("cardbe://share/")
 }
 
 // Tickets carry Iroh's native EndpointAddr so direct, relay, and future custom

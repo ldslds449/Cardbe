@@ -15,6 +15,7 @@ pub enum NetworkSettingsField {
 pub enum DomainError {
     TaskNotFound,
     BoardNotFound,
+    BoardLinkUnavailable,
     ColumnNotFound,
     BoardNameRequired,
     LastBoardRequired,
@@ -72,6 +73,7 @@ impl fmt::Display for DomainError {
         match self {
             Self::TaskNotFound => f.write_str("Task not found"),
             Self::BoardNotFound => f.write_str("Board not found"),
+            Self::BoardLinkUnavailable => f.write_str("Board link unavailable"),
             Self::ColumnNotFound => f.write_str("Column not found"),
             Self::BoardNameRequired => f.write_str("Board name cannot be empty"),
             Self::LastBoardRequired => f.write_str("At least one board is required"),
@@ -115,6 +117,7 @@ pub enum CommandError {
     ShareUnavailable,
     TaskNotFound,
     BoardNotFound,
+    BoardLinkUnavailable,
     ColumnNotFound,
     BoardNameRequired,
     LastBoardRequired,
@@ -283,6 +286,7 @@ impl From<DomainError> for CommandError {
         match error {
             DomainError::TaskNotFound => Self::TaskNotFound,
             DomainError::BoardNotFound => Self::BoardNotFound,
+            DomainError::BoardLinkUnavailable => Self::BoardLinkUnavailable,
             DomainError::ColumnNotFound => Self::ColumnNotFound,
             DomainError::BoardNameRequired => Self::BoardNameRequired,
             DomainError::LastBoardRequired => Self::LastBoardRequired,

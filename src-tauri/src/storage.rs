@@ -3263,7 +3263,7 @@ fn write_board_transaction(
     tx.execute("DELETE FROM cardbe_archives WHERE board_id=?1", [board_id])?;
     tx.execute("DELETE FROM cardbe_templates WHERE board_id=?1", [board_id])?;
     tx.execute(
-        "DELETE FROM cardbe_board_metadata WHERE board_id=?1",
+        "DELETE FROM cardbe_board_metadata WHERE board_id=?1 AND key <> 'link_reference'",
         [board_id],
     )?;
     let mut p = DatabasePositions::default();

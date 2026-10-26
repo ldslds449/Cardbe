@@ -440,6 +440,7 @@ fn conflict_permission_refresh_preserves_local_edits_and_allows_editor_rebase() 
         .unwrap();
     let local_doc = app.database.iroh_loro_update(board.id).unwrap().unwrap();
     let mut owner = Snapshot {
+        board_reference: None,
         ok: true,
         error: None,
         error_code: None,
@@ -594,6 +595,7 @@ async fn direct_transport_exchanges_loro_updates_and_rejects_invalid_responses()
                 edited.templates
             );
             let response = Snapshot {
+                board_reference: None,
                 ok: true,
                 error: None,
                 error_code: None,
@@ -648,6 +650,7 @@ use crate::models::{Board, IrohNetworkSettings};
 #[test]
 fn rejected_sync_responses_are_not_board_snapshots() {
     let mut response = Snapshot {
+        board_reference: None,
         ok: false,
         error: Some("Access was declined or revoked. You can request access again.".into()),
         error_code: None,
@@ -667,6 +670,21 @@ fn rejected_sync_responses_are_not_board_snapshots() {
     response.name.clear();
     response.ok = true;
     assert!(validate_sync_snapshot(&response).is_ok());
+    response.board_reference = Some("invalid/reference".into());
+    assert!(matches!(
+        validate_sync_snapshot(&response),
+        Err(crate::errors::ShareError::Domain(
+            DomainError::InvalidArgument
+        ))
+    ));
+    response.board_reference = Some("a".repeat(64));
+    assert!(validate_sync_snapshot(&response).is_ok());
+    let mut legacy = serde_json::to_value(&response).unwrap();
+    legacy.as_object_mut().unwrap().remove("board_reference");
+    assert!(serde_json::from_value::<Snapshot>(legacy)
+        .unwrap()
+        .board_reference
+        .is_none());
 }
 
 #[test]
@@ -689,6 +707,7 @@ fn access_status_requests_and_legacy_errors_remain_compatible() {
         ("Invitation was revoked or disabled", "SHARE_ACCESS_REVOKED"),
     ] {
         let response = Snapshot {
+            board_reference: None,
             ok: false,
             error: Some(message.into()),
             error_code: None,
@@ -793,6 +812,7 @@ use crate::errors::DomainError;
 #[test]
 fn structured_and_legacy_peer_failures_produce_safe_ipc_errors() {
     let mut snapshot = Snapshot {
+        board_reference: None,
         ok: false,
         error: Some("Waiting for owner approval".into()),
         error_code: None,
@@ -843,9 +863,10 @@ fn structured_and_legacy_peer_failures_produce_safe_ipc_errors() {
 }
 
 #[test]
-fn new_and_legacy_invitation_prefixes_are_accepted() {
+fn only_current_invitation_prefix_is_accepted() {
     assert_eq!(ticket_payload("cardbe://share/payload"), Some("payload"));
-    assert_eq!(ticket_payload(" cardbe+iroh://payload "), Some("payload"));
+    assert_eq!(ticket_payload(" cardbe://share/payload "), Some("payload"));
+    assert_eq!(ticket_payload("cardbe+iroh://payload"), None);
     assert_eq!(ticket_payload("https://example.test/payload"), None);
 }
 

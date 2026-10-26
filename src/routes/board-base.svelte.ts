@@ -1,4 +1,7 @@
-import { translateCommandError } from "#lib/command-errors.js";
+import {
+  parseCommandError,
+  translateCommandError,
+} from "#lib/command-errors.js";
 import { m } from "#lib/paraglide/messages.js";
 import type { TaskExplorerQuery } from "./utils/task-explorer";
 import { logger } from "#lib/logger.js";
@@ -588,7 +591,10 @@ export abstract class BoardStoreBase {
       });
       return deserialize_task(data);
     } catch (error) {
-      logger.error("board.expired_task_detail_load.failed", error);
+      // Missing tasks are expected, e.g. when a link targets an archived task.
+      if (parseCommandError(error)?.code !== "TASK_NOT_FOUND") {
+        logger.error("board.expired_task_detail_load.failed", error);
+      }
       return null;
     }
   }

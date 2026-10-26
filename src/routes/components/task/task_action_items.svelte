@@ -4,6 +4,7 @@
   import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import * as m from "#lib/paraglide/messages.js";
   import FullscreenIcon from "@lucide/svelte/icons/fullscreen";
+  import LinkIcon from "@lucide/svelte/icons/link";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import ArchiveIcon from "@lucide/svelte/icons/archive";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
@@ -12,6 +13,7 @@
   let {
     context = false,
     onView,
+    onCopyLink,
     onEdit,
     onComplete,
     onArchive,
@@ -21,6 +23,7 @@
   }: {
     context?: boolean;
     onView: () => void;
+    onCopyLink?: () => void;
     onEdit?: () => void;
     /** Moves the task to the done column, or archives it without one. */
     onComplete?: () => void;
@@ -36,6 +39,9 @@
 </script>
 
 <Item onclick={onView}><FullscreenIcon />{m.task_view_details()}</Item>
+{#if onCopyLink}<Item onclick={onCopyLink}
+    ><LinkIcon />{m.deep_link_copy_task()}</Item
+  >{/if}
 {#if onEdit}<Item onclick={onEdit}><PencilIcon />{m.task_edit_action()}</Item
   >{/if}
 {#if onComplete}<Item onSelect={onComplete}

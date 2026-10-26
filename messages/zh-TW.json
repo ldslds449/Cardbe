@@ -1909,6 +1909,7 @@
   "error_internal": "發生錯誤，請再試一次。",
   "error_task_not_found": "這項任務已不存在。",
   "error_board_not_found": "這個看板已不存在。",
+  "error_board_link_unavailable": "擁有者更新 Cardbe 並完成同步後，才能複製這個看板的連結。",
   "error_column_not_found": "這個欄位已不存在。",
   "error_board_name_required": "請輸入看板名稱。",
   "error_last_board_required": "至少需要保留一個看板。",
@@ -2502,5 +2503,10 @@
   "daily_plan_empty_title": "今天，先從哪件事開始？",
   "daily_plan_clear_filters": "清除篩選",
   "daily_plan_float_close": "關閉今日規劃浮動視窗",
-  "daily_plan_float_empty": "請到首頁加入今天要做的任務。"
+  "daily_plan_float_empty": "請到首頁加入今天要做的任務。",
+  "deep_link_invalid": "連結無效或不支援此格式。",
+  "deep_link_copy_board": "複製看板連結",
+  "deep_link_copy_task": "複製任務連結",
+  "deep_link_copied": "已複製連結",
+  "deep_link_copy_failed": "無法複製連結"
 }

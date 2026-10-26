@@ -84,6 +84,7 @@
     columns,
     archives = [],
     onViewArchivedTask,
+    onCopyTaskLink,
     onArchiveTask,
     onDeleteTask,
     search_task_ids = null,
@@ -97,6 +98,7 @@
     columns: Column[];
     archives?: Archive[];
     onViewArchivedTask: (task: Task) => void;
+    onCopyTaskLink?: (task: Task) => void;
     onArchiveTask: (task: Task) => Promise<boolean>;
     onDeleteTask: (task: Task) => void;
     search_task_ids?: ReadonlySet<string> | null;
@@ -487,6 +489,7 @@
           canvas_archives.some((archive) => archive.task.id === task.id)
             ? onViewArchivedTask(task)
             : onViewTask(task),
+        onCopyLink: onCopyTaskLink,
         onArchive: async (task) => {
           if (await onArchiveTask(task)) {
             await refresh_archives();

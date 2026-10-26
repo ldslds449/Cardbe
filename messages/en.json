@@ -2215,6 +2215,7 @@
   "error_internal": "Something went wrong. Please try again.",
   "error_task_not_found": "This task no longer exists.",
   "error_board_not_found": "This board no longer exists.",
+  "error_board_link_unavailable": "This board's link becomes available after its owner updates Cardbe and the board syncs.",
   "error_column_not_found": "This column no longer exists.",
   "error_board_name_required": "Enter a board name.",
   "error_last_board_required": "Keep at least one board.",
@@ -2829,5 +2830,10 @@
   "daily_plan_empty_title": "Where would you like to start today?",
   "daily_plan_clear_filters": "Clear filters",
   "daily_plan_float_close": "Close floating daily plan",
-  "daily_plan_float_empty": "Add tasks to your plan from the home page."
+  "daily_plan_float_empty": "Add tasks to your plan from the home page.",
+  "deep_link_invalid": "This link is invalid or unsupported.",
+  "deep_link_copy_board": "Copy board link",
+  "deep_link_copy_task": "Copy task link",
+  "deep_link_copied": "Link copied",
+  "deep_link_copy_failed": "Couldn't copy the link"
 }

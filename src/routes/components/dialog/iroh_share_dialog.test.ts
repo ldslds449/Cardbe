@@ -25,6 +25,50 @@ function component_functions(...names: string[]) {
     .join("\n");
 }
 
+it("prefills an external invitation without joining and clears unrelated prompts", () => {
+  const start = source.lastIndexOf(
+    "$effect",
+    source.indexOf("if (open && initial_ticket)"),
+  );
+  const effect = source.slice(
+    start,
+    source.indexOf("  function open_join()", start),
+  );
+  const board = { iroh_last_error: { code: "INTERNAL_ERROR" } };
+  const state = new Function(
+    "$effect",
+    "untrack",
+    "board",
+    transpile(
+      `
+    let open=true, initial_ticket="cardbe://share/fixture", ticket="old", flow="manage";
+    let wait_generation=0, received_waiting_id=7, waiting_device_id="old-device";
+    let approval_open=true, revoke_open=true, delete_confirm_open=true;
+    ${component_functions("open_join")}
+    ${effect}
+    return {initial_ticket, ticket, flow, received_waiting_id, waiting_device_id, approval_open, revoke_open, delete_confirm_open, wait_generation};
+  `,
+      { target: ScriptTarget.ESNext },
+    ),
+  )(
+    (fn: () => void) => fn(),
+    (fn: () => void) => fn(),
+    board,
+  );
+  expect(state).toEqual({
+    initial_ticket: "",
+    ticket: "cardbe://share/fixture",
+    flow: "join",
+    received_waiting_id: null,
+    waiting_device_id: null,
+    approval_open: false,
+    revoke_open: false,
+    delete_confirm_open: false,
+    wait_generation: 1,
+  });
+  expect(board.iroh_last_error).toBe(null);
+});
+
 it("returns from board details to the list without closing sharing", async () => {
   const navigation = component_functions(
     "open_managed_board",

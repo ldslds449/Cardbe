@@ -56,6 +56,9 @@
       "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://api.github.com; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     }
   },
+  "plugins": {
+    "deep-link": { "desktop": { "schemes": ["cardbe"] } }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

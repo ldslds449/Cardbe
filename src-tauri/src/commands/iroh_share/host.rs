@@ -119,6 +119,10 @@ fn snapshot_from_db(
     };
     if kind != ShareResponseKind::Full {
         return Ok(Snapshot {
+            board_reference: Some(
+                db.board_link_reference(board_id)
+                    .map_err(|e| e.to_string())?,
+            ),
             ok: true,
             error: None,
             error_code: None,
@@ -134,6 +138,10 @@ fn snapshot_from_db(
     // Settings belong to the installation, not to the shared board.
     data.settings = Default::default();
     Ok(Snapshot {
+        board_reference: Some(
+            db.board_link_reference(board_id)
+                .map_err(|e| e.to_string())?,
+        ),
         ok: error.is_none(),
         error,
         error_code: None,
@@ -292,6 +300,10 @@ async fn apply_editor_push(
             .find(|board| board.id == board_id)
             .ok_or("Board was deleted")?;
         Ok(Snapshot {
+            board_reference: Some(
+                db.board_link_reference(board_id)
+                    .map_err(|e| e.to_string())?,
+            ),
             ok: true,
             error: None,
             error_code: None,
@@ -513,6 +525,7 @@ pub(super) async fn ensure_host(
                 .unwrap_or_else(|error| {
                     log::warn!(target: "iroh", "Shared-board request failed: {error}");
                     Snapshot {
+                        board_reference: None,
                         ok: false,
                         error: Some(error),
                         error_code: None,
@@ -542,6 +555,7 @@ pub(super) async fn ensure_host(
                     Ok(bytes) => {
                         log::warn!(target: "iroh", "Shared-board response exceeded the transfer limit: {} bytes", bytes.len());
                         serde_json::to_vec(&Snapshot {
+                            board_reference: None,
                             ok: false,
                             error: Some("Shared board exceeds the 16 MiB transfer limit".into()),
                             error_code: None,
@@ -883,6 +897,7 @@ pub(super) fn editor_snapshot_for_owner(
                 ShareError::Internal("Editable board is missing its Loro document".into())
             })?;
         return Ok(Snapshot {
+            board_reference: None,
             ok: true,
             error: None,
             error_code: None,
