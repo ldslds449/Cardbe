@@ -82,14 +82,16 @@
   // and mount new cards at once instead of showing a placeholder first.
   $effect(() => {
     for (const column of board.columns) {
-      sorted_column_tasks(column).forEach((task, display_idx) => {
-        if (
-          display_idx < EAGER_CARDS_PER_COLUMN ||
-          task.id.startsWith("pending_task_")
-        ) {
-          lazy_cards.mount(board.task_render_key(task.id));
-        }
-      });
+      sorted_column_tasks(column, board.columns).forEach(
+        (task, display_idx) => {
+          if (
+            display_idx < EAGER_CARDS_PER_COLUMN ||
+            task.id.startsWith("pending_task_")
+          ) {
+            lazy_cards.mount(board.task_render_key(task.id));
+          }
+        },
+      );
     }
   });
 
@@ -487,7 +489,7 @@
           {@const task_positions = new Map(
             column.tasks.map((task, task_idx) => [task.id, task_idx]),
           )}
-          {#each sorted_column_tasks(column) as task, display_idx (board.task_render_key(task.id))}
+          {#each sorted_column_tasks(column, board.columns) as task, display_idx (board.task_render_key(task.id))}
             {@const task_idx = task_positions.get(task.id) ?? display_idx}
             {#if !task_matches_search(task, search_text, search_task_ids)}
               <!-- Hidden by the current search. -->

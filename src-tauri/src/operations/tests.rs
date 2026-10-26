@@ -1011,12 +1011,14 @@ fn columns_take_sort_rules_and_still_accept_moved_tasks() {
     };
     let sorted = sort(json!([
         {"field": "priority", "direction": "desc"},
-        {"field": "title", "direction": "asc"}
+        {"field": "title", "direction": "asc"},
+        {"field": "dependency", "direction": "asc"}
     ]))
     .unwrap();
     assert_eq!(sorted["column"]["sort_order"], "custom");
     assert_eq!(sorted["column"]["sort_rules"][0]["field"], "priority");
     assert_eq!(sorted["column"]["sort_rules"][1]["direction"], "asc");
+    assert_eq!(sorted["column"]["sort_rules"][2]["field"], "dependency");
     // Only the given fields change.
     assert_eq!(sorted["column"]["name"], "Done");
     let due = sort(json!([{"field": "due_time", "direction": "asc"}])).unwrap();

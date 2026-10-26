@@ -11,14 +11,14 @@ function task(id: number, fields: Partial<Task> = {}): Task {
 
 function sorted_ids(tasks: Task[], sort_rules: SortRule[]): string[] {
   const column = create_column("column_1", "Todo", "", tasks, sort_rules);
-  return sorted_column_tasks(column).map((item) => item.id);
+  return sorted_column_tasks(column, [column]).map((item) => item.id);
 }
 
 describe("column sorting", () => {
   it("keeps the manual order when no rules apply", () => {
     const tasks = [task(3), task(1), task(2)];
     const column = create_column("column_1", "Todo", "", tasks);
-    expect(sorted_column_tasks(column)).toBe(tasks);
+    expect(sorted_column_tasks(column, [column])).toBe(tasks);
     expect(sorted_ids(tasks, [{ field: "effort", direction: "asc" }])).toEqual([
       "task_3",
       "task_1",
@@ -102,6 +102,58 @@ describe("column sorting", () => {
     expect(
       sorted_ids(tasks, [{ field: "priority", direction: "asc" }]),
     ).toEqual(["task_2", "task_4", "task_5", "task_3", "task_1"]);
+  });
+
+  it("lists tasks before the tasks waiting on them", () => {
+    // 1 waits on 2, which waits on 3; 4 waits on nothing.
+    const tasks = [
+      task(1, { blocked_by: ["task_2"] }),
+      task(2, { blocked_by: ["task_3"] }),
+      task(3),
+      task(4),
+    ];
+    expect(
+      sorted_ids(tasks, [{ field: "dependency", direction: "asc" }]),
+    ).toEqual(["task_3", "task_4", "task_2", "task_1"]);
+    expect(
+      sorted_ids(tasks, [{ field: "dependency", direction: "desc" }]),
+    ).toEqual(["task_1", "task_2", "task_3", "task_4"]);
+  });
+
+  it("follows open tasks in other columns but not done ones", () => {
+    const todo = create_column(
+      "column_1",
+      "Todo",
+      "",
+      [
+        task(1, { blocked_by: ["task_3"] }),
+        task(2, { blocked_by: ["task_4"] }),
+        task(5),
+      ],
+      [{ field: "dependency", direction: "asc" }],
+    );
+    const doing = create_column("column_2", "Doing", "", [
+      task(3, { blocked_by: ["task_9"] }),
+    ]);
+    const done = {
+      ...create_column("column_3", "Done", "", [task(4)]),
+      done: true,
+    };
+    // Task 9 left the board, so task 3 waits on nothing open.
+    expect(
+      sorted_column_tasks(todo, [todo, doing, done]).map((item) => item.id),
+    ).toEqual(["task_2", "task_5", "task_1"]);
+  });
+
+  it("orders cycles merged from other devices without failing", () => {
+    const tasks = [
+      task(1, { blocked_by: ["task_2"] }),
+      task(2, { blocked_by: ["task_1"] }),
+      task(3, { blocked_by: ["task_3"] }),
+    ];
+    expect(
+      sorted_ids(tasks, [{ field: "dependency", direction: "asc" }]),
+    ).toEqual(["task_2", "task_3", "task_1"]);
   });
 
   it("compares titles by Unicode code point", () => {

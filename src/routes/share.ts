@@ -119,7 +119,7 @@ export function build_share_snapshot(
       name: column.name,
       color: column.color,
       // Viewers see the published display order.
-      tasks: sorted_column_tasks(column)
+      tasks: sorted_column_tasks(column, columns)
         .filter((task) => selected_tasks.has(task.id))
         .map(serialize_task),
     }));

@@ -60,16 +60,18 @@ pub enum SortField {
     Title,
     ChecklistProgress,
     Priority,
+    Dependency,
 }
 
 impl SortField {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 7] = [
         Self::DueTime,
         Self::StartTime,
         Self::CreatedTime,
         Self::Title,
         Self::ChecklistProgress,
         Self::Priority,
+        Self::Dependency,
     ];
 
     fn name(self) -> &'static str {
@@ -80,6 +82,7 @@ impl SortField {
             Self::Title => "title",
             Self::ChecklistProgress => "checklist_progress",
             Self::Priority => "priority",
+            Self::Dependency => "dependency",
         }
     }
 }

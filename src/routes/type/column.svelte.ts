@@ -13,6 +13,7 @@ export const SORT_FIELDS = [
   "title",
   "checklist_progress",
   "priority",
+  "dependency",
 ] as const;
 export const MAX_SORT_RULES = 3;
 

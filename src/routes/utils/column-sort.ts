@@ -2,6 +2,7 @@ import { m } from "#lib/paraglide/messages.js";
 import "#lib/i18n/locale.svelte.js";
 import {
   SORT_FIELDS,
+  done_column,
   type Column,
   type SortDirection,
   type SortField,
@@ -15,8 +16,51 @@ import { due_limit } from "./task-date-range";
 
 type SortKey = number | string;
 
+/**
+ * The longest chain of open tasks each task of the board waits on, so a task
+ * always ranks after the tasks it waits on, even in other columns. Like
+ * `open_blockers`, only tasks outside the done column block.
+ */
+function wait_depths(columns: Column[]): Map<string, number> {
+  const done = done_column(columns);
+  const open = new Map(
+    columns
+      .filter((column) => column !== done)
+      .flatMap((column) => column.tasks)
+      .map((task) => [task.id, task]),
+  );
+  const depths = new Map<string, number>();
+  const visiting = new Set<string>();
+  function depth(task: Task): number {
+    const known = depths.get(task.id);
+    if (known !== undefined) {
+      return known;
+    }
+    // Edits merged from other devices can form a cycle; it is cut here.
+    visiting.add(task.id);
+    let result = 0;
+    for (const id of task.blocked_by ?? []) {
+      const blocker = open.get(id);
+      if (blocker && !visiting.has(id)) {
+        result = Math.max(result, depth(blocker) + 1);
+      }
+    }
+    visiting.delete(task.id);
+    depths.set(task.id, result);
+    return result;
+  }
+  for (const task of columns.flatMap((column) => column.tasks)) {
+    depth(task);
+  }
+  return depths;
+}
+
 /** Undefined is an empty value; empty values follow all others. */
-function sort_key(task: Task, field: SortField): SortKey | undefined {
+function sort_key(
+  task: Task,
+  field: SortField,
+  depths: Map<string, number>,
+): SortKey | undefined {
   switch (field) {
     case "due_time":
       // A date-only due date lasts until the end of its day.
@@ -37,6 +81,8 @@ function sort_key(task: Task, field: SortField): SortKey | undefined {
       return task.priority
         ? TASK_PRIORITIES.indexOf(task.priority) + 1
         : undefined;
+    case "dependency":
+      return depths.get(task.id) ?? 0;
   }
 }
 
@@ -72,10 +118,11 @@ export function active_sort_rules(
   );
 }
 
-export function compare_tasks(
+function compare_tasks(
   left: Task,
   right: Task,
   rules: SortRule[],
+  depths: Map<string, number>,
 ): number {
   const pinned = Number(right.pinned ?? false) - Number(left.pinned ?? false);
   if (pinned) {
@@ -85,8 +132,8 @@ export function compare_tasks(
     if (!is_sort_field(rule.field)) {
       continue;
     }
-    const left_key = sort_key(left, rule.field);
-    const right_key = sort_key(right, rule.field);
+    const left_key = sort_key(left, rule.field, depths);
+    const right_key = sort_key(right, rule.field, depths);
     if (left_key === undefined || right_key === undefined) {
       if (left_key !== right_key) {
         return left_key === undefined ? 1 : -1;
@@ -101,14 +148,21 @@ export function compare_tasks(
   return 0;
 }
 
-/** The column's tasks in display order. */
-export function sorted_column_tasks(column: Column): Task[] {
-  if (active_sort_rules(column.sort_rules).length === 0) {
+/**
+ * The column's tasks in display order. `columns` is the whole board, which
+ * dependency sorting follows across columns.
+ */
+export function sorted_column_tasks(column: Column, columns: Column[]): Task[] {
+  const rules = active_sort_rules(column.sort_rules);
+  if (rules.length === 0) {
     return column.tasks;
   }
+  const depths = rules.some((rule) => rule.field === "dependency")
+    ? wait_depths(columns)
+    : new Map<string, number>();
   // `sort` is stable, so ties keep the manual order.
   return [...column.tasks].sort((left, right) =>
-    compare_tasks(left, right, column.sort_rules),
+    compare_tasks(left, right, rules, depths),
   );
 }
 
@@ -119,6 +173,7 @@ export const DEFAULT_SORT_DIRECTION: Record<SortField, SortDirection> = {
   title: "asc",
   checklist_progress: "asc",
   priority: "desc",
+  dependency: "asc",
 };
 
 export function sort_field_label(field: SortField): string {
@@ -135,6 +190,8 @@ export function sort_field_label(field: SortField): string {
       return m.column_sort_field_checklist_progress();
     case "priority":
       return m.task_priority();
+    case "dependency":
+      return m.column_sort_field_dependency();
   }
 }
 
@@ -162,6 +219,10 @@ export function sort_direction_label(
         : m.column_sort_checklist_progress_desc();
     case "priority":
       return asc ? m.column_sort_priority_asc() : m.column_sort_priority_desc();
+    case "dependency":
+      return asc
+        ? m.column_sort_dependency_asc()
+        : m.column_sort_dependency_desc();
   }
 }
 
