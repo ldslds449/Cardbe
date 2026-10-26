@@ -1,4 +1,6 @@
 import { Node } from "@tiptap/core";
+import { PluginKey } from "@tiptap/pm/state";
+import Suggestion, { type SuggestionOptions } from "@tiptap/suggestion";
 import { mount, unmount } from "svelte";
 import Link2Icon from "@lucide/svelte/icons/link-2";
 import {
@@ -6,11 +8,51 @@ import {
   task_id_from_card_reference,
 } from "../../../../routes/utils/card-reference";
 
-export const CardReference = Node.create({
+export type CardReferenceSuggestion = Omit<SuggestionOptions, "editor">;
+
+export const CardReferenceSuggestionKey = new PluginKey(
+  "cardReferenceSuggestion",
+);
+
+export const CardReference = Node.create<{
+  /** Opens the `[[` card picker at the cursor while typing. */
+  suggestion: CardReferenceSuggestion | null;
+}>({
   name: "cardReference",
   group: "inline",
   inline: true,
   atom: true,
+  addOptions() {
+    return { suggestion: null };
+  },
+  addProseMirrorPlugins() {
+    const suggestion = this.options.suggestion;
+    if (!suggestion) {
+      return [];
+    }
+    return [
+      Suggestion({
+        pluginKey: CardReferenceSuggestionKey,
+        char: "[[",
+        // Card titles contain spaces, and `[[` may follow any character.
+        allowSpaces: true,
+        allowedPrefixes: null,
+        ...suggestion,
+        editor: this.editor,
+        allow: (props) => {
+          const { state, range } = props;
+          const code = state.schema.marks.code;
+          return (
+            !state.doc.resolve(range.from).parent.type.spec.code &&
+            !(code && state.doc.rangeHasMark(range.from, range.to, code)) &&
+            // A closing bracket means a reference typed out by hand.
+            !state.doc.textBetween(range.from, range.to).includes("]") &&
+            (suggestion.allow?.(props) ?? true)
+          );
+        },
+      }),
+    ];
+  },
   addAttributes() {
     return {
       title: { default: "Untitled card" },
@@ -45,7 +87,7 @@ export const CardReference = Node.create({
     level: "inline",
     start: (source) => source.indexOf("[["),
     tokenize(source) {
-      const match = /^\[\[([^\]\n|]+)\|(task_\d+)\]\]/.exec(source);
+      const match = /^\[\[([^\n|]+)\|(task_\d+)\]\]/.exec(source);
       if (!match) {
         return undefined;
       }

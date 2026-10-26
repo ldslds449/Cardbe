@@ -213,7 +213,11 @@
     if (!selection) {
       return;
     }
-    if (editor_ref?.getTextBeforeCursor(2) === "[[") {
+    // The rich editor opens its own picker at the cursor.
+    if (
+      $editorMode === "plain" &&
+      editor_ref?.getTextBeforeCursor(2) === "[["
+    ) {
       reference_trigger_start = selection.from - 2;
       card_reference_picker_open = true;
     }
@@ -619,7 +623,7 @@
               }}
             />
           {/if}
-          {#if !previewing_description && card_reference_options.length > 0}
+          {#if !previewing_description}
             {@render card_reference_picker()}
           {/if}
           <Button
@@ -657,6 +661,8 @@
             class="min-h-0 flex-1 px-3 py-4 sm:px-6"
             placeholder={m.task_description_placeholder()}
             showToolbar
+            cardReferenceOptions={card_reference_options}
+            cardReferenceExcludeId={task.id}
             value={task.description}
             onvaluechange={(content) => {
               task.description = content;
@@ -1149,7 +1155,7 @@
             }}
           />
         {/if}
-        {#if !description_expanded && !previewing_description && card_reference_options.length > 0}
+        {#if !description_expanded && !previewing_description}
           {@render card_reference_picker()}
         {/if}
         <Button
@@ -1179,6 +1185,8 @@
           : "editor-auto-height min-h-40 max-h-[min(60vh,36rem)] px-3 py-2"}
         placeholder={m.task_description_placeholder()}
         id="description"
+        cardReferenceOptions={card_reference_options}
+        cardReferenceExcludeId={task.id}
         bind:value={task.description}
         onvaluechange={handle_description_change}
       />

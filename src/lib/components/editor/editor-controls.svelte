@@ -58,48 +58,6 @@
   role="group"
   aria-label={m.editor_controls()}
 >
-  {#if !compact && $editorMode === "plain" && splitPreview !== undefined}
-    <Button
-      type="button"
-      size="sm"
-      class="h-7 px-2 text-xs"
-      variant={splitPreview ? "secondary" : "ghost"}
-      aria-pressed={splitPreview}
-      onclick={() => {
-        splitPreview = !splitPreview;
-        if (splitPreview) {
-          previewing = false;
-        }
-      }}
-    >
-      <Columns2Icon />
-      {m.editor_split_preview()}
-    </Button>
-  {/if}
-  {#if $editorMode === "plain" && !splitPreview}
-    <div
-      class="flex items-center gap-1"
-      role="group"
-      aria-label={m.editor_plain_text_view()}
-    >
-      <Button
-        type="button"
-        size="sm"
-        class="h-7 px-2 text-xs"
-        variant={previewing ? "ghost" : "secondary"}
-        aria-pressed={!previewing}
-        onclick={() => (previewing = false)}>{m.editor_edit()}</Button
-      >
-      <Button
-        type="button"
-        size="sm"
-        class="h-7 px-2 text-xs"
-        variant={previewing ? "secondary" : "ghost"}
-        aria-pressed={previewing}
-        onclick={() => (previewing = true)}>{m.editor_preview()}</Button
-      >
-    </div>
-  {/if}
   {#if $editorMode === "rich" && language !== null && !disabled}
     <Combobox
       items={languages}
@@ -145,4 +103,46 @@
       </DropdownMenu.RadioGroup>
     </DropdownMenu.Content>
   </DropdownMenu.Root>
+  {#if !compact && $editorMode === "plain" && splitPreview !== undefined}
+    <Button
+      type="button"
+      size="sm"
+      class="h-7 px-2 text-xs"
+      variant={splitPreview ? "secondary" : "ghost"}
+      aria-pressed={splitPreview}
+      onclick={() => {
+        splitPreview = !splitPreview;
+        if (splitPreview) {
+          previewing = false;
+        }
+      }}
+    >
+      <Columns2Icon />
+      {m.editor_split_preview()}
+    </Button>
+  {/if}
+  {#if $editorMode === "plain" && !splitPreview}
+    <div
+      class="flex items-center gap-1"
+      role="group"
+      aria-label={m.editor_plain_text_view()}
+    >
+      <Button
+        type="button"
+        size="sm"
+        class="h-7 px-2 text-xs"
+        variant={previewing ? "ghost" : "secondary"}
+        aria-pressed={!previewing}
+        onclick={() => (previewing = false)}>{m.editor_edit()}</Button
+      >
+      <Button
+        type="button"
+        size="sm"
+        class="h-7 px-2 text-xs"
+        variant={previewing ? "secondary" : "ghost"}
+        aria-pressed={previewing}
+        onclick={() => (previewing = true)}>{m.editor_preview()}</Button
+      >
+    </div>
+  {/if}
 </div>

@@ -1,5 +1,5 @@
 import * as m from "#lib/paraglide/messages.js";
-const CARD_REFERENCE_PATTERN = /\[\[([^\]\n|]+)\|(task_\d+)\]\]/g;
+const CARD_REFERENCE_PATTERN = /\[\[([^\n|]+)\|(task_\d+)\]\]/g;
 const CARD_REFERENCE_HREF_PATTERN = /^#card-(task_\d+)$/;
 
 function escape_markdown_label(label: string): string {
@@ -9,7 +9,6 @@ function escape_markdown_label(label: string): string {
 export function create_card_reference(title: string, task_id: string): string {
   const safe_title =
     title
-      .replaceAll("]", " ")
       .replaceAll("|", " ")
       .replace(/[\r\n]/g, " ")
       .trim() || m.task_template_untitled();

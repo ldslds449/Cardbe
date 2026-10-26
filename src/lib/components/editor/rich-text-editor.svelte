@@ -7,7 +7,7 @@
   import { cn } from "#lib/utils.js";
   import RichTextSurface from "./rich-text-surface.svelte";
   import { editorMode } from "./mode";
-  import { caretTop } from "./textarea-caret";
+  import { caretTop, caretRect } from "./textarea-caret";
   import Markdown from "../../../routes/components/markdown.svelte";
   import type { RichTextEditorHandle } from "./rich-text-surface.svelte";
 
@@ -114,6 +114,7 @@
       scrollCaretIntoView(input, from);
     };
     const handle: RichTextEditorHandle = {
+      getCursorRect: () => caretRect(input, input.selectionStart),
       setSelection: ({ from, to }) => select(from, to),
       reveal: ({ offset }) => select(Math.min(offset, input.value.length)),
       focus: () => input.focus({ preventScroll: true }),

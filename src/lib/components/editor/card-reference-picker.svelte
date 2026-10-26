@@ -20,6 +20,10 @@
     triggerStart = $bindable<number | undefined>(undefined),
     compact = false,
     disabled = false,
+    inline = false,
+    anchor,
+    query = "",
+    onclose,
   }: {
     editor: RichTextEditorHandle | null;
     options: CardReferenceOption[];
@@ -28,7 +32,17 @@
     triggerStart?: number;
     compact?: boolean;
     disabled?: boolean;
+    inline?: boolean;
+    anchor?: { getBoundingClientRect: () => DOMRect };
+    query?: string;
+    onclose?: () => void;
   } = $props();
+  let searchInput = $state<HTMLInputElement | null>(null);
+  $effect(() => {
+    if (open && searchInput) {
+      searchInput.focus();
+    }
+  });
   async function insert_card_reference(option: CardReferenceOption) {
     const handle = editor;
     const selection = handle?.getSelection();
@@ -41,6 +55,7 @@
     );
     open = false;
     triggerStart = undefined;
+    onclose?.();
     await tick();
     handle.focus();
   }
@@ -51,28 +66,48 @@
   onOpenChange={(isOpen) => {
     if (!isOpen) {
       triggerStart = undefined;
+      onclose?.();
     }
   }}
 >
-  <Popover.Trigger disabled={disabled || !editor}>
-    {#snippet child({ props })}
-      <Button
-        {...props}
-        type="button"
-        variant="ghost"
-        size={compact ? "icon-sm" : "sm"}
-        class={compact ? "" : "h-7 select-none gap-1.5 px-2 text-xs"}
-        aria-label={m.editor_reference_card()}
-        title={m.editor_reference_card()}
-      >
-        <Link2Icon class="size-3.5" />
-        {#if !compact}{m.editor_reference_card()}{/if}
-      </Button>
-    {/snippet}
-  </Popover.Trigger>
-  <Popover.Content class="w-80 p-0" align="end">
+  {#if !inline}
+    <Popover.Trigger disabled={disabled || !editor}>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          type="button"
+          variant="ghost"
+          size={compact ? "icon-sm" : "sm"}
+          class={compact ? "" : "h-7 select-none gap-1.5 px-2 text-xs"}
+          aria-label={m.editor_reference_card()}
+          title={m.editor_reference_card()}
+        >
+          <Link2Icon class="size-3.5" />
+          {#if !compact}{m.editor_reference_card()}{/if}
+        </Button>
+      {/snippet}
+    </Popover.Trigger>
+  {/if}
+  <Popover.Content
+    class="w-80 p-0"
+    side="bottom"
+    align={inline || triggerStart !== undefined ? "start" : "end"}
+    customAnchor={anchor ??
+      (triggerStart !== undefined && editor?.getCursorRect
+        ? { getBoundingClientRect: editor.getCursorRect }
+        : undefined)}
+    onEscapeKeydown={(event) => event.stopPropagation()}
+    onCloseAutoFocus={(event) => {
+      event.preventDefault();
+      if (!open) {
+        editor?.focus();
+      }
+    }}
+  >
     <Command.Root>
       <Command.Input
+        bind:ref={searchInput}
+        value={query}
         placeholder={m.task_search_cards_placeholder()}
         aria-label={m.task_search_cards()}
       />

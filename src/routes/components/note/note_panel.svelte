@@ -32,6 +32,7 @@
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { Textarea } from "#lib/components/ui/textarea/index.js";
   import EditorControls from "#lib/components/editor/editor-controls.svelte";
+  import { editorMode } from "#lib/components/editor/mode.js";
   import CardReferencePicker, {
     type CardReferenceOption,
   } from "#lib/components/editor/card-reference-picker.svelte";
@@ -130,10 +131,8 @@
     selected_note.content = content;
     queue_save(selected_note);
     const handle = note_ref;
-    if (
-      card_reference_options.length &&
-      handle?.getTextBeforeCursor(2) === "[["
-    ) {
+    // The rich editor opens its own picker at the cursor.
+    if ($editorMode === "plain" && handle?.getTextBeforeCursor(2) === "[[") {
       reference_start = handle.getSelection().from - 2;
       reference_open = true;
     }
@@ -734,6 +733,7 @@
               placeholder={m.note_write()}
               showToolbar={variant === "page"}
               aria-label={m.note_content()}
+              cardReferenceOptions={card_reference_options}
               disabled={deleting_id === selected_note.id}
               value={selected_note.content}
               onvaluechange={handle_note_change}

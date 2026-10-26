@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
   import { m } from "#lib/paraglide/messages.js";
   import { untrack } from "svelte";
   import "./markdown-content.css";
@@ -12,6 +12,10 @@
     type TextTarget,
   } from "../../../routes/utils/markdown-outline";
   import { cn } from "#lib/utils.js";
+  import type { CardReferenceOption } from "./card-reference-picker.svelte";
+  import { exitSuggestion, type SuggestionProps } from "@tiptap/suggestion";
+  import { CardReferenceSuggestionKey } from "./extensions/card-reference";
+  import CardReferencePicker from "./card-reference-picker.svelte";
   import { filterSlashCommands } from "./commands/slashCommands";
   import { createEditorExtensions } from "./extensions";
   import EditorToolbar from "./menus/editor-toolbar.svelte";
@@ -27,6 +31,7 @@
   export type RichTextEditorHandle = {
     focus: () => void;
     getSelection: () => EditorSelection;
+    getCursorRect?: () => DOMRect;
     getTextBeforeCursor: (length: number) => string;
     replaceMarkdown: (markdown: string, range?: EditorSelection) => void;
     setCodeLanguage?: (language: string | null) => void;
@@ -40,6 +45,12 @@
   type SlashState = EditorSelection & {
     query: string;
     position: MenuPosition;
+  };
+  // A popover anchored at the cursor: inside a transformed dialog, a fixed
+  // menu would be offset and clipped.
+  type ReferenceState = EditorSelection & {
+    query: string;
+    anchor: { getBoundingClientRect: () => DOMRect };
   };
 
   let {
@@ -56,6 +67,8 @@
     readonly = false,
     "aria-label": ariaLabel,
     "aria-describedby": ariaDescribedby,
+    cardReferenceOptions = [],
+    cardReferenceExcludeId = "",
     onvaluechange,
   }: {
     ref?: RichTextEditorHandle | null;
@@ -71,6 +84,9 @@
     readonly?: boolean;
     "aria-label"?: string;
     "aria-describedby"?: string;
+    /** Cards offered after typing `[[`. */
+    cardReferenceOptions?: CardReferenceOption[];
+    cardReferenceExcludeId?: string;
     onvaluechange?: (value: string) => void;
   } = $props();
 
@@ -78,6 +94,8 @@
   let editor = $state<Editor | null>(null);
   let slash = $state<SlashState | null>(null);
   let slashIndex = $state(0);
+  let reference = $state<ReferenceState | null>(null);
+  let referenceOpen = $state(false);
   let revision = $state(0);
   let lastValue = value;
   // Markdown re-serialization can rewrite equivalent input (for example bare
@@ -205,6 +223,29 @@
     return false;
   }
 
+  function showReference({
+    editor: instance,
+    range,
+    query,
+    clientRect,
+  }: SuggestionProps) {
+    referenceOpen = true;
+    reference = {
+      ...range,
+      query,
+      anchor: {
+        getBoundingClientRect: () => {
+          const rect = clientRect?.();
+          if (rect) {
+            return rect;
+          }
+          const { left, top, bottom } = instance.view.coordsAtPos(range.from);
+          return new DOMRect(left, top, 0, bottom - top);
+        },
+      },
+    };
+  }
+
   // Finds the nth occurrence of text inside a single text block.
   function textPosition(
     doc: ProseMirrorNode,
@@ -329,7 +370,16 @@
   function createEditor(host: HTMLDivElement) {
     const instance = new TiptapEditor({
       element: host,
-      extensions: createEditorExtensions(placeholder),
+      extensions: createEditorExtensions(placeholder, {
+        render: () => ({
+          onStart: showReference,
+          onUpdate: showReference,
+          onExit: () => {
+            referenceOpen = false;
+            reference = null;
+          },
+        }),
+      }),
       content: value,
       contentType: "markdown",
       editable: !disabled && !readonly,
@@ -471,6 +521,22 @@
       </div>
     </ScrollArea>
   {/if}
+
+  <CardReferencePicker
+    inline
+    editor={ref}
+    options={cardReferenceOptions}
+    excludeTaskId={cardReferenceExcludeId}
+    bind:open={referenceOpen}
+    triggerStart={reference?.from}
+    anchor={reference?.anchor}
+    query={reference?.query ?? ""}
+    onclose={() => {
+      if (editor) {
+        exitSuggestion(editor.view, CardReferenceSuggestionKey);
+      }
+    }}
+  />
 </div>
 
 <style>

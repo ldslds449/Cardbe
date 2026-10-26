@@ -467,6 +467,25 @@ describe("Markdown editor serialization", () => {
       "See [[My card|task_123]] and [ordinary](https://example.com).",
     );
   });
+  it.each(["[待辦] 修正問題", "Closing ] bracket", "Repeated ]] brackets"])(
+    "preserves brackets in a reference title through rich editing: %s",
+    (title) => {
+      const source = `Before [[${title}|task_123]] after`;
+      const editor = new Editor({
+        element: null,
+        extensions: createEditorExtensions(),
+        content: source,
+        contentType: "markdown",
+      });
+      editors.push(editor);
+      expect(editor.getJSON().content?.[0]?.content?.[1]).toMatchObject({
+        type: "cardReference",
+        attrs: { title, taskId: "task_123" },
+      });
+      expect(serializeMarkdown(editor)).toBe(source);
+    },
+  );
+
   it("inserts a card reference inline without splitting its paragraph", () => {
     const editor = new Editor({
       element: null,

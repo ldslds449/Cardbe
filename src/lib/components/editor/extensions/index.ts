@@ -16,7 +16,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { CodeHighlight } from "./code-highlight";
 import { CodeScroll } from "./code-scroll";
 import { MathInline, MathBlock, withMathMarks } from "./math";
-import { CardReference } from "./card-reference";
+import { CardReference, type CardReferenceSuggestion } from "./card-reference";
 import {
   FootnoteDefinition,
   FootnoteReference,
@@ -122,7 +122,10 @@ const AlignedTable = Table.extend({
   },
 });
 
-export function createEditorExtensions(placeholder = "Start writing…") {
+export function createEditorExtensions(
+  placeholder = "Start writing…",
+  cardReferenceSuggestion: CardReferenceSuggestion | null = null,
+) {
   return [
     StarterKit.extend({
       addExtensions() {
@@ -137,7 +140,7 @@ export function createEditorExtensions(placeholder = "Start writing…") {
     CodeScroll,
     MathInline,
     MathBlock,
-    CardReference,
+    CardReference.configure({ suggestion: cardReferenceSuggestion }),
     EditorImageExtension.configure({ inline: true }),
     ImageParagraph,
     RawHtmlInline,
