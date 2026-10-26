@@ -58,6 +58,13 @@
   </tr>
 </table>
 
+### Plan today
+
+- Choose tasks from any board for **Today's plan** on the home page, including tasks without a due date.
+- Move items earlier or later, open or complete tasks, and remove items without deleting the tasks.
+- Drag the handle to reorder tasks, or use the task menu to move them with the keyboard. Float the plan on your desktop to keep the same list in sight; changes follow across both windows.
+- The ordered list stays on this device across restarts and days until you remove items. Archived, deleted, or transferred tasks are hidden. The plan is outside board synchronization, Undo, and portable backups.
+
 ### Capture ideas instantly
 
 - Use a global keyboard shortcut to add a task or a note from anywhere, even when Cardbe is in the background.

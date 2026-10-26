@@ -20,6 +20,7 @@ import {
   resize_floating_focus,
   read_floating_focus_state,
   write_floating_focus_state,
+  DAILY_PLAN_ID,
 } from "./floating-focuses";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 
@@ -159,6 +160,25 @@ describe("floating Focus windows", () => {
     await expect(open_floating_focus("a")).rejects.toEqual({
       code: "FOCUS_NOT_FOUND",
     });
+    expect(read_floating_focuses()).toEqual([]);
+  });
+
+  it("restores the daily plan window and its collapsed preference like other floating windows", async () => {
+    await open_floating_focus(DAILY_PLAN_ID);
+    await open_floating_focus(DAILY_PLAN_ID);
+    write_floating_focus_state(DAILY_PLAN_ID, true, 420);
+    expect(read_floating_focuses()).toEqual([DAILY_PLAN_ID]);
+    mocks.invoke.mockClear();
+    await restore_floating_focuses();
+    expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith(
+      "open_floating_focus",
+      { id: DAILY_PLAN_ID },
+    );
+    expect(read_floating_focus_state(DAILY_PLAN_ID)).toEqual({
+      collapsed: true,
+      expanded_height: 420,
+    });
+    forget_floating_focus(DAILY_PLAN_ID);
     expect(read_floating_focuses()).toEqual([]);
   });
 

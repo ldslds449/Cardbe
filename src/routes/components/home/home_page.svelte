@@ -62,6 +62,8 @@
   import { untrack } from "svelte";
   import { Button } from "#lib/components/ui/button/index.js";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import DailyPlan from "./daily_plan.svelte";
+  import type { AllTaskItem } from "../../board-base.svelte";
   import { by_recent, read_recent } from "./recent";
 
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
@@ -95,6 +97,8 @@
     onOpenNotes,
     onOpenNote,
     onCreateNote,
+    onOpenTask,
+    paused = false,
   }: {
     focuses: Focus[];
     boards: {
@@ -110,6 +114,8 @@
     onOpenNotes: () => void;
     onOpenNote: (note_id: number) => void;
     onCreateNote: () => void;
+    onOpenTask: (item: AllTaskItem) => void;
+    paused?: boolean;
   } = $props();
 
   let now = $state(new Date());
@@ -389,6 +395,8 @@
       </p>
       <h1 class="mt-1 text-3xl font-semibold tracking-tight">{greeting}</h1>
     </header>
+
+    <DailyPlan {onOpenTask} {boards} {paused} />
 
     <section aria-labelledby="home-focuses">
       {@render section_header(

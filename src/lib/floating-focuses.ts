@@ -6,6 +6,7 @@ import type { Window } from "@tauri-apps/api/window";
 
 // The 40px header plus the shell's top and bottom borders.
 const COLLAPSED_HEIGHT = 42;
+export const DAILY_PLAN_ID = "daily-plan";
 
 export async function resize_floating_focus(
   float_window: Pick<Window, "setSizeConstraints" | "setSize" | "setResizable">,

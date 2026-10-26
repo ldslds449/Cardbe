@@ -2,6 +2,7 @@ pub mod archive;
 pub mod board;
 pub mod boards;
 pub mod calendar_export;
+pub mod daily_plan;
 pub mod diagnostics;
 pub mod external;
 pub mod floating_task;

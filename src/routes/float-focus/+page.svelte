@@ -11,6 +11,7 @@
     resize_floating_focus,
     read_floating_focus_state,
     write_floating_focus_state,
+    DAILY_PLAN_ID,
   } from "#lib/floating-focuses.js";
   import { formatNumber } from "#lib/i18n/index.js";
   import { logger } from "#lib/logger.js";
@@ -28,7 +29,9 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import type { AllTaskItem, BoardSummary } from "../board-base.svelte";
-  import type { Focus } from "../type/focus";
+  import { create_focus, type Focus } from "../type/focus";
+  import DailyPlan from "../components/home/daily_plan.svelte";
+  import SunIcon from "@lucide/svelte/icons/sun";
   import { get_task_id } from "../type/task.svelte";
   import PriorityIndicator from "../components/task/priority_indicator.svelte";
   import DueBadge from "../components/task/due_badge.svelte";
@@ -48,6 +51,7 @@
     new URLSearchParams(window.location.search).get("focus"),
   );
   const float_window = getCurrentWindow();
+  const daily_plan = view_id === DAILY_PLAN_ID;
 
   const saved_window_state = read_floating_focus_state(view_id ?? "");
   let collapsed = $state(saved_window_state.collapsed);
@@ -88,6 +92,8 @@
   let view = $state<Focus | null>(null);
   let boards = $state<BoardSummary[]>([]);
   let items = $state<AllTaskItem[]>([]);
+  let daily_plan_count = $state<number | null>(null);
+  const task_count = $derived(daily_plan ? daily_plan_count : items.length);
   let has_more = $state(false);
   let loading = $state(true);
   let error = $state<CommandError | null>(null);
@@ -102,7 +108,13 @@
     view ? group_focus_items(items, view.group, now) : [],
   );
 
-  const window_title = $derived(view ? `${view.name} · Cardbe` : "Cardbe");
+  const window_title = $derived(
+    daily_plan
+      ? `${m.daily_plan_title()} · Cardbe`
+      : view
+        ? `${view.name} · Cardbe`
+        : "Cardbe",
+  );
 
   function item_key(item: AllTaskItem) {
     return `${item.board_id}:${item.archived_at ? "a" : ""}${item.task.id}`;
@@ -119,20 +131,26 @@
     const generation = ++load_generation;
     try {
       const [views, state] = await Promise.all([
-        invoke<Focus[] | null>("get_focuses"),
+        daily_plan
+          ? Promise.resolve(null)
+          : invoke<Focus[] | null>("get_focuses"),
         invoke<{ boards: BoardSummary[] }>("get_boards"),
       ]);
       if (generation !== load_generation) {
         return;
       }
-      const found = views?.find((candidate) => candidate.id === view_id);
+      const found = daily_plan
+        ? { ...create_focus(m.daily_plan_title()), id: DAILY_PLAN_ID }
+        : views?.find((candidate) => candidate.id === view_id);
       if (!found) {
         // The view was deleted, here or by restoring a backup.
         void close_floating_window();
         return;
       }
       const loaded_at = new Date();
-      const page = await load_focus_results(found, loaded_at, null, PAGE_SIZE);
+      const page = daily_plan
+        ? { items: [], next_cursor: null }
+        : await load_focus_results(found, loaded_at, null, PAGE_SIZE);
       if (generation !== load_generation) {
         return;
       }
@@ -268,7 +286,7 @@
   hint={m.focus_float_hint()}
   open_label={m.floating_task_open_in_cardbe()}
   can_open={!!view}
-  close_label={m.focus_float_close()}
+  close_label={daily_plan ? m.daily_plan_float_close() : m.focus_float_close()}
   log_scope="floating_focus"
   onOpen={() => void open_in_cardbe()}
   onClose={() => void close_floating_window()}
@@ -279,15 +297,19 @@
       collapsed && "border-transparent",
     ]}
   >
-    <ListFilterIcon class="size-3.5 shrink-0 text-muted-foreground" />
+    {#if daily_plan}<SunIcon
+        class="size-3.5 shrink-0 text-muted-foreground"
+      />{:else}<ListFilterIcon
+        class="size-3.5 shrink-0 text-muted-foreground"
+      />{/if}
     <h1 class="min-w-0 flex-1 truncate text-sm leading-5 font-semibold">
-      {view?.name ?? ""}
+      {daily_plan ? m.daily_plan_title() : (view?.name ?? "")}
     </h1>
-    {#if view}
+    {#if view && task_count !== null}
       <span
         class="shrink-0 text-xs text-muted-foreground tabular-nums"
-        title={`${m.focus_float_count({ count: formatNumber(items.length) })}${has_more ? m.focus_float_partial() : ""}`}
-        >{formatNumber(items.length)}{has_more ? "+" : ""}</span
+        title={`${m.focus_float_count({ count: formatNumber(task_count) })}${has_more ? m.focus_float_partial() : ""}`}
+        >{formatNumber(task_count)}{has_more ? "+" : ""}</span
       >
     {/if}
     <Button
@@ -307,93 +329,105 @@
     </Button>
   </header>
 
-  {#if !collapsed}
-    <ScrollArea orientation="vertical" class="min-h-0 flex-1">
+  {#if !collapsed || daily_plan}
+    <ScrollArea
+      orientation="vertical"
+      class={collapsed ? "hidden" : "min-h-0 flex-1"}
+    >
       <div class="space-y-2 p-1.5">
         {#if error}
           <p class="px-1.5 text-xs text-destructive" aria-live="polite">
             {translateCommandError(error)}
           </p>
         {/if}
-        {#if view && items.length === 0 && !error}
-          <p class="px-1.5 py-4 text-center text-xs text-muted-foreground">
-            {m.focus_empty()}
-          </p>
-        {/if}
-        {#each groups as group (group.key)}
-          <section aria-label={group.label ?? view?.name}>
-            {#if group.label !== null}
-              <h2
-                class="flex items-center gap-1.5 px-1.5 pt-1 pb-0.5 text-xs font-medium text-muted-foreground"
-              >
-                <span class="truncate">{group.label}</span>
-                <span class="tabular-nums"
-                  >{formatNumber(group.items.length)}</span
+        {#if daily_plan && view}
+          <DailyPlan
+            floating
+            {boards}
+            onCountChange={(count) => (daily_plan_count = count)}
+            onOpenTask={(item) => void open_task(item)}
+          />
+        {:else}
+          {#if view && items.length === 0 && !error}
+            <p class="px-1.5 py-4 text-center text-xs text-muted-foreground">
+              {m.focus_empty()}
+            </p>
+          {/if}
+          {#each groups as group (group.key)}
+            <section aria-label={group.label ?? view?.name}>
+              {#if group.label !== null}
+                <h2
+                  class="flex items-center gap-1.5 px-1.5 pt-1 pb-0.5 text-xs font-medium text-muted-foreground"
                 >
-              </h2>
-            {/if}
-            <ul>
-              {#each group.items as item (item_key(item))}
-                {@const finished = item.done || Boolean(item.archived_at)}
-                <li
-                  class="flex items-center gap-1 rounded-md hover:bg-muted/50"
-                >
-                  {#if !finished && writable(item)}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      class="shrink-0 text-muted-foreground"
-                      disabled={busy_ids.has(item_key(item))}
-                      aria-label={m.task_complete()}
-                      title={m.task_complete()}
-                      onclick={() => void complete(item)}
-                    >
-                      <CircleCheckIcon />
-                    </Button>
-                  {:else}
-                    <span class="size-8 shrink-0"></span>
-                  {/if}
-                  <button
-                    type="button"
-                    class="min-w-0 flex-1 rounded-sm py-1 pe-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    title={m.floating_task_open_in_cardbe()}
-                    onclick={() => void open_task(item)}
+                  <span class="truncate">{group.label}</span>
+                  <span class="tabular-nums"
+                    >{formatNumber(group.items.length)}</span
                   >
-                    <span
-                      class={[
-                        "block truncate text-sm",
-                        finished && "text-muted-foreground line-through",
-                      ]}>{item.task.title || m.task_untitled()}</span
+                </h2>
+              {/if}
+              <ul>
+                {#each group.items as item (item_key(item))}
+                  {@const finished = item.done || Boolean(item.archived_at)}
+                  <li
+                    class="flex items-center gap-1 rounded-md hover:bg-muted/50"
+                  >
+                    {#if !finished && writable(item)}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        class="shrink-0 text-muted-foreground"
+                        disabled={busy_ids.has(item_key(item))}
+                        aria-label={m.task_complete()}
+                        title={m.task_complete()}
+                        onclick={() => void complete(item)}
+                      >
+                        <CircleCheckIcon />
+                      </Button>
+                    {:else}
+                      <span class="size-8 shrink-0"></span>
+                    {/if}
+                    <button
+                      type="button"
+                      class="min-w-0 flex-1 rounded-sm py-1 pe-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      title={m.floating_task_open_in_cardbe()}
+                      onclick={() => void open_task(item)}
                     >
-                    <span
-                      class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground"
-                    >
-                      <span class="truncate">{item.board_name}</span>
-                      {#if item.task.priority}
-                        <PriorityIndicator priority={item.task.priority} />
-                      {/if}
-                      {#if item.task.due_time}
-                        <DueBadge
-                          due_time={item.task.due_time}
-                          {now}
-                          at_midnight={item.task.due_at_midnight}
-                        />
-                      {/if}
-                    </span>
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          </section>
-        {/each}
-        {#if has_more}
-          <Button
-            variant="link"
-            size="sm"
-            class="w-full"
-            onclick={() => void open_in_cardbe()}
-            >{m.focus_float_show_all()}</Button
-          >
+                      <span
+                        class={[
+                          "block truncate text-sm",
+                          finished && "text-muted-foreground line-through",
+                        ]}>{item.task.title || m.task_untitled()}</span
+                      >
+                      <span
+                        class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground"
+                      >
+                        <span class="truncate">{item.board_name}</span>
+                        {#if item.task.priority}
+                          <PriorityIndicator priority={item.task.priority} />
+                        {/if}
+                        {#if item.task.due_time}
+                          <DueBadge
+                            due_time={item.task.due_time}
+                            {now}
+                            at_midnight={item.task.due_at_midnight}
+                          />
+                        {/if}
+                      </span>
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            </section>
+          {/each}
+          {#if has_more}
+            <Button
+              variant="link"
+              size="sm"
+              class="w-full"
+              onclick={() => void open_in_cardbe()}
+              >{m.focus_float_show_all()}</Button
+            >
+          {/if}
         {/if}
       </div>
     </ScrollArea>

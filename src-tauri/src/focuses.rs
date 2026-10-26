@@ -7,6 +7,7 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 const METADATA_KEY: &str = "focuses";
+pub const DAILY_PLAN_ID: &str = "daily-plan";
 pub const MAX_VIEWS: usize = 100;
 const MAX_NAME_CHARS: usize = 100;
 const MAX_QUERY_CHARS: usize = 500;
@@ -93,6 +94,7 @@ fn valid_view(view: &Focus) -> bool {
     let filter = &view.filter;
     let name = view.name.trim();
     !view.id.is_empty()
+        && view.id != DAILY_PLAN_ID
         && view.id.len() <= 64
         && !name.is_empty()
         && name.chars().count() <= MAX_NAME_CHARS
@@ -210,6 +212,7 @@ mod tests {
 
     #[test]
     fn invalid_views_are_rejected() {
+        assert!(validate(&[view(DAILY_PLAN_ID)]).is_err());
         assert!(validate(&[view("a")]).is_ok());
         assert!(validate(&[view("a"), view("a")]).is_err());
         let invalid = [

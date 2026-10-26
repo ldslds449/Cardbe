@@ -8,6 +8,7 @@
   import {
     open_floating_focus,
     restore_floating_focuses,
+    DAILY_PLAN_ID,
   } from "#lib/floating-focuses.js";
   import { onMount, untrack } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
@@ -875,6 +876,10 @@
           return;
         }
         // Views load after the board, possibly after this request.
+        if (id === DAILY_PLAN_ID) {
+          open_focus(HOME_PAGE_ID);
+          return;
+        }
         if (!focuses.loaded) {
           await focuses.load();
         }
@@ -1511,6 +1516,8 @@
               />
             {:else if home_open}
               <HomePage
+                paused={task_dialog_open || view_task_dialog_open}
+                onOpenTask={(item) => void open_focus_task(item)}
                 focuses={focuses.views}
                 boards={board.boards}
                 onOpenFocus={open_focus}
