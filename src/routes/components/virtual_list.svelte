@@ -31,6 +31,7 @@
 
   let viewport = $state<HTMLDivElement | null>(null);
   let previous_reset_key = "";
+  let measured_row_height = 104;
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: 0,
     getScrollElement: () => viewport,
@@ -43,15 +44,20 @@
     const currentViewport = viewport;
     const currentRowHeight = rowHeight;
     const currentOverscan = overscan;
-    untrack(() =>
+    untrack(() => {
       $virtualizer.setOptions({
         count: currentItems.length,
         getScrollElement: () => currentViewport,
         estimateSize: () => currentRowHeight,
         getItemKey: (index) => currentGetItemKey(currentItems[index]),
         overscan: currentOverscan,
-      }),
-    );
+      });
+      // Row offsets are cached per key, so a new height recomputes them.
+      if (currentRowHeight !== measured_row_height) {
+        measured_row_height = currentRowHeight;
+        $virtualizer.measure();
+      }
+    });
   });
   $effect(() => {
     if (resetKey === previous_reset_key) {

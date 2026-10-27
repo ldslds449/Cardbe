@@ -84,7 +84,8 @@
   const loading = $derived(pending || all_task_items_loading);
   const has_more = $derived(!pending && all_task_items_has_more);
   const counts_key = $derived(task_counts_key(filters.values));
-  const row_height = 72;
+  // Search results may add an excerpt line under the details.
+  const row_height = $derived(entries.some((item) => item.excerpt) ? 92 : 72);
   const empty_title = $derived(
     filters.board_ids?.length === 0
       ? m.explorer_no_boards()
