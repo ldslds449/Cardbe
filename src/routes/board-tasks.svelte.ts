@@ -23,6 +23,7 @@ import {
 import { addMission } from "./utils/mission.svelte";
 import { IrohBoardStore } from "./board-iroh.svelte";
 import { open_floating_task } from "#lib/floating-tasks.js";
+import { show_widget_manager } from "./components/workspace/settings-dialog.svelte";
 import {
   appended_layout,
   tab_label,
@@ -1370,13 +1371,18 @@ export abstract class TaskBoardStore extends IrohBoardStore {
     }
   }
 
-  async float_task(task_id: string) {
+  async float_task(task_id: string, desktop = false) {
     const boardId = this.active_board_id;
     if (boardId === null) {
       return;
     }
     try {
-      await open_floating_task({ boardId, taskId: get_task_id(task_id) });
+      const ref = { boardId, taskId: get_task_id(task_id) };
+      if (desktop) {
+        show_widget_manager({ kind: "task", ...ref });
+      } else {
+        await open_floating_task(ref);
+      }
     } catch (error) {
       logger.error("board.task_float.failed", error);
       toast.error(translateCommandError(error));

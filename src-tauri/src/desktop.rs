@@ -10,6 +10,8 @@ use crate::global_shortcuts::{self, ShortcutRegistry};
 use crate::models::ShortcutAction;
 use crate::state::{lock_app, SharedAppData};
 
+pub mod widget;
+
 const FLOATING_TASK_LABEL_PREFIX: &str = "float-task-";
 const FLOATING_FOCUS_LABEL_PREFIX: &str = "float-focus-";
 
@@ -384,6 +386,10 @@ fn toggle_floating_task_windows<R: Runtime>(app: &AppHandle<R>) {
             set_low_memory(&window, true);
         }
     }
+    // Widget settings show each floating window's state.
+    if let Err(error) = app.emit_to("main", "cardbe:floating-visibility-changed", ()) {
+        log::warn!(target: "desktop", "Could not report floating window visibility: {error}");
+    }
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -420,10 +426,17 @@ pub fn handle_window_event<R: Runtime>(window: &Window<R>, event: &WindowEvent) 
     match event {
         // Floating windows close for real; the main and quick-add windows
         // stay alive in the background.
-        WindowEvent::CloseRequested { .. } if is_floating_window(window.label()) => {}
+        WindowEvent::CloseRequested { .. }
+            if is_floating_window(window.label()) || window.label().starts_with("widget-") => {}
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             hide_window(window);
+        }
+        #[cfg(windows)]
+        WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }
+            if window.label().starts_with("widget-") =>
+        {
+            widget::shape(window.hwnd().map(|hwnd| hwnd.0), window.scale_factor());
         }
         // Also follows the quick-add page hiding itself after saving.
         WindowEvent::Focused(false) if window.label().starts_with("quick-") => {
@@ -446,9 +459,16 @@ mod tests {
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
         let windows = capability["windows"].as_array().unwrap();
-        for pattern in ["float-task-*", "float-focus-*"] {
+        for pattern in [
+            "float-task-*",
+            "float-focus-*",
+            "widget-task-*",
+            "widget-focus-*",
+        ] {
             assert!(windows.iter().any(|window| window == pattern));
         }
+        assert!(!super::is_floating_window("widget-task-12-34"));
+        assert!(!super::is_floating_window("widget-focus-612f20e8a696"));
     }
 
     #[test]

@@ -1,6 +1,8 @@
 <script lang="ts">
   import TaskActionItems from "../task/task_action_items.svelte";
   import { m } from "#lib/paraglide/messages.js";
+  import { desktop_widgets } from "#lib/desktop-widget.svelte.js";
+  import PanelsTopLeftIcon from "@lucide/svelte/icons/panels-top-left";
   import "#lib/i18n/locale.svelte.js";
   import { formatNumber } from "#lib/i18n/index.js";
   import * as Card from "#lib/components/ui/card/index.js";
@@ -73,6 +75,7 @@
     onArchiveTask: () => void;
     onTogglePin?: () => void;
     onFloatTask?: () => void;
+    onDesktopTask?: () => void;
     onLoadFlowTabs?: () => Promise<FlowTab[] | null>;
     onAddToFlow?: (tab: FlowTab) => void;
     onSetPriority?: (priority: TaskPriority | undefined) => void;
@@ -109,6 +112,7 @@
     onArchiveTask = () => {},
     onTogglePin,
     onFloatTask,
+    onDesktopTask,
     onLoadFlowTabs,
     onAddToFlow,
     onSetPriority,
@@ -473,6 +477,12 @@
     ? ContextMenu.RadioGroup
     : DropdownMenu.RadioGroup}
   {@const RadioItem = context ? ContextMenu.RadioItem : DropdownMenu.RadioItem}
+  {@const Separator = context ? ContextMenu.Separator : DropdownMenu.Separator}
+  {@const has_status =
+    (done && onReopen) || (!done && onComplete) || onSetPriority}
+  {@const has_widget = onDesktopTask && desktop_widgets.supported}
+  <!-- Everyday actions stay on the first level; occasional ones are grouped
+    under More actions, between Archive and Delete. -->
   <TaskActionItems
     {context}
     onView={onViewTask}
@@ -489,18 +499,7 @@
   >
     {#snippet extra()}
       {#if !read_only}
-        {#if onSelect}
-          <Item title={m.task_selection_hint()} onclick={() => onSelect(null)}>
-            <SquareCheckIcon />
-            {selected ? m.task_deselect() : m.task_select()}
-          </Item>
-        {/if}
-        {#if onFloatTask}
-          <Item onclick={onFloatTask}>
-            <PictureInPicture2Icon />
-            {m.task_float_on_desktop()}
-          </Item>
-        {/if}
+        {#if has_status}<Separator />{/if}
         {#if done && onReopen}
           <Item onclick={onReopen}>
             <RotateCcwIcon />
@@ -539,49 +538,83 @@
             </SubContent>
           </Sub>
         {/if}
-        <Item onclick={onDuplicateTask}>
-          <CopyIcon />
-          {m.task_duplicate_action()}
-        </Item>
-        <Item
-          onclick={() => {
-            move_dialog_open = true;
-          }}
-        >
-          <MoveRightIcon />
-          {m.task_move_board()}
-        </Item>
-        {#if onAddToFlow && flow_tabs?.length === 1}
-          {@const tab = flow_tabs[0]}
-          <Item onclick={() => onAddToFlow(tab)}>
-            <WorkflowIcon />
-            {m.task_add_to_flow()}
-          </Item>
-        {:else if onAddToFlow && flow_tabs && flow_tabs.length > 1}
-          <Sub>
-            <SubTrigger>
-              <WorkflowIcon />
-              {m.task_add_to_flow()}
-            </SubTrigger>
-            <SubContent class="max-w-64">
-              {#each flow_tabs as tab (tab.id)}
-                <Item onclick={() => onAddToFlow(tab)}>
-                  <span class="truncate">{tab_label(tab)}</span>
+      {/if}
+    {/snippet}
+    {#snippet afterArchive()}
+      {#if !read_only}
+        <Separator />
+        <Sub>
+          <SubTrigger><EllipsisIcon />{m.task_more_actions()}</SubTrigger>
+          <SubContent class="min-w-48">
+            {#if onSelect}
+              <Item
+                title={m.task_selection_hint()}
+                onclick={() => onSelect(null)}
+              >
+                <SquareCheckIcon />
+                {selected ? m.task_deselect() : m.task_select()}
+              </Item>
+            {/if}
+            {#if onAddToFlow && flow_tabs?.length === 1}
+              {@const tab = flow_tabs[0]}
+              <Item onclick={() => onAddToFlow(tab)}>
+                <WorkflowIcon />
+                {m.task_add_to_flow()}
+              </Item>
+            {:else if onAddToFlow && flow_tabs && flow_tabs.length > 1}
+              <Sub>
+                <SubTrigger>
+                  <WorkflowIcon />
+                  {m.task_add_to_flow()}
+                </SubTrigger>
+                <SubContent class="max-w-64">
+                  {#each flow_tabs as tab (tab.id)}
+                    <Item onclick={() => onAddToFlow(tab)}>
+                      <span class="truncate">{tab_label(tab)}</span>
+                    </Item>
+                  {/each}
+                </SubContent>
+              </Sub>
+            {/if}
+            {#if onFloatTask || has_widget}
+              <Separator />
+              {#if onFloatTask}
+                <Item onclick={onFloatTask}>
+                  <PictureInPicture2Icon />{m.task_float_on_desktop()}
                 </Item>
-              {/each}
-            </SubContent>
-          </Sub>
-        {/if}
-        {#if onSaveAsTemplate}
-          <Item onclick={onSaveAsTemplate}>
-            <LayoutTemplateIcon />
-            {m.task_template_save()}
-          </Item>
-        {/if}
-        <Item onclick={onExportTask}>
-          <Share2Icon />
-          {m.task_share()}
-        </Item>
+              {/if}
+              {#if has_widget}
+                <Item
+                  onclick={() => {
+                    prevent_menu_focus_restore = true;
+                    onDesktopTask?.();
+                  }}
+                >
+                  <PanelsTopLeftIcon />{m.desktop_widget_add()}
+                </Item>
+              {/if}
+            {/if}
+            <Separator />
+            <Item onclick={onDuplicateTask}>
+              <CopyIcon />{m.task_duplicate_action()}
+            </Item>
+            <Item
+              onclick={() => {
+                move_dialog_open = true;
+              }}
+            >
+              <MoveRightIcon />{m.task_move_board()}
+            </Item>
+            {#if onSaveAsTemplate}
+              <Item onclick={onSaveAsTemplate}>
+                <LayoutTemplateIcon />{m.task_template_save()}
+              </Item>
+            {/if}
+            <Item onclick={onExportTask}>
+              <Share2Icon />{m.task_share()}
+            </Item>
+          </SubContent>
+        </Sub>
       {/if}
     {/snippet}
   </TaskActionItems>

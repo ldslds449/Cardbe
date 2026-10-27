@@ -1,6 +1,7 @@
 <script lang="ts">
   import { formatNumber } from "#lib/i18n/index.js";
   import { m } from "#lib/paraglide/messages.js";
+  import type { Focus } from "../../type/focus";
   import "#lib/i18n/locale.svelte.js";
   import BellIcon from "@lucide/svelte/icons/bell";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
@@ -64,6 +65,8 @@
     onAddColumn,
     onCheckForUpdates,
     onToggleSidebar,
+    focuses,
+    onPrepareFocus,
   }: {
     sidebar_open: boolean;
     /** Wide windows toggle the sidebar from the sidebar itself. */
@@ -93,6 +96,10 @@
     onOpenAllTasks: () => void;
     onFocusSearch: () => void;
     onAddTask: () => void;
+    /** Focus views offered by widget settings. */
+    focuses: Focus[];
+    /** Waits for Focus edits to be saved before a widget reads them. */
+    onPrepareFocus: () => Promise<void>;
     onAddColumn: () => void;
     onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
     onToggleSidebar: () => void;
@@ -532,6 +539,8 @@
 />
 <DiagnosticsDialog bind:open={diagnostics_open} />
 <SettingsDialog
+  {focuses}
+  {onPrepareFocus}
   {update_check_in_progress}
   {onCheckForUpdates}
   onReviewPluginDomain={(id) => (reviewPluginDomain = id)}

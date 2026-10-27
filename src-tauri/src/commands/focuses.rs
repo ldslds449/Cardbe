@@ -64,6 +64,22 @@ pub async fn open_floating_focus(
 }
 
 #[tauri::command]
+pub async fn open_desktop_focus(
+    app: AppHandle,
+    state: State<'_, SharedAppData>,
+    id: String,
+) -> Result<(), CommandError> {
+    ensure_view_exists(&state, &id)?;
+    #[cfg(desktop)]
+    return crate::desktop::widget::open_focus(app, &id).await;
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        Err(CommandError::InvalidArgument)
+    }
+}
+
+#[tauri::command]
 pub async fn open_focus_in_main_window(
     app: AppHandle,
     state: State<'_, SharedAppData>,

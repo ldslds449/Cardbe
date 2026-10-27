@@ -3,6 +3,7 @@
   import BellIcon from "@lucide/svelte/icons/bell";
   import KeyboardIcon from "@lucide/svelte/icons/keyboard";
   import NetworkIcon from "@lucide/svelte/icons/network";
+  import PanelsTopLeftIcon from "@lucide/svelte/icons/panels-top-left";
   import PaletteIcon from "@lucide/svelte/icons/palette";
   import PuzzleIcon from "@lucide/svelte/icons/puzzle";
   import ServerIcon from "@lucide/svelte/icons/server";
@@ -20,6 +21,8 @@
   import NotificationSettings from "./notification_settings.svelte";
   import ThemeSettings from "./theme_settings.svelte";
   import PluginSettings from "./plugin_settings.svelte";
+  import WidgetSettings from "./widget_settings.svelte";
+  import type { Focus } from "../../type/focus";
   import {
     isSettingsSection,
     settingsDialog,
@@ -27,10 +30,14 @@
   } from "./settings-dialog.svelte";
 
   let {
+    focuses,
+    onPrepareFocus,
     update_check_in_progress = false,
     onCheckForUpdates,
     onReviewPluginDomain,
   }: {
+    focuses: Focus[];
+    onPrepareFocus: () => Promise<void>;
     update_check_in_progress?: boolean;
     onCheckForUpdates: (manual?: boolean) => void | Promise<void>;
     onReviewPluginDomain: (id: string) => void;
@@ -53,6 +60,11 @@
       label: m.settings_tab_notifications,
     },
     { id: "shortcuts", icon: KeyboardIcon, label: m.settings_tab_shortcuts },
+    {
+      id: "widgets",
+      icon: PanelsTopLeftIcon,
+      label: m.desktop_widget_manager_title,
+    },
     { id: "sharing", icon: NetworkIcon, label: m.settings_tab_sharing },
     { id: "plugins", icon: PuzzleIcon, label: m.plugin_title },
     { id: "mcp", icon: ServerIcon, label: m.settings_tab_mcp },
@@ -173,6 +185,13 @@
       <Tabs.Content value="shortcuts" class="min-h-0"
         >{@render scrollable(shortcuts)}</Tabs.Content
       >
+      <Tabs.Content value="widgets" class="min-h-0 min-w-0">
+        <WidgetSettings
+          active={settingsDialog.open && settingsDialog.section === "widgets"}
+          {focuses}
+          {onPrepareFocus}
+        />
+      </Tabs.Content>
       <Tabs.Content value="sharing" class="min-h-0">
         <NetworkSettings
           open={settingsDialog.open}

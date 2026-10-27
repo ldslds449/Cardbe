@@ -15,6 +15,7 @@
   } from "#lib/floating-focuses.js";
   import { formatNumber } from "#lib/i18n/index.js";
   import { logger } from "#lib/logger.js";
+  import { forget_desktop_widget } from "#lib/desktop-widget.svelte.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -52,8 +53,11 @@
   );
   const float_window = getCurrentWindow();
   const daily_plan = view_id === DAILY_PLAN_ID;
+  const desktop = float_window.label.startsWith("widget-");
 
-  const saved_window_state = read_floating_focus_state(view_id ?? "");
+  const saved_window_state = desktop
+    ? { collapsed: false, expanded_height: 380 }
+    : read_floating_focus_state(view_id ?? "");
   let collapsed = $state(saved_window_state.collapsed);
   let resizing = $state(false);
   let expanded_size = new LogicalSize(320, saved_window_state.expanded_height);
@@ -190,7 +194,7 @@
               await resize_floating_focus(float_window, true, expanded_size);
             }
             window.dispatchEvent(new Event("cardbe:workspace-ready"));
-            return float_window.show();
+            return desktop ? undefined : float_window.show();
           })
           .catch((caught) => logger.warn("floating_focus.show.failed", caught));
       }
@@ -270,7 +274,11 @@
 
   async function close_floating_window() {
     if (view_id !== null) {
-      forget_floating_focus(view_id);
+      if (desktop) {
+        forget_desktop_widget({ kind: "focus", id: view_id });
+      } else {
+        forget_floating_focus(view_id);
+      }
     }
     try {
       await float_window.close();
@@ -293,16 +301,22 @@
 >
   <header
     class={[
-      "flex h-10 shrink-0 items-center gap-1.5 border-b px-3",
+      desktop
+        ? "flex shrink-0 items-center gap-2 px-4 pt-4 pb-3 pe-12"
+        : "flex h-10 shrink-0 items-center gap-1.5 border-b px-3",
       collapsed && "border-transparent",
     ]}
   >
-    {#if daily_plan}<SunIcon
-        class="size-3.5 shrink-0 text-muted-foreground"
-      />{:else}<ListFilterIcon
-        class="size-3.5 shrink-0 text-muted-foreground"
-      />{/if}
-    <h1 class="min-w-0 flex-1 truncate text-sm leading-5 font-semibold">
+    {#if !desktop}{#if daily_plan}<SunIcon
+          class="size-3.5 shrink-0 text-muted-foreground"
+        />{:else}<ListFilterIcon
+          class="size-3.5 shrink-0 text-muted-foreground"
+        />{/if}{/if}
+    <h1
+      class={desktop
+        ? "min-w-0 flex-1 truncate text-base font-semibold"
+        : "min-w-0 flex-1 truncate text-sm leading-5 font-semibold"}
+    >
       {daily_plan ? m.daily_plan_title() : (view?.name ?? "")}
     </h1>
     {#if view && task_count !== null}
@@ -312,21 +326,21 @@
         >{formatNumber(task_count)}{has_more ? "+" : ""}</span
       >
     {/if}
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      aria-label={collapsed
-        ? m.floating_window_restore()
-        : m.floating_window_collapse()}
-      title={collapsed
-        ? m.floating_window_restore()
-        : m.floating_window_collapse()}
-      aria-expanded={!collapsed}
-      disabled={loading || resizing}
-      onclick={() => void toggle_collapsed()}
-    >
-      {#if collapsed}<Maximize2Icon />{:else}<MinusIcon />{/if}
-    </Button>
+    {#if !desktop}<Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={collapsed
+          ? m.floating_window_restore()
+          : m.floating_window_collapse()}
+        title={collapsed
+          ? m.floating_window_restore()
+          : m.floating_window_collapse()}
+        aria-expanded={!collapsed}
+        disabled={loading || resizing}
+        onclick={() => void toggle_collapsed()}
+      >
+        {#if collapsed}<Maximize2Icon />{:else}<MinusIcon />{/if}
+      </Button>{/if}
   </header>
 
   {#if !collapsed || daily_plan}
@@ -334,7 +348,7 @@
       orientation="vertical"
       class={collapsed ? "hidden" : "min-h-0 flex-1"}
     >
-      <div class="space-y-2 p-1.5">
+      <div class={desktop ? "space-y-3 px-2 pb-3" : "space-y-2 p-1.5"}>
         {#if error}
           <p class="px-1.5 text-xs text-destructive" aria-live="polite">
             {translateCommandError(error)}
@@ -399,7 +413,7 @@
                         ]}>{item.task.title || m.task_untitled()}</span
                       >
                       <span
-                        class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground"
+                        class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground group-data-[widget-size=small]/widget:hidden"
                       >
                         <span class="truncate">{item.board_name}</span>
                         {#if item.task.priority}

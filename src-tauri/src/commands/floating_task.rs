@@ -41,6 +41,23 @@ pub async fn open_floating_task(
 }
 
 #[tauri::command]
+pub async fn open_desktop_task(
+    app: AppHandle,
+    state: State<'_, SharedAppData>,
+    board_id: i64,
+    task_id: i64,
+) -> Result<(), CommandError> {
+    ensure_task_exists(&state, board_id, task_id)?;
+    #[cfg(desktop)]
+    return crate::desktop::widget::open_task(app, board_id, task_id).await;
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        Err(CommandError::InvalidArgument)
+    }
+}
+
+#[tauri::command]
 pub async fn open_task_in_main_window(
     app: AppHandle,
     state: State<'_, SharedAppData>,

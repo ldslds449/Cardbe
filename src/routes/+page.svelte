@@ -6,6 +6,7 @@
   import { m } from "#lib/paraglide/messages.js";
   import { logger } from "#lib/logger.js";
   import { restore_floating_tasks } from "#lib/floating-tasks.js";
+  import { restore_desktop_widgets } from "#lib/desktop-widget.svelte.js";
   import {
     open_floating_focus,
     restore_floating_focuses,
@@ -59,7 +60,10 @@
   import ViewTaskDialog from "./components/dialog/view_task_dialog.svelte";
   import BoardShareDialog from "./components/dialog/board_share_dialog.svelte";
   import IrohShareDialog from "./components/dialog/iroh_share_dialog.svelte";
-  import { openSettings } from "./components/workspace/settings-dialog.svelte";
+  import {
+    openSettings,
+    show_widget_manager,
+  } from "./components/workspace/settings-dialog.svelte";
   import FlowView from "./components/flow/flow_view.svelte";
   import CalendarView from "./components/calendar/calendar_view.svelte";
   import StatisticsView from "./components/statistics/statistics_view.svelte";
@@ -234,14 +238,18 @@
     return true;
   }
 
-  async function float_focus(id: string) {
+  async function float_focus(id: string, desktop = false) {
     // A new or just edited view must be saved before its window reads it.
     await focuses.settled();
     if (!focuses.find(id)) {
       return;
     }
     try {
-      await open_floating_focus(id);
+      if (desktop) {
+        show_widget_manager({ kind: "focus", id });
+      } else {
+        await open_floating_focus(id);
+      }
     } catch (error) {
       toast.error(translateCommandError(error));
     }
@@ -707,6 +715,9 @@
           void focuses.load();
           void restore_floating_tasks();
           void restore_floating_focuses();
+          void restore_desktop_widgets().catch((error) =>
+            logger.warn("desktop_widget.restore.failed", error),
+          );
           restore_managed_share_state(
             board.boards.length === 1 ? board.boards[0].id : undefined,
           );
@@ -958,6 +969,9 @@
         }
       },
     );
+    const widget_manager_listener = listen("cardbe:open-widget-manager", () =>
+      show_widget_manager(),
+    );
     const open_focus_listener = listen<{ id?: string }>(
       "cardbe:open-focus",
       async (event) => {
@@ -996,6 +1010,7 @@
       void iroh_remote_push_listener.then((unlisten) => unlisten());
       void open_task_listener.then((unlisten) => unlisten());
       void open_focus_listener.then((unlisten) => unlisten());
+      void widget_manager_listener.then((unlisten) => unlisten());
       document.removeEventListener("keydown", handle_shortcut);
       window.removeEventListener("cardbe:open-card", handle_open_card);
       window.removeEventListener(
@@ -1516,6 +1531,7 @@
         onCreateFocus={() => edit_focus(null)}
         onEditFocus={(id) => edit_focus(focuses.find(id) ?? null)}
         onFloatFocus={(id) => void float_focus(id)}
+        onDesktopFocus={(id) => void float_focus(id, true)}
         onDeleteFocus={delete_focus}
       />
       <FocusDialog
@@ -1532,6 +1548,8 @@
       <main class="flex min-h-0 min-w-0 flex-1 flex-col">
         <AppToolbar
           {sidebar_open}
+          focuses={focuses.views}
+          onPrepareFocus={() => focuses.settled()}
           sidebar_compact={sidebar_compact.current}
           onToggleSidebar={toggle_sidebar}
           bind:search_text

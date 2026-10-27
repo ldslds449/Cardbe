@@ -4,6 +4,8 @@
   import { confirmUnsavedChanges } from "#lib/unsaved-changes.js";
   import { formatNumber } from "#lib/i18n/index.js";
   import { m } from "#lib/paraglide/messages.js";
+  import { desktop_widgets } from "#lib/desktop-widget.svelte.js";
+  import PanelsTopLeftIcon from "@lucide/svelte/icons/panels-top-left";
   import "#lib/i18n/locale.svelte.js";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import HouseIcon from "@lucide/svelte/icons/house";
@@ -63,6 +65,7 @@
     onCreateFocus,
     onEditFocus,
     onFloatFocus,
+    onDesktopFocus,
     onDeleteFocus,
   }: {
     boards: BoardItem[];
@@ -89,6 +92,7 @@
     onCreateFocus: () => void;
     onEditFocus: (id: string) => void;
     onFloatFocus: (id: string) => void;
+    onDesktopFocus: (id: string) => void;
     onDeleteFocus: (id: string) => Promise<boolean>;
   } = $props();
 
@@ -264,6 +268,11 @@
       ><PictureInPicture2Icon />
       {m.focus_float_on_desktop()}</Item
     >
+    {#if desktop_widgets.supported}
+      <Item onclick={() => onDesktopFocus(view.id)}>
+        <PanelsTopLeftIcon />{m.desktop_widget_add()}
+      </Item>
+    {/if}
     <Separator />
     <Item variant="destructive" onclick={() => open_delete_view_dialog(view)}
       ><Trash2Icon />

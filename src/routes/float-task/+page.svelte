@@ -17,6 +17,7 @@
   } from "#lib/floating-tasks.js";
   import { formatNumber } from "#lib/i18n/index.js";
   import { logger } from "#lib/logger.js";
+  import { forget_desktop_widget } from "#lib/desktop-widget.svelte.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -58,8 +59,9 @@
     taskId: Number(params.get("task")),
   };
   const float_window = getCurrentWindow();
+  const desktop = float_window.label.startsWith("widget-");
 
-  let collapsed = $state(read_floating_collapsed(ref));
+  let collapsed = $state(desktop ? false : read_floating_collapsed(ref));
 
   function toggle_collapsed() {
     collapsed = !collapsed;
@@ -79,7 +81,7 @@
 
   // Content scales through the root font size: text, spacing and icons all
   // use rem, so the layout stays intact inside the fixed-size window.
-  let zoom = $state(read_floating_zoom(ref));
+  let zoom = $state(desktop ? 1 : read_floating_zoom(ref));
   let zoom_indicator_visible = $state(false);
   let zoom_indicator_timer: number | undefined;
 
@@ -136,6 +138,9 @@
   let resizing = Promise.resolve();
 
   function handle_window_resize() {
+    if (desktop) {
+      return;
+    }
     // Resizes made here are not the user's choice.
     if (collapsed || pending_resizes > 0 || fitted_height === 0) {
       return;
@@ -151,7 +156,7 @@
   }
 
   function fit_window() {
-    if (!header) {
+    if (desktop || !header) {
       return;
     }
     // The main element's 1px borders add 2px. One more pixel absorbs the
@@ -298,7 +303,7 @@
         window.dispatchEvent(new Event("cardbe:workspace-ready"));
         return resizing;
       })
-      .then(() => float_window.show())
+      .then(() => (desktop ? undefined : float_window.show()))
       .catch((caught) => logger.warn("floating_task.show.failed", caught));
   }
 
@@ -326,7 +331,7 @@
     });
     // Non-passive so Ctrl + wheel can zoom instead of scrolling.
     const handle_wheel = (event: WheelEvent) => {
-      if (!event.ctrlKey || event.deltaY === 0) {
+      if (desktop || !event.ctrlKey || event.deltaY === 0) {
         return;
       }
       event.preventDefault();
@@ -362,7 +367,11 @@
   }
 
   async function close_floating_window() {
-    forget_floating_task(ref);
+    if (desktop) {
+      forget_desktop_widget({ kind: "task", ...ref });
+    } else {
+      forget_floating_task(ref);
+    }
     try {
       await float_window.close();
     } catch (caught) {
@@ -377,7 +386,7 @@
     if (event.key === "Enter" && task && event.target === document.body) {
       event.preventDefault();
       void open_in_cardbe();
-    } else if (event.ctrlKey && !event.altKey && !event.metaKey) {
+    } else if (!desktop && event.ctrlKey && !event.altKey && !event.metaKey) {
       const step =
         event.key === "=" || event.key === "+"
           ? 0.1
@@ -405,15 +414,19 @@
 >
   <div class="flex min-h-0 flex-1 flex-col">
     <header
-      class={collapsed
-        ? "relative flex min-h-10 shrink-0 items-center px-3 pe-12"
-        : "relative shrink-0 px-3 pt-2.5 pb-1.5 pe-12"}
+      class={desktop
+        ? "relative shrink-0 px-4 pt-4 pb-3 pe-12"
+        : collapsed
+          ? "relative flex min-h-10 shrink-0 items-center px-3 pe-12"
+          : "relative shrink-0 px-3 pt-2.5 pb-1.5 pe-12"}
       bind:this={header}
     >
       <h1
-        class={collapsed
-          ? "min-w-0 flex-1 truncate text-sm leading-5 font-semibold"
-          : "line-clamp-2 text-sm leading-5 font-semibold [overflow-wrap:anywhere]"}
+        class={desktop
+          ? "line-clamp-2 text-lg leading-6 font-semibold [overflow-wrap:anywhere]"
+          : collapsed
+            ? "min-w-0 flex-1 truncate text-sm leading-5 font-semibold"
+            : "line-clamp-2 text-sm leading-5 font-semibold [overflow-wrap:anywhere]"}
         style:color={task ? display_task_color(task.color) : undefined}
       >
         {task?.title ?? (loading ? "" : m.task_missing())}
@@ -425,30 +438,33 @@
           </p>
         {/if}
       {/if}
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        class="absolute top-2 right-3"
-        aria-label={collapsed
-          ? m.floating_window_restore()
-          : m.floating_window_collapse()}
-        title={collapsed
-          ? m.floating_window_restore()
-          : m.floating_window_collapse()}
-        aria-expanded={!collapsed}
-        onclick={toggle_collapsed}
-      >
-        {#if collapsed}<Maximize2Icon />{:else}<MinusIcon />{/if}
-      </Button>
+      {#if !desktop}<Button
+          variant="ghost"
+          size="icon-xs"
+          class="absolute top-2 right-3"
+          aria-label={collapsed
+            ? m.floating_window_restore()
+            : m.floating_window_collapse()}
+          title={collapsed
+            ? m.floating_window_restore()
+            : m.floating_window_collapse()}
+          aria-expanded={!collapsed}
+          onclick={toggle_collapsed}
+        >
+          {#if collapsed}<Maximize2Icon />{:else}<MinusIcon />{/if}
+        </Button>{/if}
     </header>
 
     {#if !collapsed && !title_only}
       <ScrollArea
         orientation="vertical"
         class="min-h-0 flex-1"
-        scrollbarYClasses={overflowing ? "" : "hidden"}
+        scrollbarYClasses={desktop || overflowing ? "" : "hidden"}
       >
-        <div class="space-y-2 px-3 pb-3" bind:this={body}>
+        <div
+          class={desktop ? "space-y-3 px-4 pb-4" : "space-y-2 px-3 pb-3"}
+          bind:this={body}
+        >
           {#if error}
             <p class="text-xs text-destructive" aria-live="polite">
               {translateCommandError(error)}
@@ -482,15 +498,24 @@
               </div>
             {/if}
             {#if task.labels.length > 0}
-              <div class="flex flex-wrap gap-1">
+              <div
+                class="flex flex-wrap gap-1 group-data-[widget-size=small]/widget:hidden"
+              >
                 {#each task.labels as label (label)}
                   <LabelBadge {label} />
                 {/each}
               </div>
             {/if}
-            <ChecklistDisplay items={task.items} />
+            <!-- Small widgets keep only the glanceable title, place and due date. -->
+            {#if task.items.length > 0}
+              <div class="group-data-[widget-size=small]/widget:hidden">
+                <ChecklistDisplay items={task.items} />
+              </div>
+            {/if}
             {#if task.description.trim()}
-              <div class="text-sm text-muted-foreground">
+              <div
+                class="text-sm text-muted-foreground group-data-[widget-size=small]/widget:hidden"
+              >
                 <Markdown md={task.description} compact />
               </div>
             {/if}

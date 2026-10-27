@@ -1,8 +1,14 @@
+import {
+  desktop_widgets,
+  type DesktopWidgetRef,
+} from "#lib/desktop-widget.svelte.js";
+
 export const settingsSections = [
   "general",
   "theme",
   "notifications",
   "shortcuts",
+  "widgets",
   "sharing",
   "plugins",
   "mcp",
@@ -27,4 +33,10 @@ export function openSettings(section?: SettingsSection) {
     settingsDialog.section = section;
   }
   settingsDialog.open = true;
+}
+
+/** Opens widget settings, presenting a source to add when one is given. */
+export function show_widget_manager(ref: DesktopWidgetRef | null = null) {
+  desktop_widgets.requested = ref;
+  openSettings("widgets");
 }
