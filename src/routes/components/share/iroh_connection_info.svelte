@@ -8,10 +8,8 @@
 
   let {
     info,
-    waiting_for_approval = false,
   }: {
     info: IrohConnectionInfo | null | undefined;
-    waiting_for_approval?: boolean;
   } = $props();
   const sync_time = $derived(
     new Intl.DateTimeFormat(getLocale(), {
@@ -52,8 +50,7 @@
       <p class="text-muted-foreground">
         {m.share_connection_observed({
           time: sync_time.format(new Date(info.observed_at)),
-        })}{#if waiting_for_approval}
-          {m.share_approval_reconnect()}{/if}
+        })}
       </p>
       {#if info.paths.length > 0}
         <Collapsible.Root>
@@ -89,9 +86,6 @@
                 >
               </div>
             {/each}
-            <p class="text-muted-foreground">
-              {m.share_connection_paths_help()}
-            </p>
           </Collapsible.Content>
         </Collapsible.Root>
       {:else}

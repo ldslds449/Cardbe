@@ -878,7 +878,6 @@
             info={received_waiting_id !== null
               ? connection_details.boards[received_waiting_id]
               : connection_details.invitation}
-            waiting_for_approval
           />
           {#if connection_details_error}
             <p class="mt-2 text-xs text-muted-foreground">
@@ -1125,7 +1124,7 @@
               })
             : manage_view === "mine"
               ? m.share_manage_auto_help()
-              : m.share_received_auto_help()}
+              : ""}
         </p>
         <Button
           size="sm"
@@ -1391,9 +1390,6 @@
             class="break-words rounded-sm leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >{managed_board.board_name}</Dialog.Title
           >
-          <Dialog.Description
-            >{m.share_invites_and_devices_help()}</Dialog.Description
-          >
         </div>
       </Dialog.Header>
     {:else}
@@ -1468,12 +1464,7 @@
     ><AlertDialog.Header
       ><AlertDialog.Title>{m.ui_review_device_request()}</AlertDialog.Title
       ><AlertDialog.Description
-        >{m.share_review_description({
-          permission:
-            approval_candidate?.invite.permission === "editor"
-              ? m.board_can_edit()
-              : m.board_read_only(),
-        })}</AlertDialog.Description
+        >{m.share_review_description()}</AlertDialog.Description
       ></AlertDialog.Header
     >
     {#if approval_candidate}

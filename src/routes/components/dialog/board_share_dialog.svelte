@@ -1076,9 +1076,6 @@
                     spellcheck={false}
                     placeholder={m.ui_paste_the_link_you_shared_before()}
                   />
-                  <p class="text-xs text-muted-foreground">
-                    {m.share_reuse_description()}
-                  </p>
                 </div>
               {/if}
             </div>

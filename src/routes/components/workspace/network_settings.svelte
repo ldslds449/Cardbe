@@ -70,9 +70,6 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col gap-4">
-  <p class="shrink-0 text-sm text-muted-foreground">
-    {m.share_network_description()}
-  </p>
   {#if load_error}
     <div class="grid justify-items-start gap-2">
       <p role="alert" class="text-sm text-destructive">

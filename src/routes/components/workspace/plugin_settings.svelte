@@ -1641,7 +1641,7 @@
               <Field.Description id="plugin-permissions-help"
                 >{m.plugin_permissions_help()}</Field.Description
               >
-              {#if editing.http_credentials != null}
+              {#if editing.http_credentials != null && credentialScopes.length}
                 <Field.Description
                   >{m.plugin_credentials_help()}</Field.Description
                 >

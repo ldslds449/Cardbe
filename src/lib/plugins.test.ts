@@ -345,7 +345,7 @@ describe("plugin settings", () => {
     ).toEqual(["column", "board"]);
   });
   it("keeps Taiwanese translations and switches generic diagnostics live", () => {
-    expect(zh.plugin_title).toBe("外掛程式");
+    expect(zh.plugin_title).toBe("外掛");
     for (const [key, value] of Object.entries(zh)) {
       if (key.startsWith("plugin_")) {
         expect(value).not.toMatch(/\?{2,}/);

@@ -42,25 +42,17 @@
 >
   <fieldset disabled={network.saving} class="grid min-w-0 gap-4 pr-4">
     <div class="flex items-center justify-between gap-4">
-      <div class="grid gap-2">
-        <Label for="iroh-enabled">{m.share_iroh_enable()}</Label>
-        <p id="iroh-enabled-help" class="text-muted-foreground text-sm">
-          {m.share_iroh_enable_help()}
-        </p>
-      </div>
-      <Switch
-        id="iroh-enabled"
-        bind:checked={network.settings.enabled}
-        aria-describedby="iroh-enabled-help"
-      />
+      <Label for="iroh-enabled">{m.share_iroh_enable()}</Label>
+      <Switch id="iroh-enabled" bind:checked={network.settings.enabled} />
     </div>
     <Card.Root class="gap-0 p-0 shadow-none">
       <Card.Header class="px-4 py-3">
         <Card.Title class="text-base">{m.share_network_method()}</Card.Title>
-        <Card.Description>{m.share_network_compatibility()}</Card.Description>
       </Card.Header>
       <Card.Content class="grid gap-2 px-4 pb-4">
-        <Label for="network-mode">{m.share_network_mode()}</Label>
+        <Label for="network-mode" class="sr-only"
+          >{m.share_network_mode()}</Label
+        >
         <Select.Root
           type="single"
           value={network.mode}
@@ -202,9 +194,10 @@
               class="font-normal text-muted-foreground"
               >{m.share_network_fixed_help()}</span
             >
-            <span class="text-xs font-normal text-muted-foreground"
-              >{#if !network.settings.direct_ip_enabled}{m.share_network_enable_direct()}{:else if !network.direct_addresses_text.trim()}{m.share_network_auto_addresses()}{/if}</span
-            >
+            {#if !network.settings.direct_ip_enabled}<span
+                class="text-xs font-normal text-muted-foreground"
+                >{m.share_network_enable_direct()}</span
+              >{/if}
             {#if network.field_errors.direct_addresses}
               <span
                 id="network-direct-addresses-error"
@@ -236,9 +229,10 @@
               class="font-normal text-muted-foreground"
               >{m.share_network_relay_help_urls()}</span
             >
-            <span class="text-xs font-normal text-muted-foreground"
-              >{#if !network.settings.relay_enabled}{m.share_network_enable_relay()}{:else if !network.relay_urls_text.trim()}{m.share_network_default_service()}{/if}</span
-            >
+            {#if !network.settings.relay_enabled}<span
+                class="text-xs font-normal text-muted-foreground"
+                >{m.share_network_enable_relay()}</span
+              >{/if}
             {#if network.field_errors.relay_urls}
               <span
                 id="network-relay-urls-error"
@@ -268,9 +262,10 @@
               class="font-normal text-muted-foreground"
               >{m.share_network_discovery_help_urls()}</span
             >
-            <span class="text-xs font-normal text-muted-foreground"
-              >{#if !network.settings.discovery_enabled}{m.share_network_enable_discovery()}{:else if !network.discovery_urls_text.trim()}{m.share_network_default_service()}{/if}</span
-            >
+            {#if !network.settings.discovery_enabled}<span
+                class="text-xs font-normal text-muted-foreground"
+                >{m.share_network_enable_discovery()}</span
+              >{/if}
             {#if network.field_errors.discovery_urls}
               <span
                 id="network-discovery-urls-error"
