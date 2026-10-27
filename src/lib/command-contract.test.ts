@@ -214,6 +214,8 @@ interface FrontendCall {
   /** Keys of a literal argument object, or null when not a literal. */
   keys: string[] | null;
   spread: boolean;
+  /** A Tauri plugin command such as `plugin:window-state|save_window_state`. */
+  plugin: boolean;
 }
 
 function frontend_calls(): FrontendCall[] {
@@ -236,6 +238,7 @@ function frontend_calls(): FrontendCall[] {
         names: command_names(name),
         keys: [],
         spread: false,
+        plugin: /^"plugin:[\w-]+\|\w+"$/.test(name),
       };
       if (args?.startsWith("{") && args.endsWith("}")) {
         for (const entry of split_arguments(args.slice(1, -1))) {
@@ -275,6 +278,9 @@ describe("frontend and backend command contract", () => {
   it("calls only registered commands with their Rust argument names", () => {
     const failures: string[] = [];
     for (const call of calls) {
+      if (call.plugin) {
+        continue;
+      }
       if (call.names.length === 0) {
         failures.push(
           `${call.location}: command name is not a literal or literal choice`,
