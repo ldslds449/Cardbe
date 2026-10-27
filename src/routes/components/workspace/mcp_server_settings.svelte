@@ -3,8 +3,11 @@
   import { Badge } from "#lib/components/ui/badge/index.js";
   import { Button } from "#lib/components/ui/button/index.js";
   import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import * as Collapsible from "#lib/components/ui/collapsible/index.js";
+  import * as Dialog from "#lib/components/ui/dialog/index.js";
   import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { Spinner } from "#lib/components/ui/spinner/index.js";
   import { Switch } from "#lib/components/ui/switch/index.js";
   import { m } from "#lib/paraglide/messages.js";
@@ -17,9 +20,12 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { toast } from "svelte-sonner";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import PencilIcon from "@lucide/svelte/icons/pencil";
+  import PlayIcon from "@lucide/svelte/icons/play";
+  import PlugIcon from "@lucide/svelte/icons/plug";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
@@ -44,15 +50,26 @@
     boards: number[];
     write: boolean;
   } | null>(null);
+  /** Connection details for one client; `token` is null when it can't be shown. */
   let revealed = $state<{
+    client_id: string;
     name: string;
-    token: string;
+    token: string | null;
     saved: boolean;
   } | null>(null);
   let confirming = $state<{
     kind: "delete" | "regenerate";
     client: McpClient;
   } | null>(null);
+
+  const header = $derived(
+    revealed?.token ? `Authorization: Bearer ${revealed.token}` : "",
+  );
+  const configuration = $derived(
+    revealed?.token && server
+      ? client_configuration(server.endpoint, revealed.token)
+      : "",
+  );
 
   const port = $derived(Number(port_text));
   const port_changed = $derived(
@@ -208,7 +225,9 @@
           write: draft.write,
         });
         show(created.server);
+        editor = null;
         revealed = {
+          client_id: created.client_id,
           name: draft.name.trim(),
           token: created.token,
           saved: created.token_saved,
@@ -223,21 +242,23 @@
             write: draft.write,
           }),
         );
+        editor = null;
       }
-      editor = null;
     });
   }
 
-  function copy_token(client: McpClient) {
+  function connect(client: McpClient) {
     void run(async () => {
       const token = await invoke<string | null>("get_mcp_client_token", {
         clientId: client.id,
       });
-      if (token === null) {
-        toast.error(m.mcp_token_unavailable());
-        return;
-      }
-      await copy(token);
+      editor = null;
+      revealed = {
+        client_id: client.id,
+        name: client.name,
+        token,
+        saved: token !== null,
+      };
     });
   }
 
@@ -264,6 +285,7 @@
         show(regenerated.server);
         editor = null;
         revealed = {
+          client_id: target.client.id,
           name: target.client.name,
           token: regenerated.token,
           saved: regenerated.token_saved,
@@ -274,8 +296,39 @@
   }
 </script>
 
-<fieldset class="relative space-y-3" aria-busy={saving}>
-  <legend class="text-sm font-medium">{m.mcp_title()}</legend>
+{#snippet copy_field(id: string, label: string, value: string)}
+  <div class="grid gap-1.5">
+    <label for={id} class="text-xs font-medium">{label}</label>
+    <div class="flex gap-2">
+      <Input {id} class="h-8 font-mono text-xs" readonly {value} />
+      <Button
+        variant="outline"
+        size="icon-sm"
+        class="size-8 shrink-0"
+        aria-label={m.mcp_copy_value({ name: label })}
+        title={m.mcp_copy_value({ name: label })}
+        onclick={() => void copy(value)}
+      >
+        <CopyIcon />
+      </Button>
+    </div>
+  </div>
+{/snippet}
+
+<fieldset class="relative space-y-4" aria-busy={saving}>
+  <legend class="flex items-center gap-2 text-sm font-medium">
+    {m.mcp_title()}
+    {#if server?.enabled}
+      <Badge
+        variant={server.status === "running"
+          ? "default"
+          : server.status === "failed"
+            ? "destructive"
+            : "secondary"}
+        aria-live="polite">{status_label(server.status)}</Badge
+      >
+    {/if}
+  </legend>
   <Switch
     class="absolute end-0 top-0"
     checked={server?.enabled ?? false}
@@ -293,266 +346,311 @@
     </p>
   {/if}
   {#if server?.enabled}
-    <div class="flex items-center gap-2" aria-live="polite">
-      <Badge
-        variant={server.status === "running"
-          ? "default"
-          : server.status === "failed"
-            ? "destructive"
-            : "secondary"}>{status_label(server.status)}</Badge
-      >
-      {#if server.status !== "running"}
-        <Button variant="outline" size="sm" class="h-7" onclick={start}
-          >{m.mcp_start()}</Button
-        >
-      {/if}
-    </div>
-    <div class="grid gap-1.5">
-      <label for="mcp-endpoint" class="text-xs font-medium"
-        >{m.mcp_endpoint()}</label
-      >
-      <div class="flex gap-2">
-        <Input
-          id="mcp-endpoint"
-          class="h-8 font-mono text-xs"
-          readonly
-          value={server.endpoint}
-        />
-        <Button
-          variant="outline"
-          size="icon-sm"
-          class="size-8 shrink-0"
-          aria-label={m.mcp_copy_endpoint()}
-          title={m.mcp_copy_endpoint()}
-          onclick={() => server && void copy(server.endpoint)}
-        >
-          <CopyIcon />
-        </Button>
-      </div>
-    </div>
-    <div class="grid gap-1.5">
-      <label for="mcp-port" class="text-xs font-medium">{m.mcp_port()}</label>
-      <form
-        class="flex gap-2"
-        onsubmit={(event) => {
-          event.preventDefault();
-          if (port_changed && valid_port(port)) {
-            save_server({ port });
-          }
-        }}
-      >
-        <Input
-          id="mcp-port"
-          class="h-8 w-28"
-          inputmode="numeric"
-          aria-describedby="mcp-port-hint"
-          aria-invalid={!valid_port(port)}
-          bind:value={port_text}
-        />
-        <Button
-          type="submit"
-          variant="outline"
-          size="sm"
-          class="h-8"
-          disabled={!port_changed || !valid_port(port)}
-          >{m.mcp_port_apply()}</Button
-        >
-      </form>
-      <p id="mcp-port-hint" class="text-xs text-muted-foreground">
-        {m.mcp_port_hint()}
-      </p>
-    </div>
-    <div class="flex items-center gap-2">
-      <Checkbox
-        id="mcp-auto-start"
-        checked={server.auto_start}
-        onCheckedChange={(checked) =>
-          save_server({ auto_start: checked === true })}
-      />
-      <label for="mcp-auto-start" class="text-sm">{m.mcp_auto_start()}</label>
-    </div>
+    {#if server.status !== "running"}
+      <Button size="sm" onclick={start}><PlayIcon />{m.mcp_start()}</Button>
+    {/if}
+    {@render copy_field("mcp-endpoint", m.mcp_endpoint(), server.endpoint)}
+    <Collapsible.Root>
+      <Collapsible.Trigger>
+        {#snippet child({ props })}
+          <Button {...props} variant="ghost" size="sm" class="group -ms-2.5">
+            <ChevronDownIcon
+              class="-rotate-90 transition-transform group-data-[state=open]:rotate-0"
+            />{m.mcp_advanced()}
+          </Button>
+        {/snippet}
+      </Collapsible.Trigger>
+      <Collapsible.Content class="grid gap-3 ps-5 pt-3">
+        <div class="grid gap-1.5">
+          <label for="mcp-port" class="text-xs font-medium"
+            >{m.mcp_port()}</label
+          >
+          <form
+            class="flex gap-2"
+            onsubmit={(event) => {
+              event.preventDefault();
+              if (port_changed && valid_port(port)) {
+                save_server({ port });
+              }
+            }}
+          >
+            <Input
+              id="mcp-port"
+              class="h-8 w-28"
+              inputmode="numeric"
+              aria-describedby="mcp-port-hint"
+              aria-invalid={!valid_port(port)}
+              bind:value={port_text}
+            />
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              class="h-8"
+              disabled={!port_changed || !valid_port(port)}
+              >{m.mcp_port_apply()}</Button
+            >
+          </form>
+          <p id="mcp-port-hint" class="text-xs text-muted-foreground">
+            {m.mcp_port_hint()}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <Checkbox
+            id="mcp-auto-start"
+            checked={server.auto_start}
+            onCheckedChange={(checked) =>
+              save_server({ auto_start: checked === true })}
+          />
+          <label for="mcp-auto-start" class="text-sm"
+            >{m.mcp_auto_start()}</label
+          >
+        </div>
+      </Collapsible.Content>
+    </Collapsible.Root>
   {/if}
 
   {#if server}
     <div class="space-y-2">
       <div class="flex items-center justify-between gap-2">
         <h3 class="text-sm font-medium">{m.mcp_clients_title()}</h3>
-        {#if editor?.id !== null}
-          <Button
-            variant="ghost"
-            size="sm"
-            class="h-7"
-            onclick={() => edit(null)}><PlusIcon />{m.mcp_client_add()}</Button
-          >
-        {/if}
-      </div>
-      {#if server.clients.length === 0 && !editor}
-        <p class="text-sm text-muted-foreground">{m.mcp_clients_empty()}</p>
-      {/if}
-      <ul class="-mx-2">
-        {#each server.clients as client (client.id)}
-          <li
-            class="group flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/50"
-          >
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-sm" title={client.name}>{client.name}</p>
-              <p class="truncate text-xs text-muted-foreground">
-                {access_label(client)}
-              </p>
-            </div>
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger>
-                {#snippet child({ props })}
-                  <Button
-                    {...props}
-                    id="mcp-client-options-{client.id}"
-                    variant="ghost"
-                    size="icon-sm"
-                    class="size-7 text-muted-foreground"
-                    aria-label={m.mcp_client_options_for({ name: client.name })}
-                    title={m.mcp_client_options_for({ name: client.name })}
-                  >
-                    <EllipsisIcon />
-                  </Button>
-                {/snippet}
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Content
-                align="end"
-                class="min-w-44"
-                onCloseAutoFocus={(event) => {
-                  // Keep focus in the settings dialog; see global shortcut settings.
-                  event.preventDefault();
-                  const trigger = document.getElementById(
-                    `mcp-client-options-${client.id}`,
-                  );
-                  queueMicrotask(() => trigger?.focus({ preventScroll: true }));
-                }}
-              >
-                <DropdownMenu.Item onclick={() => copy_token(client)}>
-                  <CopyIcon />{m.mcp_token_copy()}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item onclick={() => edit(client)}>
-                  <PencilIcon />{m.common_edit()}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  onclick={() => (confirming = { kind: "regenerate", client })}
-                >
-                  <RefreshCwIcon />{m.mcp_token_regenerate()}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  variant="destructive"
-                  onclick={() => (confirming = { kind: "delete", client })}
-                >
-                  <Trash2Icon />{m.mcp_client_remove()}
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
-          </li>
-        {/each}
-      </ul>
-
-      {#if editor}
-        <form
-          class="grid gap-3 rounded-md border p-3"
-          onsubmit={(event) => {
-            event.preventDefault();
-            save_client();
-          }}
+        <Button variant="outline" size="sm" onclick={() => edit(null)}
+          ><PlusIcon />{m.mcp_client_add()}</Button
         >
-          <div class="grid gap-1.5">
-            <label for="mcp-client-name" class="text-xs font-medium"
-              >{m.common_name()}</label
-            >
-            <Input
-              id="mcp-client-name"
-              class="h-8"
-              maxlength={100}
-              placeholder={m.mcp_client_name_placeholder()}
-              bind:value={editor.name}
-            />
-          </div>
-          <fieldset class="grid gap-1.5">
-            <legend class="mb-1.5 text-xs font-medium"
-              >{m.mcp_client_boards()}</legend
-            >
-            <div class="flex items-center gap-2">
-              <Checkbox
-                id="mcp-client-all-boards"
-                checked={editor.all_boards}
-                onCheckedChange={(checked) => {
-                  if (editor) {
-                    editor.all_boards = checked === true;
-                  }
-                }}
-              />
-              <label for="mcp-client-all-boards" class="text-sm"
-                >{m.mcp_client_all_boards()}</label
-              >
-            </div>
-            {#each editor.all_boards ? [] : board.boards as item (item.id)}
-              <div class="flex items-center gap-2 ps-6">
-                <Checkbox
-                  id="mcp-client-board-{item.id}"
-                  checked={editor.boards.includes(item.id)}
-                  onCheckedChange={(checked) =>
-                    toggle_board(item.id, checked === true)}
-                />
-                <label
-                  for="mcp-client-board-{item.id}"
-                  class="min-w-0 truncate text-sm"
-                  title={item.name}>{item.name}</label
-                >
-              </div>
-            {/each}
-          </fieldset>
-          <div class="flex items-start gap-2">
+      </div>
+      {#if server.clients.length === 0}
+        <p
+          class="rounded-md border border-dashed px-3 py-4 text-center text-sm text-muted-foreground"
+        >
+          {m.mcp_clients_empty()}
+        </p>
+      {:else}
+        <ul class="divide-y rounded-md border">
+          {#each server.clients as client (client.id)}
+            {@render client_row(client)}
+          {/each}
+        </ul>
+      {/if}
+    </div>
+    <McpActivity clients={server.clients} />
+  {/if}
+</fieldset>
+
+{#snippet client_row(client: McpClient)}
+  <li class="flex items-center gap-2 px-3 py-2">
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-sm font-medium" title={client.name}>
+        {client.name}
+      </p>
+      <p class="truncate text-xs text-muted-foreground">
+        {access_label(client)}
+      </p>
+    </div>
+    <Button
+      variant="outline"
+      size="sm"
+      class="shrink-0"
+      onclick={() => connect(client)}
+      ><PlugIcon />{m.mcp_client_connect()}</Button
+    >
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            id="mcp-client-options-{client.id}"
+            variant="ghost"
+            size="icon-sm"
+            class="size-7 text-muted-foreground"
+            aria-label={m.mcp_client_options_for({ name: client.name })}
+            title={m.mcp_client_options_for({ name: client.name })}
+          >
+            <EllipsisIcon />
+          </Button>
+        {/snippet}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content
+        align="end"
+        class="min-w-44"
+        onCloseAutoFocus={(event) => {
+          // Keep focus in the settings dialog; see global shortcut settings.
+          event.preventDefault();
+          const trigger = document.getElementById(
+            `mcp-client-options-${client.id}`,
+          );
+          queueMicrotask(() => trigger?.focus({ preventScroll: true }));
+        }}
+      >
+        <DropdownMenu.Item onclick={() => edit(client)}>
+          <PencilIcon />{m.common_edit()}
+        </DropdownMenu.Item>
+        <DropdownMenu.Item
+          onclick={() => (confirming = { kind: "regenerate", client })}
+        >
+          <RefreshCwIcon />{m.mcp_token_regenerate()}
+        </DropdownMenu.Item>
+        <DropdownMenu.Item
+          variant="destructive"
+          onclick={() => (confirming = { kind: "delete", client })}
+        >
+          <Trash2Icon />{m.mcp_client_remove()}
+        </DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  </li>
+{/snippet}
+
+<Dialog.Root
+  bind:open={
+    () => editor !== null || revealed !== null,
+    (value) => {
+      if (!value) {
+        editor = null;
+        revealed = null;
+      }
+    }
+  }
+  draft={editor ?? undefined}
+  busy={saving}
+>
+  <Dialog.Content class="sm:max-w-md">
+    {#if editor}
+      <Dialog.Header>
+        <Dialog.Title
+          >{editor.id === null
+            ? m.mcp_client_add()
+            : m.mcp_client_edit()}</Dialog.Title
+        >
+        <Dialog.Description
+          >{m.mcp_client_edit_description()}</Dialog.Description
+        >
+      </Dialog.Header>
+      <form
+        class="grid min-w-0 gap-4"
+        onsubmit={(event) => {
+          event.preventDefault();
+          save_client();
+        }}
+      >
+        <div class="grid gap-1.5">
+          <label for="mcp-client-name" class="text-xs font-medium"
+            >{m.common_name()}</label
+          >
+          <Input
+            id="mcp-client-name"
+            class="h-8"
+            maxlength={100}
+            placeholder={m.mcp_client_name_placeholder()}
+            bind:value={editor.name}
+          />
+        </div>
+        <fieldset class="grid min-w-0 gap-1.5">
+          <legend class="mb-1.5 text-xs font-medium"
+            >{m.mcp_client_boards()}</legend
+          >
+          <div class="flex items-center gap-2">
             <Checkbox
-              id="mcp-client-write"
-              class="mt-0.5"
-              checked={editor.write}
+              id="mcp-client-all-boards"
+              checked={editor.all_boards}
               onCheckedChange={(checked) => {
                 if (editor) {
-                  editor.write = checked === true;
+                  editor.all_boards = checked === true;
                 }
               }}
             />
-            <label for="mcp-client-write" class="text-sm"
-              >{m.mcp_client_write()}</label
+            <label for="mcp-client-all-boards" class="text-sm"
+              >{m.mcp_client_all_boards()}</label
             >
           </div>
-          <div class="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onclick={() => (editor = null)}
-              >{m.common_cancel()}</Button
+          {#if !editor.all_boards}
+            <ScrollArea
+              class="[&>[data-slot=scroll-area-viewport]]:max-h-48"
+              orientation="vertical"
             >
-            <Button type="submit" size="sm" disabled={!can_save(editor)}
-              >{editor.id === null ? m.common_add() : m.common_save()}</Button
-            >
-          </div>
-        </form>
-      {/if}
-
-      {#if revealed}
-        <div class="grid gap-2 rounded-md border p-3" role="status">
-          <p class="text-sm font-medium">
-            {m.mcp_token_title({ name: revealed.name })}
-          </p>
-          <div class="flex gap-2">
-            <Input
-              class="h-8 font-mono text-xs"
-              readonly
-              aria-label={m.mcp_token_title({ name: revealed.name })}
-              value={revealed.token}
-            />
-            <Button
-              variant="outline"
-              size="icon-sm"
-              class="size-8 shrink-0"
-              aria-label={m.mcp_token_copy()}
-              title={m.mcp_token_copy()}
-              onclick={() => revealed && void copy(revealed.token)}
-            >
-              <CopyIcon />
-            </Button>
+              <div class="grid gap-1.5 ps-6 pe-3">
+                {#each board.boards as item (item.id)}
+                  <div class="flex min-w-0 items-center gap-2">
+                    <Checkbox
+                      id="mcp-client-board-{item.id}"
+                      checked={editor.boards.includes(item.id)}
+                      onCheckedChange={(checked) =>
+                        toggle_board(item.id, checked === true)}
+                    />
+                    <label
+                      for="mcp-client-board-{item.id}"
+                      class="min-w-0 truncate text-sm"
+                      title={item.name}>{item.name}</label
+                    >
+                  </div>
+                {/each}
+              </div>
+            </ScrollArea>
+          {/if}
+        </fieldset>
+        <div class="flex items-start gap-2">
+          <Checkbox
+            id="mcp-client-write"
+            class="mt-0.5"
+            checked={editor.write}
+            onCheckedChange={(checked) => {
+              if (editor) {
+                editor.write = checked === true;
+              }
+            }}
+          />
+          <label for="mcp-client-write" class="text-sm"
+            >{m.mcp_client_write()}</label
+          >
+        </div>
+        <Dialog.Footer>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={saving}
+            onclick={() => (editor = null)}>{m.common_cancel()}</Button
+          >
+          <Button type="submit" disabled={saving || !can_save(editor)}
+            >{editor.id === null ? m.common_add() : m.common_save()}</Button
+          >
+        </Dialog.Footer>
+      </form>
+    {:else if revealed}
+      <Dialog.Header>
+        <Dialog.Title
+          >{m.mcp_connect_title({ name: revealed.name })}</Dialog.Title
+        >
+        <Dialog.Description>{m.mcp_connect_description()}</Dialog.Description>
+      </Dialog.Header>
+      {#if revealed.token !== null && server}
+        <div class="grid min-w-0 gap-4">
+          {@render copy_field(
+            "mcp-connect-endpoint",
+            m.mcp_endpoint(),
+            server.endpoint,
+          )}
+          {@render copy_field("mcp-connect-header", m.mcp_header(), header)}
+          <div class="grid min-w-0 gap-1.5">
+            <span class="text-xs font-medium">{m.mcp_configuration()}</span>
+            <div class="relative min-w-0 rounded-md border bg-muted/40">
+              <ScrollArea
+                class="[&>[data-slot=scroll-area-viewport]]:max-h-48"
+                orientation="both"
+              >
+                <pre class="p-3 pe-12 font-mono text-xs"><code
+                    >{configuration}</code
+                  ></pre>
+              </ScrollArea>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                class="absolute end-2 top-2 size-7"
+                aria-label={m.mcp_copy_value({ name: m.mcp_configuration() })}
+                title={m.mcp_copy_value({ name: m.mcp_configuration() })}
+                onclick={() => void copy(configuration)}
+              >
+                <CopyIcon />
+              </Button>
+            </div>
           </div>
           <p
             class={[
@@ -564,27 +662,31 @@
               ? m.mcp_token_saved_hint()
               : m.mcp_token_once_hint()}
           </p>
-          <div class="flex flex-wrap justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onclick={() =>
-                revealed &&
-                server &&
-                void copy(
-                  client_configuration(server.endpoint, revealed.token),
-                )}>{m.mcp_copy_configuration()}</Button
-            >
-            <Button size="sm" onclick={() => (revealed = null)}
-              >{m.common_done()}</Button
-            >
-          </div>
         </div>
+      {:else}
+        <p class="text-sm text-muted-foreground">
+          {m.mcp_token_unavailable()}
+        </p>
       {/if}
-    </div>
-    <McpActivity clients={server.clients} />
-  {/if}
-</fieldset>
+      <Dialog.Footer>
+        {#if revealed.token === null}
+          <Button
+            variant="outline"
+            onclick={() => {
+              const client = server?.clients.find(
+                (item) => item.id === revealed?.client_id,
+              );
+              if (client) {
+                confirming = { kind: "regenerate", client };
+              }
+            }}>{m.mcp_token_regenerate()}</Button
+          >
+        {/if}
+        <Button onclick={() => (revealed = null)}>{m.common_done()}</Button>
+      </Dialog.Footer>
+    {/if}
+  </Dialog.Content>
+</Dialog.Root>
 
 <AlertDialog.Root
   open={confirming !== null}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from "#lib/components/ui/button/index.js";
+  import * as Collapsible from "#lib/components/ui/collapsible/index.js";
   import { m } from "#lib/paraglide/messages.js";
   import { formatDateTime } from "#lib/i18n/index.js";
   import { translateCommandError } from "#lib/command-errors.js";
@@ -7,6 +8,7 @@
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import CircleAlertIcon from "@lucide/svelte/icons/circle-alert";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
   import { board } from "../../board.svelte";
@@ -69,60 +71,72 @@
   }
 </script>
 
-<div class="space-y-2">
+<Collapsible.Root>
   <div class="flex items-center justify-between gap-2">
-    <h3 class="text-sm font-medium">{m.mcp_activity_title()}</h3>
+    <h3>
+      <Collapsible.Trigger>
+        {#snippet child({ props })}
+          <Button {...props} variant="ghost" size="sm" class="group -ms-2.5">
+            <ChevronDownIcon
+              class="-rotate-90 transition-transform group-data-[state=open]:rotate-0"
+            />{m.mcp_activity_title()}
+          </Button>
+        {/snippet}
+      </Collapsible.Trigger>
+    </h3>
     <Button
-      variant="ghost"
+      variant="outline"
       size="sm"
       disabled={activity.length === 0}
       onclick={() => void clear()}>{m.mcp_activity_clear()}</Button
     >
   </div>
-  <p class="text-xs text-muted-foreground">{m.mcp_activity_description()}</p>
-  {#if activity.length === 0}
-    <p class="text-sm text-muted-foreground">{m.mcp_activity_empty()}</p>
-  {:else}
-    <ul class="divide-y rounded-md border">
-      {#each activity as call, index (index)}
-        <li class="flex items-start gap-2 px-3 py-2">
-          {#if call.error}
-            <CircleAlertIcon
-              class="mt-0.5 size-4 shrink-0 text-destructive"
-              aria-label={m.mcp_activity_failed()}
-            />
-          {:else}
-            <CircleCheckIcon
-              class="mt-0.5 size-4 shrink-0 text-muted-foreground"
-              aria-label={m.mcp_activity_succeeded()}
-            />
-          {/if}
-          <div class="min-w-0 flex-1 space-y-0.5">
-            <div class="flex items-baseline justify-between gap-2">
-              <code class="truncate text-xs">{call.tool}</code>
-              <time
-                class="shrink-0 text-xs text-muted-foreground"
-                datetime={new Date(call.at).toISOString()}
-                >{formatDateTime(call.at, {
-                  dateStyle: "short",
-                  timeStyle: "medium",
-                })}</time
-              >
-            </div>
-            <p class="truncate text-xs text-muted-foreground">
-              {client_name(call.client_id)}
-              {#if call.board_id !== null}
-                · {board_name(call.board_id)}{/if}
-              · {m.mcp_activity_duration({ ms: call.duration_ms })}
-            </p>
+  <Collapsible.Content class="space-y-2 pt-1">
+    <p class="text-xs text-muted-foreground">{m.mcp_activity_description()}</p>
+    {#if activity.length === 0}
+      <p class="text-sm text-muted-foreground">{m.mcp_activity_empty()}</p>
+    {:else}
+      <ul class="divide-y rounded-md border">
+        {#each activity as call, index (index)}
+          <li class="flex items-start gap-2 px-3 py-2">
             {#if call.error}
-              <p class="text-xs text-destructive">
-                {translateCommandError({ code: call.error })}
-              </p>
+              <CircleAlertIcon
+                class="mt-0.5 size-4 shrink-0 text-destructive"
+                aria-label={m.mcp_activity_failed()}
+              />
+            {:else}
+              <CircleCheckIcon
+                class="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                aria-label={m.mcp_activity_succeeded()}
+              />
             {/if}
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</div>
+            <div class="min-w-0 flex-1 space-y-0.5">
+              <div class="flex items-baseline justify-between gap-2">
+                <code class="truncate text-xs">{call.tool}</code>
+                <time
+                  class="shrink-0 text-xs text-muted-foreground"
+                  datetime={new Date(call.at).toISOString()}
+                  >{formatDateTime(call.at, {
+                    dateStyle: "short",
+                    timeStyle: "medium",
+                  })}</time
+                >
+              </div>
+              <p class="truncate text-xs text-muted-foreground">
+                {client_name(call.client_id)}
+                {#if call.board_id !== null}
+                  · {board_name(call.board_id)}{/if}
+                · {m.mcp_activity_duration({ ms: call.duration_ms })}
+              </p>
+              {#if call.error}
+                <p class="text-xs text-destructive">
+                  {translateCommandError({ code: call.error })}
+                </p>
+              {/if}
+            </div>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </Collapsible.Content>
+</Collapsible.Root>

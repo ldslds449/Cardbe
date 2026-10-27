@@ -8,8 +8,8 @@ The server is part of the Cardbe process; there is no separate executable or sid
 
 1. Open **Settings → Preferences…** (`Ctrl+,`) and select **MCP**.
 2. Turn on **Enable MCP server**. The server starts immediately and the status shows **Running**.
-3. Optional: change **Port** (default `8765`, allowed `1024`–`65535`) and select **Apply**. A running server restarts on the new port.
-4. Optional: select **Start when Cardbe opens**. Otherwise an enabled server starts only when you turn it on or select **Start**.
+3. Optional: under **Advanced**, change **Port** (default `8765`, allowed `1024`–`65535`) and select **Apply**. A running server restarts on the new port.
+4. Optional: under **Advanced**, select **Start when Cardbe opens**. Otherwise an enabled server starts only when you turn it on or select **Start**.
 
 If the port is already in use, Cardbe shows an error and keeps the setting; choose another port or free it, then select **Start**. Other Cardbe features keep working when the server cannot start or stops unexpectedly (status **Stopped unexpectedly**).
 
@@ -19,9 +19,9 @@ Development instances started with `CARDBE_DEV_PORT` default to `8765 + (CARDBE_
 
 1. Under **Apps**, select **Add app**.
 2. Enter a name and choose the boards it may access: **All boards** (the default, which also covers boards added later) or only the boards you select. Optionally allow it to make changes (add columns and change tasks). Apps are read-only unless you allow changes.
-3. Select **Add**. Cardbe shows the access token once in the settings panel, with **Copy token** and **Copy client configuration**.
+3. Select **Add**. The dialog shows the app's connection settings: the server address, the `Authorization` header with the token, and a `mcpServers` configuration, each with a copy button.
 
-Tokens are saved in the operating system's secure storage (Windows Credential Manager, macOS Keychain, or the Secret Service on Linux) so you can copy them again from the app's menu. When secure storage is unavailable, the token is shown only once; copy it before closing the panel.
+Tokens are saved in the operating system's secure storage (Windows Credential Manager, macOS Keychain, or the Secret Service on Linux) so you can open **Connection settings** again from the app's menu. When secure storage is unavailable, the token is shown only once; copy it before closing the dialog.
 
 The **Recent calls** list in the MCP tab shows the last 200 tool calls since Cardbe started: time, app, tool, board, result and duration. Arguments and results are not recorded, and the list is not saved.
 
@@ -43,7 +43,7 @@ Every request must carry `Authorization: Bearer <token>`. Configuration formats 
 claude mcp add --transport http cardbe http://127.0.0.1:8765/mcp --header "Authorization: Bearer <token>"
 ```
 
-**Claude Code project file** (`.mcp.json`). This is also what **Copy client configuration** produces:
+**Claude Code project file** (`.mcp.json`). This is also the configuration shown in **Connection settings**:
 
 ```json
 {
