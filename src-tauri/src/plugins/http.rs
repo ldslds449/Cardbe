@@ -162,6 +162,7 @@ impl Outgoing {
     }
 }
 const BODY_LIMIT: usize = 10 * 1024 * 1024;
+const RESPONSE_LIMIT: usize = 64 * 1024 * 1024;
 /// Guest headers may not replace host-managed, transport, or credential headers.
 fn guest_header(name: &str, policy: &HttpPolicy) -> bool {
     let lower = name.to_ascii_lowercase();
@@ -367,16 +368,15 @@ async fn get_with<
         })
         .collect();
         let status = response.status().as_u16();
-        const LIMIT: usize = 2 * 1024 * 1024;
         if response
             .content_length()
-            .is_some_and(|length| length > LIMIT as u64)
+            .is_some_and(|length| length > RESPONSE_LIMIT as u64)
         {
             return Err(RuntimeError::ResourceLimit);
         }
         let mut body = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| RuntimeError::Network)? {
-            if body.len() + chunk.len() > LIMIT {
+            if body.len() + chunk.len() > RESPONSE_LIMIT {
                 return Err(RuntimeError::ResourceLimit);
             }
             body.extend_from_slice(&chunk);
@@ -1272,9 +1272,32 @@ mod tests {
 
     #[tokio::test]
     async fn redirects_declared_and_streamed_size_limits_are_rejected() {
-        for bytes in [b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\nLocation: http://127.0.0.1/private\r\n\r\n".to_vec(),b"HTTP/1.1 200 OK\r\nContent-Length: 2097153\r\n\r\n".to_vec(),[b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec(),vec![b'x';2097153]].concat()] {
+        for bytes in [b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\nLocation: http://127.0.0.1/private\r\n\r\n".to_vec(),format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",RESPONSE_LIMIT+1).into_bytes(),[b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec(),vec![b'x';RESPONSE_LIMIT+1]].concat()] {
             let result=get_with("https://api.github.com",&policy(),cancel(),deadline(),|_|async {Ok(vec!["93.184.216.34:443".parse().unwrap()])},|_,_|async {Ok(mock_response(bytes).await)}).await;
             assert!(matches!(result,Err(RuntimeError::Redirect|RuntimeError::ResourceLimit)),"{result:?}");
+        }
+        for bytes in [
+            [
+                format!("HTTP/1.1 200 OK\r\nContent-Length: {RESPONSE_LIMIT}\r\n\r\n").into_bytes(),
+                vec![b'x'; RESPONSE_LIMIT],
+            ]
+            .concat(),
+            [
+                b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec(),
+                vec![b'x'; RESPONSE_LIMIT],
+            ]
+            .concat(),
+        ] {
+            let result = get_with(
+                "https://api.github.com",
+                &policy(),
+                cancel(),
+                deadline(),
+                |_| async { Ok(vec!["93.184.216.34:443".parse().unwrap()]) },
+                |_, _| async { Ok(mock_response(bytes).await) },
+            )
+            .await;
+            assert_eq!(result.unwrap().body.len(), RESPONSE_LIMIT);
         }
     }
     #[tokio::test]

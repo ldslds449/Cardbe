@@ -12,7 +12,7 @@ mod fixture {
                     std::hint::spin_loop();
                 },
                 "memory" => {
-                    let bytes = std::hint::black_box(vec![0u8; 129 * 1024 * 1024]);
+                    let bytes = std::hint::black_box(vec![0u8; 513 * 1024 * 1024]);
                     cardbe::plugin::host::log("ALLOWED_LOG", bytes.len() as u32);
                 }
                 "http" => {

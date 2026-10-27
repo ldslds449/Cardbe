@@ -133,6 +133,7 @@ struct HostState {
 }
 const MAX_STAGED: usize = 200;
 const MAX_SOURCE_PRIORITIES: usize = 2000;
+const RESPONSE_TOTAL_LIMIT: usize = 512 * 1024 * 1024;
 fn query_error(error: crate::errors::DomainError) -> bindings::cardbe::plugin::board::HostError {
     use crate::errors::DomainError;
     use bindings::cardbe::plugin::board::HostError;
@@ -548,7 +549,7 @@ impl HostState {
         match result {
             Ok(response) => {
                 self.response_bytes += response.body.len();
-                if self.response_bytes > 32 * 1024 * 1024 {
+                if self.response_bytes > RESPONSE_TOTAL_LIMIT {
                     self.failure = Some(RuntimeError::ResourceLimit);
                     return Err("RESOURCE_LIMIT".into());
                 }
@@ -650,7 +651,7 @@ fn execute_inner(
         queries: 0,
         query_bytes: 0,
         limits: StoreLimitsBuilder::new()
-            .memory_size(128 * 1024 * 1024)
+            .memory_size(512 * 1024 * 1024)
             .table_elements(10000)
             .instances(8)
             .memories(1)
@@ -1027,6 +1028,45 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+    #[tokio::test]
+    async fn response_bytes_are_bounded_per_run() {
+        let response = || bindings::cardbe::plugin::types::HttpResponse {
+            status: 200,
+            headers: vec![],
+            body: vec![b'x'],
+        };
+        let mut state = HostState {
+            reader: None,
+            queries: 0,
+            query_bytes: 0,
+            limits: StoreLimitsBuilder::new().build(),
+            policy: policy(),
+            cancel: Arc::new(AtomicBool::new(false)),
+            deadline: Instant::now() + Duration::from_secs(60),
+            handle: tokio::runtime::Handle::current(),
+            logs: vec![],
+            messages: 0,
+            message_bytes: 0,
+            requests: 0,
+            request_bytes: 0,
+            response_bytes: RESPONSE_TOTAL_LIMIT - 1,
+            failure: None,
+            staged: vec![],
+            source_priorities: Default::default(),
+            fixtures: Some([response(), response(), response()].into()),
+        };
+        let url = "https://api.example.com/items";
+        assert!(state.request(url, http::Outgoing::get(), false).is_ok());
+        for _ in 0..2 {
+            assert_eq!(
+                state
+                    .request(url, http::Outgoing::get(), false)
+                    .unwrap_err(),
+                "RESOURCE_LIMIT"
+            );
+        }
+        assert!(matches!(state.failure, Some(RuntimeError::ResourceLimit)));
     }
     #[test]
     fn update_validation_checks_the_host_contract_without_executing_the_guest() {
