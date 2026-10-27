@@ -19,7 +19,15 @@ export interface TaskExplorerQuery {
   board_ids: number[] | null;
   column_id: number | null;
   status: "all" | "active" | "overdue" | "recurring" | "archived";
-  sort: "due" | "title" | "column" | "archived" | "priority" | "created";
+  sort:
+    | "due"
+    | "title"
+    | "column"
+    | "archived"
+    | "priority"
+    | "created"
+    /** Fused search order; without a query it falls back to title. */
+    | "relevance";
   due: "all" | "due" | "none";
   due_start: number | null;
   due_end: number | null;
@@ -62,4 +70,35 @@ export function is_overdue(
       due_limit(task.due_time, task.due_at_midnight) < now.getTime(),
     )
   );
+}
+
+/**
+ * Splits `text` around case-insensitive literal occurrences of `query`.
+ * Fuzzy title matches without a literal occurrence stay unmarked.
+ */
+export function highlight_parts(
+  text: string,
+  query: string,
+): { text: string; match: boolean }[] {
+  const needle = query.trim();
+  if (!needle) {
+    return [{ text, match: false }];
+  }
+  const pattern = new RegExp(
+    needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    "giu",
+  );
+  const parts: { text: string; match: boolean }[] = [];
+  let last = 0;
+  for (const found of text.matchAll(pattern)) {
+    if (found.index > last) {
+      parts.push({ text: text.slice(last, found.index), match: false });
+    }
+    parts.push({ text: found[0], match: true });
+    last = found.index + found[0].length;
+  }
+  if (last < text.length || parts.length === 0) {
+    parts.push({ text: text.slice(last), match: false });
+  }
+  return parts;
 }

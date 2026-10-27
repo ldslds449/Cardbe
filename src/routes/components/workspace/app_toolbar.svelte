@@ -345,17 +345,6 @@
 
     <div class="ml-auto flex min-w-0 items-center gap-1.5 border-l pl-2">
       <ResourceUsage />
-      <Button
-        variant="secondary"
-        size="sm"
-        class="shrink-0 gap-1.5"
-        onclick={onOpenAllTasks}
-        aria-label={m.task_explorer_open()}
-        title={m.task_explorer_open()}
-      >
-        <ListTodoIcon class="size-4" />
-        <span class="hidden lg:inline">{m.task_explorer()}</span>
-      </Button>
 
       <InputGroup.Root
         class="min-w-0 w-36 shrink bg-muted/40 transition-colors focus-within:bg-background sm:w-44 lg:w-60"
@@ -376,8 +365,8 @@
             <SearchIcon />
           {/if}
         </InputGroup.Addon>
-        {#if search_text.length > 0}
-          <InputGroup.Addon align="inline-end">
+        <InputGroup.Addon align="inline-end">
+          {#if search_text.length > 0}
             <InputGroup.Button
               aria-label={m.board_clear_search()}
               title={m.board_clear_search()}
@@ -386,8 +375,21 @@
             >
               <XIcon />
             </InputGroup.Button>
-          </InputGroup.Addon>
-        {/if}
+          {/if}
+          <!-- Continues the same search across every board. -->
+          <InputGroup.Button
+            aria-label={m.explorer_search_all()}
+            aria-keyshortcuts="Control+Shift+F"
+            title={m.workspace_view_shortcut({
+              view: m.explorer_search_all(),
+              shortcut: "Ctrl+Shift+F",
+            })}
+            size="icon-xs"
+            onclick={onOpenAllTasks}
+          >
+            <ListTodoIcon />
+          </InputGroup.Button>
+        </InputGroup.Addon>
         <span class="sr-only" aria-live="polite">
           {#if search_pending}
             {m.board_searching()}

@@ -4,6 +4,7 @@
   import "#lib/i18n/locale.svelte.js";
   import CheckIcon from "@lucide/svelte/icons/check";
   import HouseIcon from "@lucide/svelte/icons/house";
+  import ListTodoIcon from "@lucide/svelte/icons/list-todo";
   import LayoutDashboardIcon from "@lucide/svelte/icons/layout-dashboard";
   import ListFilterIcon from "@lucide/svelte/icons/list-filter";
   import StickyNoteIcon from "@lucide/svelte/icons/sticky-note";
@@ -11,7 +12,7 @@
   import * as Command from "#lib/components/ui/command/index.js";
   import type { Focus } from "../../type/focus";
   import type { BoardItem } from "./board_sidebar.svelte";
-  import { HOME_PAGE_ID, NOTES_PAGE_ID } from "./workspace";
+  import { ALL_TASKS_PAGE_ID, HOME_PAGE_ID, NOTES_PAGE_ID } from "./workspace";
 
   let {
     open = $bindable(),
@@ -21,6 +22,7 @@
     active_focus_id,
     onOpenHome,
     onOpenNotes,
+    onOpenAllTasks,
     onOpenFocus,
     onSwitch,
   }: {
@@ -31,6 +33,7 @@
     active_focus_id: string | null;
     onOpenHome: () => void;
     onOpenNotes: () => void;
+    onOpenAllTasks: () => void;
     onOpenFocus: (id: string) => void;
     onSwitch: (id: number) => void;
   } = $props();
@@ -93,6 +96,17 @@
         <StickyNoteIcon class="text-primary" />
         <span class="min-w-0 flex-1 truncate">{m.note_title()}</span>
         {#if active_focus_id === NOTES_PAGE_ID}
+          <CheckIcon aria-label={m.quick_switch_current()} />
+        {/if}
+      </Command.Item>
+      <Command.Item
+        value="all-tasks"
+        keywords={[m.all_tasks_title()]}
+        onSelect={() => choose(onOpenAllTasks)}
+      >
+        <ListTodoIcon class="text-primary" />
+        <span class="min-w-0 flex-1 truncate">{m.all_tasks_title()}</span>
+        {#if active_focus_id === ALL_TASKS_PAGE_ID}
           <CheckIcon aria-label={m.quick_switch_current()} />
         {/if}
       </Command.Item>

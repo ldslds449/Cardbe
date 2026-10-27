@@ -117,9 +117,110 @@ pub fn fuse(fts: &[(i64, u8)], fuzzy: &[(i64, u8)], options: SearchOptions) -> V
         .collect()
 }
 
+/// Characters kept around a match in an excerpt.
+const EXCERPT_BEFORE: usize = 24;
+const EXCERPT_LENGTH: usize = 80;
+
+// One folded char per source char keeps match positions aligned with the text.
+fn fold_char(c: char) -> char {
+    let mut lower = c.to_lowercase();
+    match (lower.next(), lower.next()) {
+        (Some(folded), None) => folded,
+        _ => c,
+    }
+}
+
+fn fold(text: &str) -> Vec<char> {
+    text.chars().map(fold_char).collect()
+}
+
+fn find_folded(haystack: &[char], needle: &[char]) -> Option<usize> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return None;
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+/// Text around the first literal, case-insensitive match of `query` outside
+/// the title: description, then checklist items, then labels. `None` when the
+/// title shows the match itself or no field contains it literally, as with
+/// fuzzy title matches or FTS phrases that span fields.
+pub fn task_excerpt(task: &crate::models::Task, query: &str) -> Option<String> {
+    let needle = fold(query.trim());
+    if needle.is_empty() || find_folded(&fold(&task.title), &needle).is_some() {
+        return None;
+    }
+    let fields = std::iter::once(task.description.as_str())
+        .chain(task.items.iter().map(|item| item.text.as_str()))
+        .chain(task.labels.iter().map(String::as_str));
+    for field in fields {
+        let text: Vec<char> = field
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .collect();
+        let folded: Vec<char> = text.iter().copied().map(fold_char).collect();
+        let Some(position) = find_folded(&folded, &needle) else {
+            continue;
+        };
+        let start = position.saturating_sub(EXCERPT_BEFORE);
+        let end = (start + EXCERPT_LENGTH)
+            .max(position + needle.len())
+            .min(text.len());
+        let mut excerpt = String::new();
+        if start > 0 {
+            excerpt.push('…');
+        }
+        excerpt.extend(&text[start..end]);
+        if end < text.len() {
+            excerpt.push('…');
+        }
+        return Some(excerpt);
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn excerpts_show_matches_outside_the_title() {
+        use crate::models::{Task, TaskItem};
+        let task = Task {
+            title: "Quarterly report".into(),
+            description: format!(
+                "{}\n\nSend the DRAFT to 臺北 office 🚀 today",
+                "x ".repeat(40)
+            ),
+            items: vec![TaskItem {
+                id: "1".into(),
+                text: "Book room".into(),
+                completed: false,
+            }],
+            labels: vec!["team:ops".into()],
+            ..Task::default()
+        };
+        // Title matches need no excerpt.
+        assert_eq!(task_excerpt(&task, "report"), None);
+        assert_eq!(task_excerpt(&task, "  "), None);
+        assert_eq!(task_excerpt(&task, "missing"), None);
+        let excerpt = task_excerpt(&task, "draft to 臺北").unwrap();
+        assert!(excerpt.starts_with('…'));
+        assert!(excerpt.contains("DRAFT to 臺北 office 🚀 today"));
+        assert!(!excerpt.contains('\n'));
+        assert_eq!(task_excerpt(&task, "ROOM").as_deref(), Some("Book room"));
+        assert_eq!(task_excerpt(&task, "ops").as_deref(), Some("team:ops"));
+        // Folding that changes length (İ) keeps positions on char boundaries.
+        let task = Task {
+            description: "İİİ match".into(),
+            ..Task::default()
+        };
+        assert_eq!(task_excerpt(&task, "match").as_deref(), Some("İİİ match"));
+    }
 
     #[test]
     fn fusion_keeps_single_engine_hits_and_prioritizes_exact_then_prefix() {

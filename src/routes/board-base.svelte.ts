@@ -71,6 +71,7 @@ interface AllTaskPageSerialized {
     done: boolean;
     waiting_count: number;
     task: TaskSummarySerialized;
+    excerpt?: string;
   }>;
   next_cursor: string | null;
 }
@@ -86,6 +87,8 @@ export interface AllTaskItem {
   /** Open tasks of its board that it still waits on. */
   waiting_count?: number;
   task: TaskSummary;
+  /** Where a search matched outside the title. */
+  excerpt?: string;
 }
 
 // Board selection, board data loading, search, archives, the task
@@ -538,6 +541,7 @@ export abstract class BoardStoreBase {
           done: item.done,
           waiting_count: item.waiting_count,
           task: deserialize_task_summary(item.task),
+          excerpt: item.excerpt,
         }));
         this.all_task_items = reset
           ? items

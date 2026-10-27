@@ -42,9 +42,21 @@ pub(crate) struct AllTaskRow {
     /// Open tasks of its board that the task still waits on.
     pub waiting_count: i64,
     pub task: TaskSummary,
+    /// Where a search matched outside the title.
+    pub excerpt: Option<String>,
 }
 
-#[derive(Default, serde::Deserialize)]
+/// Tasks matching a filter under each explorer status.
+#[derive(Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct TaskStatusCounts {
+    pub all: i64,
+    pub active: i64,
+    pub overdue: i64,
+    pub recurring: i64,
+    pub archived: i64,
+}
+
+#[derive(Clone, Default, serde::Deserialize)]
 #[serde(default)]
 pub struct TaskExplorerQuery {
     pub query: String,
@@ -2621,11 +2633,16 @@ impl Database {
         };
         let sql = format!(
             "{TASK_SEARCH_CTE}
-             SELECT board_id, board_name, column_name, archived_at, payload,
-                    column_id, completion='done', waiting_count
-             FROM eligible
-             WHERE (?1 IS NULL OR search_id IN (SELECT value FROM json_each(?1)))
+             , hits AS MATERIALIZED (
+               SELECT CAST(value AS INTEGER) AS search_id, CAST(key AS INTEGER) AS rank
+               FROM json_each(?1))
+             SELECT e.board_id, e.board_name, e.column_name, e.archived_at, e.payload,
+                    e.column_id, e.completion='done', e.waiting_count
+             FROM eligible e
+             LEFT JOIN hits h ON h.search_id=e.search_id
+             WHERE (?1 IS NULL OR h.search_id IS NOT NULL)
              ORDER BY
+               CASE WHEN ?14='relevance' THEN h.rank END,
                CASE WHEN ?14='priority' THEN CASE priority
                  WHEN 'urgent' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2
                  WHEN 'low' THEN 1 ELSE 0 END END DESC,
@@ -2698,12 +2715,64 @@ impl Database {
                         archived_at,
                         done: row.get(6)?,
                         waiting_count: row.get(7)?,
+                        excerpt: crate::search::task_excerpt(&task, &filter.query),
                         task: TaskSummary::from(&task),
                     })
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// Counts `filter`'s tasks under every status at once, ignoring its own
+    /// status and sort. The column filter does not apply to archived tasks,
+    /// as the explorer drops it there. Searches count one pool fused across
+    /// all statuses, so each count is capped by the same search limits.
+    pub fn count_all_tasks(&self, filter: &TaskExplorerQuery) -> StorageResult<TaskStatusCounts> {
+        let every_status = TaskExplorerQuery {
+            status: "all".into(),
+            column_id: None,
+            ..filter.clone()
+        };
+        let options = filter.search_options.unwrap_or_default();
+        if !options.valid() {
+            return Err(DomainError::InvalidArgument.into());
+        }
+        let mut values = search_params(&every_status)?;
+        if !filter.query.trim().is_empty() {
+            let matches = hybrid_search(&self.connection, &every_status, options)?;
+            values[0] = rusqlite::types::Value::Text(serde_json::to_string(&matches)?);
+        }
+        values.push(
+            filter
+                .column_id
+                .map(rusqlite::types::Value::Integer)
+                .unwrap_or(rusqlite::types::Value::Null),
+        );
+        let sql = format!(
+            "{TASK_SEARCH_CTE}
+             , counted AS (SELECT *, archived=0 AND (?14 IS NULL OR column_id=?14) AS open_match
+               FROM eligible
+               WHERE (?1 IS NULL OR search_id IN (SELECT value FROM json_each(?1))))
+             SELECT COALESCE(SUM(?14 IS NULL OR column_id=?14), 0),
+                    COALESCE(SUM(open_match), 0),
+                    COALESCE(SUM(open_match AND due_time<?5
+                                 AND (due_time<>?11 OR due_at_midnight)), 0),
+                    COALESCE(SUM(open_match AND recurrence IS NOT NULL), 0),
+                    COALESCE(SUM(archived=1), 0)
+             FROM counted",
+        );
+        Ok(self
+            .connection
+            .query_row(&sql, rusqlite::params_from_iter(&values), |row| {
+                Ok(TaskStatusCounts {
+                    all: row.get(0)?,
+                    active: row.get(1)?,
+                    overdue: row.get(2)?,
+                    recurring: row.get(3)?,
+                    archived: row.get(4)?,
+                })
+            })?)
     }
 
     pub fn task_events(
@@ -4919,6 +4988,73 @@ mod tests {
             page.iter().map(|row| row.task.id).collect::<Vec<_>>(),
             all[1..3].iter().map(|row| row.task.id).collect::<Vec<_>>()
         );
+        let count = |status: &str, filter: &TaskExplorerQuery| {
+            loaded
+                .database
+                .list_all_task_page(
+                    &TaskExplorerQuery {
+                        status: status.into(),
+                        column_id: if status == "archived" {
+                            None
+                        } else {
+                            filter.column_id
+                        },
+                        ..filter.clone()
+                    },
+                    0,
+                    100,
+                )
+                .unwrap()
+                .len() as i64
+        };
+        for query in ["alpha", "", "a"] {
+            let filter = TaskExplorerQuery {
+                query: query.into(),
+                now: 11,
+                ..filter.clone()
+            };
+            assert_eq!(
+                loaded.database.count_all_tasks(&filter).unwrap(),
+                TaskStatusCounts {
+                    all: count("all", &filter),
+                    active: count("active", &filter),
+                    overdue: count("overdue", &filter),
+                    recurring: count("recurring", &filter),
+                    archived: count("archived", &filter),
+                },
+                "{query}"
+            );
+        }
+        // Description hits carry an excerpt; title hits do not.
+        let notes = all.iter().find(|row| row.task.id == 4).unwrap();
+        assert_eq!(notes.excerpt.as_deref(), Some("alpha in description"));
+        assert!(all
+            .iter()
+            .find(|row| row.task.id == 1)
+            .unwrap()
+            .excerpt
+            .is_none());
+        // Relevance keeps the fused order (exact title, then prefix) across pages.
+        filter.sort = "relevance".into();
+        let ranked = loaded.database.list_all_task_page(&filter, 0, 10).unwrap();
+        assert_eq!(
+            ranked
+                .iter()
+                .map(|row| row.task.id)
+                .take(2)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(ranked.len(), all.len());
+        let page = loaded.database.list_all_task_page(&filter, 1, 2).unwrap();
+        assert_eq!(
+            page.iter().map(|row| row.task.id).collect::<Vec<_>>(),
+            ranked[1..3]
+                .iter()
+                .map(|row| row.task.id)
+                .collect::<Vec<_>>()
+        );
+        filter.sort = "title".into();
         filter.status = "archived".into();
         assert_eq!(
             loaded.database.list_all_task_page(&filter, 0, 10).unwrap()[0]

@@ -2,7 +2,7 @@ use crate::errors::{CommandError, DomainError};
 use crate::{
     models::TaskSummary,
     state::{lock_app, SharedAppData},
-    storage::TaskExplorerQuery,
+    storage::{TaskExplorerQuery, TaskStatusCounts},
 };
 use tauri::Manager;
 
@@ -19,6 +19,8 @@ pub struct AllTaskListItem {
     pub done: bool,
     pub waiting_count: i64,
     pub task: TaskSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub excerpt: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -42,9 +44,52 @@ pub async fn list_all_tasks(
     if !(0..=i64::MAX - 100).contains(&offset) {
         return Err(CommandError::InvalidArgument);
     }
+    validate_filter(&filter)?;
+    let limit = limit.unwrap_or(TASK_EXPLORER_PAGE_SIZE).clamp(1, 100);
+    let path = {
+        let state = app.state::<SharedAppData>();
+        let guard = lock_app(&state)?;
+        guard.database.path().to_owned()
+    };
+    let rows = tauri::async_runtime::spawn_blocking(move || {
+        crate::storage::Database::open_search_reader(path)
+            .and_then(|reader| reader.list_all_task_page(&filter, offset, limit + 1))
+            .map_err(CommandError::repository)
+    })
+    .await
+    .map_err(CommandError::internal)??;
+    let has_more = rows.len() > limit;
+    let items = rows
+        .into_iter()
+        .take(limit)
+        .map(|row| AllTaskListItem {
+            board_id: row.board_id,
+            board_name: row.board_name,
+            column_id: row.column_id,
+            column_name: row.column_name,
+            archived_at: row.archived_at,
+            done: row.done,
+            waiting_count: row.waiting_count,
+            task: row.task,
+            excerpt: row.excerpt,
+        })
+        .collect::<Vec<_>>();
+    let next_cursor = has_more.then(|| (offset + limit as i64).to_string());
+    Ok(AllTaskPage { items, next_cursor })
+}
+
+fn validate_filter(filter: &TaskExplorerQuery) -> Result<(), CommandError> {
     if !["all", "active", "overdue", "recurring", "archived"].contains(&filter.status.as_str())
-        || !["due", "title", "column", "archived", "priority", "created"]
-            .contains(&filter.sort.as_str())
+        || ![
+            "due",
+            "title",
+            "column",
+            "archived",
+            "priority",
+            "created",
+            "relevance",
+        ]
+        .contains(&filter.sort.as_str())
         || !["all", "due", "none"].contains(&filter.due.as_str())
         || filter.priorities.as_ref().is_some_and(|priorities| {
             priorities.len() > 5
@@ -74,34 +119,26 @@ pub async fn list_all_tasks(
     {
         return Err(CommandError::InvalidArgument);
     }
-    let limit = limit.unwrap_or(TASK_EXPLORER_PAGE_SIZE).clamp(1, 100);
+    Ok(())
+}
+
+/// Counts the filter's tasks under every status, for the status choices.
+#[tauri::command]
+pub async fn count_all_tasks(
+    app: tauri::AppHandle,
+    filter: TaskExplorerQuery,
+) -> Result<TaskStatusCounts, CommandError> {
+    validate_filter(&filter)?;
     let path = {
         let state = app.state::<SharedAppData>();
         let guard = lock_app(&state)?;
         guard.database.path().to_owned()
     };
-    let rows = tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || {
         crate::storage::Database::open_search_reader(path)
-            .and_then(|reader| reader.list_all_task_page(&filter, offset, limit + 1))
+            .and_then(|reader| reader.count_all_tasks(&filter))
             .map_err(CommandError::repository)
     })
     .await
-    .map_err(CommandError::internal)??;
-    let has_more = rows.len() > limit;
-    let items = rows
-        .into_iter()
-        .take(limit)
-        .map(|row| AllTaskListItem {
-            board_id: row.board_id,
-            board_name: row.board_name,
-            column_id: row.column_id,
-            column_name: row.column_name,
-            archived_at: row.archived_at,
-            done: row.done,
-            waiting_count: row.waiting_count,
-            task: row.task,
-        })
-        .collect::<Vec<_>>();
-    let next_cursor = has_more.then(|| (offset + limit as i64).to_string());
-    Ok(AllTaskPage { items, next_cursor })
+    .map_err(CommandError::internal)?
 }

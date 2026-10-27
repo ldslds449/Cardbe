@@ -9,6 +9,7 @@
   import "#lib/i18n/locale.svelte.js";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import HouseIcon from "@lucide/svelte/icons/house";
+  import ListTodoIcon from "@lucide/svelte/icons/list-todo";
   import PanelLeftCloseIcon from "@lucide/svelte/icons/panel-left-close";
   import PanelLeftOpenIcon from "@lucide/svelte/icons/panel-left-open";
   import PencilIcon from "@lucide/svelte/icons/pencil";
@@ -32,7 +33,7 @@
   import * as Sheet from "#lib/components/ui/sheet/index.js";
   import type { Snippet } from "svelte";
   import type { BoardRole } from "../../board.svelte";
-  import { HOME_PAGE_ID, NOTES_PAGE_ID } from "./workspace";
+  import { ALL_TASKS_PAGE_ID, HOME_PAGE_ID, NOTES_PAGE_ID } from "./workspace";
   import { MAX_FOCUSES, type Focus } from "../../type/focus";
   import { StoredWidth } from "../note/stored-width.svelte";
 
@@ -62,6 +63,7 @@
     onOpenFocus,
     onOpenHome,
     onOpenNotes,
+    onOpenAllTasks,
     onCreateFocus,
     onEditFocus,
     onFloatFocus,
@@ -89,6 +91,7 @@
     onOpenFocus: (id: string) => void;
     onOpenHome: () => void;
     onOpenNotes: () => void;
+    onOpenAllTasks: () => void;
     onCreateFocus: () => void;
     onEditFocus: (id: string) => void;
     onFloatFocus: (id: string) => void;
@@ -140,6 +143,10 @@
   }
   function open_notes() {
     onOpenNotes();
+    sheet_open = false;
+  }
+  function open_all_tasks() {
+    onOpenAllTasks();
     sheet_open = false;
   }
   function quick_switch() {
@@ -467,6 +474,17 @@
         />
         <span class="min-w-0 flex-1 truncate">{m.note_title()}</span>
       </button>
+      <button
+        type="button"
+        class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-3 pe-2 text-left text-sm transition-colors ${active_focus_id === ALL_TASKS_PAGE_ID ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+        aria-current={active_focus_id === ALL_TASKS_PAGE_ID
+          ? "page"
+          : undefined}
+        onclick={open_all_tasks}
+      >
+        <ListTodoIcon class="size-4 shrink-0 text-primary" aria-hidden="true" />
+        <span class="min-w-0 flex-1 truncate">{m.all_tasks_title()}</span>
+      </button>
       <Separator class="my-3" />
       <section
         class="rounded-md bg-muted/50 p-1"
@@ -605,6 +623,16 @@
       onclick={open_notes}
     >
       <StickyNoteIcon />
+    </Button>
+    <Button
+      variant={active_focus_id === ALL_TASKS_PAGE_ID ? "secondary" : "ghost"}
+      size="icon-sm"
+      aria-label={m.all_tasks_title()}
+      aria-current={active_focus_id === ALL_TASKS_PAGE_ID ? "page" : undefined}
+      title={m.all_tasks_title()}
+      onclick={open_all_tasks}
+    >
+      <ListTodoIcon />
     </Button>
     <Button
       variant="ghost"

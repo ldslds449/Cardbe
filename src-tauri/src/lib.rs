@@ -602,6 +602,7 @@ pub fn run() {
             commands::resource_usage::get_resource_usage,
             commands::task_events::get_task_events,
             task_explorer::list_all_tasks,
+            task_explorer::count_all_tasks,
             commands::daily_plan::get_daily_plan,
             commands::daily_plan::set_daily_plan,
             commands::focuses::get_focuses,

@@ -39,6 +39,11 @@
   import { IrohDeviceStatus, type IrohInvite } from "./type/iroh-share";
   import BoardView from "./components/board/board_view.svelte";
   import AllTaskExplorer from "./components/task/all_task_explorer.svelte";
+  import AllTasksPage from "./components/task/all_tasks_page.svelte";
+  import {
+    TaskFilters,
+    type TaskFilterValues,
+  } from "./components/task/task-filters.svelte";
   import FocusPage from "./components/focus/focus_page.svelte";
   import HomePage from "./components/home/home_page.svelte";
   import { mark_recent } from "./components/home/recent";
@@ -80,6 +85,7 @@
   import QuickSwitcher from "./components/workspace/quick_switcher.svelte";
   import WorkspaceTabs from "./components/workspace/workspace_tabs.svelte";
   import {
+    ALL_TASKS_PAGE_ID,
     HOME_PAGE_ID,
     NOTES_PAGE_ID,
     WORKSPACE_VIEWS,
@@ -188,6 +194,15 @@
 
   // all-task explorer
   let all_task_open = $state(false);
+  let all_task_request = $state<{ text: string } | null>(null);
+
+  // Searching every board starts from what the board search holds.
+  function open_task_explorer() {
+    all_task_request = { text: search_text.trim() };
+    all_task_open = true;
+  }
+  // The All tasks page keeps its conditions while the app is open.
+  const all_tasks_filters = new TaskFilters();
 
   // Focuses, shown in place of the active board. The home page takes the
   // same place, so leaving it works like leaving a Focus; the app opens on it.
@@ -195,6 +210,7 @@
   let active_focus_id = $state<string | null>(HOME_PAGE_ID);
   const home_open = $derived(active_focus_id === HOME_PAGE_ID);
   const notes_page_open = $derived(active_focus_id === NOTES_PAGE_ID);
+  const all_tasks_page_open = $derived(active_focus_id === ALL_TASKS_PAGE_ID);
   const active_focus = $derived(
     active_focus_id === null ? undefined : focuses.find(active_focus_id),
   );
@@ -215,6 +231,14 @@
     if (partial) {
       toast.info(m.focus_from_explorer_partial());
     }
+  }
+
+  // Brings the explorer's conditions to the page, keeping its grouping.
+  function open_all_tasks_page(values?: TaskFilterValues) {
+    if (values) {
+      all_tasks_filters.assign({ ...values, group: all_tasks_filters.group });
+    }
+    open_focus(ALL_TASKS_PAGE_ID);
   }
 
   function open_focus(id: string) {
@@ -265,22 +289,48 @@
     return true;
   }
 
-  // Details open over the Focus; the task's board becomes active behind it.
-  async function open_focus_task(item: AllTaskItem) {
+  // Details open over the list; the task's board becomes active behind it.
+  async function load_list_task(item: AllTaskItem): Promise<Task | null> {
     await switch_board(item.board_id);
     if (board.active_board_id !== item.board_id) {
-      return;
+      return null;
     }
     const task = await (item.archived_at
       ? board.get_archive_detail(item.task.id)
       : board.get_expired_task_detail(item.task.id));
-    if (!task || board.active_board_id !== item.board_id) {
+    return task && board.active_board_id === item.board_id ? task : null;
+  }
+
+  async function open_focus_task(item: AllTaskItem) {
+    const task = await load_list_task(item);
+    if (!task) {
       return;
     }
     if (item.archived_at) {
       view_archived_task(task);
     } else {
       view_task_by_id(task);
+    }
+  }
+
+  async function edit_list_task(item: AllTaskItem) {
+    if (item.archived_at) {
+      return;
+    }
+    const task = await load_list_task(item);
+    if (task && !active_board_read_only) {
+      edit_task_by_id(task);
+    }
+  }
+
+  // Archiving goes through the open board, so it can be undone there.
+  async function archive_list_task(item: AllTaskItem) {
+    if (item.archived_at) {
+      return;
+    }
+    await switch_board(item.board_id);
+    if (board.active_board_id === item.board_id && !active_board_read_only) {
+      await board.archive_task(item.task.id);
     }
   }
 
@@ -301,7 +351,8 @@
     if (
       focus_id !== null &&
       focus_id !== HOME_PAGE_ID &&
-      focus_id !== NOTES_PAGE_ID
+      focus_id !== NOTES_PAGE_ID &&
+      focus_id !== ALL_TASKS_PAGE_ID
     ) {
       mark_recent("focus", focus_id);
     }
@@ -818,6 +869,15 @@
           active_focus_id = null;
           switch_view(view);
         }
+      } else if (
+        !overlay_open &&
+        command &&
+        event.shiftKey &&
+        !event.altKey &&
+        event.code === "KeyF"
+      ) {
+        event.preventDefault();
+        open_task_explorer();
       } else if (
         !overlay_open &&
         ((command && !event.shiftKey && event.code === "KeyF") ||
@@ -1505,6 +1565,7 @@
       {active_focus_id}
       onOpenHome={() => open_focus(HOME_PAGE_ID)}
       onOpenNotes={open_notes_page}
+      onOpenAllTasks={() => open_all_tasks_page()}
       onOpenFocus={open_focus}
       onSwitch={open_board}
     />
@@ -1528,6 +1589,7 @@
         onOpenFocus={open_focus}
         onOpenHome={() => open_focus(HOME_PAGE_ID)}
         onOpenNotes={open_notes_page}
+        onOpenAllTasks={() => open_all_tasks_page()}
         onCreateFocus={() => edit_focus(null)}
         onEditFocus={(id) => edit_focus(focuses.find(id) ?? null)}
         onFloatFocus={(id) => void float_focus(id)}
@@ -1558,6 +1620,7 @@
           bind:note_open
           show_task_details_toggle={!active_focus &&
             !home_open &&
+            !all_tasks_page_open &&
             selected_view === "board"}
           update_check_in_progress={updates.in_progress}
           read_only={active_board_read_only}
@@ -1606,7 +1669,7 @@
             iroh_share_dialog_open = true;
           }}
           onOpenTaskTemplates={open_templates_dialog}
-          onOpenAllTasks={() => (all_task_open = true)}
+          onOpenAllTasks={open_task_explorer}
           onFocusSearch={focus_search}
           onAddTask={open_add_task_shortcut}
           onAddColumn={open_add_column_dialog}
@@ -1646,6 +1709,19 @@
                   open_notes_page();
                 }}
               />
+            {:else if all_tasks_page_open}
+              <AllTasksPage
+                filters={all_tasks_filters}
+                boards={board.boards}
+                paused={task_dialog_open || view_task_dialog_open}
+                onOpenTask={open_focus_task}
+                onEditTask={edit_list_task}
+                onArchiveTask={archive_list_task}
+                onOpenBoard={open_board}
+                onSaveAsFocus={focuses.views.length < MAX_FOCUSES
+                  ? save_explorer_as_focus
+                  : undefined}
+              />
             {:else if active_focus}
               <FocusPage
                 view={active_focus}
@@ -1653,7 +1729,9 @@
                 paused={task_dialog_open || view_task_dialog_open}
                 onEdit={() => edit_focus(active_focus)}
                 onFloat={() => void float_focus(active_focus.id)}
-                onOpenTask={(item) => void open_focus_task(item)}
+                onOpenTask={open_focus_task}
+                onEditTask={edit_list_task}
+                onArchiveTask={archive_list_task}
                 onOpenBoard={open_board}
               />
             {:else}
@@ -1851,27 +1929,19 @@
            and toolbar actions use them. -->
         <AllTaskExplorer
           bind:open={all_task_open}
-          active_board_id={board.active_board_id}
           boards={board.boards}
-          columns={board.columns}
+          request={all_task_request}
           all_task_items={board.all_task_items}
           all_task_items_loading={board.all_task_items_loading}
           all_task_items_error={board.all_task_items_error}
           all_task_items_has_more={board.all_task_items_has_more}
-          read_only={active_board_read_only}
-          onSwitchBoard={switch_board}
           onLoadMoreAllTasks={board.load_more_all_tasks.bind(board)}
           onSearchAllTasks={board.search_all_tasks.bind(board)}
-          onGetArchiveDetail={board.get_archive_detail.bind(board)}
-          onGetExpiredDetail={board.get_expired_task_detail.bind(board)}
-          onUnarchive={board.unarchive_task_from_list.bind(board)}
-          onViewTask={view_task_by_id}
-          onViewArchivedTask={view_archived_task}
-          onEditTask={edit_task_by_id}
-          onArchiveTask={(task) => void board.archive_task(task.id)}
-          onSaveAsFocus={focuses.views.length < MAX_FOCUSES
-            ? save_explorer_as_focus
-            : undefined}
+          onOpenTask={open_focus_task}
+          onEditTask={edit_list_task}
+          onArchiveTask={archive_list_task}
+          onOpenBoard={open_board}
+          onOpenFullPage={open_all_tasks_page}
         />
 
         <AddColumnDialog
