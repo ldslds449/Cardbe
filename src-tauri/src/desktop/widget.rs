@@ -51,12 +51,28 @@ pub async fn remove_widget(
     widget: WidgetRef,
     placement: Placement,
 ) -> Result<(), CommandError> {
-    use tauri::Manager;
-    if let Some(window) = app.get_webview_window(&widget.label(&placement)) {
-        window.destroy().map_err(CommandError::internal)?;
+    use tauri::{Emitter, Manager};
+    let Some(window) = app.get_webview_window(&widget.label(&placement)) else {
+        return Ok(());
+    };
+    // Destroying a window while its context menu is open deadlocks the app
+    // (see `floating_window.svelte`), so the page closes itself once any
+    // popup has returned. A page that never does is destroyed anyway.
+    if window.emit_to(window.label(), CLOSE_EVENT, ()).is_err() {
+        return window.destroy().map_err(CommandError::internal);
     }
+    // The handle targets this window's ID, not its label, so it never
+    // closes a widget reopened under the same label meanwhile, and does
+    // nothing once the page has closed itself.
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let _ = window.destroy();
+    });
     Ok(())
 }
+
+/// Asks a floating window or widget page to close itself.
+const CLOSE_EVENT: &str = "cardbe:close-widget";
 
 /// Whether each floating window is open and visible; the tray can hide them.
 #[tauri::command]

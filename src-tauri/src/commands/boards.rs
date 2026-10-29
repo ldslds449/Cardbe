@@ -36,8 +36,10 @@ fn next_board_after_delete(boards: &[Board], removed_id: i64) -> Result<i64, Dom
         .id)
 }
 
+// Async, like the other reads floating windows reload with, so waiting for
+// the app lock never blocks the main thread that every window shares.
 #[tauri::command]
-pub fn get_boards(state: State<'_, SharedAppData>) -> Result<BoardsState, CommandError> {
+pub async fn get_boards(state: State<'_, SharedAppData>) -> Result<BoardsState, CommandError> {
     let guard = lock_app(&state)?;
     Ok(BoardsState {
         boards: guard.database.boards().map_err(CommandError::repository)?,

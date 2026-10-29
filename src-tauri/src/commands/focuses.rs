@@ -9,7 +9,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 /// `None` until views were first saved.
 #[tauri::command]
-pub fn get_focuses(state: State<'_, SharedAppData>) -> Result<Option<Vec<Focus>>, CommandError> {
+pub async fn get_focuses(
+    state: State<'_, SharedAppData>,
+) -> Result<Option<Vec<Focus>>, CommandError> {
     let guard = lock_app(&state)?;
     focuses::load(&guard.database.connection).map_err(CommandError::from)
 }
@@ -114,7 +116,7 @@ fn write_board<R>(
 }
 
 #[tauri::command]
-pub fn complete_board_tasks(
+pub async fn complete_board_tasks(
     app: tauri::AppHandle,
     board_id: i64,
     task_ids: Vec<i64>,
@@ -128,7 +130,7 @@ pub fn complete_board_tasks(
 
 /// Moves done or archived tasks to an open column of their board.
 #[tauri::command]
-pub fn reopen_board_tasks(
+pub async fn reopen_board_tasks(
     app: tauri::AppHandle,
     board_id: i64,
     task_ids: Vec<i64>,
@@ -141,7 +143,7 @@ pub fn reopen_board_tasks(
 }
 
 #[tauri::command]
-pub fn set_board_tasks_priority(
+pub async fn set_board_tasks_priority(
     app: tauri::AppHandle,
     board_id: i64,
     task_ids: Vec<i64>,

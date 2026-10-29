@@ -36,6 +36,7 @@ it("saves after movement settles, reports failures and cleans up", async () => {
   await vi.advanceTimersByTimeAsync(1);
   expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith(
     "plugin:window-state|save_window_state",
+    { flags: 0 },
   );
   mocks.invoke.mockRejectedValueOnce(new Error("unavailable"));
   moved(event);

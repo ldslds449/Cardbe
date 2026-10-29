@@ -237,6 +237,13 @@
     if (desktop) {
       sync_widget_size();
     }
+    // Removing a widget from Settings asks its page to close itself, so a
+    // context menu open meanwhile returns first.
+    const close_listener = float_window
+      .listen("cardbe:close-widget", () => after_menu(onClose))
+      .catch((caught) => {
+        logger.warn(`${log_scope}.close_listener.failed`, caught);
+      });
     const position_listener = persist_floating_window_position(
       float_window,
     ).catch((error) => {
@@ -244,6 +251,7 @@
     });
     return () => {
       void context_menu?.close();
+      void close_listener.then((unlisten) => unlisten?.());
       void position_listener.then((unlisten) => unlisten?.());
       clearTimeout(resize_timer);
       cancelAnimationFrame(resize_frame);

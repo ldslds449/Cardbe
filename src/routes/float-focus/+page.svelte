@@ -281,7 +281,9 @@
       }
     }
     try {
-      await float_window.close();
+      // Destroying skips the close request, whose window-state handler can
+      // deadlock with a window being created on another thread.
+      await float_window.destroy();
     } catch (caught) {
       logger.warn("floating_focus.close.failed", caught);
     }

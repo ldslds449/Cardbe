@@ -33,7 +33,7 @@ pub fn get_columns(
 }
 
 #[tauri::command]
-pub fn get_board_columns(
+pub async fn get_board_columns(
     state: State<'_, SharedAppData>,
     board_id: i64,
 ) -> Result<Vec<Column>, CommandError> {
