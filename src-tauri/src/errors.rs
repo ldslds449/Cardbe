@@ -44,6 +44,7 @@ pub enum DomainError {
     ShareExpirationInvalid,
     McpPortUnavailable,
     McpClientNotFound,
+    DailyPlanFull,
     Internal(String),
 }
 
@@ -104,6 +105,7 @@ impl fmt::Display for DomainError {
             Self::ShareExpirationInvalid => f.write_str("Invalid share expiration"),
             Self::McpPortUnavailable => f.write_str("MCP server port is unavailable"),
             Self::McpClientNotFound => f.write_str("MCP client not found"),
+            Self::DailyPlanFull => f.write_str("Daily plan is full"),
             Self::Internal(source) => f.write_str(source),
         }
     }
@@ -192,6 +194,7 @@ pub enum CommandError {
     PluginUpdateStale,
     McpPortUnavailable,
     McpClientNotFound,
+    DailyPlanFull,
     PluginError {
         plugin_id: String,
         plugin_error: PluginUserError,
@@ -315,6 +318,7 @@ impl From<DomainError> for CommandError {
             DomainError::ShareExpirationInvalid => Self::ShareExpirationInvalid,
             DomainError::McpPortUnavailable => Self::McpPortUnavailable,
             DomainError::McpClientNotFound => Self::McpClientNotFound,
+            DomainError::DailyPlanFull => Self::DailyPlanFull,
             DomainError::Internal(source) => Self::internal(source),
         }
     }

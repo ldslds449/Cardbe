@@ -13,6 +13,7 @@
   import GaugeIcon from "@lucide/svelte/icons/gauge";
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
   import PinIcon from "@lucide/svelte/icons/pin";
+  import SunIcon from "@lucide/svelte/icons/sun";
   import TrashIcon from "@lucide/svelte/icons/trash-2";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import XIcon from "@lucide/svelte/icons/x";
@@ -38,6 +39,7 @@
     onReopen: () => void;
     onLoadFlowTabs: () => Promise<FlowTab[] | null>;
     onAddToFlow: (tab: FlowTab) => void;
+    onAddToPlan: () => void;
     onArchive: () => void;
     onDelete: () => void;
     onClear: () => void;
@@ -56,6 +58,7 @@
     onReopen,
     onLoadFlowTabs,
     onAddToFlow,
+    onAddToPlan,
     onArchive,
     onDelete,
     onClear,
@@ -171,6 +174,17 @@
       {/if}
     </DropdownMenu.Content>
   </DropdownMenu.Root>
+
+  <Button
+    variant="ghost"
+    size="icon-sm"
+    class="rounded-full"
+    aria-label={m.daily_plan_add()}
+    title={m.daily_plan_add()}
+    onclick={onAddToPlan}
+  >
+    <SunIcon />
+  </Button>
 
   <DropdownMenu.Root>
     <DropdownMenu.Trigger>

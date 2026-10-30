@@ -2500,6 +2500,17 @@
   "daily_plan_choose": "挑選任務",
   "daily_plan_search": "搜尋所有看板的任務",
   "daily_plan_add": "加入今天要做",
+  "daily_plan_add_done": "已加入今天要做。",
+  "daily_plan_add_done_count": [
+    {
+      "declarations": ["input count", "local countFormatted = count: number"],
+      "match": {
+        "count=*": "已將 {countFormatted} 個任務加入今天要做。"
+      }
+    }
+  ],
+  "daily_plan_add_exists": "這項任務已在今天要做的清單中。",
+  "daily_plan_add_exists_all": "選取的任務都已在今天要做的清單中。",
   "daily_plan_remove": "從今日清單移除",
   "daily_plan_up": "往前移",
   "daily_plan_down": "往後移",

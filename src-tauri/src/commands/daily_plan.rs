@@ -115,6 +115,52 @@ pub fn set_daily_plan(
     Ok(())
 }
 
+/// Appends tasks of one board after the current plan, skipping planned ones,
+/// and returns how many were added.
+fn append(connection: &Connection, board_id: i64, task_ids: &[i64]) -> Result<usize, DomainError> {
+    let mut tasks = load(connection)?;
+    let before = tasks.len();
+    let mut exists = connection
+        .prepare("SELECT 1 FROM cardbe_tasks WHERE board_id=?1 AND id=?2")
+        .map_err(internal)?;
+    for &task_id in task_ids {
+        let task = PlannedTask { board_id, task_id };
+        if tasks.contains(&task) {
+            continue;
+        }
+        if !exists.exists([board_id, task_id]).map_err(internal)? {
+            return Err(DomainError::TaskNotFound);
+        }
+        tasks.push(task);
+    }
+    if tasks.len() > MAX_TASKS {
+        return Err(DomainError::DailyPlanFull);
+    }
+    if tasks.len() > before {
+        save(connection, &tasks)?;
+    }
+    Ok(tasks.len() - before)
+}
+
+#[tauri::command]
+pub fn add_to_daily_plan(
+    app: tauri::AppHandle,
+    state: State<'_, SharedAppData>,
+    board_id: i64,
+    task_ids: Vec<i64>,
+) -> Result<usize, CommandError> {
+    let added = {
+        let guard = lock_app(&state)?;
+        append(&guard.database.connection, board_id, &task_ids).map_err(CommandError::from)?
+    };
+    if added > 0 {
+        if let Err(error) = app.emit("cardbe:daily-plan-changed", ()) {
+            log::warn!(target: "daily_plan", "Could not announce daily plan: {error}");
+        }
+    }
+    Ok(added)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,5 +254,46 @@ mod tests {
         assert!(load(&db).unwrap().is_empty());
         drop(db);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn append_skips_planned_tasks_and_rejects_missing_or_overflowing_ones() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            r#"
+            CREATE TABLE cardbe_global_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+            CREATE TABLE cardbe_tasks(board_id INTEGER,id INTEGER,column_id INTEGER,payload TEXT);
+            WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<=100)
+            INSERT INTO cardbe_tasks SELECT 1,i,1,'{}' FROM n;
+            INSERT INTO cardbe_tasks VALUES(2,1,1,'{}');
+        "#,
+        )
+        .unwrap();
+        save(
+            &db,
+            &[PlannedTask {
+                board_id: 2,
+                task_id: 1,
+            }],
+        )
+        .unwrap();
+        assert_eq!(append(&db, 1, &[2, 1, 2]).unwrap(), 2);
+        assert_eq!(append(&db, 2, &[1]).unwrap(), 0);
+        let planned = |board_id, task_id| PlannedTask { board_id, task_id };
+        assert_eq!(
+            load(&db).unwrap(),
+            vec![planned(2, 1), planned(1, 2), planned(1, 1)]
+        );
+        assert!(matches!(
+            append(&db, 2, &[99]),
+            Err(DomainError::TaskNotFound)
+        ));
+        assert!(matches!(
+            append(&db, 1, &(3..=100).collect::<Vec<_>>()),
+            Err(DomainError::DailyPlanFull)
+        ));
+        assert_eq!(load(&db).unwrap().len(), 3);
+        assert_eq!(append(&db, 1, &(3..=99).collect::<Vec<_>>()).unwrap(), 97);
+        assert_eq!(load(&db).unwrap().len(), MAX_TASKS);
     }
 }

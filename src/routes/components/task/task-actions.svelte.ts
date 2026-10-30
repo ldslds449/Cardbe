@@ -1,4 +1,5 @@
 import { translateCommandError } from "#lib/command-errors.js";
+import { m } from "#lib/paraglide/messages.js";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 
@@ -75,6 +76,25 @@ export class TaskActions {
         taskIds: [get_task_id(item.task.id)],
         priority: priority ?? null,
       }),
+    );
+  }
+
+  /** Appends the task to today's plan, which is local to this device. */
+  add_to_plan(item: AllTaskItem) {
+    void this.run(
+      item,
+      async () => {
+        const added = await invoke<number>("add_to_daily_plan", {
+          boardId: item.board_id,
+          taskIds: [get_task_id(item.task.id)],
+        });
+        if (added > 0) {
+          toast.success(m.daily_plan_add_done());
+        } else {
+          toast.info(m.daily_plan_add_exists());
+        }
+      },
+      false,
     );
   }
 

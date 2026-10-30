@@ -605,6 +605,7 @@ pub fn run() {
             task_explorer::count_all_tasks,
             commands::daily_plan::get_daily_plan,
             commands::daily_plan::set_daily_plan,
+            commands::daily_plan::add_to_daily_plan,
             commands::focuses::get_focuses,
             commands::focuses::set_focuses,
             commands::focuses::complete_board_tasks,

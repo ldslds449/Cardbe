@@ -1371,6 +1371,44 @@ export abstract class TaskBoardStore extends IrohBoardStore {
     }
   }
 
+  /** Appends tasks to today's plan, which is local to this device. */
+  async add_tasks_to_daily_plan(task_ids: string[]) {
+    const boardId = this.active_board_id;
+    if (boardId === null || task_ids.length === 0) {
+      return;
+    }
+    const resolutions = task_ids.map((task_id) =>
+      this.capture_task_id(task_id),
+    );
+    try {
+      // Queue behind earlier edits so a newly created task is persisted first.
+      const added = await addMission(async () =>
+        invoke<number>("add_to_daily_plan", {
+          boardId,
+          taskIds: await Promise.all(
+            resolutions.map((resolution) => resolution.id),
+          ),
+        }),
+      );
+      const count = task_ids.length;
+      if (added > 0) {
+        toast.success(
+          count === 1
+            ? m.daily_plan_add_done()
+            : m.daily_plan_add_done_count({ count: added }),
+        );
+      } else {
+        toast.info(
+          count === 1
+            ? m.daily_plan_add_exists()
+            : m.daily_plan_add_exists_all(),
+        );
+      }
+    } catch (error) {
+      toast.error(translateCommandError(error));
+    }
+  }
+
   async float_task(task_id: string, desktop = false) {
     const boardId = this.active_board_id;
     if (boardId === null) {

@@ -2827,6 +2827,23 @@
   "daily_plan_choose": "Choose tasks",
   "daily_plan_search": "Search tasks across boards",
   "daily_plan_add": "Add to today's plan",
+  "daily_plan_add_done": "Added to today's plan.",
+  "daily_plan_add_done_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Added {countFormatted} task to today's plan.",
+        "countPlural=*": "Added {countFormatted} tasks to today's plan."
+      }
+    }
+  ],
+  "daily_plan_add_exists": "Already in today's plan.",
+  "daily_plan_add_exists_all": "The selected tasks are already in today's plan.",
   "daily_plan_remove": "Remove from plan",
   "daily_plan_up": "Move earlier",
   "daily_plan_down": "Move later",

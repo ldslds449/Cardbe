@@ -12,6 +12,7 @@
   import ListTodoIcon from "@lucide/svelte/icons/list-todo";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
+  import SunIcon from "@lucide/svelte/icons/sun";
   import Undo2Icon from "@lucide/svelte/icons/undo-2";
 
   import type { AllTaskItem } from "../../board-base.svelte";
@@ -100,6 +101,11 @@
   <menu.Item disabled={busy} onclick={() => open_task(item)}>
     <ListTodoIcon />{m.explorer_view()}
   </menu.Item>
+  {#if !archived}
+    <menu.Item disabled={busy} onclick={() => actions.add_to_plan(item)}>
+      <SunIcon />{m.daily_plan_add()}
+    </menu.Item>
+  {/if}
   {#if writable}
     {#if !archived}
       <menu.Item

@@ -25,6 +25,7 @@
   import PinIcon from "@lucide/svelte/icons/pin";
   import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import MoveRightIcon from "@lucide/svelte/icons/move-right";
+  import SunIcon from "@lucide/svelte/icons/sun";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import GaugeIcon from "@lucide/svelte/icons/gauge";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
@@ -78,6 +79,7 @@
     onDesktopTask?: () => void;
     onLoadFlowTabs?: () => Promise<FlowTab[] | null>;
     onAddToFlow?: (tab: FlowTab) => void;
+    onAddToPlan?: () => void;
     onSetPriority?: (priority: TaskPriority | undefined) => void;
     /** Whether the card is in the board's done column. */
     done?: boolean;
@@ -115,6 +117,7 @@
     onDesktopTask,
     onLoadFlowTabs,
     onAddToFlow,
+    onAddToPlan,
     onSetPriority,
     done = false,
     onComplete,
@@ -553,6 +556,11 @@
               >
                 <SquareCheckIcon />
                 {selected ? m.task_deselect() : m.task_select()}
+              </Item>
+            {/if}
+            {#if onAddToPlan}
+              <Item onclick={onAddToPlan}>
+                <SunIcon />{m.daily_plan_add()}
               </Item>
             {/if}
             {#if onAddToFlow && flow_tabs?.length === 1}

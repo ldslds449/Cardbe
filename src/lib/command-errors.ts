@@ -1,5 +1,5 @@
 import { m } from "#lib/paraglide/messages.js";
-import { getLocale } from "#lib/i18n/index.js";
+import { formatNumber, getLocale } from "#lib/i18n/index.js";
 
 const coreMessages = {
   SHARE_UNAVAILABLE: () => m.ui_share_unavailable(),
@@ -58,6 +58,8 @@ const coreMessages = {
   PLUGIN_UPDATE_STALE: () => m.plugin_update_stale(),
   MCP_PORT_UNAVAILABLE: () => m.error_mcp_port_unavailable(),
   MCP_CLIENT_NOT_FOUND: () => m.error_mcp_client_not_found(),
+  // Matches MAX_TASKS in src-tauri/src/commands/daily_plan.rs.
+  DAILY_PLAN_FULL: () => m.daily_plan_limit({ count: formatNumber(100) }),
 };
 
 export type NetworkSettingsField =

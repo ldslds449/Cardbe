@@ -533,6 +533,8 @@
                 onDesktopTask={() => void board.float_task(task.id, true)}
                 onLoadFlowTabs={() => board.get_flow_tabs()}
                 onAddToFlow={(tab) => void board.add_task_to_flow(task.id, tab)}
+                onAddToPlan={() =>
+                  void board.add_tasks_to_daily_plan([task.id])}
                 onSetPriority={(priority) =>
                   void board.set_tasks_priority([task.id], priority)}
                 done={column.id === done_column_id}
@@ -581,6 +583,7 @@
       onLoadFlowTabs={() => board.get_flow_tabs()}
       onAddToFlow={(tab) =>
         void board.add_tasks_to_flow(selected_task_ids, tab)}
+      onAddToPlan={() => void board.add_tasks_to_daily_plan(selected_task_ids)}
       onMove={(column_id) =>
         run_selection_action((task_ids) =>
           board.move_tasks(task_ids, column_id),
