@@ -33,7 +33,7 @@ function setup(batches: unknown[][], ready = true) {
     transpile(
       `
     let links_ready=${ready}, handling_links=false, links_pending=false, disposed=false;
-    let deep_link_ticket="", iroh_show_requests=false, iroh_show_received=false, iroh_share_dialog_open=false, active_focus_id="home", view_task_dialog_open=false;
+    let deep_link_ticket="", iroh_show_requests=false, iroh_show_received=false, iroh_share_dialog_open=false, active_focus_id="home", task_dialog_open=false, task_dialog_mode="view";
     const processing=new Set();
     async function switch_board(id) { board.active_board_id=id; }
     ${handler}

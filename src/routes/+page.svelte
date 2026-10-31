@@ -57,7 +57,7 @@
   } from "./type/focus";
   import type { AllTaskItem } from "./board-base.svelte";
   import AddColumnDialog from "./components/dialog/add_column_dialog.svelte";
-  import EditTaskDialog from "./components/dialog/edit_task_dialog.svelte";
+  import TaskDialog from "./components/dialog/task_dialog.svelte";
   import ImportConfirmDialog from "./components/dialog/import_confirm_dialog.svelte";
   import TaskColumnDialog from "./components/dialog/task_column_dialog.svelte";
   import TaskTransferDialog from "./components/dialog/task_transfer_dialog.svelte";
@@ -394,8 +394,11 @@
   let column_dialog_title_error = $state(false);
   let dialog_column_name = $state("");
 
-  // task edit dialog
+  // task dialog, which shows details or edits a draft
   let task_dialog_open = $state(false);
+  let task_dialog_mode = $state<"view" | "edit">("view");
+  // Saving an edit started from the details returns to them.
+  let task_dialog_return_to_view = $state(false);
   let dialog_task = $state<Task>(create_task());
   let dialog_title = $state(m.task_add_card);
   let dialog_button_text = $state(m.common_add);
@@ -423,8 +426,6 @@
     }
   });
 
-  // task details dialog
-  let view_task_dialog_open = $state(false);
   let view_task = $state<Task | null>(null);
   let view_task_edit_callback = $state<(() => void) | undefined>(undefined);
 
@@ -455,10 +456,41 @@
       : undefined;
   });
 
-  function view_task_routine(task: Task, onEdit?: () => void) {
+  async function view_task_routine(task: Task, onEdit?: () => void) {
+    if (
+      task_dialog_open &&
+      task_dialog_mode === "edit" &&
+      !(await confirmUnsavedChanges())
+    ) {
+      return;
+    }
     view_task = task;
     view_task_edit_callback = onEdit;
-    view_task_dialog_open = true;
+    task_dialog_mode = "view";
+    task_dialog_open = true;
+  }
+
+  // Opens the editor for a draft that has no saved details to switch to.
+  function open_task_editor() {
+    view_task = null;
+    view_task_edit_callback = undefined;
+    task_dialog_return_to_view = false;
+    task_dialog_mode = "edit";
+    task_dialog_open = true;
+  }
+
+  function show_task_details() {
+    const task = view_task && find_board_task(view_task.id);
+    if (task) {
+      view_task = task;
+    }
+    task_dialog_mode = "view";
+  }
+
+  function find_board_task(task_id: string): Task | undefined {
+    return board.columns
+      .flatMap((column) => column.tasks)
+      .find((task) => task.id === task_id);
   }
 
   // task column selection dialog
@@ -531,7 +563,6 @@
   function reset_board_scoped_ui() {
     search_text = "";
     task_dialog_open = false;
-    view_task_dialog_open = false;
     column_dialog_open = false;
     templates_dialog_open = false;
     save_template_dialog_open = false;
@@ -702,7 +733,9 @@
                   continue;
                 }
                 active_focus_id = null;
-                view_task_dialog_open = false;
+                if (task_dialog_mode === "view") {
+                  task_dialog_open = false;
+                }
                 if (link.task_id !== null) {
                   const taskId = "task_" + link.task_id;
                   const task = await board.get_expired_task_detail(taskId);
@@ -810,7 +843,7 @@
           target.closest("[contenteditable='true']") !== null);
       if (
         is_editing_text ||
-        task_dialog_open ||
+        (task_dialog_open && task_dialog_mode === "edit") ||
         column_dialog_open ||
         task_column_dialog_open
       ) {
@@ -1109,11 +1142,17 @@
     editing_template_id = null;
     creating_task = false;
     dialog_template_id = "none";
-    const task_id = board.columns[col_idx].tasks[t_idx].id;
+    const task = board.columns[col_idx].tasks[t_idx];
+    const task_id = task.id;
     dialog_title = m.task_edit;
     dialog_button_text = m.common_update;
     dialog_callback = () => board.update_task(task_id, dialog_task);
-    dialog_task = clone_task(board.columns[col_idx].tasks[t_idx]);
+    dialog_task = clone_task(task);
+    task_dialog_return_to_view =
+      task_dialog_open && task_dialog_mode === "view";
+    view_task = task;
+    view_task_edit_callback = () => edit_task_by_id(task);
+    task_dialog_mode = "edit";
     task_dialog_open = true;
   }
 
@@ -1135,7 +1174,7 @@
       board.add_new_task(column_id, dialog_task, null, onCreated);
     reset_task(dialog_task);
     dialog_task.due_time = due_time ? new Date(due_time) : undefined;
-    task_dialog_open = true;
+    open_task_editor();
   }
 
   function open_add_task_shortcut() {
@@ -1207,7 +1246,7 @@
     dialog_button_text = m.common_import;
     dialog_task = clone_task(task);
     dialog_callback = () => board.add_new_task(column_id, dialog_task);
-    task_dialog_open = true;
+    open_task_editor();
   }
 
   function open_templates_dialog() {
@@ -1249,7 +1288,7 @@
         dialog_task,
       );
     templates_dialog_open = false;
-    task_dialog_open = true;
+    open_task_editor();
   }
 
   function apply_template_to_new_task(template_id: string) {
@@ -1307,7 +1346,7 @@
     dialog_task = task_from_template(template.task);
     dialog_callback = () => board.add_new_task(column.id, dialog_task);
     templates_dialog_open = false;
-    task_dialog_open = true;
+    open_task_editor();
   }
 
   async function prepare_import() {
@@ -1694,7 +1733,7 @@
               />
             {:else if home_open}
               <HomePage
-                paused={task_dialog_open || view_task_dialog_open}
+                paused={task_dialog_open}
                 onOpenTask={(item) => void open_focus_task(item)}
                 focuses={focuses.views}
                 boards={board.boards}
@@ -1713,7 +1752,7 @@
               <AllTasksPage
                 filters={all_tasks_filters}
                 boards={board.boards}
-                paused={task_dialog_open || view_task_dialog_open}
+                paused={task_dialog_open}
                 onOpenTask={open_focus_task}
                 onEditTask={edit_list_task}
                 onArchiveTask={archive_list_task}
@@ -1726,7 +1765,7 @@
               <FocusPage
                 view={active_focus}
                 boards={board.boards}
-                paused={task_dialog_open || view_task_dialog_open}
+                paused={task_dialog_open}
                 onEdit={() => edit_focus(active_focus)}
                 onFloat={() => void float_focus(active_focus.id)}
                 onOpenTask={open_focus_task}
@@ -2032,8 +2071,16 @@
           onSaveTemplate={save_task_template}
         />
 
-        <EditTaskDialog
+        <TaskDialog
           bind:open={task_dialog_open}
+          mode={task_dialog_mode}
+          {view_task}
+          onEdit={active_board_read_only ? undefined : view_task_edit_callback}
+          onView={view_task ? show_task_details : undefined}
+          onViewTask={(task) => view_task_by_id(task)}
+          history={board.active_board_id === null
+            ? undefined
+            : { board_id: board.active_board_id, columns: board.columns }}
           bind:task={dialog_task}
           label_suggestions={board.labels}
           card_reference_options={board.columns.flatMap((column) =>
@@ -2051,21 +2098,15 @@
           on_template_change={apply_template_to_new_task}
           dialog_done_callback={async () => {
             if (await dialog_callback()) {
-              task_dialog_open = false;
+              if (task_dialog_return_to_view && view_task) {
+                show_task_details();
+              } else {
+                task_dialog_open = false;
+              }
               editing_template_id = null;
               creating_task = false;
             }
           }}
-        ></EditTaskDialog>
-
-        <ViewTaskDialog
-          bind:open={view_task_dialog_open}
-          task={view_task}
-          onEdit={active_board_read_only ? undefined : view_task_edit_callback}
-          onViewTask={(task) => view_task_by_id(task)}
-          history={board.active_board_id === null
-            ? undefined
-            : { board_id: board.active_board_id, columns: board.columns }}
         />
 
         <ViewTaskDialog

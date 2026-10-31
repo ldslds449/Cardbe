@@ -1,7 +1,7 @@
 <script lang="ts">
   import { cn } from "#lib/utils.js";
   import { m } from "#lib/paraglide/messages.js";
-  import { tick } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import { Button } from "#lib/components/ui/button/index.js";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import * as Collapsible from "#lib/components/ui/collapsible/index.js";
@@ -26,11 +26,14 @@
     label,
     onedit,
     fill = false,
+    actions,
   }: {
     md: string;
     label: string;
     onedit?: (target: TextTarget) => void;
     fill?: boolean;
+    /** Extra header buttons after the outline menu. */
+    actions?: Snippet;
   } = $props();
 
   const HEADING_SELECTOR = "h1, h2, h3, h4, h5, h6";
@@ -107,12 +110,15 @@
     )}
   >
     <p class="text-sm font-medium">{label}</p>
-    {#if outline.length > 1}
-      <MarkdownOutlineMenu
-        {outline}
-        onselect={(heading) => void go_to_heading(heading)}
-      />
-    {/if}
+    <div class="flex items-center gap-1">
+      {#if outline.length > 1}
+        <MarkdownOutlineMenu
+          {outline}
+          onselect={(heading) => void go_to_heading(heading)}
+        />
+      {/if}
+      {@render actions?.()}
+    </div>
   </div>
 {/snippet}
 

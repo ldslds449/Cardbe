@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  // Kept across openings; plain text shows the preview beside the editor.
+  const editor_layout = $state({ split_preview: true });
+</script>
+
 <script lang="ts">
   import { m } from "#lib/paraglide/messages.js";
   import "#lib/i18n/locale.svelte.js";
@@ -27,11 +32,10 @@
   import FilePlus2Icon from "@lucide/svelte/icons/file-plus-2";
   import LayoutTemplateIcon from "@lucide/svelte/icons/layout-template";
   import CardReferencePicker from "#lib/components/editor/card-reference-picker.svelte";
-  import type { EditorSelection } from "#lib/components/editor/rich-text-surface.svelte";
   import { editorMode } from "#lib/components/editor/mode.js";
   import { SplitScrollSync } from "#lib/components/editor/split-scroll-sync.js";
 
-  import { tick } from "svelte";
+  import { tick, type Snippet } from "svelte";
   import { Checkbox } from "#lib/components/ui/checkbox/index.js";
 
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -58,7 +62,6 @@
   import SortableChecklistItem from "../task/sortable_checklist_item.svelte";
   import TaskBlockersField from "../task/task_blockers_field.svelte";
   import type { Column } from "../../type/column.svelte";
-  import ResizeHandle from "../resize_handle.svelte";
   import Markdown from "../markdown.svelte";
   import MarkdownOutlineMenu from "../markdown_outline_menu.svelte";
   import {
@@ -67,7 +70,6 @@
   } from "../../utils/markdown-outline";
   import { take_description_reveal } from "./description-reveal";
   import {
-    edit_dialog_width_bounds,
     layout_widths,
     task_dialog_is_split,
   } from "../../layout-widths.svelte";
@@ -78,8 +80,10 @@
   };
 
   let {
-    open = $bindable(false),
     task = $bindable(create_task()),
+    dialog_ref,
+    expanded: description_expanded = $bindable(false),
+    header_actions,
     label_suggestions = [],
     card_reference_options = [],
     columns = [],
@@ -93,9 +97,14 @@
     selected_template_id = $bindable("none"),
     on_template_change = () => {},
     dialog_done_callback = async () => {},
+    submitting = $bindable(false),
   }: {
-    open: boolean;
     task: Task;
+    /** The dialog element, focused when no field takes focus. */
+    dialog_ref: HTMLDivElement | null;
+    /** Shows only the description editor, filling the dialog. */
+    expanded?: boolean;
+    header_actions?: Snippet;
     label_suggestions?: string[];
     card_reference_options?: CardReferenceOption[];
     /** The board's columns, for choosing the tasks this one waits on. */
@@ -110,31 +119,32 @@
     selected_template_id?: string;
     on_template_change?: (template_id: string) => void;
     dialog_done_callback?: () => Promise<void> | void;
+    submitting?: boolean;
   } = $props();
 
   let invalid_title = $state(false);
   // A date-only due date covers its whole day, so a start on that day is valid.
   let invalid_time_range = $derived(!is_valid_date_range(task));
   let invalid_template_name = $state(false);
-  let submitting = $state(false);
   let show_saving = $state(false);
   let previewing_description = $state(false);
-  let description_expanded = $state(false);
   let viewport_width = $state(globalThis.innerWidth ?? Infinity);
   const split_layout = $derived(
-    task_dialog_is_split(layout_widths.edit_dialog_width, viewport_width),
+    task_dialog_is_split(layout_widths.task_dialog_width, viewport_width),
   );
   let template_mode_active = $state(false);
+  $effect(() => {
+    if (selected_template_id !== "none") {
+      template_mode_active = true;
+    }
+  });
   let template_browser_open = $state(false);
   let card_reference_picker_open = $state(false);
-  let dialog_content_ref = $state<HTMLDivElement | null>(null);
   let title_ref = $state<HTMLInputElement | null>(null);
   let label_input_ref = $state<TagInput | null>(null);
   let description_ref = $state<RichTextEditorHandle | null>(null);
   let expanded_description_ref = $state<RichTextEditorHandle | null>(null);
   let reference_trigger_start = $state<number | undefined>(undefined);
-  // Kept across openings; plain text shows the preview beside the editor.
-  let split_preview = $state(true);
   let split_editor_pane = $state<HTMLDivElement | null>(null);
   let split_preview_viewport = $state<HTMLDivElement | null>(null);
   let split_preview_height = $state(0);
@@ -152,13 +162,10 @@
     split_scroll.invalidate();
     void tick().then(() => split_scroll.sync());
   });
-  // Carries the caret between the inline and expanded editors, which share
-  // the editor mode and therefore the same position space.
-  let transferred_selection: EditorSelection | undefined;
   const description_stats = $derived(markdown_stats(task.description));
   const description_outline = $derived(markdown_outline(task.description));
   // Rendering long Markdown on every keystroke would slow typing down.
-  let live_preview = $state("");
+  let live_preview = $state(current_description());
   $effect(() => {
     const description = task.description;
     if (!description_expanded) {
@@ -168,15 +175,56 @@
     return () => window.clearTimeout(timeout);
   });
 
-  function expand_description() {
-    transferred_selection = description_ref?.getSelection();
-    live_preview = task.description;
-    description_expanded = true;
+  function current_description() {
+    return task.description;
   }
 
-  function collapse_description() {
-    transferred_selection = expanded_description_ref?.getSelection();
+  // The inline and expanded editors share the editor mode and therefore the
+  // same position space, so the caret carries between them.
+  async function move_selection(
+    from: RichTextEditorHandle | null,
+    to: () => RichTextEditorHandle | null,
+  ) {
+    const selection = from?.getSelection();
+    await tick();
+    const editor = to();
+    if (selection && editor?.setSelection) {
+      editor.setSelection(selection);
+    } else {
+      editor?.focus();
+    }
+  }
+
+  function expand_description() {
+    live_preview = task.description;
+    description_expanded = true;
+    void move_selection(description_ref, () => expanded_description_ref);
+  }
+
+  export function collapse_description() {
     description_expanded = false;
+    void move_selection(expanded_description_ref, () => description_ref);
+  }
+
+  export function commit_pending() {
+    label_input_ref?.commitPendingTag();
+  }
+
+  export async function focus_initial() {
+    const reveal = take_description_reveal(task.id);
+    await tick();
+    const editor = description_expanded
+      ? expanded_description_ref
+      : description_ref;
+    if (reveal) {
+      editor?.reveal?.(reveal);
+    } else if (description_expanded) {
+      editor?.focus();
+    } else if (auto_focus_title) {
+      title_ref?.focus();
+    } else {
+      dialog_ref?.focus();
+    }
   }
 
   const selected_template = $derived(
@@ -316,22 +364,6 @@
   }
 
   $effect(() => {
-    if (!open) {
-      invalid_title = false;
-      invalid_template_name = false;
-      previewing_description = false;
-      description_expanded = false;
-      transferred_selection = undefined;
-      template_mode_active = false;
-      template_browser_open = false;
-      card_reference_picker_open = false;
-      reference_trigger_start = undefined;
-    } else if (selected_template_id !== "none") {
-      template_mode_active = true;
-    }
-  });
-
-  $effect(() => {
     if (!task.due_time && task.recurrence) {
       task.recurrence = undefined;
     }
@@ -352,7 +384,7 @@
       submitting,
   );
 
-  function handle_submit_shortcut(event: KeyboardEvent) {
+  export function handle_submit_shortcut(event: KeyboardEvent) {
     if (
       event.key !== "Enter" ||
       !(event.ctrlKey || event.metaKey) ||
@@ -407,311 +439,252 @@
 
 <svelte:window bind:innerWidth={viewport_width} />
 
-<Dialog.Root bind:open draft={{ task, template_name }} busy={submitting}>
-  <Dialog.Content
-    bind:ref={dialog_content_ref}
-    class="pb-0 outline-none sm:max-w-[calc(100%-2rem)]"
-    style="width: {layout_widths.edit_dialog_width}px"
-    interactOutsideBehavior="close"
-    onkeydown={handle_submit_shortcut}
-    onEscapeKeydown={() => label_input_ref?.commitPendingTag()}
-    onInteractOutside={() => label_input_ref?.commitPendingTag()}
-    onOpenAutoFocus={(event) => {
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class={[
+    "flex max-h-[85vh] min-h-0 flex-col overflow-hidden",
+    ((split_layout && !template_browser_open) || description_expanded) &&
+      "h-[min(85vh,56rem)]",
+  ]}
+  onkeydown={handle_submit_shortcut}
+>
+  <Dialog.Header>
+    <div class="flex items-center gap-3 pe-8">
+      <Dialog.Title class="min-w-0 flex-1">{dialog_title}</Dialog.Title>
+      {@render header_actions?.()}
+    </div>
+    <Dialog.Description class="sr-only"
+      >{description_expanded
+        ? m.editor_expanded_description()
+        : ""}</Dialog.Description
+    >
+  </Dialog.Header>
+  <form
+    class="flex min-h-0 flex-1 flex-col"
+    novalidate
+    onsubmit={(event) => {
       event.preventDefault();
-      const reveal = take_description_reveal(task.id);
-      if (reveal) {
-        void tick().then(() => description_ref?.reveal?.(reveal));
-      } else if (auto_focus_title) {
-        title_ref?.focus();
-      } else {
-        dialog_content_ref?.focus();
-      }
     }}
   >
-    {#each ["start", "end"] as const as edge (edge)}
-      <ResizeHandle
-        width={layout_widths.edit_dialog_width}
-        bounds={edit_dialog_width_bounds}
-        label={m.layout_resize_task_editor()}
-        {edge}
-        scale={2}
-        fit_viewport
-        class={edge === "start" ? "-start-1.5" : "-end-1.5"}
-        onresize={(width, commit) =>
-          layout_widths.set_edit_dialog_width(width, commit)}
-      />
-    {/each}
-    <div
-      class={[
-        "flex max-h-[85vh] min-h-0 flex-col overflow-hidden",
-        split_layout && !template_browser_open && "h-[min(85vh,56rem)]",
-      ]}
-    >
-      <Dialog.Header>
-        <Dialog.Title>{dialog_title}</Dialog.Title>
-        <Dialog.Description></Dialog.Description>
-      </Dialog.Header>
-      <form
-        class="flex min-h-0 flex-1 flex-col"
-        novalidate
-        onsubmit={(event) => {
-          event.preventDefault();
-        }}
-      >
-        {#if split_layout && !template_browser_open}
-          <div class="flex min-h-0 flex-1 gap-6">
-            <ScrollArea
-              orientation="vertical"
-              class="min-h-0 w-80 shrink-0 border-e"
-            >
-              <div class="py-4 ps-1 pe-6">
-                {@render template_method()}
-                <Field.Group>
-                  {@render property_fields()}
-                </Field.Group>
-              </div>
-            </ScrollArea>
-            <Field.Group class="min-h-0 min-w-0 flex-1 px-1 py-4">
-              {@render title_fields()}
-              {@render description_field(true)}
-            </Field.Group>
-          </div>
-        {:else}
-          <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
-            <div class="w-full py-4 ps-1 pe-4">
-              {#if show_template_picker && template_browser_open}
-                <section
-                  class="space-y-4"
-                  aria-label={m.task_template_choose()}
+    {#if description_expanded}
+      {@render expanded_description()}
+    {/if}
+    <div class={description_expanded ? "hidden" : "contents"}>
+      {#if split_layout && !template_browser_open}
+        <div class="flex min-h-0 flex-1 gap-6">
+          <ScrollArea
+            orientation="vertical"
+            class="min-h-0 w-80 shrink-0 border-e"
+          >
+            <div class="py-4 ps-1 pe-6">
+              {@render template_method()}
+              <Field.Group>
+                {@render property_fields()}
+              </Field.Group>
+            </div>
+          </ScrollArea>
+          <Field.Group class="min-h-0 min-w-0 flex-1 px-1 py-4">
+            {@render title_fields()}
+            {@render description_field(true)}
+          </Field.Group>
+        </div>
+      {:else}
+        <ScrollArea orientation="vertical" class="min-h-0 flex-1 rounded-md">
+          <div class="w-full py-4 ps-1 pe-4">
+            {#if show_template_picker && template_browser_open}
+              <section class="space-y-4" aria-label={m.task_template_choose()}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  class="-ml-2"
+                  onclick={close_template_browser}
                 >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    class="-ml-2"
-                    onclick={close_template_browser}
-                  >
-                    <ArrowLeftIcon />
-                    {m.task_template_back()}
-                  </Button>
-                  <div>
-                    <div class="text-base font-semibold">
-                      {m.task_template_choose_title()}
-                    </div>
-                    <div class="text-sm text-muted-foreground">
-                      {m.task_template_search_description()}
-                    </div>
+                  <ArrowLeftIcon />
+                  {m.task_template_back()}
+                </Button>
+                <div>
+                  <div class="text-base font-semibold">
+                    {m.task_template_choose_title()}
                   </div>
-                  <Command.Root class="rounded-lg border">
-                    <Command.Input
-                      placeholder={m.task_template_search_placeholder()}
-                      aria-label={m.task_template_search()}
-                    />
-                    <Command.List class="max-h-[50vh]">
-                      <Command.Empty>{m.task_template_empty()}</Command.Empty>
-                      <Command.Group value="templates">
-                        {#each templates as template (template.id)}
-                          <Command.Item
-                            value={template.id.toString()}
-                            keywords={[
-                              template.name,
-                              template.task.title,
-                              ...template.task.labels,
-                            ]}
-                            class="py-3"
-                            onSelect={() => choose_template(template.id)}
-                          >
-                            <CheckIcon
-                              class={selected_template_id ===
-                              template.id.toString()
-                                ? ""
-                                : "text-transparent"}
-                            />
-                            <div class="min-w-0 flex-1">
-                              <div class="truncate text-sm font-medium">
-                                {template.name}
-                              </div>
-                              <div
-                                class="truncate text-xs text-muted-foreground"
-                              >
-                                {template.task.title ||
-                                  m.task_template_untitled()}
-                                ·
-                                {m.task_checklist_count({
-                                  count: template.task.items.length,
-                                })}
-                              </div>
+                  <div class="text-sm text-muted-foreground">
+                    {m.task_template_search_description()}
+                  </div>
+                </div>
+                <Command.Root class="rounded-lg border">
+                  <Command.Input
+                    placeholder={m.task_template_search_placeholder()}
+                    aria-label={m.task_template_search()}
+                  />
+                  <Command.List class="max-h-[50vh]">
+                    <Command.Empty>{m.task_template_empty()}</Command.Empty>
+                    <Command.Group value="templates">
+                      {#each templates as template (template.id)}
+                        <Command.Item
+                          value={template.id.toString()}
+                          keywords={[
+                            template.name,
+                            template.task.title,
+                            ...template.task.labels,
+                          ]}
+                          class="py-3"
+                          onSelect={() => choose_template(template.id)}
+                        >
+                          <CheckIcon
+                            class={selected_template_id ===
+                            template.id.toString()
+                              ? ""
+                              : "text-transparent"}
+                          />
+                          <div class="min-w-0 flex-1">
+                            <div class="truncate text-sm font-medium">
+                              {template.name}
                             </div>
-                          </Command.Item>
-                        {/each}
-                      </Command.Group>
-                    </Command.List>
-                  </Command.Root>
-                </section>
+                            <div class="truncate text-xs text-muted-foreground">
+                              {template.task.title ||
+                                m.task_template_untitled()}
+                              ·
+                              {m.task_checklist_count({
+                                count: template.task.items.length,
+                              })}
+                            </div>
+                          </div>
+                        </Command.Item>
+                      {/each}
+                    </Command.Group>
+                  </Command.List>
+                </Command.Root>
+              </section>
+            {:else}
+              {@render template_method()}
+              <Field.Set>
+                <Field.Group>
+                  {@render title_fields()}
+                  {@render property_fields()}
+                  {@render description_field(false)}
+                </Field.Group>
+              </Field.Set>
+            {/if}
+          </div>
+        </ScrollArea>
+      {/if}
+    </div>
+    {#if !template_browser_open}
+      <Dialog.Footer
+        class="mt-auto shrink-0 justify-center border-t bg-background/95 px-1 py-3 shadow-[0_-8px_16px_-16px_rgb(0_0_0_/_0.45)] backdrop-blur-sm sm:justify-center"
+      >
+        <Button
+          class="min-w-40"
+          disabled={submit_disabled}
+          type="button"
+          onclick={() => void try_submit()}
+          >{show_saving ? m.common_saving() : submit_button_text}</Button
+        >
+      </Dialog.Footer>
+    {/if}
+  </form>
+</div>
+
+{#snippet expanded_description()}
+  <div class="flex min-h-0 flex-1 flex-col gap-2 px-1 py-4">
+    <div class="flex items-center justify-between gap-2">
+      <p class="text-sm font-medium">{m.task_description()}</p>
+      <div class="flex items-center gap-1">
+        {#if description_outline.length > 0}
+          <MarkdownOutlineMenu
+            outline={description_outline}
+            onselect={(heading) => {
+              expanded_description_ref?.reveal?.({
+                offset: heading.start,
+                text: heading.text,
+              });
+              return true;
+            }}
+          />
+        {/if}
+        {#if !previewing_description}
+          {@render card_reference_picker()}
+        {/if}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          class="h-7 gap-1.5 px-2 text-xs"
+          aria-label={m.task_collapse_description()}
+          title={m.task_collapse_description()}
+          onclick={collapse_description}
+        >
+          <Minimize2Icon class="size-3.5" />
+          <span class="hidden sm:inline">{m.editor_collapse()}</span>
+        </Button>
+      </div>
+    </div>
+    <div class="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row lg:gap-4">
+      <!-- These handlers only track which pane drives scroll sync. -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        bind:this={split_editor_pane}
+        class="flex min-h-0 min-w-0 flex-1 flex-col"
+        onpointerenter={() => split_scroll.drive("editor")}
+        onfocusin={() => split_scroll.drive("editor")}
+        onkeydown={() => split_scroll.drive("editor")}
+        onscrollcapture={(event) => split_scroll.scrolled("editor", event)}
+      >
+        <RichTextEditor
+          bind:ref={expanded_description_ref}
+          bind:splitPreview={editor_layout.split_preview}
+          containerClass="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-background"
+          class="min-h-0 flex-1 px-3 py-4 sm:px-6"
+          placeholder={m.task_description_placeholder()}
+          showToolbar
+          cardReferenceOptions={card_reference_options}
+          cardReferenceExcludeId={task.id}
+          value={task.description}
+          onvaluechange={(content) => {
+            task.description = content;
+            handle_description_change();
+          }}
+        />
+      </div>
+      {#if $editorMode === "plain" && editor_layout.split_preview}
+        <section
+          class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-background"
+          aria-label={m.editor_live_preview()}
+          onpointerenter={() => split_scroll.drive("preview")}
+          onfocusin={() => split_scroll.drive("preview")}
+          onscrollcapture={(event) => split_scroll.scrolled("preview", event)}
+        >
+          <p
+            class="flex h-10 shrink-0 items-center border-b px-3 text-xs font-medium text-muted-foreground"
+          >
+            {m.editor_live_preview()}
+          </p>
+          <ScrollArea
+            type="auto"
+            class="min-h-0 flex-1"
+            bind:viewport={split_preview_viewport}
+          >
+            <div
+              class="px-3 py-4 sm:px-6"
+              bind:clientHeight={split_preview_height}
+            >
+              {#if live_preview.trim()}
+                <Markdown md={live_preview} />
               {:else}
-                {@render template_method()}
-                <Field.Set>
-                  <Field.Group>
-                    {@render title_fields()}
-                    {@render property_fields()}
-                    {@render description_field(false)}
-                  </Field.Group>
-                </Field.Set>
+                <p class="text-sm text-muted-foreground">
+                  {m.editor_preview_empty()}
+                </p>
               {/if}
             </div>
           </ScrollArea>
-        {/if}
-        {#if !template_browser_open}
-          <Dialog.Footer
-            class="mt-auto shrink-0 justify-center border-t bg-background/95 px-1 py-3 shadow-[0_-8px_16px_-16px_rgb(0_0_0_/_0.45)] backdrop-blur-sm sm:justify-center"
-          >
-            <Button
-              class="min-w-40"
-              disabled={submit_disabled}
-              type="button"
-              onclick={() => void try_submit()}
-              >{show_saving ? m.common_saving() : submit_button_text}</Button
-            >
-          </Dialog.Footer>
-        {/if}
-      </form>
+        </section>
+      {/if}
     </div>
-  </Dialog.Content>
-  <Dialog.Root
-    bind:open={description_expanded}
-    onOpenChange={(expanded) => {
-      if (!expanded) {
-        transferred_selection = expanded_description_ref?.getSelection();
-      }
-    }}
-  >
-    <Dialog.Content
-      class="flex h-[min(90vh,56rem)] w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
-      showCloseButton={false}
-      onkeydown={handle_submit_shortcut}
-      onOpenAutoFocus={(event) => {
-        event.preventDefault();
-        const selection = transferred_selection;
-        void tick().then(() =>
-          selection && expanded_description_ref?.setSelection
-            ? expanded_description_ref.setSelection(selection)
-            : expanded_description_ref?.focus(),
-        );
-      }}
-      onCloseAutoFocus={(event) => {
-        const selection = transferred_selection;
-        if (open && selection && description_ref?.setSelection) {
-          event.preventDefault();
-          description_ref.setSelection(selection);
-        }
-      }}
-    >
-      <Dialog.Header class="shrink-0 border-b px-4 py-3 text-start sm:px-6">
-        <div class="flex items-center justify-between gap-3">
-          <Dialog.Title class="min-w-0 flex-1"
-            >{m.task_description()}</Dialog.Title
-          >
-          {#if description_outline.length > 0}
-            <MarkdownOutlineMenu
-              outline={description_outline}
-              onselect={(heading) => {
-                expanded_description_ref?.reveal?.({
-                  offset: heading.start,
-                  text: heading.text,
-                });
-                return true;
-              }}
-            />
-          {/if}
-          {#if !previewing_description}
-            {@render card_reference_picker()}
-          {/if}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={m.task_collapse_description()}
-            title={m.task_collapse_description()}
-            onclick={collapse_description}
-          >
-            <Minimize2Icon />
-          </Button>
-        </div>
-        <Dialog.Description class="sr-only"
-          >{m.editor_expanded_description()}</Dialog.Description
-        >
-      </Dialog.Header>
-      <div
-        class="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-5 lg:flex-row lg:gap-4"
-      >
-        <!-- These handlers only track which pane drives scroll sync. -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          bind:this={split_editor_pane}
-          class="flex min-h-0 min-w-0 flex-1 flex-col"
-          onpointerenter={() => split_scroll.drive("editor")}
-          onfocusin={() => split_scroll.drive("editor")}
-          onkeydown={() => split_scroll.drive("editor")}
-          onscrollcapture={(event) => split_scroll.scrolled("editor", event)}
-        >
-          <RichTextEditor
-            bind:ref={expanded_description_ref}
-            bind:splitPreview={split_preview}
-            containerClass="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-background"
-            class="min-h-0 flex-1 px-3 py-4 sm:px-6"
-            placeholder={m.task_description_placeholder()}
-            showToolbar
-            cardReferenceOptions={card_reference_options}
-            cardReferenceExcludeId={task.id}
-            value={task.description}
-            onvaluechange={(content) => {
-              task.description = content;
-              handle_description_change();
-            }}
-          />
-        </div>
-        {#if $editorMode === "plain" && split_preview}
-          <section
-            class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border bg-background"
-            aria-label={m.editor_live_preview()}
-            onpointerenter={() => split_scroll.drive("preview")}
-            onfocusin={() => split_scroll.drive("preview")}
-            onscrollcapture={(event) => split_scroll.scrolled("preview", event)}
-          >
-            <p
-              class="flex h-10 shrink-0 items-center border-b px-3 text-xs font-medium text-muted-foreground"
-            >
-              {m.editor_live_preview()}
-            </p>
-            <ScrollArea
-              type="auto"
-              class="min-h-0 flex-1"
-              bind:viewport={split_preview_viewport}
-            >
-              <div
-                class="px-3 py-4 sm:px-6"
-                bind:clientHeight={split_preview_height}
-              >
-                {#if live_preview.trim()}
-                  <Markdown md={live_preview} />
-                {:else}
-                  <p class="text-sm text-muted-foreground">
-                    {m.editor_preview_empty()}
-                  </p>
-                {/if}
-              </div>
-            </ScrollArea>
-          </section>
-        {/if}
-      </div>
-      <p
-        class="shrink-0 border-t px-4 py-2 text-end text-xs text-muted-foreground sm:px-6"
-      >
-        {m.editor_stats(description_stats)}
-      </p>
-    </Dialog.Content>
-  </Dialog.Root>
-</Dialog.Root>
+    <p class="text-end text-xs text-muted-foreground">
+      {m.editor_stats(description_stats)}
+    </p>
+  </div>
+{/snippet}
 
 {#snippet template_method()}
   {#if show_template_picker && templates.length > 0}

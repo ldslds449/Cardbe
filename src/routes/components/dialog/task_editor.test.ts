@@ -4,7 +4,7 @@ import { expect, it } from "vite-plus/test";
 
 it("mounts the reference picker with no cards in both description layouts", () => {
   const source = readFileSync(
-    new URL("./edit_task_dialog.svelte", import.meta.url),
+    new URL("./task_editor.svelte", import.meta.url),
     "utf8",
   );
   const conditions: string[] = [];

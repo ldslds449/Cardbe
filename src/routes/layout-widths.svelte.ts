@@ -9,15 +9,16 @@ export const column_width_bounds: WidthBounds = {
   max: 640,
   default: 320,
 };
-export const view_dialog_width_bounds: WidthBounds = {
+// Viewing and editing share one width so switching between them keeps the frame.
+export const task_dialog_width_bounds: WidthBounds = {
   min: 400,
   max: 1600,
   default: 960,
 };
-export const edit_dialog_width_bounds: WidthBounds = {
-  min: 400,
-  max: 1600,
-  default: 960,
+export const description_dialog_width_bounds: WidthBounds = {
+  min: 480,
+  max: 2400,
+  default: 1152,
 };
 
 // Task dialogs at least this wide show task details beside the description
@@ -31,8 +32,8 @@ export function task_dialog_is_split(width: number, viewport_width: number) {
 
 type StoredWidths = {
   columns: Record<string, number>;
-  view_dialog?: number;
-  edit_dialog?: number;
+  task_dialog?: number;
+  description_dialog?: number;
 };
 
 export function clamp_width(width: number, bounds: WidthBounds): number {
@@ -76,8 +77,15 @@ function readStored(): StoredWidths {
     }
     return {
       columns,
-      view_dialog: valid_width(record.view_dialog, view_dialog_width_bounds),
-      edit_dialog: valid_width(record.edit_dialog, edit_dialog_width_bounds),
+      // Older versions stored separate view and edit dialog widths.
+      task_dialog:
+        valid_width(record.task_dialog, task_dialog_width_bounds) ??
+        valid_width(record.edit_dialog, task_dialog_width_bounds) ??
+        valid_width(record.view_dialog, task_dialog_width_bounds),
+      description_dialog: valid_width(
+        record.description_dialog,
+        description_dialog_width_bounds,
+      ),
     };
   } catch {
     // Storage may be unavailable or corrupt; start with default widths.
@@ -112,23 +120,28 @@ export class LayoutWidthState {
     }
   }
 
-  get view_dialog_width(): number {
-    return this.widths.view_dialog ?? view_dialog_width_bounds.default;
+  get task_dialog_width(): number {
+    return this.widths.task_dialog ?? task_dialog_width_bounds.default;
   }
 
-  set_view_dialog_width(width: number, persist = true) {
-    this.widths.view_dialog = clamp_width(width, view_dialog_width_bounds);
+  set_task_dialog_width(width: number, persist = true) {
+    this.widths.task_dialog = clamp_width(width, task_dialog_width_bounds);
     if (persist) {
       this.persist();
     }
   }
 
-  get edit_dialog_width(): number {
-    return this.widths.edit_dialog ?? edit_dialog_width_bounds.default;
+  get description_dialog_width(): number {
+    return (
+      this.widths.description_dialog ?? description_dialog_width_bounds.default
+    );
   }
 
-  set_edit_dialog_width(width: number, persist = true) {
-    this.widths.edit_dialog = clamp_width(width, edit_dialog_width_bounds);
+  set_description_dialog_width(width: number, persist = true) {
+    this.widths.description_dialog = clamp_width(
+      width,
+      description_dialog_width_bounds,
+    );
     if (persist) {
       this.persist();
     }
