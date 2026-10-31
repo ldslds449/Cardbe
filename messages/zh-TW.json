@@ -1962,6 +1962,7 @@
   "editor_mermaid": "Mermaid 圖表",
   "editor_slash_mermaid_description": "編輯 Mermaid 原始碼並預覽圖表",
   "editor_mermaid_error": "無法顯示此圖表，以下保留原始碼。",
+  "editor_mermaid_stale": "圖表語法有誤，目前顯示上一次的結果。",
   "editor_horizontal_rule": "分隔線",
   "editor_table": "表格",
   "editor_insert_table": "插入表格",

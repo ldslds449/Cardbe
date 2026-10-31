@@ -2268,6 +2268,7 @@
   "editor_mermaid": "Mermaid diagram",
   "editor_slash_mermaid_description": "Edit Mermaid source with a diagram preview",
   "editor_mermaid_error": "Unable to render this diagram. The source is shown below.",
+  "editor_mermaid_stale": "Diagram has errors. Showing the last valid version.",
   "editor_horizontal_rule": "Horizontal rule",
   "editor_table": "Table",
   "editor_insert_table": "Insert table",
