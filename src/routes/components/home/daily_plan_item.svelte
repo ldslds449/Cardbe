@@ -9,11 +9,13 @@
     id,
     index,
     disabled,
+    compact = false,
     children,
   }: {
     id: string;
     index: number;
     disabled: boolean;
+    compact?: boolean;
     children: Snippet;
   } = $props();
   const { ref, handleRef, isDragging } = useSortable({
@@ -28,7 +30,10 @@
 
 <li
   {@attach ref}
-  class="group flex items-center gap-2 rounded-md px-2 py-2.5 transition-colors hover:bg-muted/40"
+  class={[
+    "group flex items-center rounded-md transition-colors hover:bg-muted/40",
+    compact ? "gap-1 py-1.5" : "gap-2 px-2 py-2.5",
+  ]}
   class:opacity-50={isDragging.current}
 >
   <Button

@@ -14,14 +14,11 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
-  import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
-  import ArrowDownIcon from "@lucide/svelte/icons/arrow-down";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import XIcon from "@lucide/svelte/icons/x";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import SunIcon from "@lucide/svelte/icons/sun";
   import SearchIcon from "@lucide/svelte/icons/search";
-  import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
   import PictureInPicture2Icon from "@lucide/svelte/icons/picture-in-picture-2";
   import { Checkbox } from "#lib/components/ui/checkbox/index.js";
@@ -224,13 +221,6 @@
     }
   }
 
-  function move(index: number, offset: number) {
-    const next = [...items];
-    const [item] = next.splice(index, 1);
-    next.splice(index + offset, 0, item);
-    void save(next);
-  }
-
   async function complete(item: AllTaskItem) {
     if (busy) {
       return;
@@ -382,25 +372,9 @@
         </div>
       {/if}
       <div class={floating ? "sr-only" : "min-w-0 flex-1"}>
-        <div class="flex min-w-0 items-center gap-1.5">
-          <h2
-            id="daily-plan-title"
-            class="truncate font-semibold tracking-tight"
-          >
-            {m.daily_plan_title()}
-          </h2>
-          {#if !floating}
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              class="shrink-0 text-muted-foreground"
-              onclick={() => void float_plan()}
-              aria-label={m.focus_float_on_desktop()}
-              title={m.focus_float_on_desktop()}
-              ><PictureInPicture2Icon /></Button
-            >
-          {/if}
-        </div>
+        <h2 id="daily-plan-title" class="truncate font-semibold tracking-tight">
+          {m.daily_plan_title()}
+        </h2>
         <p class="mt-0.5 text-xs text-muted-foreground">
           {m.daily_plan_subtitle()}
         </p>
@@ -412,6 +386,16 @@
         </span>
       {/if}
       {#if loaded && items.length > 0}{@render choose_button()}{/if}
+      {#if !floating}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class="shrink-0 text-muted-foreground"
+          onclick={() => void float_plan()}
+          aria-label={m.focus_float_on_desktop()}
+          title={m.focus_float_on_desktop()}><PictureInPicture2Icon /></Button
+        >
+      {/if}
     </header>
 
     {#if failed}
@@ -464,11 +448,16 @@
         onDragOver={drag_over}
         onDragEnd={drag_end}
       >
-        <ol class="divide-y divide-border/60 px-3 pb-2 sm:px-4">
+        <ol
+          class={floating
+            ? "divide-y divide-border/60"
+            : "divide-y divide-border/60 px-3 pb-2 sm:px-4"}
+        >
           {#each shown_items as item, index (key(item))}
             <DailyPlanItem
               id={key(item)}
               {index}
+              compact={floating}
               disabled={busy || failed || choosing}
             >
               <Checkbox
@@ -494,43 +483,6 @@
                 >
                 {@render task_meta(item)}
               </button>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger>
-                  {#snippet child({ props })}
-                    <Button
-                      {...props}
-                      variant="ghost"
-                      size="icon-sm"
-                      class="shrink-0 text-muted-foreground"
-                      aria-label={m.focus_task_actions({
-                        name: item.task.title || m.task_untitled(),
-                      })}><EllipsisIcon /></Button
-                    >
-                  {/snippet}
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="end">
-                  <DropdownMenu.Item
-                    disabled={busy || index === 0}
-                    onclick={() => move(index, -1)}
-                    ><ArrowUpIcon />{m.daily_plan_up()}</DropdownMenu.Item
-                  >
-                  <DropdownMenu.Item
-                    disabled={busy || index === items.length - 1}
-                    onclick={() => move(index, 1)}
-                    ><ArrowDownIcon />{m.daily_plan_down()}</DropdownMenu.Item
-                  >
-                  <DropdownMenu.Separator />
-                  <DropdownMenu.Item
-                    disabled={busy}
-                    onclick={() =>
-                      void save(
-                        items.filter(
-                          (candidate) => key(candidate) !== key(item),
-                        ),
-                      )}><XIcon />{m.daily_plan_remove()}</DropdownMenu.Item
-                  >
-                </DropdownMenu.Content>
-              </DropdownMenu.Root>
             </DailyPlanItem>
           {/each}
         </ol>
