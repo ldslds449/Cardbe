@@ -24,6 +24,9 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
     "@dnd-kit-svelte/core": "^0.0.11",
     "@dnd-kit-svelte/modifiers": "^0.0.11",
     "@dnd-kit-svelte/sortable": "^0.0.11",

@@ -213,9 +213,30 @@ export function markdown_stats(markdown: string): {
   characters: number;
   lines: number;
 } {
-  const text = markdown.replace(/\r\n?/g, "\n");
+  // Counted in one pass: this runs on every keystroke in long descriptions.
+  let characters = 0;
+  let breaks = 0;
+  for (let index = 0; index < markdown.length; index += 1) {
+    const code = markdown.charCodeAt(index);
+    if (code === 0x0d || code === 0x0a) {
+      breaks += 1;
+      if (code === 0x0d && markdown.charCodeAt(index + 1) === 0x0a) {
+        index += 1;
+      }
+      continue;
+    }
+    characters += 1;
+    // A surrogate pair is one code point.
+    if (
+      code >= 0xd800 &&
+      code <= 0xdbff &&
+      (markdown.charCodeAt(index + 1) & 0xfc00) === 0xdc00
+    ) {
+      index += 1;
+    }
+  }
   return {
-    characters: Array.from(text.replace(/\n/g, "")).length,
-    lines: text.length === 0 ? 0 : text.split("\n").length,
+    characters,
+    lines: markdown.length === 0 ? 0 : breaks + 1,
   };
 }

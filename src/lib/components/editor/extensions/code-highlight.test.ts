@@ -61,4 +61,70 @@ describe("editor code highlighting", () => {
       editor.destroy();
     }
   });
+
+  it("re-highlights only changed blocks with the same result as a full pass", async () => {
+    await loadHighlightLanguage("typescript");
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content:
+        "intro\n\n```typescript\nconst a = 1;\n```\n\nmiddle\n\n```typescript\nlet b = 2;\n```\n",
+      contentType: "markdown",
+    });
+    try {
+      const plugin = editor.extensionManager.plugins.find(
+        (plugin) => plugin.spec.key === codeHighlightKey,
+      )!;
+      const describe = (state: EditorState) =>
+        codeHighlightKey
+          .getState(state)!
+          .find()
+          .map((decoration) => [
+            decoration.from,
+            decoration.to,
+            (decoration as unknown as { type: { attrs: unknown } }).type.attrs,
+          ]);
+      const fresh = (state: EditorState) =>
+        describe(EditorState.create({ doc: state.doc, plugins: [plugin] }));
+      let state = EditorState.create({
+        schema: editor.schema,
+        doc: editor.schema.nodeFromJSON(editor.getJSON()),
+        plugins: [plugin],
+      });
+      const blocks = () => {
+        const positions: number[] = [];
+        state.doc.forEach((node, offset) => {
+          if (node.type.name === "codeBlock") {
+            positions.push(offset);
+          }
+        });
+        return positions;
+      };
+      const edits = [
+        // Typing inside the first code block and in a paragraph before it.
+        () => state.tr.insertText(" + 1", blocks()[0] + 12),
+        () => state.tr.insertText("more ", 1),
+        // Changing a language, then turning a paragraph into code.
+        () =>
+          state.tr.setNodeMarkup(blocks()[1], undefined, { language: "text" }),
+        () =>
+          state.tr.setBlockType(1, 2, editor.schema.nodes.codeBlock, {
+            language: "typescript",
+          }),
+        // Turning code back into a paragraph, then deleting a block.
+        () => state.tr.setBlockType(1, 2, editor.schema.nodes.paragraph),
+        () =>
+          state.tr.delete(
+            blocks()[0],
+            blocks()[0] + state.doc.nodeAt(blocks()[0])!.nodeSize,
+          ),
+      ];
+      for (const edit of edits) {
+        state = state.apply(edit());
+        expect(describe(state)).toEqual(fresh(state));
+      }
+    } finally {
+      editor.destroy();
+    }
+  });
 });

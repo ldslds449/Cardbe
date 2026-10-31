@@ -119,5 +119,14 @@ describe("markdown stats", () => {
   it("counts Unicode characters without line breaks", () => {
     expect(markdown_stats("中文🚀\r\nab")).toEqual({ characters: 5, lines: 2 });
     expect(markdown_stats("")).toEqual({ characters: 0, lines: 0 });
+    expect(markdown_stats("a\rb\n\r\nc\n")).toEqual({
+      characters: 3,
+      lines: 5,
+    });
+    // Unpaired surrogates still count as one character each.
+    expect(markdown_stats("\ud83d x \ude80")).toEqual({
+      characters: 5,
+      lines: 1,
+    });
   });
 });

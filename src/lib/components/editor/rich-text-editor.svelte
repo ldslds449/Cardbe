@@ -2,12 +2,11 @@
   import { m } from "#lib/paraglide/messages.js";
   import { tick, untrack, type ComponentProps } from "svelte";
   import EditorControls from "./editor-controls.svelte";
-  import { Textarea } from "#lib/components/ui/textarea/index.js";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { cn } from "#lib/utils.js";
   import RichTextSurface from "./rich-text-surface.svelte";
+  import PlainTextSurface from "./plain-text-surface.svelte";
   import { editorMode } from "./mode";
-  import { caretTop, caretRect } from "./textarea-caret";
   import Markdown from "../../../routes/components/markdown.svelte";
   import type { RichTextEditorHandle } from "./rich-text-surface.svelte";
 
@@ -27,7 +26,6 @@
     splitPreview?: boolean;
     showControls?: boolean;
   } = $props();
-  let textarea = $state<HTMLTextAreaElement | null>(null);
   let container = $state<HTMLDivElement | null>(null);
   let richRef = $state<RichTextEditorHandle | null>(null);
   let plainRef = $state<RichTextEditorHandle | null>(null);
@@ -81,65 +79,28 @@
     });
   });
 
-  // Scrolls every enclosing ScrollArea viewport until the caret is visible.
-  function scrollCaretIntoView(input: HTMLTextAreaElement, offset: number) {
-    const top = caretTop(input, offset);
-    const lineHeight = parseFloat(getComputedStyle(input).lineHeight) || 20;
-    for (
-      let viewport = input.closest<HTMLElement>(
-        "[data-slot='scroll-area-viewport']",
-      );
-      viewport;
-      viewport =
-        viewport.parentElement?.closest<HTMLElement>(
-          "[data-slot='scroll-area-viewport']",
-        ) ?? null
-    ) {
-      const caret = input.getBoundingClientRect().top + top;
-      const bounds = viewport.getBoundingClientRect();
-      if (caret < bounds.top || caret + lineHeight > bounds.bottom) {
-        viewport.scrollTop += caret - (bounds.top + bounds.height / 3);
+  // Switching modes from this editor's controls keeps the cursor at the same
+  // place in the Markdown source. The controls hold focus when they switch.
+  let shownMode = untrack(() => $editorMode);
+  $effect.pre(() => {
+    const mode = $editorMode;
+    untrack(() => {
+      const previous = shownMode === "rich" ? richRef : plainRef;
+      if (mode === shownMode) {
+        return;
       }
-    }
-  }
-
-  $effect(() => {
-    if ($editorMode !== "plain" || previewing || !textarea) {
-      return;
-    }
-    const input = textarea;
-    const select = (from: number, to = from) => {
-      input.focus({ preventScroll: true });
-      input.setSelectionRange(from, to);
-      scrollCaretIntoView(input, from);
-    };
-    const handle: RichTextEditorHandle = {
-      getCursorRect: () => caretRect(input, input.selectionStart),
-      setSelection: ({ from, to }) => select(from, to),
-      reveal: ({ offset }) => select(Math.min(offset, input.value.length)),
-      focus: () => input.focus({ preventScroll: true }),
-      getSelection: () => ({
-        from: input.selectionStart,
-        to: input.selectionEnd,
-      }),
-      getTextBeforeCursor: (length) =>
-        input.value.slice(
-          Math.max(0, input.selectionStart - length),
-          input.selectionStart,
-        ),
-      replaceMarkdown: (
-        markdown,
-        range = { from: input.selectionStart, to: input.selectionEnd },
-      ) => {
-        input.setRangeText(markdown, range.from, range.to, "end");
-        value = input.value;
-        onvaluechange?.(value);
-      },
-    };
-    plainRef = handle;
-    return () => {
-      plainRef = null;
-    };
+      shownMode = mode;
+      if (!container?.contains(document.activeElement)) {
+        return;
+      }
+      const offset = previous?.getSourceOffset?.();
+      if (offset === undefined) {
+        return;
+      }
+      void tick().then(() =>
+        (mode === "rich" ? richRef : plainRef)?.setSourceOffset?.(offset),
+      );
+    });
   });
 
   $effect(() => {
@@ -204,24 +165,17 @@
         "editor-scroll-area overflow-hidden rounded-none p-0 sm:p-0",
       )}
     >
-      <Textarea
-        data-editor-body
-        bind:ref={textarea}
+      <PlainTextSurface
+        bind:ref={plainRef}
         bind:value
-        class={cn(
-          props.class,
-          "h-auto min-h-full max-h-none flex-none resize-none overflow-hidden rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent",
-        )}
+        class={props.class}
         id={props.id}
         placeholder={props.placeholder}
         disabled={props.disabled}
         readonly={props.readonly}
-        aria-label={props["aria-label"] ?? m.editor_markdown_content()}
+        aria-label={props["aria-label"]}
         aria-describedby={props["aria-describedby"]}
-        oninput={(event) => {
-          value = event.currentTarget.value;
-          onvaluechange?.(value);
-        }}
+        {onvaluechange}
       />
     </ScrollArea>
   {/if}

@@ -7,10 +7,15 @@ import { createServer as createNetServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { Editor } from "@tiptap/core";
+import type { Transaction } from "@tiptap/pm/state";
 
 import { createEditorExtensions } from "../extensions";
 import { codeLanguages } from "../extensions/code-highlight";
-import { markdownInsertionContent, serializeMarkdown } from "./markdown";
+import {
+  markdownInsertionContent,
+  serializeDocument,
+  serializeMarkdown,
+} from "./markdown";
 
 const markdown = [
   "# Heading",
@@ -449,6 +454,64 @@ describe("Markdown editor serialization", () => {
 
     expect(editor.isEmpty).toBe(true);
     expect(serializeMarkdown(editor)).toBe("");
+  });
+
+  it("matches whole-document serialization while reusing unchanged blocks", () => {
+    const source = [
+      markdown,
+      "&nbsp;",
+      "&nbsp;",
+      "3. third\n4. fourth",
+      "| A | B |\n| :- | -: |\n| `x` | **y** |",
+      "Price $5 and $x^2$ with \\[[brackets]] 1\\. not a list",
+      "$$\nE = mc^2\n$$",
+      "Text[^1] with <kbd>raw</kbd>\n\n[^1]: Footnote",
+      "![image](https://example.com/a.png)",
+      "[[Other card|task_12]] reference",
+      "```mermaid\nflowchart TD\n  A --> B\n```",
+    ].join("\n\n");
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    const check = () =>
+      expect(serializeMarkdown(editor)).toBe(serializeDocument(editor));
+    check();
+    const blockStart = (index: number) => {
+      let start = 0;
+      editor.state.doc.forEach((_node, offset, position) => {
+        if (position === index) {
+          start = offset;
+        }
+      });
+      return start;
+    };
+    const change = (apply: (tr: Transaction) => void) =>
+      editor.commands.command(({ tr }) => {
+        apply(tr);
+        return true;
+      });
+    const paragraph = () => editor.schema.nodes.paragraph.create();
+    const edits = [
+      () => change((tr) => tr.insertText("typed ", blockStart(1) + 2)),
+      () => change((tr) => tr.insert(blockStart(0), paragraph())),
+      () =>
+        change((tr) => tr.insert(blockStart(3), [paragraph(), paragraph()])),
+      () => change((tr) => tr.split(blockStart(2) + 3)),
+      () =>
+        change((tr) => {
+          const start = blockStart(4);
+          tr.delete(start, start + tr.doc.child(4).nodeSize);
+        }),
+      () => change((tr) => tr.insertText("$y ", blockStart(6) + 1)),
+    ];
+    for (const edit of edits) {
+      edit();
+      check();
+    }
   });
 
   it("preserves card references through Markdown serialization", () => {

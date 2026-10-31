@@ -1,4 +1,4 @@
-import { caretTops } from "./textarea-caret";
+import { EditorView } from "@codemirror/view";
 import {
   invert_anchors,
   map_scroll,
@@ -68,20 +68,19 @@ export class SplitScrollSync {
   }
 
   #parts() {
-    const textarea = this.editor_root()?.querySelector<HTMLTextAreaElement>(
-      "textarea[data-editor-body]",
-    );
-    const editor = textarea?.closest<HTMLElement>(VIEWPORT_SELECTOR);
+    const root = this.editor_root()?.querySelector<HTMLElement>(".cm-editor");
+    const view = root ? EditorView.findFromDOM(root) : null;
+    const editor = root?.closest<HTMLElement>(VIEWPORT_SELECTOR);
     const preview = this.preview_viewport();
-    return textarea && editor && preview ? { textarea, editor, preview } : null;
+    return view && editor && preview ? { view, editor, preview } : null;
   }
 
   #build({
-    textarea,
+    view,
     editor,
     preview,
   }: {
-    textarea: HTMLTextAreaElement;
+    view: EditorView;
     editor: HTMLElement;
     preview: HTMLElement;
   }): ScrollAnchor[] {
@@ -91,14 +90,15 @@ export class SplitScrollSync {
     // The preview may still show older text; then fall back to proportions.
     if (offsets.length > 0 && headings.length === offsets.length) {
       const editor_base =
-        textarea.getBoundingClientRect().top -
+        view.documentTop -
         editor.getBoundingClientRect().top +
         editor.scrollTop;
       const preview_base =
         preview.getBoundingClientRect().top - preview.scrollTop;
-      const editor_tops = caretTops(textarea, offsets);
-      pairs = editor_tops.map((top, index) => [
-        editor_base + top,
+      // Lines outside the rendered range use estimated heights.
+      const length = view.state.doc.length;
+      pairs = offsets.map((offset, index) => [
+        editor_base + view.lineBlockAt(Math.min(offset, length)).top,
         headings[index].getBoundingClientRect().top - preview_base,
       ]);
     }

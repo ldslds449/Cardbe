@@ -4,8 +4,7 @@
   import "./markdown-content.css";
   import type { Editor } from "@tiptap/core";
   import { Editor as TiptapEditor } from "@tiptap/core";
-  import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-  import { Selection, TextSelection } from "@tiptap/pm/state";
+  import { Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
   import {
     count_occurrences,
     text_target_prefixes,
@@ -25,6 +24,11 @@
     markdownInsertionContent,
     serializeMarkdown,
   } from "./serialization/markdown";
+  import {
+    documentPosition,
+    sourceOffset,
+    textPosition,
+  } from "./source-position";
 
   export type EditorSelection = { from: number; to: number };
 
@@ -39,6 +43,10 @@
     setSelection?: (selection: EditorSelection) => void;
     /** Focuses and scrolls to text located at a Markdown source offset. */
     reveal?: (target: TextTarget) => void;
+    /** The cursor as a Markdown source offset, comparable across modes. */
+    getSourceOffset?: () => number;
+    /** Focuses and places the cursor at a Markdown source offset. */
+    setSourceOffset?: (offset: number) => void;
   };
 
   type MenuPosition = { left: number; top: number };
@@ -246,38 +254,6 @@
     };
   }
 
-  // Finds the nth occurrence of text inside a single text block.
-  function textPosition(
-    doc: ProseMirrorNode,
-    text: string,
-    occurrence: number,
-  ): number | null {
-    let seen = 0;
-    let found: number | null = null;
-    doc.descendants((node, position) => {
-      if (found !== null) {
-        return false;
-      }
-      if (!node.isTextblock) {
-        return true;
-      }
-      const content = node.textContent;
-      for (
-        let index = content.indexOf(text);
-        index !== -1;
-        index = content.indexOf(text, index + 1)
-      ) {
-        if (seen === occurrence) {
-          found = position + 1 + index;
-          return false;
-        }
-        seen += 1;
-      }
-      return false;
-    });
-    return found;
-  }
-
   function revealPosition(instance: Editor, target: TextTarget): number {
     for (const prefix of text_target_prefixes(target.text)) {
       const position = textPosition(
@@ -294,39 +270,74 @@
     return Math.round(ratio * instance.state.doc.content.size);
   }
 
+  // ProseMirror only scrolls to a selection the DOM already shows. An
+  // unfocused editor, such as one in a dialog that just opened, gets focus on
+  // the next frame, so Tiptap scrolls again after focusing it.
+  function moveCursor(
+    instance: Editor,
+    select: (tr: Transaction) => Selection,
+  ) {
+    instance
+      .chain()
+      .focus(undefined, { scrollIntoView: true })
+      .command(({ tr }) => {
+        tr.setSelection(select(tr));
+        return true;
+      })
+      .scrollIntoView()
+      .run();
+    settleScroll(instance, 8);
+  }
+
+  // Offscreen blocks have estimated heights (content-visibility), so a long
+  // jump can land short once the blocks it reaches are laid out. Scroll again
+  // until the cursor stays in view.
+  function settleScroll(instance: Editor, frames: number) {
+    requestAnimationFrame(() => {
+      if (instance.isDestroyed || frames === 0) {
+        return;
+      }
+      const { view } = instance;
+      const viewport = view.dom
+        .closest("[data-slot='scroll-area-viewport']")
+        ?.getBoundingClientRect();
+      const cursor = view.coordsAtPos(view.state.selection.head);
+      if (
+        viewport &&
+        (cursor.top < viewport.top || cursor.bottom > viewport.bottom)
+      ) {
+        instance.commands.scrollIntoView();
+        settleScroll(instance, frames - 1);
+      }
+    });
+  }
+
   function createHandle(instance: Editor): RichTextEditorHandle {
     return {
       setSelection: ({ from, to }) => {
         const size = instance.state.doc.content.size;
-        instance
-          .chain()
-          .focus(undefined, { scrollIntoView: false })
-          .command(({ tr }) => {
-            tr.setSelection(
-              TextSelection.between(
-                tr.doc.resolve(Math.min(from, size)),
-                tr.doc.resolve(Math.min(to, size)),
-              ),
-            );
-            return true;
-          })
-          .scrollIntoView()
-          .run();
+        moveCursor(instance, (tr) =>
+          TextSelection.between(
+            tr.doc.resolve(Math.min(from, size)),
+            tr.doc.resolve(Math.min(to, size)),
+          ),
+        );
       },
       reveal: (target) => {
         const position = Math.min(
           revealPosition(instance, target),
           instance.state.doc.content.size,
         );
-        instance
-          .chain()
-          .focus(undefined, { scrollIntoView: false })
-          .command(({ tr }) => {
-            tr.setSelection(Selection.near(tr.doc.resolve(position)));
-            return true;
-          })
-          .scrollIntoView()
-          .run();
+        moveCursor(instance, (tr) => Selection.near(tr.doc.resolve(position)));
+      },
+      getSourceOffset: () =>
+        sourceOffset(instance.state.doc, value, instance.state.selection.head),
+      setSourceOffset: (offset) => {
+        const position = Math.min(
+          documentPosition(instance.state.doc, value, offset),
+          instance.state.doc.content.size,
+        );
+        moveCursor(instance, (tr) => Selection.near(tr.doc.resolve(position)));
       },
       focus: () =>
         instance.commands.focus(undefined, { scrollIntoView: false }),
@@ -546,6 +557,30 @@
     overflow-wrap: anywhere;
     outline: none;
     white-space: pre-wrap;
+  }
+
+  /* Long descriptions with many diagrams spend most of each keystroke laying
+     out and committing offscreen blocks; let the browser skip them. Paint
+     containment would clip focus rings and selection outlines at block edges.
+     Containment also stops child margins from collapsing through the block:
+     lists keep nested margins at their edges, so they are left out. */
+  :global(.ProseMirror > :not(ul, ol, blockquote, .ProseMirror-gapcursor)) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 3rem;
+    overflow-clip-margin: 0.5rem;
+  }
+
+  /* Code and math node views wrap a child that carries the block margin. */
+  :global(.ProseMirror > div:not(.tableWrapper)) {
+    margin-block: 0.75rem;
+  }
+
+  :global(.ProseMirror > div:not(.tableWrapper) > :first-child) {
+    margin-top: 0;
+  }
+
+  :global(.ProseMirror > div:not(.tableWrapper) > :last-child) {
+    margin-bottom: 0;
   }
 
   :global(.ProseMirror p.is-editor-empty:first-child::before) {

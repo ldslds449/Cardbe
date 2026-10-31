@@ -1,4 +1,5 @@
 import type { Editor, JSONContent } from "@tiptap/core";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 
 export function markdownInsertionContent(editor: Editor, markdown: string) {
   const blocks = editor.markdown!.parse(markdown).content ?? [];
@@ -90,20 +91,101 @@ function markParagraphs(
   };
 }
 
-export function serializeMarkdown(editor: Editor): string {
-  // shortcut: Tiptap 3.32 skips atom mark spans; serialize formulas as marked text until fixed upstream.
-  const doc = editor.getJSON();
-  const source = JSON.stringify(doc);
+// shortcut: Tiptap 3.32 skips atom mark spans; serialize formulas as marked text until fixed upstream.
+function markFormulas(
+  node: JSONContent,
+  editor: Editor,
+  render: (marked: JSONContent) => string,
+): string {
+  const source = JSON.stringify(node);
   let marker = "\uE001";
   while (source.includes(marker)) {
     marker += "\uE001";
   }
   const formulas = { marker, values: [] as string[] };
-  return editor
-    .markdown!.serialize(markParagraphs(doc, editor, formulas))
+  return render(markParagraphs(node, editor, formulas))
     .replaceAll(ESCAPE_MARK, "\\")
     .replace(
       new RegExp(`${marker}(\\d+)\uE002`, "g"),
       (_, index: string) => formulas.values[Number(index)],
     );
+}
+
+// Undocumented in the type declarations; `serialize` renders each top-level
+// block through it and joins them with a blank line.
+type BlockRenderer = {
+  renderNodeToMarkdown?: (
+    node: JSONContent,
+    parent: JSONContent,
+    index: number,
+    level: number,
+  ) => string;
+};
+
+type SerializedBlock = {
+  previous: ProseMirrorNode | undefined;
+  index: number;
+  markdown: string;
+};
+
+// Nodes are immutable and unchanged blocks keep their identity across
+// transactions, so typing re-serializes only the edited block.
+const blockCaches = new WeakMap<
+  Editor,
+  WeakMap<ProseMirrorNode, SerializedBlock>
+>();
+
+// Mirrors MarkdownManager.isEmptyOutput, applied by `serialize`.
+function isEmptyOutput(markdown: string) {
+  return (
+    markdown
+      .replace(/&nbsp;/g, "")
+      .replace(/\u00A0/g, "")
+      .trim() === ""
+  );
+}
+
+/** Serializes the whole document at once, without the block cache. */
+export function serializeDocument(editor: Editor): string {
+  return markFormulas(editor.getJSON(), editor, (doc) =>
+    editor.markdown!.serialize(doc),
+  );
+}
+
+export function serializeMarkdown(editor: Editor): string {
+  const manager = editor.markdown! as unknown as BlockRenderer;
+  const renderBlock = manager.renderNodeToMarkdown?.bind(manager);
+  if (!renderBlock) {
+    return serializeDocument(editor);
+  }
+  let cache = blockCaches.get(editor);
+  if (!cache) {
+    cache = new WeakMap();
+    blockCaches.set(editor, cache);
+  }
+  const blocks: string[] = [];
+  let previous: ProseMirrorNode | undefined;
+  editor.state.doc.forEach((node, _offset, index) => {
+    let block = cache.get(node);
+    if (!block || block.previous !== previous || block.index !== index) {
+      // Paragraph rendering depends on the previous sibling and list items
+      // on their index; nothing else in the parent is read.
+      const siblings: JSONContent[] = [];
+      if (previous) {
+        siblings[index - 1] = previous.toJSON();
+      }
+      block = {
+        previous,
+        index,
+        markdown: markFormulas(node.toJSON(), editor, (marked) =>
+          renderBlock(marked, { type: "doc", content: siblings }, index, 0),
+        ),
+      };
+      cache.set(node, block);
+    }
+    blocks.push(block.markdown);
+    previous = node;
+  });
+  const markdown = blocks.join("\n\n");
+  return isEmptyOutput(markdown) ? "" : markdown;
 }

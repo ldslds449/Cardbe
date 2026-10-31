@@ -4,7 +4,9 @@
   min-height: 100%;
 }
 
-.editor-scroll-area > [data-slot="scroll-area-viewport"] > div:has(> textarea) {
+.editor-scroll-area
+  > [data-slot="scroll-area-viewport"]
+  > div:has(> .plain-text-editor) {
   display: grid !important;
 }
 

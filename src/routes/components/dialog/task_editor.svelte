@@ -67,6 +67,7 @@
   import {
     markdown_outline,
     markdown_stats,
+    split_markdown_sections,
   } from "../../utils/markdown-outline";
   import { take_description_reveal } from "./description-reveal";
   import {
@@ -153,9 +154,13 @@
     () => split_preview_viewport,
     () => description_outline.map((heading) => heading.start),
   );
-  // Text edits, rendering, and resizing all move headings; realign after them.
+  // Text edits, rendering, and resizing all move headings. Realign once the
+  // preview shows the edit; aligning to the stale preview makes it jitter.
   $effect(() => {
     void task.description;
+    split_scroll.invalidate();
+  });
+  $effect(() => {
     void live_preview;
     void split_preview_height;
     void split_preview_viewport;
@@ -173,6 +178,34 @@
     }
     const timeout = window.setTimeout(() => (live_preview = description), 150);
     return () => window.clearTimeout(timeout);
+  });
+  // The inline editor stays mounted under the expanded one. Following every
+  // keystroke there would re-parse the whole description, so it keeps the
+  // text it had and catches up once the expanded editor closes.
+  let held_description = "";
+  const inline_description = $derived.by(() => {
+    if (!description_expanded) {
+      held_description = task.description;
+    }
+    return held_description;
+  });
+
+  // Unchanged sections keep their rendered output while another is edited.
+  // A single title above the sections should not keep them together.
+  const live_preview_sections = $derived.by(() => {
+    const outline = markdown_outline(live_preview);
+    const seen = new Set<number>();
+    let level = Infinity;
+    for (const heading of outline) {
+      if (seen.has(heading.level)) {
+        level = Math.min(level, heading.level);
+      }
+      seen.add(heading.level);
+    }
+    return split_markdown_sections(
+      live_preview,
+      outline.filter((heading) => heading.level >= level),
+    ).map((section) => live_preview.slice(section.start, section.end));
   });
 
   function current_description() {
@@ -669,7 +702,9 @@
               bind:clientHeight={split_preview_height}
             >
               {#if live_preview.trim()}
-                <Markdown md={live_preview} />
+                {#each live_preview_sections as section, index (index)}
+                  <Markdown md={section} />
+                {/each}
               {:else}
                 <p class="text-sm text-muted-foreground">
                   {m.editor_preview_empty()}
@@ -1160,8 +1195,11 @@
         id="description"
         cardReferenceOptions={card_reference_options}
         cardReferenceExcludeId={task.id}
-        bind:value={task.description}
-        onvaluechange={handle_description_change}
+        value={inline_description}
+        onvaluechange={(content) => {
+          task.description = content;
+          handle_description_change();
+        }}
       />
     </div>
     {#if task.description.length > 0}
