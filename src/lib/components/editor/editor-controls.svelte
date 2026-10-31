@@ -53,11 +53,7 @@
   }
 </script>
 
-<div
-  class="flex h-8 min-w-0 items-center gap-2"
-  role="group"
-  aria-label={m.editor_controls()}
->
+{#snippet languagePicker()}
   {#if $editorMode === "rich" && language !== null && !disabled}
     <Combobox
       items={languages}
@@ -69,6 +65,16 @@
       onselect={(value) => onlanguagechange?.(value === "text" ? null : value)}
     />
   {/if}
+{/snippet}
+
+<!-- Keep the mode menu still: the picker sits on the side away from the
+  alignment edge. -->
+<div
+  class="flex h-8 min-w-0 items-center gap-2"
+  role="group"
+  aria-label={m.editor_controls()}
+>
+  {#if compact}{@render languagePicker()}{/if}
   <DropdownMenu.Root>
     <DropdownMenu.Trigger>
       {#snippet child({ props })}
@@ -103,6 +109,7 @@
       </DropdownMenu.RadioGroup>
     </DropdownMenu.Content>
   </DropdownMenu.Root>
+  {#if !compact}{@render languagePicker()}{/if}
   {#if !compact && $editorMode === "plain" && splitPreview !== undefined}
     <Button
       type="button"
