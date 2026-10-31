@@ -1,6 +1,7 @@
 <script lang="ts">
   import { m } from "#lib/paraglide/messages.js";
   import { resolveImageSource } from "./image-source";
+  import ZoomableView from "./zoomable-view.svelte";
   import type { HTMLImgAttributes } from "svelte/elements";
   let {
     src,
@@ -9,6 +10,7 @@
     width,
     height,
     class: className,
+    zoomable = false,
   }: {
     src?: string | null;
     alt?: string | null;
@@ -16,6 +18,7 @@
     width?: number | string | null;
     height?: number | string | null;
     class?: HTMLImgAttributes["class"];
+    zoomable?: boolean;
   } = $props();
   let image = $state<string | null>(null);
   let loading = $state(false);
@@ -39,7 +42,26 @@
   });
 </script>
 
-{#if image}
+{#snippet picture(source: string)}
+  <img
+    src={source}
+    alt={alt ?? ""}
+    title={title ?? undefined}
+    width={width ?? undefined}
+    height={height ?? undefined}
+    class={className}
+    referrerpolicy="no-referrer"
+    onerror={() => {
+      image = null;
+    }}
+  />
+{/snippet}
+
+{#if image && zoomable}
+  <ZoomableView label={alt || m.editor_image()} inline>
+    {@render picture(image)}
+  </ZoomableView>
+{:else if image}
   <img
     src={image}
     alt={alt ?? ""}

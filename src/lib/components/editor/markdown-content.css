@@ -26,7 +26,8 @@
   overflow-wrap: anywhere;
   line-height: 1.5rem;
 }
-.mermaid-diagram {
+.mermaid-diagram,
+.mermaid-theme {
   --pele-bg: var(--background);
   --pele-fg: var(--foreground);
   --pele-muted: var(--muted-foreground);
@@ -45,11 +46,29 @@
   --pele-series-6: var(--chart-1);
   --pele-series-7: var(--chart-2);
   --pele-series-8: var(--chart-3);
+}
+.mermaid-diagram {
   margin: 0.75rem 0;
 }
 .mermaid-diagram svg {
   display: block;
   margin-inline: auto;
+}
+.zoom-content {
+  display: block;
+  margin-inline: auto;
+}
+.zoomable-view.inline-block .zoom-content {
+  display: inline-block;
+  vertical-align: bottom;
+}
+.zoom-content-scaled > :is(svg, img) {
+  width: 100% !important;
+  height: auto !important;
+  max-width: none !important;
+}
+.zoom-full-scroll [data-slot="scroll-area-viewport"] > div {
+  display: block !important;
 }
 .math-scroll [data-slot="scroll-area-viewport"] > div {
   display: block !important;
@@ -321,9 +340,22 @@
   margin: 1rem 0;
   border-color: var(--border);
 }
+/* ProseMirror's pre-wrap would render the node view's template whitespace as
+   blank lines that place the caret inside the code block when clicked. */
+.markdown-content .editor-code-block {
+  white-space: normal;
+}
 .markdown-content .code-scroll {
   margin: 0.75rem 0;
   white-space: normal;
+}
+/* Holds the copy button at the code box's corner, outside its scroll area. */
+.markdown-content .code-frame {
+  position: relative;
+  margin: 0.75rem 0;
+}
+.markdown-content .code-frame > .code-scroll {
+  margin: 0;
 }
 .markdown-content .code-scroll [data-slot="scroll-area-viewport"] > div,
 .markdown-content .table-scroll [data-slot="scroll-area-viewport"] > div {

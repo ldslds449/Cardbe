@@ -9,6 +9,7 @@
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import Link2Icon from "@lucide/svelte/icons/link-2";
   import LinkPreview from "#lib/components/link-preview.svelte";
+  import CodeCopyButton from "#lib/components/editor/code-copy-button.svelte";
   import CollapsibleBlock from "./collapsible_block.svelte";
 
   import Markdown from "svelte-exmarkdown";
@@ -216,24 +217,30 @@
         width={props.width}
         height={props.height}
         class={props.class}
+        zoomable
       />
     {/snippet}
     {#snippet pre(props)}
       {@const { children, class: className, ...rest } = props}
       <!-- Board drags skip this region so its text can be selected. -->
-      <div data-no-drag>
+      <div data-no-drag data-code-block class="group/code">
         <CollapsibleBlock
           max_height={320}
           expand_label={m.markdown_expand_code()}
           collapse_label={m.markdown_collapse_code()}
         >
-          <ScrollArea
-            type="auto"
-            orientation="horizontal"
-            class="code-scroll min-w-0 w-full max-w-full overflow-hidden rounded-md border"
-          >
-            <pre class={className ?? ""} {...rest}>{@render children?.()}</pre>
-          </ScrollArea>
+          <div class="code-frame">
+            <ScrollArea
+              type="auto"
+              orientation="horizontal"
+              class="code-scroll min-w-0 w-full max-w-full overflow-hidden rounded-md border"
+            >
+              <pre
+                class={className ?? ""}
+                {...rest}>{@render children?.()}</pre>
+            </ScrollArea>
+            <CodeCopyButton class="absolute top-1.5 right-1.5 z-10" />
+          </div>
         </CollapsibleBlock>
       </div>
     {/snippet}

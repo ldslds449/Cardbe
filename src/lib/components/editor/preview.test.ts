@@ -40,6 +40,14 @@ describe("shared editor preview", () => {
     expect(body).toContain("data-editor-body");
   });
 
+  it("adds a copy button to code blocks in the preview", () => {
+    const { body } = render(MarkdownRenderer, {
+      props: { md: "```typescript\nconst n = 42;\n```" },
+    });
+    expect(body).toContain("data-code-block");
+    expect(body).toContain(`aria-label="${m.markdown_copy_code()}"`);
+  });
+
   it.each([
     [
       "links and images",

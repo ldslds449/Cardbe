@@ -9,6 +9,7 @@
   import { m } from "#lib/paraglide/messages.js";
   import { untrack } from "svelte";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
+  import ZoomableView from "./zoomable-view.svelte";
   let { source, showSource = true }: { source: string; showSource?: boolean } =
     $props();
   const id = $props.id();
@@ -65,12 +66,9 @@
   aria-label={m.editor_mermaid()}
 >
   {#if svg}
-    <ScrollArea
-      orientation="horizontal"
-      class="min-w-0 max-w-full overflow-hidden"
-    >
+    <ZoomableView label={m.editor_mermaid()} contentClass="mermaid-theme">
       {@html svg}
-    </ScrollArea>
+    </ZoomableView>
   {:else}
     {#if failed}<p class="text-sm text-muted-foreground" role="status">
         {m.editor_mermaid_error()}

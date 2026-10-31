@@ -17,6 +17,7 @@ export const CodeScroll = Extension.create({
                 language: node.attrs.language,
               });
               const dom = document.createElement("div");
+              dom.className = "editor-code-block";
               let contentDOM: HTMLElement | null = null;
               const component = flushSync(() =>
                 mount(CodeBlockView, {
@@ -47,7 +48,9 @@ export const CodeScroll = Extension.create({
                 },
                 stopEvent: (event) =>
                   event.target instanceof Element &&
-                  !!event.target.closest('[data-slot="scroll-area-scrollbar"]'),
+                  !!event.target.closest(
+                    '[data-slot="scroll-area-scrollbar"], [data-zoom-controls], [data-code-copy]',
+                  ),
                 ignoreMutation: (mutation) =>
                   mutation.type !== "selection" &&
                   !contentDOM!.contains(mutation.target),
