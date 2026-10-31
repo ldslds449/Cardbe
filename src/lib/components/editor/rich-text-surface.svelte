@@ -20,6 +20,7 @@
   import EditorToolbar from "./menus/editor-toolbar.svelte";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { Button } from "#lib/components/ui/button/index.js";
+  import * as Popover from "#lib/components/ui/popover/index.js";
   import {
     markdownInsertionContent,
     serializeMarkdown,
@@ -49,16 +50,16 @@
     setSourceOffset?: (offset: number) => void;
   };
 
-  type MenuPosition = { left: number; top: number };
+  type CursorAnchor = { getBoundingClientRect: () => DOMRect };
+  // Menus are popovers anchored at the cursor: inside a transformed dialog, a
+  // fixed menu would be offset, and scroll areas would clip it.
   type SlashState = EditorSelection & {
     query: string;
-    position: MenuPosition;
+    anchor: CursorAnchor;
   };
-  // A popover anchored at the cursor: inside a transformed dialog, a fixed
-  // menu would be offset and clipped.
   type ReferenceState = EditorSelection & {
     query: string;
-    anchor: { getBoundingClientRect: () => DOMRect };
+    anchor: CursorAnchor;
   };
 
   let {
@@ -136,19 +137,14 @@
     };
   }
 
-  function menuPosition(instance: Editor, position: number): MenuPosition {
-    const rect = instance.view.coordsAtPos(position);
-    const menuWidth = 280;
-    const menuHeight = 320;
+  function cursorAnchor(instance: Editor, position: number): CursorAnchor {
     return {
-      left: Math.max(
-        8,
-        Math.min(rect.left, Math.max(8, window.innerWidth - menuWidth - 8)),
-      ),
-      top: Math.max(
-        8,
-        Math.min(rect.bottom + 6, window.innerHeight - menuHeight - 8),
-      ),
+      getBoundingClientRect: () => {
+        const { left, top, bottom } = instance.view.coordsAtPos(
+          Math.min(position, instance.state.doc.content.size),
+        );
+        return new DOMRect(left, top, 0, bottom - top);
+      },
     };
   }
 
@@ -171,7 +167,8 @@
       "\n",
       "\ufffc",
     );
-    const match = /(?:^|\s)\/([^\n]*)$/.exec(before);
+    // A space right after the slash dismisses the menu to type a plain `/`.
+    const match = /(?:^|\s)\/((?:\S[^\n]*)?)$/.exec(before);
     if (!match) {
       slash = null;
       return;
@@ -182,7 +179,7 @@
       from,
       to: selection.to,
       query: match[1].trimStart(),
-      position: menuPosition(instance, from),
+      anchor: cursorAnchor(instance, from),
     };
     if (!slash || slash.query !== next.query) {
       slashIndex = 0;
@@ -498,39 +495,63 @@
   </ScrollArea>
 
   {#if slash && visibleSlashCommands.length > 0}
-    <ScrollArea
-      class="fixed z-50 max-h-[min(20rem,calc(100vh-1rem))] w-[min(17.5rem,calc(100vw-1rem))] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md [&>[data-slot=scroll-area-viewport]]:max-h-[inherit]"
-      style="left: {slash.position.left}px; top: {slash.position.top}px;"
+    <Popover.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          slash = null;
+        }
+      }}
     >
-      <div
-        role="listbox"
-        aria-label={m.editor_slash_commands()}
-        class="p-1"
-        {@attach (listbox) => {
-          // Keep the keyboard-selected command visible.
-          listbox.children[slashIndex]?.scrollIntoView({ block: "nearest" });
-        }}
+      <!-- The editor keeps focus and handles the menu keys. -->
+      <Popover.Content
+        customAnchor={slash.anchor}
+        side="bottom"
+        align="start"
+        sideOffset={6}
+        trapFocus={false}
+        interactOutsideBehavior="ignore"
+        escapeKeydownBehavior="ignore"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        class="w-[min(17.5rem,calc(100vw-1rem))] overflow-hidden p-0"
       >
-        {#each visibleSlashCommands as command, index (command.id)}
-          <Button
-            type="button"
-            variant={index === slashIndex ? "secondary" : "ghost"}
-            role="option"
-            aria-selected={index === slashIndex}
-            class="h-auto w-full items-start justify-start whitespace-normal px-2 py-1.5 text-left"
-            onpointerdown={(event) => event.preventDefault()}
-            onclick={() => runSlashCommand(index)}
+        <ScrollArea
+          class="max-h-[min(20rem,var(--bits-popover-content-available-height))] [&>[data-slot=scroll-area-viewport]]:max-h-[inherit]"
+        >
+          <div
+            role="listbox"
+            aria-label={m.editor_slash_commands()}
+            class="p-1"
+            {@attach (listbox) => {
+              // Keep the keyboard-selected command visible.
+              listbox.children[slashIndex]?.scrollIntoView({
+                block: "nearest",
+              });
+            }}
           >
-            <span class="min-w-0">
-              <span class="block font-medium">{command.label}</span>
-              <span class="block truncate text-xs text-muted-foreground"
-                >{command.description}</span
+            {#each visibleSlashCommands as command, index (command.id)}
+              <Button
+                type="button"
+                variant={index === slashIndex ? "secondary" : "ghost"}
+                role="option"
+                aria-selected={index === slashIndex}
+                class="h-auto w-full items-start justify-start whitespace-normal px-2 py-1.5 text-left"
+                onpointerdown={(event) => event.preventDefault()}
+                onclick={() => runSlashCommand(index)}
               >
-            </span>
-          </Button>
-        {/each}
-      </div>
-    </ScrollArea>
+                <span class="min-w-0">
+                  <span class="block font-medium">{command.label}</span>
+                  <span class="block truncate text-xs text-muted-foreground"
+                    >{command.description}</span
+                  >
+                </span>
+              </Button>
+            {/each}
+          </div>
+        </ScrollArea>
+      </Popover.Content>
+    </Popover.Root>
   {/if}
 
   <CardReferencePicker
