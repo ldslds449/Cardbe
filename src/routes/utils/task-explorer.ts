@@ -8,6 +8,12 @@ export type CompletionFilter = "open" | "done" | "archived";
 
 export type WaitingFilter = "waiting" | "not_waiting" | "waited_on";
 
+/** A column of one board; column IDs are only unique within their board. */
+export interface ColumnRef {
+  board_id: number;
+  column_id: number;
+}
+
 export interface SearchOptions {
   candidate_limit?: number;
   result_limit?: number;
@@ -43,6 +49,8 @@ export interface TaskExplorerQuery {
   waiting?: WaitingFilter | null;
   /** Keeps only recurring tasks, or only the others; null keeps all. */
   recurring?: boolean | null;
+  /** Keeps tasks in any of these columns, leaving archived tasks out; null keeps all. */
+  columns?: ColumnRef[] | null;
   search_options?: SearchOptions;
 }
 

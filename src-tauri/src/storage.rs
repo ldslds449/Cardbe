@@ -82,6 +82,9 @@ pub struct TaskExplorerQuery {
     pub waiting: Option<String>,
     /// Keeps only recurring tasks, or only the others.
     pub recurring: Option<bool>,
+    /// Keeps tasks in any of these board columns, which leaves archived
+    /// tasks out; `None` keeps all.
+    pub columns: Option<Vec<crate::focuses::ColumnRef>>,
     pub search_options: Option<crate::search::SearchOptions>,
 }
 
@@ -93,6 +96,7 @@ impl TaskExplorerQuery {
             "labels": self.labels,
             "waiting": self.waiting,
             "recurring": self.recurring,
+            "columns": self.columns,
         }))
     }
 }
@@ -149,6 +153,10 @@ const TASK_SEARCH_CTE: &str = "WITH tasks AS (
                AND (json_extract(?13, '$.labels') IS NULL OR EXISTS (
                  SELECT 1 FROM json_each(c.payload, '$.labels') l
                  WHERE l.value IN (SELECT value FROM json_each(?13, '$.labels'))))
+               AND (json_extract(?13, '$.columns') IS NULL OR EXISTS (
+                 SELECT 1 FROM json_each(?13, '$.columns') f
+                 WHERE json_extract(f.value, '$.board_id')=c.board_id
+                   AND json_extract(f.value, '$.column_id')=c.column_id))
                AND (json_extract(?13, '$.recurring') IS NULL
                     OR (recurrence IS NOT NULL)=json_extract(?13, '$.recurring'))
                AND (CASE json_extract(?13, '$.waiting')
@@ -4607,6 +4615,31 @@ mod tests {
         };
         assert_eq!(ids(recurring(true)), vec![4]);
         assert_eq!(ids(recurring(false)), vec![1, 2, 3, 5]);
+        let columns = |refs: &[(i64, i64)]| TaskExplorerQuery {
+            columns: Some(
+                refs.iter()
+                    .map(|&(board_id, column_id)| crate::focuses::ColumnRef {
+                        board_id,
+                        column_id,
+                    })
+                    .collect(),
+            ),
+            ..Default::default()
+        };
+        // Archived tasks have no column; other boards' same column IDs differ.
+        assert_eq!(ids(columns(&[(board_id, 1)])), vec![1, 2, 4]);
+        assert_eq!(
+            ids(columns(&[(board_id, 1), (board_id, 2)])),
+            vec![1, 2, 3, 4]
+        );
+        assert!(ids(columns(&[(board_id + 1, 1)])).is_empty());
+        assert_eq!(
+            ids(TaskExplorerQuery {
+                query: "Task".into(),
+                ..columns(&[(board_id, 2)])
+            }),
+            vec![3]
+        );
 
         // Searches apply the same filters before ranking.
         assert_eq!(

@@ -1314,6 +1314,20 @@
       }
     }
   ],
+  "task_picker_column_filter": "依欄位篩選",
+  "task_picker_filtered_columns": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=*": "{countFormatted} 個欄位"
+      }
+    }
+  ],
   "export_matching_entries": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],
@@ -2397,6 +2411,9 @@
   "focus_any": "不限",
   "focus_boards": "看板",
   "focus_boards_all": "所有看板",
+  "focus_columns": "欄位",
+  "focus_columns_all": "所有欄位",
+  "focus_columns_help": "已封存的卡片不屬於任何欄位，不會列出。",
   "focus_completion": "狀態",
   "focus_completion_open": "未完成",
   "focus_completion_done": "已完成",
@@ -2464,7 +2481,7 @@
   "workspace_view_shortcut": "{view}（{shortcut}）",
   "explorer_save_as_focus": "另存為焦點",
   "explorer_save_as_focus_hint": "以目前的條件建立焦點",
-  "focus_from_explorer_partial": "欄位、自訂日期範圍、依欄位排序等條件無法存進焦點，已略過。",
+  "focus_from_explorer_partial": "自訂日期範圍、封存時間、依欄位排序等條件無法存進焦點，已略過。",
   "focus_actions": "「{name}」的操作",
   "board_actions": "「{name}」的操作",
   "note_pinned": "已釘選",

@@ -86,6 +86,7 @@ describe("Focuses", () => {
       due: "all",
       priorities: [],
       sort: "due",
+      column: null,
       other_conditions: false,
       ...changes,
     });
@@ -112,6 +113,18 @@ describe("Focuses", () => {
         recurring: null,
       });
       expect(view.filter.board_ids).not.toBe(board_ids);
+    });
+
+    it("keeps the column filter of the selected board", () => {
+      const column = { board_id: 4, column_id: 2 };
+      const { view, partial } = focus_from_explorer(
+        conditions({ board_ids: [4], column }),
+      );
+      expect(partial).toBe(false);
+      expect(view.filter.columns).toEqual([column]);
+      expect(view.filter.columns[0]).not.toBe(column);
+      expect(focus_query(view).columns).toEqual([column]);
+      expect(focus_query(create_focus("x")).columns).toBeNull();
     });
 
     it.each([

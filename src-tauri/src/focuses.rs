@@ -13,6 +13,15 @@ const MAX_NAME_CHARS: usize = 100;
 const MAX_QUERY_CHARS: usize = 500;
 const MAX_BOARDS: usize = 1000;
 const MAX_LABELS: usize = 100;
+pub const MAX_COLUMNS: usize = 1000;
+
+/// A column of one board. Column IDs are only unique within their board.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(deny_unknown_fields)]
+pub struct ColumnRef {
+    pub board_id: i64,
+    pub column_id: i64,
+}
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -58,6 +67,10 @@ pub struct FocusFilter {
     /// `None` covers every board, including boards created later. Full
     /// backups store positions in the backup's board list instead of IDs.
     pub board_ids: Option<Vec<i64>>,
+    /// Keeps tasks in any of these columns; empty keeps all. Archived tasks
+    /// have no column and are left out while this is set. Full backups store
+    /// board positions instead of IDs, like `board_ids`.
+    pub columns: Vec<ColumnRef>,
     /// `open`, `done` and `archived`; empty keeps all.
     pub completion: Vec<String>,
     /// Task priorities, with `none` for tasks without one; empty keeps all.
@@ -103,6 +116,11 @@ fn valid_view(view: &Focus) -> bool {
             .board_ids
             .as_ref()
             .is_none_or(|ids| ids.len() <= MAX_BOARDS)
+        && filter.columns.len() <= MAX_COLUMNS
+        && {
+            let mut seen = std::collections::HashSet::new();
+            filter.columns.iter().all(|column| seen.insert(column))
+        }
         && all_in(&filter.completion, &["open", "done", "archived"])
         && all_in(
             &filter.priorities,
@@ -168,6 +186,17 @@ pub fn map_boards(views: &mut [Focus], map: impl Fn(i64) -> Option<i64>) {
         if let Some(ids) = &mut view.filter.board_ids {
             *ids = ids.iter().filter_map(|id| map(*id)).collect();
         }
+        view.filter.columns = view
+            .filter
+            .columns
+            .iter()
+            .filter_map(|column| {
+                map(column.board_id).map(|board_id| ColumnRef {
+                    board_id,
+                    ..*column
+                })
+            })
+            .collect();
     }
 }
 
@@ -186,6 +215,10 @@ mod tests {
                 due: DueFilter::ByToday,
                 labels: vec!["工作".into()],
                 waiting: Some("waiting".into()),
+                columns: vec![ColumnRef {
+                    board_id: 7,
+                    column_id: 2,
+                }],
                 ..FocusFilter::default()
             },
             sort: Sort::Due,
@@ -235,6 +268,20 @@ mod tests {
         filtered.filter.priorities = vec!["critical".into()];
         assert!(validate(&[filtered]).is_err());
         let mut filtered = view("a");
+        filtered.filter.columns.push(filtered.filter.columns[0]);
+        assert!(validate(&[filtered]).is_err());
+        let mut filtered = view("a");
+        filtered.filter.columns = (0..=MAX_COLUMNS as i64)
+            .map(|column_id| ColumnRef {
+                board_id: 1,
+                column_id,
+            })
+            .collect();
+        assert!(validate(&[filtered]).is_err());
+        // Focuses saved before column filters still load.
+        let legacy: FocusFilter = serde_json::from_str(r#"{"query":"x"}"#).unwrap();
+        assert!(legacy.columns.is_empty());
+        let mut filtered = view("a");
         filtered.filter.waiting = Some("blocked".into());
         assert!(validate(&[filtered]).is_err());
         assert!(serde_json::from_str::<Focus>(r#"{"id":"a","name":"x","extra":1}"#).is_err());
@@ -257,6 +304,16 @@ mod tests {
         ];
         map_boards(&mut views, |id| (id == 7).then_some(0));
         assert_eq!(views[0].filter.board_ids, Some(vec![0]));
+        assert_eq!(
+            views[0].filter.columns,
+            vec![ColumnRef {
+                board_id: 0,
+                column_id: 2,
+            }]
+        );
         assert_eq!(views[1].filter.board_ids, None);
+        let mut views = vec![view("a")];
+        map_boards(&mut views, |id| (id == 3).then_some(0));
+        assert!(views[0].filter.columns.is_empty());
     }
 }

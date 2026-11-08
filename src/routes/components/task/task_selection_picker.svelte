@@ -3,7 +3,10 @@
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
   import { Button } from "#lib/components/ui/button/index.js";
+  import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+  import { buttonVariants } from "#lib/components/ui/button/index.js";
   import SearchIcon from "@lucide/svelte/icons/search";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import { formatNumber } from "#lib/i18n/index.js";
   import * as m from "#lib/paraglide/messages.js";
   import type { Column } from "../../type/column.svelte";
@@ -27,7 +30,24 @@
     query?: string;
     disabled?: boolean;
   } = $props();
-  const visible_columns = $derived(filter_selection_columns(columns, query));
+  let filter_column_ids = $state<string[]>([]);
+  // Ignore filtered columns that were removed from the board meanwhile.
+  const active_filter_ids = $derived(
+    filter_column_ids.filter((id) =>
+      columns.some((column) => column.id === id),
+    ),
+  );
+  const filter_label = $derived(
+    active_filter_ids.length === 0
+      ? m.explorer_all_columns()
+      : active_filter_ids.length === 1
+        ? (columns.find((column) => column.id === active_filter_ids[0])?.name ??
+          m.explorer_all_columns())
+        : m.task_picker_filtered_columns({ count: active_filter_ids.length }),
+  );
+  const visible_columns = $derived(
+    filter_selection_columns(columns, query, active_filter_ids),
+  );
   const visible_ids = $derived(
     visible_columns.flatMap((column) => column.tasks.map((task) => task.id)),
   );
@@ -42,16 +62,53 @@
 </script>
 
 <div class="flex min-h-0 flex-col gap-2">
-  <div class="relative shrink-0">
-    <SearchIcon
-      class="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground"
-    />
-    <Input
-      class="pl-9"
-      bind:value={query}
-      placeholder={m.ui_search_columns_tasks_descriptions_or_labels()}
-      aria-label={m.ui_search()}
-    />
+  <div class="flex shrink-0 gap-2">
+    <div class="relative min-w-0 flex-1">
+      <SearchIcon
+        class="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground"
+      />
+      <Input
+        class="pl-9"
+        bind:value={query}
+        placeholder={m.ui_search_columns_tasks_descriptions_or_labels()}
+        aria-label={m.ui_search()}
+      />
+    </div>
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger
+        class={buttonVariants({
+          variant: "outline",
+          class: "max-w-40 shrink-0 justify-between font-normal",
+        })}
+        disabled={disabled || columns.length === 0}
+        aria-label={m.task_picker_column_filter()}
+        title={m.task_picker_column_filter()}
+      >
+        <span class="min-w-0 truncate">{filter_label}</span>
+        <ChevronDownIcon />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end" class="max-h-72 w-56">
+        <DropdownMenu.CheckboxItem
+          checked={active_filter_ids.length === 0}
+          closeOnSelect={false}
+          onCheckedChange={() => (filter_column_ids = [])}
+          >{m.explorer_all_columns()}</DropdownMenu.CheckboxItem
+        >
+        <DropdownMenu.Separator />
+        {#each columns as column (column.id)}
+          <DropdownMenu.CheckboxItem
+            checked={active_filter_ids.includes(column.id)}
+            closeOnSelect={false}
+            onCheckedChange={(checked) =>
+              (filter_column_ids = checked
+                ? [...active_filter_ids, column.id]
+                : active_filter_ids.filter((id) => id !== column.id))}
+            ><span class="truncate">{column.name}</span
+            ></DropdownMenu.CheckboxItem
+          >
+        {/each}
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
   </div>
   <div class="flex shrink-0 items-center justify-between gap-3">
     <span class="text-xs tabular-nums text-muted-foreground"
@@ -148,11 +205,11 @@
                       )}
                   />
                   <span class="min-w-0 flex-1">
-                    <span class="block break-words text-sm"
+                    <span class="block wrap-anywhere text-sm"
                       >{task.title || m.task_untitled()}</span
                     >
                     {#if task.labels.length > 0}<span
-                        class="block break-words text-xs text-muted-foreground"
+                        class="block wrap-anywhere text-xs text-muted-foreground"
                         >{task.labels.join(" · ")}</span
                       >{/if}
                   </span>

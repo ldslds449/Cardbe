@@ -36,6 +36,23 @@ describe("shared task picker", () => {
     expect(columns[0].tasks).toHaveLength(2);
   });
 
+  it("limits results to filtered columns, including empty ones, before searching", () => {
+    expect(
+      filter_selection_columns(columns, "", ["column_3", "column_1"]).map(
+        (column) => column.id,
+      ),
+    ).toEqual(["column_1", "column_3"]);
+    expect(filter_selection_columns(columns, "third", ["column_1"])).toEqual(
+      [],
+    );
+    expect(
+      filter_selection_columns(columns, "third", ["column_2"])[0].tasks.map(
+        (task) => task.id,
+      ),
+    ).toEqual(["task_3"]);
+    expect(filter_selection_columns(columns, "", [])).toBe(columns);
+  });
+
   it("selects complete columns, including empty ones, and preserves other column selections", () => {
     const selected = select_column_tasks(columns, empty, "column_1", true);
     expect(selected.task_ids).toEqual(["task_1", "task_2"]);

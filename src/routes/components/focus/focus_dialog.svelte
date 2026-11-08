@@ -8,6 +8,9 @@
   import { Input } from "#lib/components/ui/input/index.js";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { TagInput } from "#lib/components/ui/tag-input/index.js";
+  import { translateCommandError } from "#lib/command-errors.js";
+  import { invoke } from "@tauri-apps/api/core";
+  import { toast } from "svelte-sonner";
 
   import {
     clone_focus,
@@ -20,6 +23,7 @@
   } from "../../type/focus";
   import { priority_label, TASK_PRIORITIES } from "../../type/task.svelte";
   import type {
+    ColumnRef,
     CompletionFilter,
     PriorityFilter,
     WaitingFilter,
@@ -64,6 +68,60 @@
     (draft.filter.board_ids ?? []).filter((id) =>
       boards.some((board) => board.id === id),
     ),
+  );
+
+  // Every board's columns, loaded when the dialog opens; null until then.
+  let board_columns = $state<
+    { board_id: number; id: number; name: string }[] | null
+  >(null);
+  $effect(() => {
+    if (!open) {
+      return;
+    }
+    let current = true;
+    board_columns = null;
+    invoke<{ board_id: number; id: number; name: string }[]>(
+      "get_board_overviews",
+    )
+      .then((rows) => {
+        if (current) {
+          board_columns = rows;
+        }
+      })
+      .catch((error) => {
+        if (current) {
+          toast.error(translateCommandError(error));
+        }
+      });
+    return () => {
+      current = false;
+    };
+  });
+
+  const column_key = (column: ColumnRef) =>
+    `${column.board_id}:${column.column_id}`;
+  // Columns of the chosen boards, or of every board, grouped by board.
+  const column_options = $derived(
+    boards
+      .filter((board) => board_ids.length === 0 || board_ids.includes(board.id))
+      .flatMap((board) =>
+        (board_columns ?? [])
+          .filter((column) => column.board_id === board.id)
+          .map((column) => ({
+            value: column_key({ board_id: board.id, column_id: column.id }),
+            label: column.name,
+            group: board.name,
+          })),
+      ),
+  );
+  // Columns that still exist on a chosen board. Until columns load, saved
+  // ones are kept as they are.
+  let columns = $derived(
+    board_columns === null
+      ? draft.filter.columns
+      : draft.filter.columns.filter((column) =>
+          column_options.some((option) => option.value === column_key(column)),
+        ),
   );
 
   const completion_options = $derived<
@@ -145,6 +203,7 @@
       };
       saved.filter.query = saved.filter.query.trim();
       saved.filter.board_ids = board_ids.length > 0 ? board_ids : null;
+      saved.filter.columns = columns.map((column) => ({ ...column }));
       if (await onSave(saved)) {
         open = false;
       }
@@ -243,6 +302,29 @@
                 }
                 empty_label={m.focus_boards_all()}
               />
+            </Field.Field>
+            <Field.Field class="min-w-0">
+              <Field.FieldLabel id="focus-columns-label"
+                >{m.focus_columns()}</Field.FieldLabel
+              >
+              <MultiSelect
+                id="focus-columns"
+                label_id="focus-columns-label"
+                options={column_options}
+                disabled={board_columns === null || column_options.length === 0}
+                bind:selected={
+                  () => columns.map(column_key),
+                  (keys) =>
+                    (draft.filter.columns = keys.map((key) => {
+                      const [board_id, column_id] = key.split(":").map(Number);
+                      return { board_id, column_id };
+                    }))
+                }
+                empty_label={m.focus_columns_all()}
+              />
+              {#if columns.length > 0}
+                <Field.Description>{m.focus_columns_help()}</Field.Description>
+              {/if}
             </Field.Field>
             <Field.Field class="min-w-0">
               <Field.FieldLabel id="focus-completion-label"

@@ -28,6 +28,7 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import Calendar from "#lib/components/ui/calendar/calendar.svelte";
   import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import TaskSelectionPicker from "../task/task_selection_picker.svelte";
   import * as Dialog from "#lib/components/ui/dialog/index.js";
   import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
@@ -789,389 +790,395 @@
         </section>
       </aside>
 
-      <div
-        class="grid min-h-0 content-start gap-5 overflow-y-auto px-5 py-5 sm:px-6"
-      >
-        {#if share}
-          <section
-            class={`grid content-start gap-4 rounded-xl border p-4 ${is_managed_share_enabled(share) ? "border-success/50 bg-success/5" : "border-border bg-muted/30"}`}
-          >
-            <div
-              class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+      <ScrollArea class="min-h-0 min-w-0" orientation="vertical">
+        <div
+          class="grid grid-cols-[minmax(0,1fr)] content-start gap-5 px-5 py-5 sm:px-6"
+        >
+          {#if share}
+            <section
+              class={`grid content-start gap-4 rounded-xl border p-4 ${is_managed_share_enabled(share) ? "border-success/50 bg-success/5" : "border-border bg-muted/30"}`}
             >
-              <div class="flex min-w-0 items-start gap-3">
-                <div
-                  class={`flex size-9 shrink-0 items-center justify-center rounded-full ${is_managed_share_enabled(share) ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}
-                >
-                  <PowerIcon class="size-4" />
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <h3 class="font-semibold">
-                      {editing ? m.ui_edit_published_view() : share.title}
-                    </h3>
-                    <span
-                      class={`inline-flex min-w-16 justify-center rounded-full px-2 py-0.5 text-xs font-medium ${is_managed_share_enabled(share) ? "bg-success/15 text-success" : "border border-border bg-muted text-muted-foreground"}`}
-                    >
-                      {is_managed_share_enabled(share)
-                        ? m.explorer_active()
-                        : m.ui_disabled()}
-                    </span>
-                  </div>
-                  <p
-                    class="mt-1 flex items-center gap-1.5 text-sm text-foreground"
+              <div
+                class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+              >
+                <div class="flex min-w-0 items-start gap-3">
+                  <div
+                    class={`flex size-9 shrink-0 items-center justify-center rounded-full ${is_managed_share_enabled(share) ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}
                   >
-                    <LayoutDashboardIcon
-                      class="size-3.5 shrink-0 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                    <span class="shrink-0 text-muted-foreground"
-                      >{m.ui_source_board()}</span
+                    <PowerIcon class="size-4" />
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <h3 class="font-semibold">
+                        {editing ? m.ui_edit_published_view() : share.title}
+                      </h3>
+                      <span
+                        class={`inline-flex min-w-16 justify-center rounded-full px-2 py-0.5 text-xs font-medium ${is_managed_share_enabled(share) ? "bg-success/15 text-success" : "border border-border bg-muted text-muted-foreground"}`}
+                      >
+                        {is_managed_share_enabled(share)
+                          ? m.explorer_active()
+                          : m.ui_disabled()}
+                      </span>
+                    </div>
+                    <p
+                      class="mt-1 flex items-center gap-1.5 text-sm text-foreground"
                     >
-                    <span
-                      class="min-w-0 truncate font-medium"
-                      title={board_name(share.board_id)}
-                      >{board_name(share.board_id)}</span
-                    >
-                  </p>
-                  <p class="mt-1 text-sm text-muted-foreground">
-                    {is_managed_share_enabled(share)
-                      ? m.ui_anyone_on_this_local_network_with_the_link_can_view_the_selected_content()
-                      : m.ui_this_address_and_its_settings_are_saved_but_nobody_can_open_it()}
-                  </p>
+                      <LayoutDashboardIcon
+                        class="size-3.5 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <span class="shrink-0 text-muted-foreground"
+                        >{m.ui_source_board()}</span
+                      >
+                      <span
+                        class="min-w-0 truncate font-medium"
+                        title={board_name(share.board_id)}
+                        >{board_name(share.board_id)}</span
+                      >
+                    </p>
+                    <p class="mt-1 text-sm text-muted-foreground">
+                      {is_managed_share_enabled(share)
+                        ? m.ui_anyone_on_this_local_network_with_the_link_can_view_the_selected_content()
+                        : m.ui_this_address_and_its_settings_are_saved_but_nobody_can_open_it()}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              {#if !editing}
-                <div class="flex shrink-0 flex-wrap gap-2">
-                  {#if is_managed_share_enabled(share)}
+                {#if !editing}
+                  <div class="flex shrink-0 flex-wrap gap-2">
+                    {#if is_managed_share_enabled(share)}
+                      <Button
+                        class="w-24"
+                        variant="outline"
+                        size="sm"
+                        disabled={publishing || revoking}
+                        onclick={() => void disable()}
+                      >
+                        <PowerIcon />
+                        {revoking ? m.ui_disabling() : m.ui_disable()}
+                      </Button>
+                    {:else}
+                      <Button
+                        class="w-24"
+                        size="sm"
+                        disabled={publishing || revoking}
+                        onclick={() => void enable()}
+                      >
+                        <PowerIcon />
+                        {publishing ? m.ui_enabling() : m.ui_enable()}
+                      </Button>
+                    {/if}
                     <Button
-                      class="w-24"
                       variant="outline"
                       size="sm"
                       disabled={publishing || revoking}
-                      onclick={() => void disable()}
+                      onclick={() => load_share(share, true)}
                     >
-                      <PowerIcon />
-                      {revoking ? m.ui_disabling() : m.ui_disable()}
+                      <PencilIcon />
+                      {m.common_edit()}
                     </Button>
-                  {:else}
-                    <Button
-                      class="w-24"
-                      size="sm"
-                      disabled={publishing || revoking}
-                      onclick={() => void enable()}
-                    >
-                      <PowerIcon />
-                      {publishing ? m.ui_enabling() : m.ui_enable()}
-                    </Button>
-                  {/if}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={publishing || revoking}
-                    onclick={() => load_share(share, true)}
-                  >
-                    <PencilIcon />
-                    {m.common_edit()}
-                  </Button>
-                </div>
-              {/if}
-            </div>
-            <div class="grid gap-2">
-              <span class="text-sm font-medium">{m.ui_web_address()}</span>
-              <div class="flex gap-2">
-                <Input
-                  value={share.url}
-                  readonly
-                  aria-label={m.ui_web_address()}
-                  class={!is_managed_share_enabled(share)
-                    ? "text-muted-foreground"
-                    : ""}
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onclick={() => void copy_link()}
-                  aria-label={m.ui_copy_web_address()}
-                  title={m.ui_copy_web_address()}
-                >
-                  <CopyIcon />
-                </Button>
-              </div>
-              <p class="text-xs text-muted-foreground">
-                {m.ui_last_published()}
-                {share_datetime_formatter.format(new Date(share.updated_at))}
-                {share.expires_at
-                  ? ` · ${m.share_expires_date({ date: share_date_formatter.format(new Date(share.expires_at)) })}`
-                  : " · No expiration"}
-              </p>
-            </div>
-          </section>
-        {/if}
-
-        {#if share && !editing}
-          <section
-            class="grid gap-3"
-            aria-label={m.ui_shared_content_settings()}
-          >
-            <div>
-              <h3 class="text-sm font-semibold">{m.ui_share_settings()}</h3>
-              <p class="text-xs text-muted-foreground">
-                {m.ui_these_settings_control_what_visitors_can_see()}
-              </p>
-            </div>
-            <div class="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
-              <div class="min-w-0">
-                <div class="text-xs font-medium text-muted-foreground">
-                  {m.ui_source_board()}
-                </div>
-                <p class="mt-1 break-words text-sm font-medium">
-                  {board_name(share.board_id)}
-                </p>
-              </div>
-              <div>
-                <div class="text-xs font-medium text-muted-foreground">
-                  {m.ui_expiration()}
-                </div>
-                <p class="mt-1 text-sm font-medium">
-                  {share.expires_at
-                    ? share_date_formatter.format(new Date(share.expires_at))
-                    : m.ui_no_expiration()}
-                </p>
-              </div>
-              <div>
-                <div class="text-xs font-medium text-muted-foreground">
-                  {m.ui_shared_content()}
-                </div>
-                <p class="mt-1 text-sm font-medium">
-                  {m.share_content_count({
-                    columns: effective_selection.selected_column_ids.length,
-                    tasks: effective_selection.selected_task_ids.length,
-                  })}
-                </p>
-              </div>
-              <div>
-                <div class="text-xs font-medium text-muted-foreground">
-                  {m.ui_automatic_labels()}
-                </div>
-                {#if selected_labels.length > 0}
-                  <div class="mt-1 flex flex-wrap gap-1.5">
-                    {#each selected_labels as label (label)}
-                      <span class="rounded-md bg-muted px-2 py-0.5 text-xs"
-                        >{label}</span
-                      >
-                    {/each}
                   </div>
-                {:else}
-                  <p class="mt-1 text-sm text-muted-foreground">
-                    {m.ui_none()}
-                  </p>
                 {/if}
               </div>
-            </div>
-          </section>
-        {/if}
-
-        {#if !share || editing}
-          {#if !share}
-            <label class="grid gap-1.5 text-sm font-medium">
-              {m.ui_board_to_share()}
-              <select
-                value={selected_board_id === null
-                  ? ""
-                  : String(selected_board_id)}
-                disabled={publishing || loading_board_content}
-                onchange={(event) => {
-                  const target = Number(event.currentTarget.value);
-                  event.currentTarget.value =
-                    selected_board_id === null ? "" : String(selected_board_id);
-                  void select_new_share_board(target);
-                }}
-                class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-10 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-[3px] disabled:opacity-50"
-              >
-                {#each owned_boards as target (target.id)}
-                  <option value={String(target.id)}>{target.name}</option>
-                {/each}
-              </select>
-              <span class="text-xs font-normal text-muted-foreground"
-                >{m.ui_the_new_link_will_publish_content_from_this_board()}</span
-              >
-            </label>
-          {:else}
-            <p class="text-sm text-muted-foreground">
-              {m.ui_sharing_from()}
-              <span class="font-medium text-foreground"
-                >{board_name(selected_board_id ?? undefined)}</span
-              >
-            </p>
-          {/if}
-          <label class="grid gap-1.5 text-sm font-medium">
-            {m.ui_published_view_title()}
-            <Input
-              bind:value={title}
-              maxlength={120}
-              placeholder={m.ui_team_roadmap()}
-            />
-          </label>
-
-          {#if !share}
-            <div class="grid gap-2">
-              <div>
-                <div class="text-sm font-medium">{m.ui_web_address()}</div>
+              <div class="grid gap-2">
+                <span class="text-sm font-medium">{m.ui_web_address()}</span>
+                <div class="flex gap-2">
+                  <Input
+                    value={share.url}
+                    readonly
+                    aria-label={m.ui_web_address()}
+                    class={!is_managed_share_enabled(share)
+                      ? "text-muted-foreground"
+                      : ""}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onclick={() => void copy_link()}
+                    aria-label={m.ui_copy_web_address()}
+                    title={m.ui_copy_web_address()}
+                  >
+                    <CopyIcon />
+                  </Button>
+                </div>
                 <p class="text-xs text-muted-foreground">
-                  {m.ui_create_a_new_address_or_restore_one_you_shared_before()}
+                  {m.ui_last_published()}
+                  {share_datetime_formatter.format(new Date(share.updated_at))}
+                  {share.expires_at
+                    ? ` · ${m.share_expires_date({ date: share_date_formatter.format(new Date(share.expires_at)) })}`
+                    : " · No expiration"}
                 </p>
               </div>
-              <div class="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  class={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${!reuse_link_open ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:bg-muted/40"}`}
-                  onclick={() => {
-                    reuse_link_open = false;
-                    requested_link = "";
-                  }}
-                >
-                  <CircleCheckIcon
-                    class={`mt-0.5 size-4 shrink-0 ${!reuse_link_open ? "text-primary" : "text-muted-foreground"}`}
-                  />
-                  <span>
-                    <span class="block text-sm font-medium"
-                      >{m.ui_new_address()}</span
-                    >
-                    <span class="mt-0.5 block text-xs text-muted-foreground"
-                      >{m.ui_best_for_a_new_audience()}</span
-                    >
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  class={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${reuse_link_open ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:bg-muted/40"}`}
-                  onclick={() => (reuse_link_open = true)}
-                >
-                  <RefreshCwIcon
-                    class={`mt-0.5 size-4 shrink-0 ${reuse_link_open ? "text-primary" : "text-muted-foreground"}`}
-                  />
-                  <span>
-                    <span class="block text-sm font-medium"
-                      >{m.ui_reuse_previous_address()}</span
-                    >
-                    <span class="mt-0.5 block text-xs text-muted-foreground"
-                      >{m.ui_reconnect_an_old_shared_url()}</span
-                    >
-                  </span>
-                </button>
-              </div>
-              {#if reuse_link_open}
-                <div
-                  id="reuse-share-link-options"
-                  class="grid gap-2 rounded-lg border bg-muted/20 p-3"
-                >
-                  <label for="previous-share-link" class="text-sm font-medium"
-                    >{m.ui_previous_address_or_share_id()}</label
-                  >
-                  <Input
-                    id="previous-share-link"
-                    bind:value={requested_link}
-                    autocomplete="off"
-                    spellcheck={false}
-                    placeholder={m.ui_paste_the_link_you_shared_before()}
-                  />
-                </div>
-              {/if}
-            </div>
+            </section>
           {/if}
 
-          <div class="grid gap-2">
-            <div class="flex items-center gap-2">
-              <Checkbox
-                id="share-expiration-enabled"
-                checked={expiration_enabled}
-                onCheckedChange={(checked) => {
-                  expiration_enabled = checked === true;
-                }}
-              />
-              <label for="share-expiration-enabled" class="text-sm font-medium"
-                >{m.ui_set_web_address_expiration()}</label
-              >
-            </div>
-            {#if expiration_enabled}
-              <Popover.Root bind:open={expiration_open}>
-                <Popover.Trigger>
-                  {#snippet child({ props })}
-                    <Button
-                      {...props}
-                      variant="outline"
-                      class="w-full justify-between font-normal"
-                    >
-                      <span class="flex items-center gap-2">
-                        <CalendarDaysIcon class="size-4" />
-                        {share_date_formatter.format(
-                          expiration_date.toDate(getLocalTimeZone()),
-                        )}
-                      </span>
-                      <ChevronDownIcon />
-                    </Button>
-                  {/snippet}
-                </Popover.Trigger>
-                <Popover.Content
-                  class="w-auto overflow-hidden p-0"
-                  align="start"
-                >
-                  <Calendar
-                    type="single"
-                    bind:value={expiration_date}
-                    minValue={today(getLocalTimeZone())}
-                    captionLayout="dropdown"
-                    onValueChange={() => {
-                      expiration_open = false;
-                    }}
-                  />
-                </Popover.Content>
-              </Popover.Root>
-            {:else}
-              <p class="text-xs text-muted-foreground">
-                {m.ui_the_web_address_remains_active_until_you_disable_it()}
-              </p>
-            {/if}
-          </div>
-
-          <div class="grid gap-1.5">
-            <div class="text-sm font-medium">
-              {m.ui_automatically_include_labels()}
-            </div>
-            <TagInput
-              bind:tags={selected_labels}
-              suggestions={available_labels}
-              placeholder={m.ui_add_label()}
-            />
-            <p class="text-xs text-muted-foreground">
-              {m.share_labels_description()}
-            </p>
-          </div>
-
-          <div class="grid gap-2">
-            <div class="flex items-center justify-between">
+          {#if share && !editing}
+            <section
+              class="grid gap-3"
+              aria-label={m.ui_shared_content_settings()}
+            >
               <div>
-                <div class="text-sm font-medium">
-                  {m.ui_content_to_include()}
+                <h3 class="text-sm font-semibold">{m.ui_share_settings()}</h3>
+                <p class="text-xs text-muted-foreground">
+                  {m.ui_these_settings_control_what_visitors_can_see()}
+                </p>
+              </div>
+              <div class="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
+                <div class="min-w-0">
+                  <div class="text-xs font-medium text-muted-foreground">
+                    {m.ui_source_board()}
+                  </div>
+                  <p class="mt-1 break-words text-sm font-medium">
+                    {board_name(share.board_id)}
+                  </p>
                 </div>
-                <div class="text-xs text-muted-foreground">
-                  {m.share_selected_count({
-                    columns: effective_selection.selected_column_ids.length,
-                    tasks: effective_selection.selected_task_ids.length,
-                  })}
+                <div>
+                  <div class="text-xs font-medium text-muted-foreground">
+                    {m.ui_expiration()}
+                  </div>
+                  <p class="mt-1 text-sm font-medium">
+                    {share.expires_at
+                      ? share_date_formatter.format(new Date(share.expires_at))
+                      : m.ui_no_expiration()}
+                  </p>
+                </div>
+                <div>
+                  <div class="text-xs font-medium text-muted-foreground">
+                    {m.ui_shared_content()}
+                  </div>
+                  <p class="mt-1 text-sm font-medium">
+                    {m.share_content_count({
+                      columns: effective_selection.selected_column_ids.length,
+                      tasks: effective_selection.selected_task_ids.length,
+                    })}
+                  </p>
+                </div>
+                <div>
+                  <div class="text-xs font-medium text-muted-foreground">
+                    {m.ui_automatic_labels()}
+                  </div>
+                  {#if selected_labels.length > 0}
+                    <div class="mt-1 flex flex-wrap gap-1.5">
+                      {#each selected_labels as label (label)}
+                        <span class="rounded-md bg-muted px-2 py-0.5 text-xs"
+                          >{label}</span
+                        >
+                      {/each}
+                    </div>
+                  {:else}
+                    <p class="mt-1 text-sm text-muted-foreground">
+                      {m.ui_none()}
+                    </p>
+                  {/if}
                 </div>
               </div>
+            </section>
+          {/if}
+
+          {#if !share || editing}
+            {#if !share}
+              <label class="grid gap-1.5 text-sm font-medium">
+                {m.ui_board_to_share()}
+                <select
+                  value={selected_board_id === null
+                    ? ""
+                    : String(selected_board_id)}
+                  disabled={publishing || loading_board_content}
+                  onchange={(event) => {
+                    const target = Number(event.currentTarget.value);
+                    event.currentTarget.value =
+                      selected_board_id === null
+                        ? ""
+                        : String(selected_board_id);
+                    void select_new_share_board(target);
+                  }}
+                  class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-10 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-[3px] disabled:opacity-50"
+                >
+                  {#each owned_boards as target (target.id)}
+                    <option value={String(target.id)}>{target.name}</option>
+                  {/each}
+                </select>
+                <span class="text-xs font-normal text-muted-foreground"
+                  >{m.ui_the_new_link_will_publish_content_from_this_board()}</span
+                >
+              </label>
+            {:else}
+              <p class="text-sm text-muted-foreground">
+                {m.ui_sharing_from()}
+                <span class="font-medium text-foreground"
+                  >{board_name(selected_board_id ?? undefined)}</span
+                >
+              </p>
+            {/if}
+            <label class="grid gap-1.5 text-sm font-medium">
+              {m.ui_published_view_title()}
+              <Input
+                bind:value={title}
+                maxlength={120}
+                placeholder={m.ui_team_roadmap()}
+              />
+            </label>
+
+            {#if !share}
+              <div class="grid gap-2">
+                <div>
+                  <div class="text-sm font-medium">{m.ui_web_address()}</div>
+                  <p class="text-xs text-muted-foreground">
+                    {m.ui_create_a_new_address_or_restore_one_you_shared_before()}
+                  </p>
+                </div>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    class={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${!reuse_link_open ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:bg-muted/40"}`}
+                    onclick={() => {
+                      reuse_link_open = false;
+                      requested_link = "";
+                    }}
+                  >
+                    <CircleCheckIcon
+                      class={`mt-0.5 size-4 shrink-0 ${!reuse_link_open ? "text-primary" : "text-muted-foreground"}`}
+                    />
+                    <span>
+                      <span class="block text-sm font-medium"
+                        >{m.ui_new_address()}</span
+                      >
+                      <span class="mt-0.5 block text-xs text-muted-foreground"
+                        >{m.ui_best_for_a_new_audience()}</span
+                      >
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    class={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${reuse_link_open ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "hover:bg-muted/40"}`}
+                    onclick={() => (reuse_link_open = true)}
+                  >
+                    <RefreshCwIcon
+                      class={`mt-0.5 size-4 shrink-0 ${reuse_link_open ? "text-primary" : "text-muted-foreground"}`}
+                    />
+                    <span>
+                      <span class="block text-sm font-medium"
+                        >{m.ui_reuse_previous_address()}</span
+                      >
+                      <span class="mt-0.5 block text-xs text-muted-foreground"
+                        >{m.ui_reconnect_an_old_shared_url()}</span
+                      >
+                    </span>
+                  </button>
+                </div>
+                {#if reuse_link_open}
+                  <div
+                    id="reuse-share-link-options"
+                    class="grid gap-2 rounded-lg border bg-muted/20 p-3"
+                  >
+                    <label for="previous-share-link" class="text-sm font-medium"
+                      >{m.ui_previous_address_or_share_id()}</label
+                    >
+                    <Input
+                      id="previous-share-link"
+                      bind:value={requested_link}
+                      autocomplete="off"
+                      spellcheck={false}
+                      placeholder={m.ui_paste_the_link_you_shared_before()}
+                    />
+                  </div>
+                {/if}
+              </div>
+            {/if}
+
+            <div class="grid gap-2">
+              <div class="flex items-center gap-2">
+                <Checkbox
+                  id="share-expiration-enabled"
+                  checked={expiration_enabled}
+                  onCheckedChange={(checked) => {
+                    expiration_enabled = checked === true;
+                  }}
+                />
+                <label
+                  for="share-expiration-enabled"
+                  class="text-sm font-medium"
+                  >{m.ui_set_web_address_expiration()}</label
+                >
+              </div>
+              {#if expiration_enabled}
+                <Popover.Root bind:open={expiration_open}>
+                  <Popover.Trigger>
+                    {#snippet child({ props })}
+                      <Button
+                        {...props}
+                        variant="outline"
+                        class="w-full justify-between font-normal"
+                      >
+                        <span class="flex items-center gap-2">
+                          <CalendarDaysIcon class="size-4" />
+                          {share_date_formatter.format(
+                            expiration_date.toDate(getLocalTimeZone()),
+                          )}
+                        </span>
+                        <ChevronDownIcon />
+                      </Button>
+                    {/snippet}
+                  </Popover.Trigger>
+                  <Popover.Content
+                    class="w-auto overflow-hidden p-0"
+                    align="start"
+                  >
+                    <Calendar
+                      type="single"
+                      bind:value={expiration_date}
+                      minValue={today(getLocalTimeZone())}
+                      captionLayout="dropdown"
+                      onValueChange={() => {
+                        expiration_open = false;
+                      }}
+                    />
+                  </Popover.Content>
+                </Popover.Root>
+              {:else}
+                <p class="text-xs text-muted-foreground">
+                  {m.ui_the_web_address_remains_active_until_you_disable_it()}
+                </p>
+              {/if}
             </div>
-            <TaskSelectionPicker
-              columns={share_columns}
-              bind:query={task_search}
-              bind:selected_column_ids
-              bind:selected_task_ids
-            />
-          </div>
-        {/if}
-      </div>
+
+            <div class="grid gap-1.5">
+              <div class="text-sm font-medium">
+                {m.ui_automatically_include_labels()}
+              </div>
+              <TagInput
+                bind:tags={selected_labels}
+                suggestions={available_labels}
+                placeholder={m.ui_add_label()}
+              />
+              <p class="text-xs text-muted-foreground">
+                {m.share_labels_description()}
+              </p>
+            </div>
+
+            <div class="grid gap-2">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-sm font-medium">
+                    {m.ui_content_to_include()}
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    {m.share_selected_count({
+                      columns: effective_selection.selected_column_ids.length,
+                      tasks: effective_selection.selected_task_ids.length,
+                    })}
+                  </div>
+                </div>
+              </div>
+              <TaskSelectionPicker
+                columns={share_columns}
+                bind:query={task_search}
+                bind:selected_column_ids
+                bind:selected_task_ids
+              />
+            </div>
+          {/if}
+        </div>
+      </ScrollArea>
     </div>
 
     <Dialog.Footer

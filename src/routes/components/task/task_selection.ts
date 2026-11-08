@@ -8,12 +8,16 @@ export interface TaskSelection {
 export function filter_selection_columns(
   columns: Column[],
   query: string,
+  column_ids: readonly string[] = [],
 ): Column[] {
+  const scoped = column_ids.length
+    ? columns.filter((column) => column_ids.includes(column.id))
+    : columns;
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) {
-    return columns;
+    return scoped;
   }
-  return columns
+  return scoped
     .map((column) =>
       column.name.toLocaleLowerCase().includes(needle)
         ? column

@@ -1,4 +1,5 @@
 import type {
+  ColumnRef,
   CompletionFilter,
   PriorityFilter,
   TaskExplorerQuery,
@@ -24,6 +25,11 @@ export interface FocusFilter {
   query: string;
   /** Null covers every board, including boards created later. */
   board_ids: number[] | null;
+  /**
+   * Any of these columns; empty keeps all. Archived tasks have no column and
+   * are left out while this is set.
+   */
+  columns: ColumnRef[];
   /** Empty keeps all. */
   completion: CompletionFilter[];
   /** Empty keeps all. */
@@ -51,6 +57,7 @@ export function create_focus_filter(): FocusFilter {
   return {
     query: "",
     board_ids: null,
+    columns: [],
     completion: ["open"],
     priorities: [],
     due: "all",
@@ -76,6 +83,8 @@ export function clone_focus(view: Focus): Focus {
     filter: {
       ...view.filter,
       board_ids: view.filter.board_ids ? [...view.filter.board_ids] : null,
+      // Focuses saved before column filters have none.
+      columns: (view.filter.columns ?? []).map((column) => ({ ...column })),
       completion: [...view.filter.completion],
       priorities: [...view.filter.priorities],
       labels: [...view.filter.labels],
@@ -117,6 +126,7 @@ export function focus_query(view: Focus, now = new Date()): TaskExplorerQuery {
     labels: filter.labels.length > 0 ? filter.labels : null,
     waiting: filter.waiting,
     recurring: filter.recurring,
+    columns: filter.columns?.length ? filter.columns : null,
   };
 }
 
@@ -128,7 +138,9 @@ export interface ExplorerConditions {
   due: "all" | "due" | "none" | "today" | "custom";
   priorities: PriorityFilter[];
   sort: TaskExplorerQuery["sort"];
-  /** A column filter or archive date range, which a Focus cannot keep. */
+  /** The column filter of the single selected board, if any. */
+  column: ColumnRef | null;
+  /** An archive date range, which a Focus cannot keep. */
   other_conditions: boolean;
 }
 
@@ -145,6 +157,7 @@ export function focus_from_explorer(conditions: ExplorerConditions): {
     ...create_focus_filter(),
     query: conditions.query.trim(),
     board_ids: conditions.board_ids ? [...conditions.board_ids] : null,
+    columns: conditions.column ? [{ ...conditions.column }] : [],
     // Every status but archived and all leaves archived tasks out.
     completion:
       status === "archived"

@@ -115,6 +115,11 @@ fn parse_all_boards_backup(json_data: &str) -> Result<AllBoardsExport, CommandEr
                 .iter()
                 .flatten()
                 .all(|index| (0..board_count).contains(index))
+                && view
+                    .filter
+                    .columns
+                    .iter()
+                    .all(|column| (0..board_count).contains(&column.board_id))
         });
         if crate::focuses::validate(views).is_err() || !positions_valid {
             return Err(CommandError::InvalidImport);

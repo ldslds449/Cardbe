@@ -107,6 +107,10 @@ fn validate_filter(filter: &TaskExplorerQuery) -> Result<(), CommandError> {
             .labels
             .as_ref()
             .is_some_and(|labels| labels.len() > MAX_LABEL_FILTERS)
+        || filter
+            .columns
+            .as_ref()
+            .is_some_and(|columns| columns.len() > crate::focuses::MAX_COLUMNS)
         || filter.waiting.as_ref().is_some_and(|waiting| {
             !["waiting", "not_waiting", "waited_on"].contains(&waiting.as_str())
         })

@@ -4,6 +4,7 @@ import { get_column_id } from "../../type/column.svelte";
 import type { ExplorerConditions, FocusGroup } from "../../type/focus";
 import {
   date_range_bounds,
+  type ColumnRef,
   type PriorityFilter,
   type TaskExplorerQuery,
 } from "../../utils/task-explorer";
@@ -121,6 +122,13 @@ function column_id(values: TaskFilterValues): number | null {
     values.column !== "all"
     ? get_column_id(values.column)
     : null;
+}
+
+function column_ref(values: TaskFilterValues): ColumnRef | null {
+  const id = column_id(values);
+  return id === null || !values.board_ids
+    ? null
+    : { board_id: values.board_ids[0], column_id: id };
 }
 
 /** The `list_all_tasks` filter, with relative dates taken at `now`. */
@@ -313,8 +321,8 @@ export class TaskFilters {
       due: this.due,
       priorities: this.priorities,
       sort: this.effective_sort,
-      other_conditions:
-        column_id(this.values) !== null || this.archive_time !== "all",
+      column: column_ref(this.values),
+      other_conditions: this.archive_time !== "all",
     };
   }
 }

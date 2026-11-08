@@ -1518,6 +1518,21 @@
       }
     }
   ],
+  "task_picker_column_filter": "Filter by column",
+  "task_picker_filtered_columns": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural",
+        "local countFormatted = count: number"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{countFormatted} column",
+        "countPlural=*": "{countFormatted} columns"
+      }
+    }
+  ],
   "export_matching_entries": [
     {
       "declarations": ["input count", "local countFormatted = count: number"],
@@ -2718,6 +2733,9 @@
   "focus_any": "Any",
   "focus_boards": "Boards",
   "focus_boards_all": "All boards",
+  "focus_columns": "Columns",
+  "focus_columns_all": "All columns",
+  "focus_columns_help": "Archived tasks have no column and are left out.",
   "focus_completion": "Status",
   "focus_completion_open": "Open",
   "focus_completion_done": "Done",
@@ -2791,7 +2809,7 @@
   "workspace_view_shortcut": "{view} ({shortcut})",
   "explorer_save_as_focus": "Save as Focus",
   "explorer_save_as_focus_hint": "Create a Focus with these conditions",
-  "focus_from_explorer_partial": "Some conditions, such as a column, a custom date range, or sorting by column, can’t be kept in a Focus and were left out.",
+  "focus_from_explorer_partial": "Some conditions, such as a custom date range, an archive date range, or sorting by column, can’t be kept in a Focus and were left out.",
   "focus_actions": "Actions for “{name}”",
   "board_actions": "Actions for “{name}”",
   "note_pinned": "Pinned",

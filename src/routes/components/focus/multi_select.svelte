@@ -11,15 +11,42 @@
     options,
     selected = $bindable([]),
     empty_label,
+    disabled = false,
   }: {
     id: string;
     /** The visible label's ID, read together with the selection. */
     label_id: string;
-    options: { value: T; label: string }[];
+    /** Consecutive options with the same `group` are listed under it. */
+    options: { value: T; label: string; group?: string }[];
     selected: T[];
     /** Shown when nothing is chosen. */
     empty_label: string;
+    disabled?: boolean;
   } = $props();
+
+  let groups = $derived(
+    options.reduce<{ name?: string; options: typeof options }[]>(
+      (groups, option) => {
+        const last = groups.at(-1);
+        if (last && last.name === option.group) {
+          last.options.push(option);
+        } else {
+          groups.push({ name: option.group, options: [option] });
+        }
+        return groups;
+      },
+      [],
+    ),
+  );
+
+  function toggle(value: T, checked: boolean) {
+    // Keep the options' order so summaries read consistently.
+    selected = options
+      .map((candidate) => candidate.value)
+      .filter((candidate) =>
+        candidate === value ? checked : selected.includes(candidate),
+      );
+  }
 
   let summary = $derived(
     selected.length === 0
@@ -32,8 +59,19 @@
   );
 </script>
 
+{#snippet items(list: typeof options)}
+  {#each list as option (option.value)}
+    <DropdownMenu.CheckboxItem
+      checked={selected.includes(option.value)}
+      closeOnSelect={false}
+      onCheckedChange={(checked) => toggle(option.value, checked)}
+      >{option.label}</DropdownMenu.CheckboxItem
+    >
+  {/each}
+{/snippet}
+
 <DropdownMenu.Root>
-  <DropdownMenu.Trigger>
+  <DropdownMenu.Trigger {disabled}>
     {#snippet child({ props })}
       <Button
         {...props}
@@ -47,19 +85,19 @@
     {/snippet}
   </DropdownMenu.Trigger>
   <DropdownMenu.Content class="max-h-80" align="start">
-    {#each options as option (option.value)}
-      <DropdownMenu.CheckboxItem
-        checked={selected.includes(option.value)}
-        closeOnSelect={false}
-        onCheckedChange={(checked) => {
-          // Keep the options' order so summaries read consistently.
-          selected = options
-            .map((candidate) => candidate.value)
-            .filter((value) =>
-              value === option.value ? checked : selected.includes(value),
-            );
-        }}>{option.label}</DropdownMenu.CheckboxItem
-      >
+    {#each groups as group, index (index)}
+      {#if group.name === undefined}
+        {@render items(group.options)}
+      {:else}
+        {#if index > 0}<DropdownMenu.Separator />{/if}
+        <DropdownMenu.Group>
+          <DropdownMenu.GroupHeading
+            class="text-xs font-medium text-muted-foreground"
+            >{group.name}</DropdownMenu.GroupHeading
+          >
+          {@render items(group.options)}
+        </DropdownMenu.Group>
+      {/if}
     {/each}
   </DropdownMenu.Content>
 </DropdownMenu.Root>
