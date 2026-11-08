@@ -19,6 +19,10 @@
   import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
   import UndoIcon from "@lucide/svelte/icons/undo-2";
   import { onMount, tick, untrack } from "svelte";
+  import {
+    remember_scroll,
+    remembered_scroll,
+  } from "../../board-scroll-memory";
 
   import type { Column } from "../../type/column.svelte";
   import type { Archive } from "../../type/archive.svelte";
@@ -69,6 +73,8 @@
   const EXTEND_CHUNK_SCREENS = 2;
 
   interface GanttViewProps {
+    // Keys the remembered timeline position; null always opens at today.
+    board_id?: number | null;
     columns: Column[];
     archives?: Archive[];
     search_text?: string;
@@ -90,6 +96,7 @@
   }
 
   let {
+    board_id = null,
     columns,
     archives = [],
     search_text = "",
@@ -244,18 +251,67 @@
     scroll_to_day(today_day);
   }
 
+  // The day at the center of the visible timeline, independent of scale and
+  // of days added at either end.
+  function center_day(): number {
+    return scroller
+      ? timeline.first_day +
+          (scroller.scrollLeft + viewport_width() / 2) / timeline.day_width
+      : today_day;
+  }
+
+  // Set once the initial position is applied, so the unscrolled first
+  // measurement does not replace the remembered position.
+  let position_restored = false;
+
+  function remember_position() {
+    if (
+      position_restored &&
+      scroller &&
+      board_id !== null &&
+      viewport_width() > 0
+    ) {
+      remember_scroll(board_id, "gantt", {
+        x: center_day(),
+        y: scroller.scrollTop,
+      });
+    }
+  }
+
+  // Opens where this board was left (center day and row offset), or at
+  // today the first time.
+  async function restore_position() {
+    const saved =
+      board_id === null ? undefined : remembered_scroll(board_id, "gantt");
+    if (saved === undefined) {
+      scroll_to_day(today_day);
+    } else {
+      // Make sure the timeline reaches the remembered day before scrolling.
+      const margin = Math.ceil(viewport_width() / timeline.day_width);
+      if (saved.x - margin < timeline.first_day) {
+        extend_before += timeline.first_day - (saved.x - margin);
+      }
+      if (saved.x + margin > timeline.last_day) {
+        extend_after += saved.x + margin - timeline.last_day;
+      }
+      await tick();
+      scroll_to_day(saved.x, 1 / 2);
+      if (scroller) {
+        scroller.scrollTop = saved.y;
+      }
+    }
+    position_restored = true;
+  }
+
   async function set_scale(next: GanttScale) {
     if (next === scale) {
       return;
     }
     // Keep the day at the center of the timeline in place across scales.
-    const center_day = scroller
-      ? timeline.first_day +
-        (scroller.scrollLeft + viewport_width() / 2) / timeline.day_width
-      : today_day;
+    const center = center_day();
     scale = next;
     await tick();
-    scroll_to_day(center_day, 1 / 2);
+    scroll_to_day(center, 1 / 2);
   }
 
   // The ScrollArea viewport scrolls; track it for row windowing and the
@@ -274,6 +330,7 @@
       scroll_top = viewport.scrollTop;
       scroll_left = viewport.scrollLeft;
       extend_timeline();
+      remember_position();
     };
     // Measuring reads the timeline, which must not resubscribe this effect.
     untrack(() => {
@@ -338,7 +395,7 @@
   });
 
   onMount(() => {
-    void tick().then(() => scroll_to_day(today_day));
+    void tick().then(restore_position);
 
     function handle_visibility_change() {
       if (!document.hidden) {

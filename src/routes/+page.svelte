@@ -74,6 +74,7 @@
   import StatisticsView from "./components/statistics/statistics_view.svelte";
   import type { CalendarViewMode } from "./components/calendar/calendar";
   import GanttView from "./components/gantt/gantt_view.svelte";
+  import { remember_scroll, remembered_scroll } from "./board-scroll-memory";
   import type { GanttScale } from "./components/gantt/gantt";
   import type { TaskDates } from "./utils/task-date-range";
   import NotePanel from "./components/note/note_panel.svelte";
@@ -129,6 +130,32 @@
   let calendar_show_recurring_previews = $state(true);
   let gantt_scale = $state<GanttScale>("day");
   let gantt_show_archived = $state(false);
+  let workspace_viewport = $state<HTMLDivElement | null>(null);
+  // The columns are on screen, rather than a search placeholder that would
+  // clamp the scroll position.
+  let board_columns_shown = $derived(
+    active_view === "board" &&
+      !(search_text.trim() && (board.search_pending || board.search_error)),
+  );
+
+  // Each board keeps its own column scroll position across switches.
+  $effect(() => {
+    const viewport = workspace_viewport;
+    const board_id = board.active_board_id;
+    if (!viewport || board_id === null || !board_columns_shown) {
+      return;
+    }
+    const saved = remembered_scroll(board_id, "board");
+    viewport.scrollLeft = saved?.x ?? 0;
+    viewport.scrollTop = saved?.y ?? 0;
+    const save = () =>
+      remember_scroll(board_id, "board", {
+        x: viewport.scrollLeft,
+        y: viewport.scrollTop,
+      });
+    viewport.addEventListener("scroll", save, { passive: true });
+    return () => viewport.removeEventListener("scroll", save);
+  });
   let startup_error = $state.raw<unknown>(null);
   let startup_check_finished = $state(false);
   const updates = new UpdateChecker();
@@ -1830,6 +1857,7 @@
                 <!-- The Gantt chart scrolls itself to keep its header and task list in view. -->
                 <div class="min-h-0 min-w-0 flex-1">
                   <GanttView
+                    board_id={board.active_board_id}
                     columns={board.columns}
                     archives={board.archives}
                     {search_text}
@@ -1852,7 +1880,11 @@
                   />
                 </div>
               {:else}
-                <ScrollArea class="min-h-0 min-w-0 flex-1" orientation="both">
+                <ScrollArea
+                  class="min-h-0 min-w-0 flex-1"
+                  orientation="both"
+                  bind:viewport={workspace_viewport}
+                >
                   <div
                     class={active_view === "board"
                       ? "min-h-full px-5 pb-5 pt-7"
