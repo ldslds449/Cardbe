@@ -11,7 +11,7 @@ import { isInTable, selectedRect } from "@tiptap/pm/tables";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import { Markdown } from "@tiptap/markdown";
-import { Extension, Mark } from "@tiptap/core";
+import { Extension, InputRule, Mark } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { CodeHighlight } from "./code-highlight";
 import { CodeScroll } from "./code-scroll";
@@ -35,6 +35,40 @@ const StyledTaskItem = TaskItem.extend({
       // keystroke.
       a11y: { checkboxLabel: () => m.editor_task_item_checkbox() },
     };
+  },
+  addInputRules() {
+    return [
+      // Typing `- [ ] ` first turns `- ` into a bullet item; convert that item
+      // instead of nesting a task list inside it.
+      new InputRule({
+        find: /^\s*\[([ xX])?\]\s$/,
+        handler: ({ state, range, match, chain }) => {
+          const $from = state.doc.resolve(range.from);
+          if (
+            $from.depth < 2 ||
+            $from.node(-1).type.name !== "listItem" ||
+            $from.node(-2).type.name !== "bulletList" ||
+            $from.index(-1) !== 0
+          ) {
+            return null;
+          }
+          // Lifting must come first: ProseMirror checks its result against
+          // every mapping step already in the transaction.
+          chain()
+            .liftListItem("listItem")
+            .toggleTaskList()
+            .command(({ tr }) => {
+              tr.delete(tr.mapping.map(range.from), tr.mapping.map(range.to));
+              return true;
+            })
+            .updateAttributes(this.name, {
+              checked: match[1]?.toLowerCase() === "x",
+            })
+            .run();
+        },
+      }),
+      ...this.parent!(),
+    ];
   },
   addNodeView() {
     const createView = this.parent!()!;

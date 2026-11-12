@@ -30,3 +30,60 @@ describe("task items", () => {
     ]);
   });
 });
+
+describe("task item input rule", () => {
+  // Each item lists its paragraphs.
+  function type_after(items: string[][], text: string) {
+    const instance = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "bulletList",
+            content: items.map((paragraphs) => ({
+              type: "listItem",
+              content: paragraphs.map((value) => ({
+                type: "paragraph",
+                content: [{ type: "text", text: value }],
+              })),
+            })),
+          },
+        ],
+      },
+    });
+    const end = instance.state.doc.content.size - 2;
+    instance.commands.setTextSelection(end);
+    const { from, to } = instance.state.selection;
+    const handled = instance.extensionManager.plugins.some((plugin) =>
+      plugin.props.handleTextInput?.call(
+        plugin,
+        instance.view,
+        from,
+        to,
+        text,
+        () => instance.state.tr,
+      ),
+    );
+    if (!handled) {
+      instance.commands.insertContent(text);
+    }
+    const result = instance.getMarkdown();
+    instance.destroy();
+    return result.trim();
+  }
+
+  it("turns a bullet item into a task item", () => {
+    expect(type_after([["[ ]"]], " ")).toBe("- [ ]");
+    expect(type_after([["[X]"]], " ")).toBe("- [x]");
+  });
+
+  it("converts only the typed bullet item", () => {
+    expect(type_after([["one"], ["[ ]"]], " ")).toBe("- one\n\n- [ ]");
+  });
+
+  it("nests a task list after the first paragraph of a bullet item", () => {
+    expect(type_after([["one", "[ ]"]], " ")).toBe("- one\n  - [ ]");
+  });
+});
