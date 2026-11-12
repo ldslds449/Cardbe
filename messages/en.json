@@ -661,6 +661,7 @@
   ],
   "task_item_mark_complete": "Mark {name} as completed",
   "task_item_mark_incomplete": "Mark {name} as not completed",
+  "editor_task_item_checkbox": "To-do item",
   "task_color_use": "Use {name} ({color})",
   "task_label_owner_help": "Use {example} for an owner.",
   "task_label_type_help": "Use {example} for a task category.",

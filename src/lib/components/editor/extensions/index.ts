@@ -25,12 +25,25 @@ import {
 } from "./raw-markdown";
 import CheckIcon from "@lucide/svelte/icons/check";
 import { mount, unmount } from "svelte";
+import { m } from "#lib/paraglide/messages.js";
 
 const StyledTaskItem = TaskItem.extend({
+  addOptions() {
+    return {
+      ...this.parent!(),
+      // The default label repeats the item text, so it changes on every
+      // keystroke.
+      a11y: { checkboxLabel: () => m.editor_task_item_checkbox() },
+    };
+  },
   addNodeView() {
     const createView = this.parent!()!;
     return (props) => {
       const view = createView(props);
+      // Tiptap mirrors the label into a visually hidden span before the item
+      // text. Windows IMEs count that text when restoring the caret, so text
+      // there misplaces typed characters; the input keeps its aria-label.
+      view.dom.querySelector("label > span")?.remove();
       const icon = mount(CheckIcon, {
         target: view.dom.querySelector("label")!,
         props: { class: "task-item-check" },

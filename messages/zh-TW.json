@@ -538,6 +538,7 @@
   ],
   "task_item_mark_complete": "將「{name}」標記為已完成",
   "task_item_mark_incomplete": "將「{name}」標記為未完成",
+  "editor_task_item_checkbox": "待辦項目",
   "task_color_use": "使用 {name}（{color}）",
   "task_label_owner_help": "使用 {example} 設定負責人。",
   "task_label_type_help": "使用 {example} 設定任務類別。",
