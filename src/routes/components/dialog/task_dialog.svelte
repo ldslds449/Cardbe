@@ -134,7 +134,12 @@
 
 {#snippet mode_switch()}
   {#if onEdit && onView}
-    <Tabs.Root bind:value={() => mode, (next) => switch_mode(next)}>
+    <!-- Manual activation: the confirmation dialog returns focus to the
+         View trigger, which would otherwise re-select it and prompt again. -->
+    <Tabs.Root
+      activationMode="manual"
+      bind:value={() => mode, (next) => switch_mode(next)}
+    >
       <Tabs.List aria-label={m.task_dialog_mode()}>
         <Tabs.Trigger value="view">
           <EyeIcon />
