@@ -410,6 +410,41 @@ export class BoardStore extends TaskBoardStore {
       });
   }
 
+  create_task_template(name: string, task: Task): Promise<boolean> {
+    const expectedBoardId = this.active_board_id;
+    const generation = this.board_generation;
+    if (expectedBoardId === null) {
+      return Promise.resolve(false);
+    }
+    return addMission(() =>
+      invoke<TaskTemplateSerialized>("create_task_template", {
+        name,
+        task: serialize_task(task),
+        expectedBoardId,
+      }),
+    )
+      .then((template) => {
+        if (generation !== this.board_generation) {
+          return false;
+        }
+        const created = deserialize_task(template.task);
+        created.id = "";
+        this.templates = [
+          ...this.templates,
+          { id: template.id, name: template.name, task: created },
+        ];
+        this.show_success_with_undo(m.task_template_saved());
+        return true;
+      })
+      .catch((e: unknown) => {
+        logger.error("template.create.failed", e);
+        if (generation === this.board_generation) {
+          toast.error(translateCommandError(e));
+        }
+        return false;
+      });
+  }
+
   update_task_template(
     template_id: number,
     name: string,

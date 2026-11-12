@@ -645,6 +645,7 @@ pub fn run() {
             templates::copy_task_template_to_board,
             templates::get_task_templates,
             templates::save_task_template,
+            templates::create_task_template,
             templates::update_task_template,
             templates::delete_task_template,
             update::check_for_update,

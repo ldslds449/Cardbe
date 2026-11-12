@@ -31,6 +31,7 @@
     task_from_template,
     get_task_id,
     type Task,
+    type TaskTemplate,
   } from "./type/task.svelte";
   import {
     deserialize_column,
@@ -61,8 +62,8 @@
   import ImportConfirmDialog from "./components/dialog/import_confirm_dialog.svelte";
   import TaskColumnDialog from "./components/dialog/task_column_dialog.svelte";
   import TaskTransferDialog from "./components/dialog/task_transfer_dialog.svelte";
-  import TaskTemplateDialogs from "./components/dialog/task_template_dialogs.svelte";
-  import ViewTaskDialog from "./components/dialog/view_task_dialog.svelte";
+  import TemplateManagerDialog from "./components/dialog/template_manager_dialog.svelte";
+  import SaveTemplateDialog from "./components/dialog/save_template_dialog.svelte";
   import BoardShareDialog from "./components/dialog/board_share_dialog.svelte";
   import IrohShareDialog from "./components/dialog/iroh_share_dialog.svelte";
   import {
@@ -435,20 +436,17 @@
 
   // task templates
   let templates_dialog_open = $state(false);
-  let selected_template_id = $state("");
-  let template_column_id = $state("");
-  let template_selection_error = $state(false);
+  let templates_selected_id = $state<number | null>(null);
   let save_template_dialog_open = $state(false);
   let save_template_task_id = $state("");
   let save_template_name = $state("");
   let saving_template = $state(false);
-  let template_preview_open = $state(false);
-  let template_preview_task = $state<Task | null>(null);
-  let editing_template_id = $state<number | null>(null);
+  // The task editor is drafting a template rather than a card.
+  let editing_template = $state(false);
   let editing_template_name = $state("");
   $effect(() => {
     if (!task_dialog_open) {
-      editing_template_id = null;
+      editing_template = false;
       creating_task = false;
     }
   });
@@ -589,25 +587,22 @@
 
   function reset_board_scoped_ui() {
     search_text = "";
+    templates_selected_id = null;
     task_dialog_open = false;
     column_dialog_open = false;
     templates_dialog_open = false;
     save_template_dialog_open = false;
-    template_preview_open = false;
     import_confirm_open = false;
     task_column_dialog_open = false;
     board_share_dialog_open = false;
     card_reference_preview = null;
     view_task = null;
-    template_preview_task = null;
-    selected_template_id = "";
-    template_column_id = "";
     task_column_id = "";
     pending_import_task = null;
     pending_task_due_time = undefined;
     import_candidate = null;
     pending_task_created = undefined;
-    editing_template_id = null;
+    editing_template = false;
     task_import_target_column_id = null;
   }
 
@@ -1166,7 +1161,7 @@
     if (active_board_read_only) {
       return;
     }
-    editing_template_id = null;
+    editing_template = false;
     creating_task = false;
     dialog_template_id = "none";
     const task = board.columns[col_idx].tasks[t_idx];
@@ -1191,7 +1186,7 @@
     if (active_board_read_only) {
       return;
     }
-    editing_template_id = null;
+    editing_template = false;
     creating_task = true;
     dialog_template_id = "none";
     const column_id = board.columns[col_idx].id;
@@ -1265,7 +1260,7 @@
   }
 
   function open_imported_task(column_idx: number, task: Task) {
-    editing_template_id = null;
+    editing_template = false;
     creating_task = true;
     dialog_template_id = "none";
     const column_id = board.columns[column_idx].id;
@@ -1277,9 +1272,6 @@
   }
 
   function open_templates_dialog() {
-    selected_template_id = "";
-    template_column_id = board.columns[0]?.id ?? "";
-    template_selection_error = false;
     templates_dialog_open = true;
   }
 
@@ -1289,33 +1281,58 @@
     save_template_dialog_open = true;
   }
 
-  function preview_task_template(task: Task) {
-    template_preview_task = clone_task(task);
-    template_preview_open = true;
-  }
-
-  function edit_task_template(template_id: number) {
-    const template = board.templates.find(
-      (candidate) => candidate.id === template_id,
-    );
-    if (!template) {
-      return;
-    }
-    editing_template_id = template.id;
+  function open_template_editor(
+    title: typeof dialog_title,
+    button_text: typeof dialog_button_text,
+    name: string,
+    task: Task,
+    save: () => Promise<boolean>,
+  ) {
+    editing_template = true;
     creating_task = false;
     dialog_template_id = "none";
-    editing_template_name = template.name;
-    dialog_title = m.task_template_edit;
-    dialog_button_text = m.task_template_update;
-    dialog_task = clone_task(template.task);
-    dialog_callback = () =>
-      board.update_task_template(
-        template.id,
-        editing_template_name,
-        dialog_task,
-      );
-    templates_dialog_open = false;
+    editing_template_name = name;
+    dialog_title = title;
+    dialog_button_text = button_text;
+    dialog_task = task;
+    dialog_callback = save;
+    // The editor opens over the template manager, which stays open beneath.
     open_task_editor();
+  }
+
+  function create_task_template() {
+    open_template_editor(
+      m.template_new,
+      m.template_create,
+      "",
+      create_task(),
+      async () => {
+        const created = await board.create_task_template(
+          editing_template_name,
+          dialog_task,
+        );
+        if (created) {
+          templates_selected_id = board.templates.at(-1)?.id ?? null;
+        }
+        return created;
+      },
+    );
+  }
+
+  function edit_task_template(template: TaskTemplate) {
+    templates_selected_id = template.id;
+    open_template_editor(
+      m.task_template_edit,
+      m.task_template_update,
+      template.name,
+      clone_task(template.task),
+      () =>
+        board.update_task_template(
+          template.id,
+          editing_template_name,
+          dialog_task,
+        ),
+    );
   }
 
   function apply_template_to_new_task(template_id: string) {
@@ -1353,25 +1370,17 @@
     }
   }
 
-  function use_selected_template() {
-    const template = board.templates.find(
-      (candidate) => candidate.id.toString() === selected_template_id,
-    );
-    const column = board.columns.find(
-      (candidate) => candidate.id === template_column_id,
-    );
-    if (!template || !column) {
-      template_selection_error = true;
+  function use_task_template(template: TaskTemplate, column_id: string) {
+    if (!board.columns.some((column) => column.id === column_id)) {
       return;
     }
-
-    editing_template_id = null;
+    editing_template = false;
     creating_task = true;
     dialog_template_id = template.id.toString();
     dialog_title = m.task_template_create_card;
     dialog_button_text = m.common_add;
     dialog_task = task_from_template(template.task);
-    dialog_callback = () => board.add_new_task(column.id, dialog_task);
+    dialog_callback = () => board.add_new_task(column_id, dialog_task);
     templates_dialog_open = false;
     open_task_editor();
   }
@@ -2085,22 +2094,23 @@
           onImport={import_shared_task}
         />
 
-        <TaskTemplateDialogs
+        <TemplateManagerDialog
           bind:open={templates_dialog_open}
-          bind:save_open={save_template_dialog_open}
-          bind:selected_template_id
-          bind:template_column_id
-          bind:selection_error={template_selection_error}
-          bind:save_template_name
-          {saving_template}
+          bind:selected_id={templates_selected_id}
           templates={board.templates}
-          column_items={task_column_items}
-          onUseTemplate={use_selected_template}
-          onPreviewTemplate={preview_task_template}
-          onEditTemplate={edit_task_template}
-          onDeleteTemplate={(template_id) =>
-            board.delete_task_template(template_id)}
-          onSaveTemplate={save_task_template}
+          columns={board.columns}
+          read_only={active_board_read_only}
+          onUse={use_task_template}
+          onCreate={create_task_template}
+          onEdit={edit_task_template}
+          onDelete={(template_id) => board.delete_task_template(template_id)}
+        />
+
+        <SaveTemplateDialog
+          bind:open={save_template_dialog_open}
+          bind:name={save_template_name}
+          saving={saving_template}
+          onSave={save_task_template}
         />
 
         <TaskDialog
@@ -2122,7 +2132,7 @@
           dialog_title={dialog_title()}
           submit_button_text={dialog_button_text()}
           auto_focus_title={creating_task}
-          show_template_name={editing_template_id !== null}
+          show_template_name={editing_template}
           bind:template_name={editing_template_name}
           show_template_picker={creating_task}
           templates={board.templates}
@@ -2135,15 +2145,10 @@
               } else {
                 task_dialog_open = false;
               }
-              editing_template_id = null;
+              editing_template = false;
               creating_task = false;
             }
           }}
-        />
-
-        <ViewTaskDialog
-          bind:open={template_preview_open}
-          task={template_preview_task}
         />
 
         <ImportConfirmDialog

@@ -809,6 +809,8 @@
       />
       {#if invalid_template_name}
         <Field.Error>{m.task_template_name_required()}</Field.Error>
+      {:else}
+        <Field.Description>{m.template_reset_fields()}</Field.Description>
       {/if}
     </Field.Field>
   {/if}
@@ -907,88 +909,92 @@
       </Popover.Content>
     </Popover.Root>
   </Field.Field>
-  <div class="grid gap-4 @sm/field-group:grid-cols-2">
-    <Field.Field data-invalid={invalid_time_range}>
-      <Field.FieldLabel id="task-start-label"
-        >{m.task_start_time()}</Field.FieldLabel
-      >
-      <DateTimePicker
-        bind:value={task.start_time}
-        bind:at_midnight={task.start_at_midnight}
-        labelledby="task-start-label"
-        emptyLabel={m.task_start_none()}
-        clearLabel={m.task_start_clear()}
-        invalid={invalid_time_range}
-      />
-    </Field.Field>
-    <Field.Field data-invalid={invalid_time_range}>
-      <Field.FieldLabel id="task-due-label"
-        >{m.task_due_time()}</Field.FieldLabel
-      >
-      <DateTimePicker
-        bind:value={task.due_time}
-        bind:at_midnight={task.due_at_midnight}
-        labelledby="task-due-label"
-        invalid={invalid_time_range}
-      />
-    </Field.Field>
-  </div>
-  {#if invalid_time_range}
-    <Field.Error>{m.task_start_after_due()}</Field.Error>
-  {/if}
-  {#if task.due_time}
-    <Field.Field>
-      <Field.FieldLabel>{m.task_repeat()}</Field.FieldLabel>
-      <div class="flex items-center gap-2">
-        {#if task.recurrence}
-          <span class="text-sm text-muted-foreground"
-            >{m.task_repeat_every()}</span
-          >
-          <Input
-            class="w-20"
-            type="number"
-            min="1"
-            max="999"
-            aria-label={m.task_repeat_interval()}
-            bind:value={task.recurrence.interval}
-            onfocusout={() => {
-              if (task.recurrence) {
-                task.recurrence.interval = Math.min(
-                  999,
-                  Math.max(1, Number(task.recurrence.interval) || 1),
-                );
-              }
-            }}
-          />
-        {/if}
-        <Select.Root
-          type="single"
-          value={task.recurrence?.frequency ?? "none"}
-          onValueChange={(value) => set_recurrence(value ?? "none")}
+  <!-- Templates keep no dates, so they offer no dates or repeats to set. -->
+  {#if !show_template_name}
+    <div class="grid gap-4 @sm/field-group:grid-cols-2">
+      <Field.Field data-invalid={invalid_time_range}>
+        <Field.FieldLabel id="task-start-label"
+          >{m.task_start_time()}</Field.FieldLabel
         >
-          <Select.Trigger class="min-w-40 flex-1">
-            {task.recurrence?.frequency === "daily"
-              ? m.task_repeat_days_label()
-              : task.recurrence?.frequency === "weekly"
-                ? m.task_repeat_weeks_label()
-                : task.recurrence?.frequency === "monthly"
-                  ? m.task_repeat_months_label()
-                  : m.task_repeat_none()}
-          </Select.Trigger>
-          <Select.Content>
-            <Select.Item value="none">{m.task_repeat_none()}</Select.Item>
-            <Select.Item value="daily">{m.task_repeat_days()}</Select.Item>
-            <Select.Item value="weekly">{m.task_repeat_weeks()}</Select.Item>
-            <Select.Item value="monthly">{m.task_repeat_months()}</Select.Item>
-          </Select.Content>
-        </Select.Root>
-      </div>
-      {#if task.recurrence}
-        <Field.Description>
-          {m.task_repeat_description()}
-        </Field.Description>
-      {/if}
-    </Field.Field>
+        <DateTimePicker
+          bind:value={task.start_time}
+          bind:at_midnight={task.start_at_midnight}
+          labelledby="task-start-label"
+          emptyLabel={m.task_start_none()}
+          clearLabel={m.task_start_clear()}
+          invalid={invalid_time_range}
+        />
+      </Field.Field>
+      <Field.Field data-invalid={invalid_time_range}>
+        <Field.FieldLabel id="task-due-label"
+          >{m.task_due_time()}</Field.FieldLabel
+        >
+        <DateTimePicker
+          bind:value={task.due_time}
+          bind:at_midnight={task.due_at_midnight}
+          labelledby="task-due-label"
+          invalid={invalid_time_range}
+        />
+      </Field.Field>
+    </div>
+    {#if invalid_time_range}
+      <Field.Error>{m.task_start_after_due()}</Field.Error>
+    {/if}
+    {#if task.due_time}
+      <Field.Field>
+        <Field.FieldLabel>{m.task_repeat()}</Field.FieldLabel>
+        <div class="flex items-center gap-2">
+          {#if task.recurrence}
+            <span class="text-sm text-muted-foreground"
+              >{m.task_repeat_every()}</span
+            >
+            <Input
+              class="w-20"
+              type="number"
+              min="1"
+              max="999"
+              aria-label={m.task_repeat_interval()}
+              bind:value={task.recurrence.interval}
+              onfocusout={() => {
+                if (task.recurrence) {
+                  task.recurrence.interval = Math.min(
+                    999,
+                    Math.max(1, Number(task.recurrence.interval) || 1),
+                  );
+                }
+              }}
+            />
+          {/if}
+          <Select.Root
+            type="single"
+            value={task.recurrence?.frequency ?? "none"}
+            onValueChange={(value) => set_recurrence(value ?? "none")}
+          >
+            <Select.Trigger class="min-w-40 flex-1">
+              {task.recurrence?.frequency === "daily"
+                ? m.task_repeat_days_label()
+                : task.recurrence?.frequency === "weekly"
+                  ? m.task_repeat_weeks_label()
+                  : task.recurrence?.frequency === "monthly"
+                    ? m.task_repeat_months_label()
+                    : m.task_repeat_none()}
+            </Select.Trigger>
+            <Select.Content>
+              <Select.Item value="none">{m.task_repeat_none()}</Select.Item>
+              <Select.Item value="daily">{m.task_repeat_days()}</Select.Item>
+              <Select.Item value="weekly">{m.task_repeat_weeks()}</Select.Item>
+              <Select.Item value="monthly">{m.task_repeat_months()}</Select.Item
+              >
+            </Select.Content>
+          </Select.Root>
+        </div>
+        {#if task.recurrence}
+          <Field.Description>
+            {m.task_repeat_description()}
+          </Field.Description>
+        {/if}
+      </Field.Field>
+    {/if}
   {/if}
   <Field.Field>
     <Field.FieldLabel id="task-priority-label"
@@ -1065,16 +1071,18 @@
         <div role="list" class="space-y-2">
           {#each task.items as item, item_index (item.id)}
             <SortableChecklistItem item_id={item.id} index={item_index}>
-              <Checkbox
-                bind:checked={item.completed}
-                aria-label={item.completed
-                  ? m.task_item_mark_incomplete({
-                      name: item.text || m.task_item(),
-                    })
-                  : m.task_item_mark_complete({
-                      name: item.text || m.task_item(),
-                    })}
-              />
+              {#if !show_template_name}
+                <Checkbox
+                  bind:checked={item.completed}
+                  aria-label={item.completed
+                    ? m.task_item_mark_incomplete({
+                        name: item.text || m.task_item(),
+                      })
+                    : m.task_item_mark_complete({
+                        name: item.text || m.task_item(),
+                      })}
+                />
+              {/if}
               <Input
                 class={`h-7 min-w-0 flex-1 border-0 px-1.5 py-1 text-sm shadow-none focus-visible:ring-0 ${item.completed ? "text-muted-foreground line-through" : ""}`}
                 placeholder={m.task_item()}

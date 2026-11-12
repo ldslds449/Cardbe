@@ -1822,6 +1822,66 @@ describe("pending task operations", () => {
     });
   });
 
+  it("creates a template from a drafted card", async () => {
+    invoke_mock.mockImplementation((command) => {
+      if (command === "create_task_template") {
+        return Promise.resolve({
+          id: 9,
+          name: "Weekly review",
+          task: {
+            id: -1,
+            title: "Review",
+            description: "",
+            color: "",
+            start_time: 0,
+            due_time: undefined,
+            labels: ["type:Review"],
+            items: [],
+            recurrence: undefined,
+          },
+        });
+      }
+      return Promise.resolve();
+    });
+    const store = create_store();
+    const draft = create_task("", "Review");
+    draft.labels = ["type:Review"];
+
+    await expect(
+      store.create_task_template("Weekly review", draft),
+    ).resolves.toBe(true);
+
+    expect(invoke_mock).toHaveBeenCalledWith("create_task_template", {
+      name: "Weekly review",
+      task: expect.objectContaining({
+        title: "Review",
+        labels: ["type:Review"],
+      }),
+      expectedBoardId: 7,
+    });
+    expect(store.templates).toEqual([
+      expect.objectContaining({
+        id: 9,
+        name: "Weekly review",
+        task: expect.objectContaining({ id: "", title: "Review" }),
+      }),
+    ]);
+  });
+
+  it("keeps templates unchanged when creating one fails", async () => {
+    invoke_mock.mockImplementation((command) =>
+      command === "create_task_template"
+        ? Promise.reject({ code: "TEMPLATE_NAME_REQUIRED" })
+        : Promise.resolve(),
+    );
+    const store = create_store();
+
+    await expect(
+      store.create_task_template(" ", create_task("", "Review")),
+    ).resolves.toBe(false);
+    expect(store.templates).toEqual([]);
+  });
+
   it("finds a created task through its retained temporary ID", async () => {
     invoke_mock.mockImplementation((command) => {
       if (command === "add_task") {
