@@ -431,13 +431,34 @@ const pluginLogLevels = {
   warn: m.plugin_log_level_warn,
   error: m.plugin_log_level_error,
 };
+export function pluginLogLevel(level: PluginRunLog["level"]): string {
+  return (pluginLogLevels[level] ?? m.plugin_log_level_info)();
+}
+/** The log text without its level, for views that show the level separately. */
+export function pluginLogBody(log: PluginRunLog): string {
+  return log.message != null
+    ? log.message
+    : m.plugin_log_count({
+        code: log.code ?? "",
+        count: formatNumber(log.count),
+      });
+}
 export function pluginLogMessage(log: PluginRunLog): string {
   if (log.message != null) {
-    const level = (pluginLogLevels[log.level] ?? m.plugin_log_level_info)();
+    const level = pluginLogLevel(log.level);
     return m.plugin_log_text({ level, message: log.message });
   }
-  const count = formatNumber(log.count);
-  return m.plugin_log_count({ code: log.code ?? "", count });
+  return pluginLogBody(log);
+}
+export function pluginRunStatus(value: PluginRun["status"]): string {
+  return {
+    running: m.plugin_running,
+    success: m.plugin_success,
+    failed: m.plugin_failed,
+    cancelled: m.plugin_cancelled,
+    interrupted: m.plugin_interrupted,
+    awaiting_permission: m.plugin_awaiting_permission,
+  }[value]();
 }
 
 // Secrets remain separate from config and are never restored into form drafts.

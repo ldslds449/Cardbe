@@ -12,7 +12,10 @@ import {
   pluginDefaults,
   pluginText,
   pluginErrorMessage,
+  pluginLogBody,
+  pluginLogLevel,
   pluginLogMessage,
+  pluginRunStatus,
   isNewerPluginVersion,
   type PluginPackage,
   type PluginSetting,
@@ -429,6 +432,20 @@ describe("plugin settings", () => {
           catalog.plugin_log_text
             .replace("{level}", catalog.plugin_log_level_warn)
             .replace("{message}", "page 2\nrate limited"),
+        );
+        expect(
+          pluginLogBody({ level: "warn", count: 0, message: "page 2" }),
+        ).toBe("page 2");
+        expect(
+          pluginLogBody({ level: "info", code: "ITEMS_SYNCED", count: 3 }),
+        ).toBe(
+          catalog.plugin_log_count
+            .replace("{code}", "ITEMS_SYNCED")
+            .replace("{count}", formatNumber(3)),
+        );
+        expect(pluginLogLevel("debug")).toBe(catalog.plugin_log_level_debug);
+        expect(pluginRunStatus("awaiting_permission")).toBe(
+          catalog.plugin_awaiting_permission,
         );
         expect(
           pluginErrorMessage({

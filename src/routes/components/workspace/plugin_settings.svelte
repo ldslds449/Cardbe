@@ -46,7 +46,7 @@
     pluginApiVersions,
     pluginCredentialScopes,
     pluginErrorMessage,
-    pluginLogMessage,
+    pluginRunStatus,
     pluginDefaults,
     pluginText,
     isNewerPluginVersion,
@@ -60,6 +60,7 @@
     type PluginLimits,
   } from "#lib/plugins.js";
   import { board, type BoardSummary } from "../../board.svelte";
+  import PluginRunHistory from "./plugin_run_history.svelte";
 
   let {
     open = false,
@@ -710,16 +711,6 @@
       historyId = null;
     });
   }
-  function status(value: PluginRun["status"]) {
-    return {
-      running: m.plugin_running(),
-      success: m.plugin_success(),
-      failed: m.plugin_failed(),
-      cancelled: m.plugin_cancelled(),
-      interrupted: m.plugin_interrupted(),
-      awaiting_permission: m.plugin_awaiting_permission(),
-    }[value];
-  }
 </script>
 
 {#snippet fieldHelp(field: PluginSetting)}
@@ -1094,7 +1085,7 @@
               {#if instance.last_run_status && !instance.running}<p
                   class="text-sm"
                 >
-                  {status(instance.last_run_status)}
+                  {pluginRunStatus(instance.last_run_status)}
                 </p>{/if}
               {#if instance.running}<p role="status" class="text-sm">
                   {m.plugin_running()}
@@ -1298,78 +1289,19 @@
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
-<Dialog.Root
+<PluginRunHistory
   bind:open={
     () => open && historyId !== null,
     (value) => {
       if (!value) historyId = null;
     }
   }
->
-  <Dialog.Content
-    class="flex h-[85dvh] max-h-200 flex-col overflow-hidden sm:max-w-2xl"
-  >
-    <Dialog.Header>
-      <Dialog.Title>{m.plugin_logs()}</Dialog.Title>
-      <Dialog.Description
-        >{pluginState.instances.find((instance) => instance.id === historyId)
-          ?.name ?? m.plugin_logs()}</Dialog.Description
-      >
-    </Dialog.Header>
-    <ScrollArea type="always" class="min-h-0 flex-1">
-      <div class="space-y-3 py-1 ps-1 pe-4">
-        {#if error}<p role="alert" class="text-sm text-destructive">
-            {pluginErrorMessage(error)}
-          </p>{/if}
-        {#if pending && !runs.length}<p
-            role="status"
-            class="text-sm text-muted-foreground"
-          >
-            {m.ui_loading()}
-          </p>
-        {:else if !runs.length}<p class="text-sm text-muted-foreground">
-            {m.plugin_no_runs()}
-          </p>{/if}
-        {#each runs as run (run.id)}<div class="space-y-2 border-t pt-3">
-            <p class="text-sm font-medium">
-              {formatDateTime(run.started_at)} · {status(run.status)} · {run.trigger ===
-              "manual"
-                ? m.plugin_manual_trigger()
-                : m.plugin_schedule_trigger()}
-            </p>
-            <p class="text-sm">
-              {m.plugin_run_counts({
-                created: formatNumber(run.created),
-                updated: formatNumber(run.updated),
-              })}
-            </p>
-            {#if run.finished_at}<p class="text-xs text-muted-foreground">
-                {m.plugin_duration({
-                  seconds: formatNumber(
-                    (run.finished_at - run.started_at) / 1000,
-                    { maximumFractionDigits: 1 },
-                  ),
-                })}
-              </p>{/if}{#if run.error}<p class="text-sm text-destructive">
-                {pluginErrorMessage(run.error)}
-              </p>{/if}
-            <p class="break-all font-mono text-xs text-muted-foreground">
-              {run.id}
-            </p>
-            {#each run.logs as log, i (i)}<p
-                class={[
-                  "whitespace-pre-wrap break-words font-mono text-xs",
-                  log.level === "error" && "text-destructive",
-                  log.level === "debug" && "text-muted-foreground",
-                ]}
-              >
-                {pluginLogMessage(log)}
-              </p>{/each}
-          </div>{/each}
-      </div>
-    </ScrollArea>
-  </Dialog.Content>
-</Dialog.Root>
+  name={pluginState.instances.find((instance) => instance.id === historyId)
+    ?.name ?? m.plugin_logs()}
+  {runs}
+  {pending}
+  {error}
+/>
 
 {#if editing}
   <Dialog.Root
