@@ -1,4 +1,4 @@
-use super::runtime::RuntimeError;
+use super::runtime::{PluginResource, RuntimeError};
 use crate::link_preview::safety::{public_addresses, public_ip, safe_url};
 use reqwest::{redirect::Policy, Client, Response, Url};
 use std::{
@@ -194,7 +194,7 @@ pub(crate) fn validate_request(
             .sum::<usize>()
             > 32 * 1024
     {
-        return Err(RuntimeError::ResourceLimit);
+        return Err(RuntimeError::ResourceLimit(PluginResource::HttpRequestSize));
     }
     let mut names = std::collections::HashSet::new();
     for (name, value) in &request.headers {
@@ -372,12 +372,16 @@ async fn get_with<
             .content_length()
             .is_some_and(|length| length > RESPONSE_LIMIT as u64)
         {
-            return Err(RuntimeError::ResourceLimit);
+            return Err(RuntimeError::ResourceLimit(
+                PluginResource::HttpResponseSize,
+            ));
         }
         let mut body = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|_| RuntimeError::Network)? {
             if body.len() + chunk.len() > RESPONSE_LIMIT {
-                return Err(RuntimeError::ResourceLimit);
+                return Err(RuntimeError::ResourceLimit(
+                    PluginResource::HttpResponseSize,
+                ));
             }
             body.extend_from_slice(&chunk);
         }
@@ -453,7 +457,7 @@ mod tests {
                 &Outgoing::post("application/json", &vec![0; BODY_LIMIT + 1]),
                 &policy
             ),
-            Err(RuntimeError::ResourceLimit)
+            Err(RuntimeError::ResourceLimit(PluginResource::HttpRequestSize))
         ));
         for invalid in ["", "application/json\r\nAuthorization: injected"] {
             assert!(validate_request(&Outgoing::post(invalid, body), &policy).is_err());
@@ -570,7 +574,7 @@ mod tests {
         let many: Vec<_> = many.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
         assert!(matches!(
             validate_request(&send_request(Method::GET, &many, None), &policy),
-            Err(RuntimeError::ResourceLimit)
+            Err(RuntimeError::ResourceLimit(PluginResource::HttpRequestSize))
         ));
     }
     fn deadline() -> Instant {
@@ -1274,7 +1278,7 @@ mod tests {
     async fn redirects_declared_and_streamed_size_limits_are_rejected() {
         for bytes in [b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\nLocation: http://127.0.0.1/private\r\n\r\n".to_vec(),format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",RESPONSE_LIMIT+1).into_bytes(),[b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec(),vec![b'x';RESPONSE_LIMIT+1]].concat()] {
             let result=get_with("https://api.github.com",&policy(),cancel(),deadline(),|_|async {Ok(vec!["93.184.216.34:443".parse().unwrap()])},|_,_|async {Ok(mock_response(bytes).await)}).await;
-            assert!(matches!(result,Err(RuntimeError::Redirect|RuntimeError::ResourceLimit)),"{result:?}");
+            assert!(matches!(result,Err(RuntimeError::Redirect|RuntimeError::ResourceLimit(PluginResource::HttpResponseSize))),"{result:?}");
         }
         for bytes in [
             [

@@ -9,6 +9,8 @@
   import { open as openFile } from "@tauri-apps/plugin-dialog";
   import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
   import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import * as Collapsible from "#lib/components/ui/collapsible/index.js";
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import * as Select from "#lib/components/ui/select/index.js";
   import * as Popover from "#lib/components/ui/popover/index.js";
   import { Button } from "#lib/components/ui/button/index.js";
@@ -35,6 +37,11 @@
   import {
     invalidPluginSettings,
     invalidPluginCredentialSettings,
+    invalidPluginLimits,
+    pluginInstanceLimits,
+    pluginLimitRanges,
+    pluginMemoryOptions,
+    defaultPluginLimits,
     validPluginManifestVersion,
     pluginApiVersions,
     pluginCredentialScopes,
@@ -50,6 +57,7 @@
     type PluginInstance,
     type PluginRun,
     type PluginSetting,
+    type PluginLimits,
   } from "#lib/plugins.js";
   import { board, type BoardSummary } from "../../board.svelte";
 
@@ -118,6 +126,11 @@
   let invalid = $state<string[]>([]);
   let saveAttempted = $state(false);
   let editorForm = $state<HTMLFormElement | null>(null);
+  let limits = $state<Record<keyof PluginLimits, number | undefined>>({
+    ...defaultPluginLimits,
+  });
+  let limitsOpen = $state(false);
+  const invalidLimits = $derived(invalidPluginLimits(limits));
   const invalidInterval = $derived(
     interval === undefined ||
       !Number.isSafeInteger(interval) ||
@@ -327,6 +340,10 @@
       .filter((domain) => domains.includes(domain));
     enabled = instance?.enabled ?? false;
     interval = instance?.interval_seconds ?? 0;
+    limits = pluginInstanceLimits(instance?.limits);
+    limitsOpen = (
+      Object.keys(defaultPluginLimits) as (keyof PluginLimits)[]
+    ).some((key) => limits[key] !== defaultPluginLimits[key]);
     consent = !!instance && !instance.needs_review;
     invalid = [];
     saveAttempted = false;
@@ -364,9 +381,13 @@
       !boardId ||
       !consent ||
       invalidInterval ||
+      invalidLimits.length ||
       invalid.length
     ) {
       error = null;
+      if (invalidLimits.length) {
+        limitsOpen = true;
+      }
       await focusEditorError();
       return;
     }
@@ -386,6 +407,7 @@
           ),
           enabled,
           interval_seconds: interval,
+          limits,
         },
         secrets: Object.fromEntries(
           Object.entries(secrets).filter(([, value]) => value !== ""),
@@ -1628,6 +1650,185 @@
                 {m.plugin_interval_help({ seconds: formatNumber(60) })}
               </Field.Description>
             </Field.Field>
+            <Collapsible.Root bind:open={limitsOpen} class="rounded-md border">
+              <Collapsible.Trigger
+                class="group flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {m.plugin_limits()}
+                <ChevronDownIcon
+                  class="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+                />
+              </Collapsible.Trigger>
+              <Collapsible.Content class="border-t px-3 py-3">
+                <Field.Group class="gap-4">
+                  <Field.Description>{m.plugin_limits_help()}</Field.Description
+                  >
+                  <Field.Field
+                    data-disabled={pending}
+                    data-invalid={saveAttempted &&
+                      invalidLimits.includes("timeout_seconds")}
+                  >
+                    <Field.Label for="plugin-limit-timeout-seconds"
+                      >{m.plugin_limit_timeout()}</Field.Label
+                    ><Input
+                      id="plugin-limit-timeout-seconds"
+                      aria-invalid={saveAttempted &&
+                        invalidLimits.includes("timeout_seconds")}
+                      type="number"
+                      class="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      min={pluginLimitRanges.timeout_seconds[0]}
+                      max={pluginLimitRanges.timeout_seconds[1]}
+                      step="1"
+                      bind:value={limits.timeout_seconds}
+                      aria-describedby={saveAttempted &&
+                      invalidLimits.includes("timeout_seconds")
+                        ? "plugin-limit-timeout-seconds-help plugin-limit-timeout-seconds-error"
+                        : "plugin-limit-timeout-seconds-help"}
+                      disabled={pending}
+                    />
+                    {#if saveAttempted && invalidLimits.includes("timeout_seconds")}<Field.Error
+                        id="plugin-limit-timeout-seconds-error"
+                        >{m.plugin_field_invalid()}</Field.Error
+                      >{/if}
+                    <Field.Description id="plugin-limit-timeout-seconds-help">
+                      {m.plugin_limit_timeout_help({
+                        min: formatNumber(pluginLimitRanges.timeout_seconds[0]),
+                        max: formatNumber(pluginLimitRanges.timeout_seconds[1]),
+                        default: formatNumber(
+                          defaultPluginLimits.timeout_seconds,
+                        ),
+                      })}
+                    </Field.Description>
+                  </Field.Field>
+                  <Field.Field
+                    data-disabled={pending}
+                    data-invalid={saveAttempted &&
+                      invalidLimits.includes("http_requests")}
+                  >
+                    <Field.Label for="plugin-limit-http-requests"
+                      >{m.plugin_limit_http_requests()}</Field.Label
+                    ><Input
+                      id="plugin-limit-http-requests"
+                      aria-invalid={saveAttempted &&
+                        invalidLimits.includes("http_requests")}
+                      type="number"
+                      class="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      min={pluginLimitRanges.http_requests[0]}
+                      max={pluginLimitRanges.http_requests[1]}
+                      step="1"
+                      bind:value={limits.http_requests}
+                      aria-describedby={saveAttempted &&
+                      invalidLimits.includes("http_requests")
+                        ? "plugin-limit-http-requests-help plugin-limit-http-requests-error"
+                        : "plugin-limit-http-requests-help"}
+                      disabled={pending}
+                    />
+                    {#if saveAttempted && invalidLimits.includes("http_requests")}<Field.Error
+                        id="plugin-limit-http-requests-error"
+                        >{m.plugin_field_invalid()}</Field.Error
+                      >{/if}
+                    <Field.Description id="plugin-limit-http-requests-help">
+                      {m.plugin_limit_http_requests_help({
+                        min: formatNumber(pluginLimitRanges.http_requests[0]),
+                        max: formatNumber(pluginLimitRanges.http_requests[1]),
+                        default: formatNumber(
+                          defaultPluginLimits.http_requests,
+                        ),
+                      })}
+                    </Field.Description>
+                  </Field.Field>
+                  <Field.Field
+                    data-disabled={pending}
+                    data-invalid={saveAttempted &&
+                      invalidLimits.includes("board_queries")}
+                  >
+                    <Field.Label for="plugin-limit-board-queries"
+                      >{m.plugin_limit_board_queries()}</Field.Label
+                    ><Input
+                      id="plugin-limit-board-queries"
+                      aria-invalid={saveAttempted &&
+                        invalidLimits.includes("board_queries")}
+                      type="number"
+                      class="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      min={pluginLimitRanges.board_queries[0]}
+                      max={pluginLimitRanges.board_queries[1]}
+                      step="1"
+                      bind:value={limits.board_queries}
+                      aria-describedby={saveAttempted &&
+                      invalidLimits.includes("board_queries")
+                        ? "plugin-limit-board-queries-help plugin-limit-board-queries-error"
+                        : "plugin-limit-board-queries-help"}
+                      disabled={pending}
+                    />
+                    {#if saveAttempted && invalidLimits.includes("board_queries")}<Field.Error
+                        id="plugin-limit-board-queries-error"
+                        >{m.plugin_field_invalid()}</Field.Error
+                      >{/if}
+                    <Field.Description id="plugin-limit-board-queries-help">
+                      {m.plugin_limit_board_queries_help({
+                        min: formatNumber(pluginLimitRanges.board_queries[0]),
+                        max: formatNumber(pluginLimitRanges.board_queries[1]),
+                        default: formatNumber(
+                          defaultPluginLimits.board_queries,
+                        ),
+                      })}
+                    </Field.Description>
+                  </Field.Field>
+                  <Field.Field
+                    data-disabled={pending}
+                    data-invalid={saveAttempted &&
+                      invalidLimits.includes("memory_mib")}
+                  >
+                    <Field.Label for="plugin-limit-memory"
+                      >{m.plugin_limit_memory()}</Field.Label
+                    >
+                    <Select.Root
+                      type="single"
+                      value={String(limits.memory_mib)}
+                      onValueChange={(value) => {
+                        limits.memory_mib = Number(value);
+                      }}
+                      disabled={pending}
+                    >
+                      <Select.Trigger
+                        id="plugin-limit-memory"
+                        class="w-full"
+                        aria-invalid={saveAttempted &&
+                          invalidLimits.includes("memory_mib")}
+                        aria-describedby="plugin-limit-memory-help"
+                        >{m.plugin_limit_memory_option({
+                          size: formatNumber(limits.memory_mib ?? 0),
+                        })}</Select.Trigger
+                      >
+                      <Select.Content
+                        >{#each pluginMemoryOptions as size (size)}<Select.Item
+                            value={String(size)}
+                            >{m.plugin_limit_memory_option({
+                              size: formatNumber(size),
+                            })}</Select.Item
+                          >{/each}</Select.Content
+                      >
+                    </Select.Root>
+                    <Field.Description id="plugin-limit-memory-help">
+                      {m.plugin_limit_memory_help({
+                        size: formatNumber(defaultPluginLimits.memory_mib),
+                      })}
+                    </Field.Description>
+                  </Field.Field>
+                  <div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={pending}
+                      onclick={() => {
+                        limits = { ...defaultPluginLimits };
+                      }}>{m.plugin_limits_reset()}</Button
+                    >
+                  </div>
+                </Field.Group>
+              </Collapsible.Content>
+            </Collapsible.Root>
             <Field.Separator />
             <Field.Group
               role="group"

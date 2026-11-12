@@ -124,6 +124,46 @@ pub struct PendingDomain {
     #[serde(default)]
     pub private_network: bool,
 }
+/// Device-local execution limits for one instance. Stored values outside the
+/// allowed ranges fall back to the defaults when a run starts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PluginLimits {
+    pub timeout_seconds: u32,
+    pub http_requests: u32,
+    pub board_queries: u32,
+    pub memory_mib: u32,
+}
+impl Default for PluginLimits {
+    fn default() -> Self {
+        Self {
+            timeout_seconds: 60,
+            http_requests: 100,
+            board_queries: 1000,
+            memory_mib: 512,
+        }
+    }
+}
+impl PluginLimits {
+    pub const TIMEOUT_SECONDS: std::ops::RangeInclusive<u32> = 10..=600;
+    pub const HTTP_REQUESTS: std::ops::RangeInclusive<u32> = 1..=2000;
+    pub const BOARD_QUERIES: std::ops::RangeInclusive<u32> = 1..=10_000;
+    pub const MEMORY_MIB: [u32; 3] = [256, 512, 1024];
+    pub fn valid(&self) -> bool {
+        Self::TIMEOUT_SECONDS.contains(&self.timeout_seconds)
+            && Self::HTTP_REQUESTS.contains(&self.http_requests)
+            && Self::BOARD_QUERIES.contains(&self.board_queries)
+            && Self::MEMORY_MIB.contains(&self.memory_mib)
+    }
+    /// Limits a run uses; tampered or out-of-range stored values use the defaults.
+    pub fn effective(self) -> Self {
+        if self.valid() {
+            self
+        } else {
+            Self::default()
+        }
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PluginInstance {
     pub id: String,
@@ -145,6 +185,8 @@ pub struct PluginInstance {
     #[serde(default)]
     pub credentials_need_review: bool,
     pub interval_seconds: u64,
+    #[serde(default)]
+    pub limits: PluginLimits,
     pub last_run_at: Option<i64>,
     #[serde(default)]
     pub last_run_status: Option<String>,
@@ -191,6 +233,8 @@ pub struct InstanceInput {
     pub private_network_domains: Vec<String>,
     pub enabled: bool,
     pub interval_seconds: u64,
+    #[serde(default)]
+    pub limits: PluginLimits,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RunLog {
@@ -231,6 +275,63 @@ pub fn id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn instance_limits_default_validate_ranges_and_fall_back_when_invalid() {
+        let defaults = PluginLimits::default();
+        assert!(defaults.valid());
+        let legacy: PluginLimits = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(legacy, defaults);
+        let partial: PluginLimits =
+            serde_json::from_value(serde_json::json!({"http_requests": 500})).unwrap();
+        assert_eq!(partial.http_requests, 500);
+        assert_eq!(partial.timeout_seconds, defaults.timeout_seconds);
+        let widest = PluginLimits {
+            timeout_seconds: 600,
+            http_requests: 2000,
+            board_queries: 10_000,
+            memory_mib: 1024,
+        };
+        assert!(widest.valid());
+        assert_eq!(widest.effective(), widest);
+        for invalid in [
+            PluginLimits {
+                timeout_seconds: 9,
+                ..defaults
+            },
+            PluginLimits {
+                timeout_seconds: 601,
+                ..defaults
+            },
+            PluginLimits {
+                http_requests: 0,
+                ..defaults
+            },
+            PluginLimits {
+                http_requests: 2001,
+                ..defaults
+            },
+            PluginLimits {
+                board_queries: 0,
+                ..defaults
+            },
+            PluginLimits {
+                board_queries: 10_001,
+                ..defaults
+            },
+            PluginLimits {
+                memory_mib: 768,
+                ..defaults
+            },
+            PluginLimits {
+                memory_mib: 2048,
+                ..defaults
+            },
+        ] {
+            assert!(!invalid.valid(), "{invalid:?}");
+            assert_eq!(invalid.effective(), defaults);
+        }
+    }
 
     #[test]
     fn setting_descriptions_are_optional_and_preserve_localized_text() {

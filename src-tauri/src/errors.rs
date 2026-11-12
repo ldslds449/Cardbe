@@ -179,6 +179,9 @@ pub enum CommandError {
         plugin_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<PluginFailureReason>,
+        /// Which host limit stopped a `RESOURCE_LIMIT` run.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resource: Option<PluginResource>,
     },
     PluginPackageInvalid {
         reason: PluginPackageIssue,
@@ -377,6 +380,26 @@ pub enum PluginFailureReason {
     InvalidCredential,
 }
 
+/// The host limit a plugin run exceeded; guests still see `RESOURCE_LIMIT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PluginResource {
+    /// Linear memory or table growth.
+    Memory,
+    /// Number of HTTP requests per run.
+    HttpRequests,
+    /// A single request, its headers, or the total request bodies per run.
+    HttpRequestSize,
+    /// A single response body or the total response bodies per run.
+    HttpResponseSize,
+    /// Returned tasks, operations, cursor, or encoded result size.
+    Output,
+    /// Instance configuration size.
+    Config,
+    /// Component file size.
+    Component,
+}
+
 /// Why a plugin package was rejected during installation or update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -413,6 +436,7 @@ pub enum PluginHostError {
     RuntimeFailed {
         plugin_id: String,
         reason: PluginFailureReason,
+        resource: Option<PluginResource>,
     },
     PermissionDenied {
         plugin_id: String,
@@ -431,9 +455,14 @@ pub enum PluginHostError {
 impl From<PluginHostError> for CommandError {
     fn from(error: PluginHostError) -> Self {
         match error {
-            PluginHostError::RuntimeFailed { plugin_id, reason } => Self::PluginExecutionFailed {
+            PluginHostError::RuntimeFailed {
+                plugin_id,
+                reason,
+                resource,
+            } => Self::PluginExecutionFailed {
                 plugin_id,
                 reason: Some(reason),
+                resource,
             },
             PluginHostError::PermissionDenied {
                 plugin_id,
@@ -447,6 +476,7 @@ impl From<PluginHostError> for CommandError {
                 Self::PluginExecutionFailed {
                     plugin_id,
                     reason: None,
+                    resource: None,
                 }
             }
             PluginHostError::User { plugin_id, error } => Self::PluginError {
@@ -467,10 +497,20 @@ mod tests {
         assert_eq!(
             serde_json::to_value(CommandError::from(PluginHostError::RuntimeFailed {
                 plugin_id: "fixture".into(),
-                reason: PluginFailureReason::WasmTrap
+                reason: PluginFailureReason::WasmTrap,
+                resource: None,
             }))
             .unwrap(),
             json!({"code":"PLUGIN_EXECUTION_FAILED", "plugin_id":"fixture", "reason":"WASM_TRAP"})
+        );
+        assert_eq!(
+            serde_json::to_value(CommandError::from(PluginHostError::RuntimeFailed {
+                plugin_id: "fixture".into(),
+                reason: PluginFailureReason::ResourceLimit,
+                resource: Some(PluginResource::HttpRequests),
+            }))
+            .unwrap(),
+            json!({"code":"PLUGIN_EXECUTION_FAILED", "plugin_id":"fixture", "reason":"RESOURCE_LIMIT", "resource":"HTTP_REQUESTS"})
         );
         let error = ShareError::from(DomainError::repository(Box::new(
             DomainError::BoardNotFound,

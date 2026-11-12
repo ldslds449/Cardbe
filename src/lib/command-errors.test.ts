@@ -389,4 +389,50 @@ describe("command error boundary", () => {
       }),
     ).toEqual({ code: "PLUGIN_EXECUTION_FAILED", plugin_id: "fixture" });
   });
+  it("names the exceeded plugin resource and ignores unknown ones", () => {
+    const resources = [
+      "MEMORY",
+      "HTTP_REQUESTS",
+      "HTTP_REQUEST_SIZE",
+      "HTTP_RESPONSE_SIZE",
+      "OUTPUT",
+      "CONFIG",
+      "COMPONENT",
+    ];
+    const generic = {
+      code: "PLUGIN_EXECUTION_FAILED",
+      plugin_id: "fixture",
+      reason: "RESOURCE_LIMIT",
+    } as const;
+    for (const locale of ["en", "zh-TW"] as const) {
+      applyLanguagePreference(locale);
+      const messages = new Set<string>();
+      for (const resource of resources) {
+        const error = { ...generic, resource };
+        expect(parseCommandError(error)).toEqual(error);
+        const message = translateCommandError(error);
+        expect(message).not.toBe(m.plugin_failure_resource_limit());
+        messages.add(message);
+      }
+      expect(messages.size).toBe(resources.length);
+      expect(translateCommandError({ ...generic, resource: "MEMORY" })).toBe(
+        m.plugin_failure_resource_memory(),
+      );
+    }
+    for (const resource of ["CPU", "DISK", "token=secret", 1]) {
+      expect(parseCommandError({ ...generic, resource })).toEqual(generic);
+    }
+    expect(
+      parseCommandError({
+        code: "PLUGIN_EXECUTION_FAILED",
+        plugin_id: "fixture",
+        reason: "TIMEOUT",
+        resource: "MEMORY",
+      }),
+    ).toEqual({
+      code: "PLUGIN_EXECUTION_FAILED",
+      plugin_id: "fixture",
+      reason: "TIMEOUT",
+    });
+  });
 });

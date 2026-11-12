@@ -4,6 +4,9 @@ import {
   canonicalPluginDomain,
   invalidPluginSettings,
   invalidPluginCredentialSettings,
+  invalidPluginLimits,
+  pluginInstanceLimits,
+  defaultPluginLimits,
   validPluginManifestVersion,
   pluginCredentialScopes,
   pluginDefaults,
@@ -529,4 +532,44 @@ it("normalizes only the default HTTPS port", () => {
   expect(canonicalPluginDomain("api.example.com:8443")).toBe(
     "api.example.com:8443",
   );
+});
+
+describe("plugin execution limits", () => {
+  it("accepts the host ranges and memory options", () => {
+    expect(invalidPluginLimits(defaultPluginLimits)).toEqual([]);
+    expect(
+      invalidPluginLimits({
+        timeout_seconds: 600,
+        http_requests: 2000,
+        board_queries: 10_000,
+        memory_mib: 1024,
+      }),
+    ).toEqual([]);
+    expect(
+      invalidPluginLimits({
+        timeout_seconds: 9,
+        http_requests: 2001,
+        board_queries: undefined,
+        memory_mib: 768,
+      }),
+    ).toEqual([
+      "timeout_seconds",
+      "http_requests",
+      "board_queries",
+      "memory_mib",
+    ]);
+    expect(
+      invalidPluginLimits({ ...defaultPluginLimits, http_requests: 1.5 }),
+    ).toEqual(["http_requests"]);
+  });
+  it("uses defaults for missing or out-of-range stored limits", () => {
+    expect(pluginInstanceLimits(undefined)).toEqual(defaultPluginLimits);
+    expect(pluginInstanceLimits({ http_requests: 500 })).toEqual({
+      ...defaultPluginLimits,
+      http_requests: 500,
+    });
+    expect(pluginInstanceLimits({ memory_mib: 4096 })).toEqual(
+      defaultPluginLimits,
+    );
+  });
 });

@@ -347,12 +347,16 @@ fn runtime_error(
         error => (
             PluginHostError::RuntimeFailed {
                 plugin_id: plugin.id.clone(),
+                resource: match error {
+                    runtime::RuntimeError::ResourceLimit(resource) => Some(resource),
+                    _ => None,
+                },
                 reason: match error {
                     runtime::RuntimeError::InvalidComponent => {
                         PluginFailureReason::InvalidComponent
                     }
                     runtime::RuntimeError::Network => PluginFailureReason::NetworkFailed,
-                    runtime::RuntimeError::ResourceLimit => PluginFailureReason::ResourceLimit,
+                    runtime::RuntimeError::ResourceLimit(_) => PluginFailureReason::ResourceLimit,
                     runtime::RuntimeError::Timeout => PluginFailureReason::Timeout,
                     runtime::RuntimeError::Cancelled => PluginFailureReason::Cancelled,
                     runtime::RuntimeError::Trap => PluginFailureReason::WasmTrap,
@@ -597,6 +601,7 @@ pub async fn run(
                 .transpose()
                 .map_err(internal)?
                 .flatten(),
+            limits: instance.limits,
         };
         storage::put(connection, "run", &record.id, &record)?;
         (instance, package, input, record)
@@ -1098,6 +1103,7 @@ mod tests {
             needs_review: false,
             credentials_need_review: false,
             interval_seconds: 60,
+            limits: Default::default(),
             last_run_at: None,
             last_run_status: None,
             next_run_at: None,

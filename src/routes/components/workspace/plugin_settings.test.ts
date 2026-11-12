@@ -6,6 +6,8 @@ import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { parseCommandError } from "#lib/command-errors.js";
 import {
   canonicalPluginDomain,
+  defaultPluginLimits,
+  pluginInstanceLimits,
   isNewerPluginVersion,
   validPluginManifestVersion,
   pluginApiVersions,
@@ -282,7 +284,7 @@ it.each([
       "consent",
       "focusEditorError",
       transpile(`
-    let editing={settings:[]},boardId="7",invalidInterval=false,config={},secrets={},savedSecrets=[],invalid=[],saveAttempted=false,error=null;
+    let editing={settings:[]},boardId="7",invalidInterval=false,invalidLimits=[],limitsOpen=false,config={},secrets={},savedSecrets=[],invalid=[],saveAttempted=false,error=null;
     ${source.slice(start, end)}
     return {save,state:()=>({saveAttempted,error})};
   `),
@@ -1005,7 +1007,7 @@ it("discards cancelled updates without applying them", async () => {
     invoke.mock.calls.some(([command]) => command === "confirm_plugin_update"),
   ).toBe(false);
 });
-function setupEditor(privateNetwork = false) {
+function setupEditor(privateNetwork: boolean | "limits" = false) {
   const node = parse(source, { modern: true }).instance!.content.body.find(
     (node) => node.type === "FunctionDeclaration" && node.id!.name === "edit",
   )!;
@@ -1015,12 +1017,16 @@ function setupEditor(privateNetwork = false) {
     "pluginDefaults",
     "canonicalPluginDomain",
     "privateNetwork",
+    "pluginInstanceLimits",
+    "defaultPluginLimits",
     transpile(`
     let editing=null,instanceId,name,config,secrets,savedSecrets,domains,customDomains,
-      privateNetworkDomains,enabled,interval,consent,invalid,saveAttempted,historyId,error;
+      privateNetworkDomains,enabled,interval,limits,limitsOpen,consent,invalid,saveAttempted,historyId,error;
     async function chooseBoard(){}
     ${source.slice(start, end)}
-    return (pkg,instance)=>{edit(pkg,instance);return privateNetwork
+    return (pkg,instance)=>{edit(pkg,instance);return privateNetwork === "limits"
+      ? {limits,limitsOpen}
+      : privateNetwork
       ? {domains,privateNetworkDomains}
       : {config,savedSecrets,domains,enabled,consent};};
   `),
@@ -1029,8 +1035,43 @@ function setupEditor(privateNetwork = false) {
     () => ({}),
     canonicalPluginDomain,
     privateNetwork,
+    pluginInstanceLimits,
+    defaultPluginLimits,
   );
 }
+
+it("opens execution limits only when an instance changed them", () => {
+  const edit = setupEditor("limits");
+  const pkg = { id: "sample", settings: [], domains: [] };
+  const instance = {
+    id: "instance",
+    config: {},
+    secret_fields: [],
+    allowed_domains: [],
+    enabled: true,
+    interval_seconds: 0,
+  };
+  expect(edit(pkg)).toEqual({ limits: defaultPluginLimits, limitsOpen: false });
+  expect(edit(pkg, instance)).toEqual({
+    limits: defaultPluginLimits,
+    limitsOpen: false,
+  });
+  expect(
+    edit(pkg, {
+      ...instance,
+      limits: { ...defaultPluginLimits, http_requests: 500 },
+    }),
+  ).toEqual({
+    limits: { ...defaultPluginLimits, http_requests: 500 },
+    limitsOpen: true,
+  });
+  expect(
+    edit(pkg, {
+      ...instance,
+      limits: { ...defaultPluginLimits, memory_mib: 4096 },
+    }),
+  ).toEqual({ limits: defaultPluginLimits, limitsOpen: false });
+});
 
 it("opens updated settings with preserved values, no new grants, and credentials requiring review", () => {
   const edit = setupEditor();

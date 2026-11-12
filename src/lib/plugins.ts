@@ -271,6 +271,58 @@ export function invalidPluginCredentialSettings(
   }
   return [...invalid];
 }
+// Matches PluginLimits in src-tauri/src/plugins/types.rs.
+export interface PluginLimits {
+  timeout_seconds: number;
+  http_requests: number;
+  board_queries: number;
+  memory_mib: number;
+}
+export const defaultPluginLimits: PluginLimits = {
+  timeout_seconds: 60,
+  http_requests: 100,
+  board_queries: 1000,
+  memory_mib: 512,
+};
+export const pluginLimitRanges = {
+  timeout_seconds: [10, 600],
+  http_requests: [1, 2000],
+  board_queries: [1, 10_000],
+} as const;
+export const pluginMemoryOptions = [256, 512, 1024] as const;
+/** Returns the limit fields outside the host's accepted ranges. */
+export function invalidPluginLimits(
+  limits: Partial<Record<keyof PluginLimits, number | undefined>>,
+): (keyof PluginLimits)[] {
+  const invalid: (keyof PluginLimits)[] = [];
+  for (const [key, [min, max]] of Object.entries(pluginLimitRanges) as [
+    keyof typeof pluginLimitRanges,
+    readonly [number, number],
+  ][]) {
+    const value = limits[key];
+    if (
+      value === undefined ||
+      !Number.isSafeInteger(value) ||
+      value < min ||
+      value > max
+    ) {
+      invalid.push(key);
+    }
+  }
+  if (!pluginMemoryOptions.some((option) => option === limits.memory_mib)) {
+    invalid.push("memory_mib");
+  }
+  return invalid;
+}
+/** Stored limits a run would use; out-of-range values fall back like the host. */
+export function pluginInstanceLimits(
+  limits: Partial<PluginLimits> | null | undefined,
+): PluginLimits {
+  const merged = { ...defaultPluginLimits, ...limits };
+  return invalidPluginLimits(merged).length
+    ? { ...defaultPluginLimits }
+    : merged;
+}
 export interface PluginInstance {
   id: string;
   plugin_id: string;
@@ -290,6 +342,7 @@ export interface PluginInstance {
   needs_review?: boolean;
   credentials_need_review?: boolean;
   interval_seconds: number;
+  limits?: PluginLimits;
   last_run_at?: number;
   last_run_status?: PluginRun["status"] | null;
   next_run_at?: number;

@@ -703,7 +703,7 @@ pub fn save_plugin_instance(
     if instance.id.is_some() && previous.is_none() {
         return Err(CommandError::InvalidArgument);
     }
-    if previous.is_some_and(|p| p.plugin_id != instance.plugin_id) {
+    if previous.is_some_and(|p| p.plugin_id != instance.plugin_id) || !instance.limits.valid() {
         return Err(CommandError::InvalidArgument);
     }
     for (key, value) in &instance.config {
@@ -781,6 +781,7 @@ pub fn save_plugin_instance(
         needs_review: false,
         credentials_need_review: false,
         interval_seconds: instance.interval_seconds,
+        limits: instance.limits,
         last_run_at: previous.and_then(|p| p.last_run_at),
         last_run_status: previous.and_then(|p| {
             if p.pending_domain.is_some() {
@@ -1648,6 +1649,7 @@ mod tests {
             needs_review: false,
             credentials_need_review: false,
             interval_seconds: 0,
+            limits: Default::default(),
             last_run_at: None,
             last_run_status: None,
             next_run_at: None,

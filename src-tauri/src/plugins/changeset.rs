@@ -430,6 +430,7 @@ mod persistence_tests {
             needs_review: false,
             credentials_need_review: false,
             interval_seconds: 60,
+            limits: Default::default(),
             last_run_at: None,
             last_run_status: None,
             next_run_at: None,

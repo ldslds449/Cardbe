@@ -79,6 +79,17 @@ const pluginFailureMessages = {
   INVALID_CREDENTIAL: () => m.plugin_failure_invalid_credential(),
 };
 
+const pluginResourceMessages = {
+  MEMORY: () => m.plugin_failure_resource_memory(),
+  HTTP_REQUESTS: () => m.plugin_failure_resource_http_requests(),
+  HTTP_REQUEST_SIZE: () => m.plugin_failure_resource_http_request_size(),
+  HTTP_RESPONSE_SIZE: () => m.plugin_failure_resource_http_response_size(),
+  OUTPUT: () => m.plugin_failure_resource_output(),
+  CONFIG: () => m.plugin_failure_resource_config(),
+  COMPONENT: () => m.plugin_failure_resource_component(),
+};
+export type PluginResource = keyof typeof pluginResourceMessages;
+
 const pluginPackageMessages = {
   ARCHIVE_TOO_LARGE: () => m.plugin_package_archive_too_large(),
   ARCHIVE_UNREADABLE: () => m.plugin_package_archive_unreadable(),
@@ -125,6 +136,7 @@ export type CommandError =
       code: "PLUGIN_EXECUTION_FAILED";
       plugin_id: string;
       reason?: keyof typeof pluginFailureMessages;
+      resource?: PluginResource;
     }
   | {
       code: "PLUGIN_ERROR";
@@ -210,7 +222,19 @@ export function parseCommandError(value: unknown): CommandError | null {
         Object.hasOwn(pluginFailureMessages, value.reason)
           ? (value.reason as keyof typeof pluginFailureMessages)
           : undefined;
-      return { code, plugin_id, ...(reason ? { reason } : {}) };
+      // Unknown resources from a newer host keep the generic limit message.
+      const resource =
+        reason === "RESOURCE_LIMIT" &&
+        typeof value.resource === "string" &&
+        Object.hasOwn(pluginResourceMessages, value.resource)
+          ? (value.resource as PluginResource)
+          : undefined;
+      return {
+        code,
+        plugin_id,
+        ...(reason ? { reason } : {}),
+        ...(resource ? { resource } : {}),
+      };
     }
     if (code === "PLUGIN_PERMISSION_DENIED" && identifier(value.permission)) {
       return { code, plugin_id, permission: value.permission };
@@ -294,6 +318,9 @@ export function translateCommandError(
       }
       return m.error_plugin_permission_denied();
     case "PLUGIN_EXECUTION_FAILED":
+      if (error.resource) {
+        return pluginResourceMessages[error.resource]();
+      }
       return error.reason
         ? pluginFailureMessages[error.reason]()
         : m.error_plugin_execution_failed();

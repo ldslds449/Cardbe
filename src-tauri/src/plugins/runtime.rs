@@ -1,6 +1,7 @@
 //! Embedded Component Model runtime. No WASI imports are linked.
 use super::http;
 pub use super::http::HttpPolicy;
+pub use crate::errors::PluginResource;
 use serde::{Deserialize, Serialize};
 use std::{
     sync::{
@@ -11,7 +12,7 @@ use std::{
 };
 use wasmtime::{
     component::{Component, Linker},
-    Config, Engine, Store, StoreLimits, StoreLimitsBuilder, UpdateDeadline,
+    Config, Engine, ResourceLimiter, Store, StoreLimits, StoreLimitsBuilder, UpdateDeadline,
 };
 
 pub(crate) mod bindings {
@@ -25,6 +26,7 @@ pub struct RuntimeInput {
     pub config_json: String,
     pub trigger: String,
     pub cursor: Option<String>,
+    pub limits: super::types::PluginLimits,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExternalTask {
@@ -72,7 +74,7 @@ pub enum RuntimeError {
     BlockedAddress,
     Redirect,
     Network,
-    ResourceLimit,
+    ResourceLimit(PluginResource),
     Timeout,
     Cancelled,
     Trap,
@@ -92,7 +94,7 @@ impl RuntimeError {
             | Self::BlockedAddress
             | Self::Redirect => "PERMISSION_DENIED",
             Self::Network => "NETWORK_FAILED",
-            Self::ResourceLimit => "RESOURCE_LIMIT",
+            Self::ResourceLimit(_) => "RESOURCE_LIMIT",
             Self::Timeout => "TIMEOUT",
             Self::Cancelled => "CANCELLED",
             Self::Trap => "WASM_TRAP",
@@ -107,11 +109,74 @@ impl std::fmt::Display for RuntimeError {
 }
 impl std::error::Error for RuntimeError {}
 
+/// Wasmtime store limits that remember whether growth was refused, so a
+/// resulting trap reports `PluginResource::Memory`.
+struct Limiter {
+    inner: StoreLimits,
+    exceeded: bool,
+}
+impl Limiter {
+    fn new(inner: StoreLimits) -> Self {
+        Self {
+            inner,
+            exceeded: false,
+        }
+    }
+    fn note<T>(
+        &mut self,
+        result: wasmtime::Result<T>,
+        allowed: impl Fn(&T) -> bool,
+    ) -> wasmtime::Result<T> {
+        if !result.as_ref().is_ok_and(allowed) {
+            self.exceeded = true;
+        }
+        result
+    }
+}
+impl ResourceLimiter for Limiter {
+    fn memory_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        let result = self.inner.memory_growing(current, desired, maximum);
+        self.note(result, |allowed| *allowed)
+    }
+    fn memory_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.exceeded = true;
+        self.inner.memory_grow_failed(error)
+    }
+    fn table_growing(
+        &mut self,
+        current: usize,
+        desired: usize,
+        maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        let result = self.inner.table_growing(current, desired, maximum);
+        self.note(result, |allowed| *allowed)
+    }
+    fn table_grow_failed(&mut self, error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.exceeded = true;
+        self.inner.table_grow_failed(error)
+    }
+    fn instances(&self) -> usize {
+        self.inner.instances()
+    }
+    fn tables(&self) -> usize {
+        self.inner.tables()
+    }
+    fn memories(&self) -> usize {
+        self.inner.memories()
+    }
+}
+
 struct HostState {
     reader: Option<super::board::Reader>,
     queries: usize,
+    query_limit: usize,
     query_bytes: usize,
-    limits: StoreLimits,
+    limits: Limiter,
     policy: HttpPolicy,
     cancel: Arc<AtomicBool>,
     deadline: Instant,
@@ -120,6 +185,7 @@ struct HostState {
     messages: usize,
     message_bytes: usize,
     requests: usize,
+    request_limit: usize,
     request_bytes: usize,
     response_bytes: usize,
     failure: Option<RuntimeError>,
@@ -182,7 +248,7 @@ impl HostState {
     ) -> Result<(String, T), bindings::cardbe::plugin::board::HostError> {
         use bindings::cardbe::plugin::board::HostError;
         self.queries += 1;
-        if self.queries > 1000
+        if self.queries > self.query_limit
             || self.query_bytes >= 32 * 1024 * 1024
             || self.cancel.load(Ordering::Acquire)
             || Instant::now() >= self.deadline
@@ -537,8 +603,10 @@ impl HostState {
         let validation = http::validate_request(&outgoing, &self.policy);
         let result = if let Err(error) = validation {
             Err(error)
-        } else if self.requests > 100 || self.request_bytes > 32 * 1024 * 1024 {
-            Err(RuntimeError::ResourceLimit)
+        } else if self.requests > self.request_limit {
+            Err(RuntimeError::ResourceLimit(PluginResource::HttpRequests))
+        } else if self.request_bytes > 32 * 1024 * 1024 {
+            Err(RuntimeError::ResourceLimit(PluginResource::HttpRequestSize))
         } else if self.cancel.load(Ordering::Acquire) {
             Err(RuntimeError::Cancelled)
         } else if Instant::now() >= self.deadline {
@@ -550,7 +618,9 @@ impl HostState {
             Ok(response) => {
                 self.response_bytes += response.body.len();
                 if self.response_bytes > RESPONSE_TOTAL_LIMIT {
-                    self.failure = Some(RuntimeError::ResourceLimit);
+                    self.failure = Some(RuntimeError::ResourceLimit(
+                        PluginResource::HttpResponseSize,
+                    ));
                     return Err("RESOURCE_LIMIT".into());
                 }
                 Ok(response)
@@ -602,15 +672,8 @@ pub fn execute(
     cancel: Arc<AtomicBool>,
     failure_logs: &mut Vec<RuntimeLog>,
 ) -> Result<RuntimeOutput, RuntimeError> {
-    execute_inner(
-        bytes,
-        input,
-        policy,
-        cancel,
-        None,
-        Duration::from_secs(60),
-        failure_logs,
-    )
+    let timeout = Duration::from_secs(input.limits.effective().timeout_seconds.into());
+    execute_inner(bytes, input, policy, cancel, None, timeout, failure_logs)
 }
 fn execute_inner(
     bytes: &[u8],
@@ -621,8 +684,11 @@ fn execute_inner(
     timeout: Duration,
     failure_logs: &mut Vec<RuntimeLog>,
 ) -> Result<RuntimeOutput, RuntimeError> {
-    if bytes.len() as u64 > super::package::COMPONENT_LIMIT || input.config_json.len() > 64 * 1024 {
-        return Err(RuntimeError::ResourceLimit);
+    if bytes.len() as u64 > super::package::COMPONENT_LIMIT {
+        return Err(RuntimeError::ResourceLimit(PluginResource::Component));
+    }
+    if input.config_json.len() > 64 * 1024 {
+        return Err(RuntimeError::ResourceLimit(PluginResource::Config));
     }
     if cancel.load(Ordering::Acquire) {
         return Err(RuntimeError::Cancelled);
@@ -646,18 +712,22 @@ fn execute_inner(
     if Instant::now() >= deadline {
         return Err(RuntimeError::Timeout);
     }
+    let limits = input.limits.effective();
     let state = HostState {
         reader,
         queries: 0,
+        query_limit: limits.board_queries as usize,
         query_bytes: 0,
-        limits: StoreLimitsBuilder::new()
-            .memory_size(512 * 1024 * 1024)
-            .table_elements(10000)
-            .instances(8)
-            .memories(1)
-            .tables(4)
-            .trap_on_grow_failure(true)
-            .build(),
+        limits: Limiter::new(
+            StoreLimitsBuilder::new()
+                .memory_size(limits.memory_mib as usize * 1024 * 1024)
+                .table_elements(10000)
+                .instances(8)
+                .memories(1)
+                .tables(4)
+                .trap_on_grow_failure(true)
+                .build(),
+        ),
         policy,
         cancel: cancel.clone(),
         deadline,
@@ -666,6 +736,7 @@ fn execute_inner(
         messages: 0,
         message_bytes: 0,
         requests: 0,
+        request_limit: limits.http_requests as usize,
         request_bytes: 0,
         response_bytes: 0,
         failure: None,
@@ -676,9 +747,6 @@ fn execute_inner(
     };
     let mut store = Store::new(&engine, state);
     store.limiter(|state| &mut state.limits);
-    store
-        .set_fuel(500_000_000)
-        .map_err(|_| RuntimeError::ResourceLimit)?;
     store.set_epoch_deadline(1);
     store.epoch_deadline_callback(|context| {
         if context.data().cancel.load(Ordering::Acquire)
@@ -698,8 +766,14 @@ fn execute_inner(
         }
     });
     let result = (|| {
-        let instance = bindings::Plugin::instantiate(&mut store, &component, &linker)
-            .map_err(|_| RuntimeError::InvalidComponent)?;
+        let instance =
+            bindings::Plugin::instantiate(&mut store, &component, &linker).map_err(|_| {
+                if store.data().limits.exceeded {
+                    RuntimeError::ResourceLimit(PluginResource::Memory)
+                } else {
+                    RuntimeError::InvalidComponent
+                }
+            })?;
         let context = bindings::cardbe::plugin::types::RunContext {
             instance_id: input.instance_id,
             run_id: input.run_id,
@@ -718,8 +792,8 @@ fn execute_inner(
             return Err(error);
         }
         let result = result.map_err(|_| {
-            if store.get_fuel().unwrap_or(0) == 0 {
-                RuntimeError::ResourceLimit
+            if store.data().limits.exceeded {
+                RuntimeError::ResourceLimit(PluginResource::Memory)
             } else {
                 RuntimeError::Trap
             }
@@ -752,7 +826,7 @@ fn execute_inner(
                 .as_ref()
                 .is_some_and(|cursor| cursor.len() > 4096)
         {
-            return Err(RuntimeError::ResourceLimit);
+            return Err(RuntimeError::ResourceLimit(PluginResource::Output));
         }
         let mut general: Option<super::board::ChangeSet> = changeset.changeset.map(Into::into);
         let mut priorities = std::mem::take(&mut store.data_mut().staged);
@@ -776,10 +850,10 @@ fn execute_inner(
                 .extend(priorities);
         }
         let tasks: Vec<ExternalTask> = changeset.tasks.into_iter().map(Into::into).collect();
-        let encoded =
-            serde_json::to_vec(&(&general, &tasks)).map_err(|_| RuntimeError::ResourceLimit)?;
+        let encoded = serde_json::to_vec(&(&general, &tasks))
+            .map_err(|_| RuntimeError::ResourceLimit(PluginResource::Output))?;
         if encoded.len() > 8 * 1024 * 1024 {
-            return Err(RuntimeError::ResourceLimit);
+            return Err(RuntimeError::ResourceLimit(PluginResource::Output));
         }
         Ok(RuntimeOutput {
             changeset: general,
@@ -813,10 +887,7 @@ fn execute_inner(
 
 fn prepare_component(bytes: &[u8]) -> Result<(Engine, Component, Linker<HostState>), RuntimeError> {
     let mut config = Config::new();
-    config
-        .wasm_component_model(true)
-        .consume_fuel(true)
-        .epoch_interruption(true);
+    config.wasm_component_model(true).epoch_interruption(true);
     config.max_wasm_stack(512 * 1024);
     let engine = Engine::new(&config).map_err(|_| RuntimeError::InvalidComponent)?;
     let component = Component::new(&engine, bytes).map_err(|_| RuntimeError::InvalidComponent)?;
@@ -830,7 +901,7 @@ fn prepare_component(bytes: &[u8]) -> Result<(Engine, Component, Linker<HostStat
 
 pub fn validate_component(bytes: &[u8]) -> Result<(), RuntimeError> {
     if bytes.len() as u64 > super::package::COMPONENT_LIMIT {
-        return Err(RuntimeError::ResourceLimit);
+        return Err(RuntimeError::ResourceLimit(PluginResource::Component));
     }
     let (_, component, linker) = prepare_component(bytes)?;
     let pre = linker
@@ -848,7 +919,7 @@ mod tests {
         let oversized = vec![0; super::super::package::COMPONENT_LIMIT as usize + 1];
         assert!(matches!(
             validate_component(&oversized),
-            Err(RuntimeError::ResourceLimit)
+            Err(RuntimeError::ResourceLimit(PluginResource::Component))
         ));
         assert!(matches!(
             execute(
@@ -858,7 +929,7 @@ mod tests {
                 Arc::new(AtomicBool::new(false)),
                 &mut Vec::new()
             ),
-            Err(RuntimeError::ResourceLimit)
+            Err(RuntimeError::ResourceLimit(PluginResource::Component))
         ));
         assert!(matches!(
             validate_component(&vec![0; 17 * 1024 * 1024]),
@@ -1039,8 +1110,9 @@ mod tests {
         let mut state = HostState {
             reader: None,
             queries: 0,
+            query_limit: 1000,
             query_bytes: 0,
-            limits: StoreLimitsBuilder::new().build(),
+            limits: Limiter::new(StoreLimitsBuilder::new().build()),
             policy: policy(),
             cancel: Arc::new(AtomicBool::new(false)),
             deadline: Instant::now() + Duration::from_secs(60),
@@ -1049,6 +1121,7 @@ mod tests {
             messages: 0,
             message_bytes: 0,
             requests: 0,
+            request_limit: 100,
             request_bytes: 0,
             response_bytes: RESPONSE_TOTAL_LIMIT - 1,
             failure: None,
@@ -1066,7 +1139,56 @@ mod tests {
                 "RESOURCE_LIMIT"
             );
         }
-        assert!(matches!(state.failure, Some(RuntimeError::ResourceLimit)));
+        assert!(matches!(
+            state.failure,
+            Some(RuntimeError::ResourceLimit(
+                PluginResource::HttpResponseSize
+            ))
+        ));
+    }
+    #[tokio::test]
+    async fn request_count_uses_the_instance_limit() {
+        let response = || bindings::cardbe::plugin::types::HttpResponse {
+            status: 200,
+            headers: vec![],
+            body: vec![],
+        };
+        let mut state = HostState {
+            reader: None,
+            queries: 0,
+            query_limit: 1000,
+            query_bytes: 0,
+            limits: Limiter::new(StoreLimitsBuilder::new().build()),
+            policy: policy(),
+            cancel: Arc::new(AtomicBool::new(false)),
+            deadline: Instant::now() + Duration::from_secs(60),
+            handle: tokio::runtime::Handle::current(),
+            logs: vec![],
+            messages: 0,
+            message_bytes: 0,
+            requests: 0,
+            request_limit: 2,
+            request_bytes: 0,
+            response_bytes: 0,
+            failure: None,
+            staged: vec![],
+            source_priorities: Default::default(),
+            fixtures: Some([response(), response(), response()].into()),
+        };
+        let url = "https://api.example.com/items";
+        for _ in 0..2 {
+            assert!(state.request(url, http::Outgoing::get(), false).is_ok());
+        }
+        assert_eq!(
+            state
+                .request(url, http::Outgoing::get(), false)
+                .unwrap_err(),
+            "RESOURCE_LIMIT"
+        );
+        assert!(matches!(
+            state.failure,
+            Some(RuntimeError::ResourceLimit(PluginResource::HttpRequests))
+        ));
     }
     #[test]
     fn update_validation_checks_the_host_contract_without_executing_the_guest() {
@@ -1083,6 +1205,7 @@ mod tests {
             config_json: config.into(),
             trigger: "manual".into(),
             cursor: None,
+            limits: Default::default(),
         }
     }
     fn policy() -> HttpPolicy {
@@ -1474,13 +1597,13 @@ mod tests {
                 )
                 .err()
                 .unwrap();
-                if mode == "http" {
-                    assert!(matches!(error, RuntimeError::PermissionDenied));
-                } else {
-                    assert!(
-                        matches!(error, RuntimeError::Trap | RuntimeError::ResourceLimit),
+                match mode {
+                    "http" => assert!(matches!(error, RuntimeError::PermissionDenied)),
+                    "memory" => assert!(
+                        matches!(error, RuntimeError::ResourceLimit(PluginResource::Memory)),
                         "{error:?}"
-                    );
+                    ),
+                    _ => assert!(matches!(error, RuntimeError::Trap), "{error:?}"),
                 }
                 assert!(run(
                     "ok",
