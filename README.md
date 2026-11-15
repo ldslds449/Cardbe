@@ -101,8 +101,8 @@ Sharing is always off until you turn it on. Learn more in [Sharing and privacy](
 
 1. Go to the [latest release](https://github.com/ldslds449/Cardbe/releases/latest).
 2. Download the file for your computer:
-   - **Windows:** the installer, or the portable `.exe` if you prefer not to install anything.
-   - **macOS:** `Cardbe_<version>_aarch64.dmg` for Apple silicon (M1 or later), or `Cardbe_<version>_x64.dmg` for Intel Macs. Open the `.dmg` and drag Cardbe into **Applications**.
+   - **Windows:** the installer `Cardbe_<version>_windows_x64_setup.exe` (or the `.msi`), or `Cardbe_<version>_windows_x64_portable.exe` if you prefer not to install anything.
+   - **macOS:** `Cardbe_<version>_macos_arm64.dmg` for Apple silicon (M1 or later), or `Cardbe_<version>_macos_x64.dmg` for Intel Macs. Open the `.dmg` and drag Cardbe into **Applications**.
 3. Open Cardbe and create your first board.
 
 > [!NOTE]

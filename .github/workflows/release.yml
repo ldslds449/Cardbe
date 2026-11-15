@@ -129,6 +129,8 @@ jobs:
           releaseName: Cardbe ${{ env.RELEASE_TAG }}
           releaseBody: ${{ steps.notes.outputs.content }}
           releaseDraft: true
+          # Matches scripts/stage-dist.mjs, e.g. Cardbe_1.9.0_windows_x64_setup.exe.
+          releaseAssetNamePattern: "[name]_[version]_[platform]_[arch][_setup][ext]"
           args: -- --locked
 
       - name: Verify portable executable
@@ -158,9 +160,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $asset = Join-Path $env:RUNNER_TEMP "Cardbe_$env:RELEASE_TAG-portable.exe"
-          Copy-Item -LiteralPath 'src-tauri/target/release/Cardbe.exe' -Destination $asset
-          gh release upload $env:RELEASE_TAG $asset --clobber
+          node scripts/stage-dist.mjs "$env:RUNNER_TEMP/cardbe-dist"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $asset = Get-ChildItem -Path "$env:RUNNER_TEMP/cardbe-dist" -Filter '*_portable.exe'
+          gh release upload $env:RELEASE_TAG $asset.FullName --clobber
 
   # Unsigned macOS builds (ad-hoc signed, not notarized), added to the draft
   # release after the Windows job has validated the tag and created it.
@@ -193,14 +196,14 @@ jobs:
         run: pnpm tauri build -- --locked
       - name: Upload build artifact for manual run
         if: env.PUBLISH != 'true'
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-build
         with:
-          name: Cardbe-${{ env.RELEASE_TAG }}-macos-${{ matrix.arch }}-dmg
-          path: src-tauri/target/release/bundle/dmg/*.dmg
-          if-no-files-found: error
-          retention-days: 14
+          name: ${{ env.RELEASE_TAG }}
+          arch: ${{ matrix.arch }}
       - name: Upload DMG to release
         if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$RELEASE_TAG" src-tauri/target/release/bundle/dmg/*.dmg --clobber
+        run: |
+          node scripts/stage-dist.mjs "$RUNNER_TEMP/cardbe-dist"
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP"/cardbe-dist/*.dmg --clobber

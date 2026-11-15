@@ -1,10 +1,17 @@
 name: Upload build artifacts
-description: Upload the portable executable, NSIS installer, and MSI installer as separate artifacts.
+description: >-
+  Upload the release files, named after the operating system and architecture:
+  the portable executable, NSIS installer and MSI installer on Windows, or the
+  DMG on macOS.
 
 inputs:
   name:
     description: Artifact name suffix, such as a commit SHA or release tag.
     required: true
+  arch:
+    description: Architecture label in artifact names (x64 or arm64).
+    required: false
+    default: x64
   retention-days:
     description: Days to keep the artifacts.
     required: false
@@ -13,21 +20,34 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/upload-artifact@v7
+    - name: Stage release files
+      shell: bash
+      run: node scripts/stage-dist.mjs "$RUNNER_TEMP/cardbe-dist"
+    - if: runner.os == 'Windows'
+      uses: actions/upload-artifact@v7
       with:
-        name: Cardbe-${{ inputs.name }}-portable
-        path: src-tauri/target/release/Cardbe.exe
+        name: Cardbe-${{ inputs.name }}-windows-${{ inputs.arch }}-portable
+        path: ${{ runner.temp }}/cardbe-dist/*_portable.exe
         if-no-files-found: error
         retention-days: ${{ inputs.retention-days }}
-    - uses: actions/upload-artifact@v7
+    - if: runner.os == 'Windows'
+      uses: actions/upload-artifact@v7
       with:
-        name: Cardbe-${{ inputs.name }}-nsis
-        path: src-tauri/target/release/bundle/nsis/*.exe
+        name: Cardbe-${{ inputs.name }}-windows-${{ inputs.arch }}-nsis
+        path: ${{ runner.temp }}/cardbe-dist/*_setup.exe
         if-no-files-found: error
         retention-days: ${{ inputs.retention-days }}
-    - uses: actions/upload-artifact@v7
+    - if: runner.os == 'Windows'
+      uses: actions/upload-artifact@v7
       with:
-        name: Cardbe-${{ inputs.name }}-msi
-        path: src-tauri/target/release/bundle/msi/*.msi
+        name: Cardbe-${{ inputs.name }}-windows-${{ inputs.arch }}-msi
+        path: ${{ runner.temp }}/cardbe-dist/*.msi
+        if-no-files-found: error
+        retention-days: ${{ inputs.retention-days }}
+    - if: runner.os == 'macOS'
+      uses: actions/upload-artifact@v7
+      with:
+        name: Cardbe-${{ inputs.name }}-macos-${{ inputs.arch }}-dmg
+        path: ${{ runner.temp }}/cardbe-dist/*.dmg
         if-no-files-found: error
         retention-days: ${{ inputs.retention-days }}

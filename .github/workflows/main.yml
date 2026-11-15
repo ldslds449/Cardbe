@@ -77,13 +77,12 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
         env:
           CARDBE_BUILD_COMMIT: ${{ github.sha }}
-        # Unsigned CI builds; release signing and notarization are not set up.
+        # Ad-hoc signed without a certificate and not notarized.
         run: pnpm tauri build -- --locked
       - name: Upload build artifact
         if: steps.build.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-build
         with:
-          name: Cardbe-${{ github.sha }}-macos-${{ matrix.arch }}-dmg
-          path: src-tauri/target/release/bundle/dmg/*.dmg
-          if-no-files-found: error
+          name: ${{ github.sha }}
+          arch: ${{ matrix.arch }}
           retention-days: ${{ github.ref == 'refs/heads/main' && 14 || 7 }}
