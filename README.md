@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ldslds449/Cardbe/releases/latest">Download for Windows</a> ·
+  <a href="https://github.com/ldslds449/Cardbe/releases/latest">Download for Windows and macOS</a> ·
   <a href="docs/sharing-and-privacy.md">Privacy</a> ·
   <a href="docs/development.md">Build from source</a>
 </p>
@@ -100,13 +100,19 @@ Sharing is always off until you turn it on. Learn more in [Sharing and privacy](
 ## Get Cardbe
 
 1. Go to the [latest release](https://github.com/ldslds449/Cardbe/releases/latest).
-2. Download the Windows installer, or the portable `.exe` if you prefer not to install anything.
+2. Download the file for your computer:
+   - **Windows:** the installer, or the portable `.exe` if you prefer not to install anything.
+   - **macOS:** `Cardbe_<version>_aarch64.dmg` for Apple silicon (M1 or later), or `Cardbe_<version>_x64.dmg` for Intel Macs. Open the `.dmg` and drag Cardbe into **Applications**.
 3. Open Cardbe and create your first board.
 
 > [!NOTE]
-> Cardbe is not code-signed yet, so Windows may show a "Windows protected your PC" message the first time you open it. Select **More info**, then **Run anyway**. Only do this for files downloaded from the official [Releases page](https://github.com/ldslds449/Cardbe/releases).
+> Cardbe is not code-signed yet, so Windows may show a "Windows protected your PC" message the first time you open it. Select **More info**, then **Run anyway**.
+>
+> On macOS, the first launch shows "Apple could not verify Cardbe". Select **Done**, open **System Settings** → **Privacy & Security**, scroll down, and select **Open Anyway** next to the Cardbe message. If macOS says Cardbe is damaged, run `xattr -dr com.apple.quarantine /Applications/Cardbe.app` in Terminal, then open it again.
+>
+> Only do this for files downloaded from the official [Releases page](https://github.com/ldslds449/Cardbe/releases).
 
-Cardbe currently provides ready-to-use downloads for Windows. Developers can [build it from source](docs/development.md).
+Cardbe currently provides ready-to-use downloads for Windows and macOS. Developers can [build it from source](docs/development.md).
 
 ## Privacy at a glance
 
