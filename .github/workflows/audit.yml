@@ -1,0 +1,35 @@
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  push:
+    branches: [develop, main]
+    paths:
+      - src-tauri/Cargo.lock
+      - src-tauri/Cargo.toml
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - src-tauri/Cargo.lock
+      - src-tauri/Cargo.toml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # cargo-audit only reads Cargo.lock, so no toolchain build is needed.
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit Rust dependencies
+        working-directory: src-tauri
+        run: cargo audit
