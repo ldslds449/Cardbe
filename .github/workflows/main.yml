@@ -46,3 +46,44 @@ jobs:
         with:
           name: ${{ github.sha }}
           retention-days: ${{ github.ref == 'refs/heads/main' && 14 || 7 }}
+
+  check-macos:
+    # Kept separate from `check` so its required status name stays unchanged.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository ||
+      !contains(fromJSON('["develop", "main"]'), github.head_ref)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    name: check (macOS ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - uses: ./.github/actions/setup
+        with:
+          test-tools: true
+      - run: pnpm check
+      - run: pnpm test
+      - name: Build desktop app
+        id: build
+        if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
+        env:
+          CARDBE_BUILD_COMMIT: ${{ github.sha }}
+        # Unsigned CI builds; release signing and notarization are not set up.
+        run: pnpm tauri build -- --locked
+      - name: Upload build artifact
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Cardbe-${{ github.sha }}-macos-${{ matrix.arch }}-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: ${{ github.ref == 'refs/heads/main' && 14 || 7 }}
