@@ -5,6 +5,10 @@ inputs:
   name:
     description: Artifact name suffix, such as a commit SHA or release tag.
     required: true
+  retention-days:
+    description: Days to keep the artifacts.
+    required: false
+    default: "14"
 
 runs:
   using: composite
@@ -14,16 +18,16 @@ runs:
         name: Cardbe-${{ inputs.name }}-portable
         path: src-tauri/target/release/Cardbe.exe
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.retention-days }}
     - uses: actions/upload-artifact@v4
       with:
         name: Cardbe-${{ inputs.name }}-nsis
         path: src-tauri/target/release/bundle/nsis/*.exe
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.retention-days }}
     - uses: actions/upload-artifact@v4
       with:
         name: Cardbe-${{ inputs.name }}-msi
         path: src-tauri/target/release/bundle/msi/*.msi
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.retention-days }}

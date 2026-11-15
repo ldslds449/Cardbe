@@ -35,7 +35,7 @@ jobs:
       - run: pnpm test
       - name: Build desktop app
         id: build
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         env:
           CARDBE_BUILD_COMMIT: ${{ github.sha }}
         run: pnpm tauri build -- --locked
@@ -44,3 +44,4 @@ jobs:
         uses: ./.github/actions/upload-build
         with:
           name: ${{ github.sha }}
+          retention-days: ${{ github.ref == 'refs/heads/main' && 14 || 7 }}
