@@ -66,7 +66,7 @@ export const DEFAULT_CALENDAR_EXPORT_OPTIONS: CalendarExportOptions = {
   png_layout: "combined",
 };
 
-const PALETTES = {
+export const PALETTES = {
   light: {
     page: "#f8fafc",
     text: "#0f172a",

@@ -331,8 +331,8 @@
               web_publish_status === "error"
                 ? "bg-destructive"
                 : web_publish_status === "updating"
-                  ? "animate-pulse bg-amber-500"
-                  : "bg-emerald-500",
+                  ? "animate-pulse bg-warning"
+                  : "bg-success",
             )}
           ></span>
         </span>

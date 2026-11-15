@@ -416,7 +416,7 @@
       {/if}
       {#if task.items.length > 0 || (task.description.trim().length > 0 && (expand_content || content_open))}
         <Card.Content
-          class="w-full break-normal [overflow-wrap:anywhere] px-4 text-zinc-600 dark:text-zinc-400"
+          class="w-full break-normal [overflow-wrap:anywhere] px-4 text-muted-foreground"
         >
           {#if task.items.length > 0}
             <ChecklistDisplay

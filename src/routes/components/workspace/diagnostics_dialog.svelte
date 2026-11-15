@@ -127,7 +127,7 @@
           </Dialog.Description>
         </div>
         <Badge variant="outline" class="mt-0.5 shrink-0 gap-1.5">
-          <ShieldCheckIcon class="size-3.5 text-emerald-600" />
+          <ShieldCheckIcon class="size-3.5 text-success" />
           {m.ui_redacted_export()}
         </Badge>
       </div>
