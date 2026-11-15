@@ -26,6 +26,8 @@ jobs:
     permissions:
       contents: write
       actions: read
+    outputs:
+      commit: ${{ steps.tag.outputs.commit }}
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
@@ -158,3 +160,46 @@ jobs:
           $asset = Join-Path $env:RUNNER_TEMP "Cardbe_$env:RELEASE_TAG-portable.exe"
           Copy-Item -LiteralPath 'src-tauri/target/release/Cardbe.exe' -Destination $asset
           gh release upload $env:RELEASE_TAG $asset --clobber
+
+  # Unsigned macOS builds (ad-hoc signed, not notarized), added to the draft
+  # release after the Windows job has validated the tag and created it.
+  macos:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    name: release (macOS ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+          ref: ${{ needs.release.outputs.commit }}
+      - uses: ./.github/actions/setup
+      - name: Build desktop app
+        env:
+          CARDBE_BUILD_COMMIT: ${{ needs.release.outputs.commit }}
+        run: pnpm tauri build -- --locked
+      - name: Upload build artifact for manual run
+        if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Cardbe-${{ env.RELEASE_TAG }}-macos-${{ matrix.arch }}-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload DMG to release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$RELEASE_TAG" src-tauri/target/release/bundle/dmg/*.dmg --clobber
