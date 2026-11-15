@@ -23,6 +23,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository ||
       !contains(fromJSON('["develop", "main"]'), github.head_ref)
+    name: check (Windows x64)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -48,7 +49,6 @@ jobs:
           retention-days: ${{ github.ref == 'refs/heads/main' && 14 || 7 }}
 
   check-macos:
-    # Kept separate from `check` so its required status name stays unchanged.
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name != github.repository ||
