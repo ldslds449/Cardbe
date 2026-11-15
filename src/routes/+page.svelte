@@ -4,6 +4,7 @@
   import { translateCommandError } from "#lib/command-errors.js";
   import { getLocale } from "#lib/i18n/index.js";
   import { m } from "#lib/paraglide/messages.js";
+  import { has_primary_modifier } from "#lib/platform.js";
   import { logger } from "#lib/logger.js";
   import { restore_floating_tasks } from "#lib/floating-tasks.js";
   import { restore_desktop_widgets } from "#lib/desktop-widget.svelte.js";
@@ -945,37 +946,33 @@
         focus_search();
       } else if (
         event.code === "KeyT" &&
-        event.ctrlKey &&
+        has_primary_modifier(event) &&
         event.shiftKey &&
-        !event.altKey &&
-        !event.metaKey
+        !event.altKey
       ) {
         event.preventDefault();
         open_add_task_shortcut();
       } else if (
         event.code === "KeyC" &&
-        event.ctrlKey &&
+        has_primary_modifier(event) &&
         event.shiftKey &&
-        !event.altKey &&
-        !event.metaKey
+        !event.altKey
       ) {
         event.preventDefault();
         open_add_column_dialog();
       } else if (
         event.code === "KeyN" &&
-        event.ctrlKey &&
+        has_primary_modifier(event) &&
         event.shiftKey &&
-        !event.altKey &&
-        !event.metaKey
+        !event.altKey
       ) {
         event.preventDefault();
         note_open = !note_open;
       } else if (
         event.code === "Comma" &&
-        event.ctrlKey &&
+        has_primary_modifier(event) &&
         !event.shiftKey &&
-        !event.altKey &&
-        !event.metaKey
+        !event.altKey
       ) {
         event.preventDefault();
         openSettings();

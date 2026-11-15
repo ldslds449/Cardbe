@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from "#lib/paraglide/messages.js";
+  import { has_primary_modifier } from "#lib/platform.js";
   import {
     parseCommandError,
     translateCommandError,
@@ -388,7 +389,7 @@
     if (event.key === "Enter" && task && event.target === document.body) {
       event.preventDefault();
       void open_in_cardbe();
-    } else if (!desktop && event.ctrlKey && !event.altKey && !event.metaKey) {
+    } else if (!desktop && has_primary_modifier(event) && !event.altKey) {
       const step =
         event.key === "=" || event.key === "+"
           ? 0.1

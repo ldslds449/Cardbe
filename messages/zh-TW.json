@@ -900,7 +900,7 @@
   "ui_task_column": "任務欄位",
   "ui_no_columns_yet": "尚未建立欄位",
   "ui_create_a_column_in_cardbe_before_adding_a_task": "請先在 Cardbe 建立欄位，再新增任務。",
-  "ui_ctrl_enter_to_add_esc_to_close": "Ctrl+Enter 新增 · Esc 關閉",
+  "ui_modifier_enter_to_add_esc_to_close": "{modifier}+Enter 新增 · Esc 關閉",
   "ui_loading_shared_board": "正在載入共用看板…",
   "ui_share_unavailable": "無法開啟共用看板",
   "ui_try_again": "重試",

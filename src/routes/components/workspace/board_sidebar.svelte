@@ -4,6 +4,11 @@
   import { confirmUnsavedChanges } from "#lib/unsaved-changes.js";
   import { formatNumber } from "#lib/i18n/index.js";
   import { m } from "#lib/paraglide/messages.js";
+  import {
+    primary_modifier_aria,
+    primary_modifier_label,
+    primary_shortcut_label,
+  } from "#lib/platform.js";
   import { desktop_widgets } from "#lib/desktop-widget.svelte.js";
   import PanelsTopLeftIcon from "@lucide/svelte/icons/panels-top-left";
   import "#lib/i18n/locale.svelte.js";
@@ -390,8 +395,8 @@
     aria-label={label}
     aria-expanded={expanded}
     aria-controls="board-drawer"
-    aria-keyshortcuts="Control+B"
-    title={`${label} (Ctrl+B)`}
+    aria-keyshortcuts={`${primary_modifier_aria}+B`}
+    title={`${label} (${primary_shortcut_label("B")})`}
   >
     {#if expanded}
       <PanelLeftCloseIcon />
@@ -420,7 +425,7 @@
       variant="outline"
       size="sm"
       class="w-full justify-start gap-2 font-normal text-muted-foreground"
-      aria-keyshortcuts="Control+K"
+      aria-keyshortcuts={`${primary_modifier_aria}+K`}
       onclick={quick_switch}
     >
       <SearchIcon />
@@ -428,7 +433,7 @@
         >{m.quick_switch_open()}</span
       >
       <Kbd.Group>
-        <Kbd.Root>Ctrl</Kbd.Root>
+        <Kbd.Root>{primary_modifier_label}</Kbd.Root>
         <Kbd.Root>K</Kbd.Root>
       </Kbd.Group>
     </Button>
@@ -439,7 +444,7 @@
         type="button"
         class={`relative flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md py-1.5 ps-3 pe-2 text-left text-sm transition-colors ${active_focus_id === HOME_PAGE_ID ? "bg-muted font-medium text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
         aria-current={active_focus_id === HOME_PAGE_ID ? "page" : undefined}
-        aria-keyshortcuts="Control+0"
+        aria-keyshortcuts={`${primary_modifier_aria}+0`}
         onclick={open_home}
       >
         <HouseIcon class="size-4 shrink-0 text-primary" aria-hidden="true" />
@@ -452,7 +457,7 @@
             <Kbd.Root
               class={active_focus_id === HOME_PAGE_ID
                 ? "bg-background"
-                : undefined}>Ctrl</Kbd.Root
+                : undefined}>{primary_modifier_label}</Kbd.Root
             >
             <Kbd.Root
               class={active_focus_id === HOME_PAGE_ID
@@ -608,8 +613,8 @@
       size="icon-sm"
       aria-label={m.home_title()}
       aria-current={active_focus_id === HOME_PAGE_ID ? "page" : undefined}
-      aria-keyshortcuts="Control+0"
-      title={`${m.home_title()} (Ctrl+0)`}
+      aria-keyshortcuts={`${primary_modifier_aria}+0`}
+      title={`${m.home_title()} (${primary_shortcut_label("0")})`}
       onclick={open_home}
     >
       <HouseIcon />
@@ -638,8 +643,8 @@
       variant="ghost"
       size="icon-sm"
       aria-label={m.quick_switch_open()}
-      aria-keyshortcuts="Control+K"
-      title={`${m.quick_switch_open()} (Ctrl+K)`}
+      aria-keyshortcuts={`${primary_modifier_aria}+K`}
+      title={`${m.quick_switch_open()} (${primary_shortcut_label("K")})`}
       onclick={quick_switch}
     >
       <SearchIcon />

@@ -1,5 +1,9 @@
 <script lang="ts">
   import { m } from "#lib/paraglide/messages.js";
+  import {
+    primary_modifier_aria,
+    primary_shortcut_label,
+  } from "#lib/platform.js";
   import "#lib/i18n/locale.svelte.js";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import CalendarDaysIcon from "@lucide/svelte/icons/calendar-days";
@@ -74,10 +78,10 @@
           class={`h-10 rounded-none border-b-2 px-4 text-sm transition-colors ${selected_view === view.id ? "border-b-primary text-foreground" : "border-b-transparent text-muted-foreground hover:text-foreground"}`}
           role="tab"
           aria-selected={selected_view === view.id}
-          aria-keyshortcuts="Control+{index + 1}"
+          aria-keyshortcuts={`${primary_modifier_aria}+${index + 1}`}
           title={m.workspace_view_shortcut({
             view: view.label,
-            shortcut: `Ctrl+${index + 1}`,
+            shortcut: primary_shortcut_label(String(index + 1)),
           })}
           onclick={() => onSwitchView(view.id)}
         >

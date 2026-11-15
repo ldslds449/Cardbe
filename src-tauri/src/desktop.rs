@@ -113,7 +113,9 @@ pub fn setup<R: Runtime>(app: &mut App<R>) -> Result<(), Box<dyn std::error::Err
     let mut tray = TrayIconBuilder::with_id("cardbe")
         .tooltip("Cardbe")
         .menu(&menu)
-        .show_menu_on_left_click(false)
+        // Windows opens the main window on double-click, which macOS does not
+        // report; menu bar items open their menu on click instead.
+        .show_menu_on_left_click(cfg!(target_os = "macos"))
         .on_tray_icon_event(|tray, event| {
             if matches!(
                 event,

@@ -5,6 +5,10 @@
   } from "#lib/unsaved-changes.js";
   import * as m from "#lib/paraglide/messages.js";
   import {
+    has_primary_modifier,
+    primary_modifier_label,
+  } from "#lib/platform.js";
+  import {
     parseCommandError,
     translateCommandError,
     type CommandError,
@@ -215,7 +219,7 @@
         void close_quick_window();
         return;
       }
-      if (event.key === "Enter" && event.ctrlKey) {
+      if (event.key === "Enter" && has_primary_modifier(event)) {
         event.preventDefault();
         void save();
       }
@@ -515,7 +519,9 @@
           >
         {:else}
           <span class="text-muted-foreground"
-            >{m.ui_ctrl_enter_to_add_esc_to_close()}</span
+            >{m.ui_modifier_enter_to_add_esc_to_close({
+              modifier: primary_modifier_label,
+            })}</span
           >
         {/if}
       </div>

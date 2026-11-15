@@ -651,6 +651,16 @@ pub fn run() {
             update::check_for_update,
             external::open_external_url,
         ])
-        .run(context)
-        .expect("error while running tauri application");
+        .build(context)
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Closing the main window only hides it, so clicking the Dock icon
+            // must bring it back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                desktop::show_main_window(app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

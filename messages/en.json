@@ -1083,7 +1083,7 @@
   "ui_task_column": "Task column",
   "ui_no_columns_yet": "No columns yet",
   "ui_create_a_column_in_cardbe_before_adding_a_task": "Create a column in Cardbe before adding a task.",
-  "ui_ctrl_enter_to_add_esc_to_close": "Ctrl+Enter to add · Esc to close",
+  "ui_modifier_enter_to_add_esc_to_close": "{modifier}+Enter to add · Esc to close",
   "ui_loading_shared_board": "Loading shared board…",
   "ui_share_unavailable": "Share unavailable",
   "ui_try_again": "Try again",

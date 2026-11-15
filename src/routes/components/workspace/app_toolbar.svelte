@@ -1,6 +1,12 @@
 <script lang="ts">
   import { formatNumber } from "#lib/i18n/index.js";
   import { m } from "#lib/paraglide/messages.js";
+  import {
+    is_apple_platform,
+    primary_modifier_aria,
+    primary_modifier_label,
+    primary_shortcut_label,
+  } from "#lib/platform.js";
   import type { Focus } from "../../type/focus";
   import "#lib/i18n/locale.svelte.js";
   import BellIcon from "@lucide/svelte/icons/bell";
@@ -121,8 +127,8 @@
         aria-label={sidebar_open ? m.sidebar_hide() : m.sidebar_show()}
         aria-expanded={sidebar_open}
         aria-controls="board-drawer"
-        aria-keyshortcuts="Control+B"
-        title={`${sidebar_open ? m.sidebar_hide() : m.sidebar_show()} (Ctrl+B)`}
+        aria-keyshortcuts={`${primary_modifier_aria}+B`}
+        title={`${sidebar_open ? m.sidebar_hide() : m.sidebar_show()} (${primary_shortcut_label("B")})`}
       >
         {#if sidebar_open}
           <PanelLeftCloseIcon />
@@ -180,7 +186,7 @@
               {m.menu_undo()}
               <Menubar.Shortcut>
                 <Kbd.Group>
-                  <Kbd.Root>Ctrl</Kbd.Root>
+                  <Kbd.Root>{primary_modifier_label}</Kbd.Root>
                   <Kbd.Root>Z</Kbd.Root>
                 </Kbd.Group>
               </Menubar.Shortcut>
@@ -192,8 +198,13 @@
               {m.menu_redo()}
               <Menubar.Shortcut>
                 <Kbd.Group>
-                  <Kbd.Root>Ctrl</Kbd.Root>
-                  <Kbd.Root>Y</Kbd.Root>
+                  <Kbd.Root>{primary_modifier_label}</Kbd.Root>
+                  {#if is_apple_platform}
+                    <Kbd.Root>Shift</Kbd.Root>
+                    <Kbd.Root>Z</Kbd.Root>
+                  {:else}
+                    <Kbd.Root>Y</Kbd.Root>
+                  {/if}
                 </Kbd.Group>
               </Menubar.Shortcut>
             </Menubar.Item>
@@ -202,7 +213,7 @@
               {m.menu_find()}
               <Menubar.Shortcut>
                 <Kbd.Group>
-                  <Kbd.Root>Ctrl</Kbd.Root>
+                  <Kbd.Root>{primary_modifier_label}</Kbd.Root>
                   <Kbd.Root>F</Kbd.Root>
                 </Kbd.Group>
               </Menubar.Shortcut>
@@ -217,7 +228,7 @@
                 {m.task_new()}
                 <Menubar.Shortcut>
                   <Kbd.Group>
-                    <Kbd.Root>Ctrl</Kbd.Root>
+                    <Kbd.Root>{primary_modifier_label}</Kbd.Root>
                     <Kbd.Root>Shift</Kbd.Root>
                     <Kbd.Root>T</Kbd.Root>
                   </Kbd.Group>
@@ -227,7 +238,7 @@
                 {m.column_new()}
                 <Menubar.Shortcut>
                   <Kbd.Group>
-                    <Kbd.Root>Ctrl</Kbd.Root>
+                    <Kbd.Root>{primary_modifier_label}</Kbd.Root>
                     <Kbd.Root>Shift</Kbd.Root>
                     <Kbd.Root>C</Kbd.Root>
                   </Kbd.Group>
@@ -250,7 +261,7 @@
               {m.menu_preferences()}
               <Menubar.Shortcut>
                 <Kbd.Group>
-                  <Kbd.Root>Ctrl</Kbd.Root>
+                  <Kbd.Root>{primary_modifier_label}</Kbd.Root>
                   <Kbd.Root>,</Kbd.Root>
                 </Kbd.Group>
               </Menubar.Shortcut>
@@ -352,7 +363,7 @@
       >
         <InputGroup.Input
           id="workspace-search"
-          aria-keyshortcuts="Control+F /"
+          aria-keyshortcuts={`${primary_modifier_aria}+F /`}
           aria-label={m.board_search_tasks()}
           aria-busy={search_pending}
           placeholder={m.board_search_tasks()}
@@ -379,10 +390,10 @@
           <!-- Continues the same search across every board. -->
           <InputGroup.Button
             aria-label={m.explorer_search_all()}
-            aria-keyshortcuts="Control+Shift+F"
+            aria-keyshortcuts={`${primary_modifier_aria}+Shift+F`}
             title={m.workspace_view_shortcut({
               view: m.explorer_search_all(),
-              shortcut: "Ctrl+Shift+F",
+              shortcut: primary_shortcut_label("F", true),
             })}
             size="icon-xs"
             onclick={onOpenAllTasks}
@@ -409,11 +420,11 @@
         size="icon-sm"
         class="flex-none"
         aria-pressed={note_open}
-        aria-keyshortcuts="Control+Shift+N"
+        aria-keyshortcuts={`${primary_modifier_aria}+Shift+N`}
         aria-label={note_open ? m.notes_close() : m.notes_open()}
         title={m.workspace_view_shortcut({
           view: note_open ? m.notes_close() : m.notes_open(),
-          shortcut: "Ctrl+Shift+N",
+          shortcut: primary_shortcut_label("N", true),
         })}
       >
         <StickyNoteIcon />
