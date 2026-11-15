@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   release:
+    name: release (Windows x64)
     runs-on: windows-latest
     permissions:
       contents: write
