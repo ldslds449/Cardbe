@@ -580,6 +580,11 @@ mod tests {
     fn deadline() -> Instant {
         Instant::now() + Duration::from_secs(3)
     }
+    /// Streaming the 64 MiB response limit through loopback in a debug build
+    /// can exceed `deadline()` while the whole suite runs in parallel.
+    fn transfer_deadline() -> Instant {
+        Instant::now() + Duration::from_secs(60)
+    }
     fn cancel() -> Arc<AtomicBool> {
         Arc::new(AtomicBool::new(false))
     }
@@ -1277,7 +1282,7 @@ mod tests {
     #[tokio::test]
     async fn redirects_declared_and_streamed_size_limits_are_rejected() {
         for bytes in [b"HTTP/1.1 302 Found\r\nContent-Length: 0\r\nLocation: http://127.0.0.1/private\r\n\r\n".to_vec(),format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",RESPONSE_LIMIT+1).into_bytes(),[b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec(),vec![b'x';RESPONSE_LIMIT+1]].concat()] {
-            let result=get_with("https://api.github.com",&policy(),cancel(),deadline(),|_|async {Ok(vec!["93.184.216.34:443".parse().unwrap()])},|_,_|async {Ok(mock_response(bytes).await)}).await;
+            let result=get_with("https://api.github.com",&policy(),cancel(),transfer_deadline(),|_|async {Ok(vec!["93.184.216.34:443".parse().unwrap()])},|_,_|async {Ok(mock_response(bytes).await)}).await;
             assert!(matches!(result,Err(RuntimeError::Redirect|RuntimeError::ResourceLimit(PluginResource::HttpResponseSize))),"{result:?}");
         }
         for bytes in [
@@ -1296,7 +1301,7 @@ mod tests {
                 "https://api.github.com",
                 &policy(),
                 cancel(),
-                deadline(),
+                transfer_deadline(),
                 |_| async { Ok(vec!["93.184.216.34:443".parse().unwrap()]) },
                 |_, _| async { Ok(mock_response(bytes).await) },
             )
