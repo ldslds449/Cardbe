@@ -8,6 +8,7 @@ import {
   readFileSync,
   rmSync,
   existsSync,
+  realpathSync,
   renameSync,
 } from "node:fs";
 import { createServer } from "node:net";
@@ -17,7 +18,10 @@ import { selectInstance, selectPort, listen, close } from "./dev-instance.mjs";
 import { expect, it } from "vite-plus/test";
 
 it("automatically changes ports while preserving a migrated random instance ID", async () => {
-  const root = mkdtempSync(path.join(tmpdir(), "cardbe-port-test-"));
+  // Resolve symlinks (macOS /var -> /private/var) to match the launcher's module path.
+  const root = realpathSync(
+    mkdtempSync(path.join(tmpdir(), "cardbe-port-test-")),
+  );
   const server = createServer();
   const nextServer = createServer();
   try {
