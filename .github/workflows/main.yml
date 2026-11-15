@@ -35,7 +35,8 @@ jobs:
       - run: pnpm test
       - name: Build desktop app
         id: build
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+        # Dependabot PRs only need check/test; skip their desktop builds.
+        if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
         env:
           CARDBE_BUILD_COMMIT: ${{ github.sha }}
         run: pnpm tauri build -- --locked
