@@ -34,18 +34,22 @@ pub fn unpack(bytes: Vec<u8>) -> Result<(Vec<u8>, Vec<u8>), CommandError> {
         let file = archive
             .by_index(index)
             .map_err(|_| invalid(PluginPackageIssue::ArchiveUnreadable))?;
+        let name = file
+            .name()
+            .map_err(|_| invalid(PluginPackageIssue::ArchiveUnreadable))?
+            .into_owned();
         if file.enclosed_name().is_none()
-            || file.name().contains('\\')
+            || name.contains('\\')
             || file.is_symlink()
-            || !names.insert(file.name().to_owned())
+            || !names.insert(name.clone())
         {
             return Err(invalid(PluginPackageIssue::UnsafePath));
         }
-        if !file.is_dir() && file.name().rsplit('/').next() == Some("manifest.json") {
+        if !file.is_dir() && name.rsplit('/').next() == Some("manifest.json") {
             if manifest.is_some() {
                 return Err(invalid(PluginPackageIssue::ManifestDuplicate));
             }
-            manifest = Some(file.name().to_owned());
+            manifest = Some(name);
         }
     }
     let manifest = manifest.ok_or(invalid(PluginPackageIssue::ManifestMissing))?;
