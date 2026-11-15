@@ -104,7 +104,7 @@
               </div>
               <div class="font-mono text-sm">
                 {diagnostics?.appVersion ??
-                  (diagnostics_loading ? m.ui_loading() : "Unknown")}
+                  (diagnostics_loading ? m.ui_loading() : m.common_unknown())}
               </div>
             </div>
             <div class="space-y-1">
@@ -113,7 +113,7 @@
               </div>
               <div class="font-mono text-sm">
                 {diagnostics?.buildCommit ??
-                  (diagnostics_loading ? m.ui_loading() : "Unknown")}
+                  (diagnostics_loading ? m.ui_loading() : m.common_unknown())}
               </div>
             </div>
           </Card.Content>

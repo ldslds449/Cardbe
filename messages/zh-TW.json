@@ -2586,5 +2586,7 @@
   "template_add_to": "新增至欄位",
   "template_no_columns": "請先建立欄位，才能使用範本。",
   "template_kept_fields": "範本會保留標題、描述、標籤、優先度、顏色與檢查清單。",
-  "template_reset_fields": "日期、重複、釘選、等待中的卡片與檢查清單完成狀態不會存入範本。"
+  "template_reset_fields": "日期、重複、釘選、等待中的卡片與檢查清單完成狀態不會存入範本。",
+  "calendar_export_pdf_too_large": "PDF 頁面過大。請降低 DPI，或改為每週匯出一頁。",
+  "common_unknown": "未知"
 }

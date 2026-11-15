@@ -2920,5 +2920,7 @@
   "template_add_to": "Add to column",
   "template_no_columns": "Add a column before using a template.",
   "template_kept_fields": "The template keeps the title, description, labels, priority, color, and checklist.",
-  "template_reset_fields": "Dates, repeats, pinning, blockers, and checklist progress aren't saved."
+  "template_reset_fields": "Dates, repeats, pinning, blockers, and checklist progress aren't saved.",
+  "calendar_export_pdf_too_large": "A PDF page is too large. Lower the DPI or export one page per week.",
+  "common_unknown": "Unknown"
 }

@@ -816,7 +816,7 @@
           {#if !preparing_periods && !calculating_estimate && estimate.too_large}
             <p class="mt-1 text-xs text-destructive">
               {format === "pdf"
-                ? "A PDF page is too large. Lower the DPI or export one page per week."
+                ? m.calendar_export_pdf_too_large()
                 : png_layout === "separate"
                   ? m.ui_a_monthly_image_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_or_use_pdf()
                   : m.ui_output_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_use_separate_png_images_or_use_pdf()}
@@ -1003,9 +1003,9 @@
                           <span
                             class="block truncate text-xs text-muted-foreground"
                             >{entry.column.name}{entry.archived
-                              ? " · Archived"
+                              ? ` · ${m.explorer_archived()}`
                               : entry.preview
-                                ? " · Recurring preview"
+                                ? ` · ${m.calendar_recurring_preview()}`
                                 : ""}</span
                           >
                         </span>

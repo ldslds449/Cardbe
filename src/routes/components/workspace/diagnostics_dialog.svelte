@@ -166,7 +166,7 @@
                     {m.ui_build()}
                   </div>
                   <div class="font-mono text-sm">
-                    {diagnostics.buildCommit ?? "Unknown"}
+                    {diagnostics.buildCommit ?? m.common_unknown()}
                   </div>
                 </div>
                 <div class="space-y-1">
