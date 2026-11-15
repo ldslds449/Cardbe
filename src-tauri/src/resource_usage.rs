@@ -265,7 +265,9 @@ mod platform {
     use super::{MemoryMetric, ProcessEntry, ProcessSource, ProcessStats};
     use std::mem::{size_of, zeroed};
     use std::time::Duration;
-    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, FILETIME, HANDLE, INVALID_HANDLE_VALUE, STILL_ACTIVE,
+    };
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
@@ -274,8 +276,8 @@ mod platform {
         GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX2,
     };
     use windows_sys::Win32::System::Threading::{
-        GetActiveProcessorCount, GetProcessTimes, OpenProcess, ALL_PROCESSOR_GROUPS,
-        PROCESS_QUERY_LIMITED_INFORMATION,
+        GetActiveProcessorCount, GetExitCodeProcess, GetProcessTimes, OpenProcess,
+        ALL_PROCESSOR_GROUPS, PROCESS_QUERY_LIMITED_INFORMATION,
     };
 
     struct OwnedHandle(HANDLE);
@@ -372,6 +374,13 @@ mod platform {
                 return None;
             }
             let handle = OwnedHandle(handle);
+            // An exited process stays listed while any handle to it is open.
+            let mut exit_code = 0;
+            if unsafe { GetExitCodeProcess(handle.0, &mut exit_code) } == 0
+                || exit_code != STILL_ACTIVE as u32
+            {
+                return None;
+            }
             let mut creation: FILETIME = unsafe { zeroed() };
             let mut exit: FILETIME = unsafe { zeroed() };
             let mut kernel: FILETIME = unsafe { zeroed() };
