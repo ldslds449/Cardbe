@@ -1,0 +1,29 @@
+name: Upload build artifacts
+description: Upload the portable executable, NSIS installer, and MSI installer as separate artifacts.
+
+inputs:
+  name:
+    description: Artifact name suffix, such as a commit SHA or release tag.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Cardbe-${{ inputs.name }}-portable
+        path: src-tauri/target/release/Cardbe.exe
+        if-no-files-found: error
+        retention-days: 14
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Cardbe-${{ inputs.name }}-nsis
+        path: src-tauri/target/release/bundle/nsis/*.exe
+        if-no-files-found: error
+        retention-days: 14
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Cardbe-${{ inputs.name }}-msi
+        path: src-tauri/target/release/bundle/msi/*.msi
+        if-no-files-found: error
+        retention-days: 14

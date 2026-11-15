@@ -16,25 +16,25 @@ on:
         default: false
         type: boolean
 
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release:
+    runs-on: windows-latest
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows-latest
-            args: ""
-    runs-on: ${{ matrix.platform }}
+      actions: read
     env:
-      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: true
-          ref: ${{ github.event_name == 'push' && github.ref || inputs.tag }}
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Validate tag format
         shell: pwsh
@@ -64,25 +64,40 @@ jobs:
           fi
           echo "commit=$tag_commit" >> "$GITHUB_OUTPUT"
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 12.8.1
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-      - run: cargo install wasm-tools --version 1.259.0 --locked
-      - run: pnpm install --frozen-lockfile
-      - name: Validate release
-        run: pnpm check
-      - run: pnpm test
+      # check/test already ran in CI for this commit on main; require that run
+      # to have succeeded instead of repeating it. Waits while CI is running.
+      - name: Verify CI passed for tag commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT: ${{ steps.tag.outputs.commit }}
+        run: |
+          set -euo pipefail
+          runs_url="repos/$GITHUB_REPOSITORY/actions/workflows/main.yml/runs?head_sha=$COMMIT&event=push&branch=main"
+          state_jq='.workflow_runs as $r
+            | if any($r[]; .conclusion == "success") then "success"
+              elif any($r[]; .status != "completed") then "pending"
+              elif ($r | length) > 0 then "failed"
+              else "missing" end'
+          for attempt in $(seq 1 120); do
+            state="$(gh api "$runs_url" --jq "$state_jq")"
+            case "$state" in
+              success) echo "CI passed for $COMMIT."; exit 0 ;;
+              failed) echo "CI failed for $COMMIT. Fix it on main or re-run CI, then retry."; exit 1 ;;
+              missing)
+                # CI may not be queued yet right after pushing; give it a few minutes.
+                if (( attempt > 10 )); then
+                  echo "No CI run on main for $COMMIT. Tag a commit that CI ran on (the head of a push to main)."
+                  exit 1
+                fi ;;
+            esac
+            echo "Waiting for CI on $COMMIT ($state, attempt $attempt)..."
+            sleep 30
+          done
+          echo "Timed out waiting for CI on $COMMIT."
+          exit 1
+
+      - uses: ./.github/actions/setup
       - uses: taiki-e/install-action@git-cliff
       - name: Generate release notes
         id: notes
@@ -96,21 +111,13 @@ jobs:
           Add-Content -Path $env:GITHUB_OUTPUT -Value $delimiter
 
       - name: Build release for manual run
-        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
+        if: env.PUBLISH != 'true'
         env:
           CARDBE_BUILD_COMMIT: ${{ steps.tag.outputs.commit }}
-        run: pnpm tauri build
-
-      - name: Verify portable executable for manual run
-        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
-        shell: pwsh
-        run: |
-          if (-not (Test-Path 'src-tauri/target/release/Cardbe.exe')) {
-            throw 'Tauri build did not produce the portable executable.'
-          }
+        run: pnpm tauri build -- --locked
 
       - uses: tauri-apps/tauri-action@v1
-        if: ${{ github.event_name == 'push' || inputs.publish }}
+        if: env.PUBLISH == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARDBE_BUILD_COMMIT: ${{ steps.tag.outputs.commit }}
@@ -119,18 +126,35 @@ jobs:
           releaseName: Cardbe ${{ env.RELEASE_TAG }}
           releaseBody: ${{ steps.notes.outputs.content }}
           releaseDraft: true
-          args: ${{ matrix.args }}
+          args: -- --locked
+
+      - name: Verify portable executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'src-tauri/target/release/Cardbe.exe')) {
+            throw 'Tauri build did not produce the portable executable.'
+          }
+
+      - name: Upload build artifacts for manual run
+        if: env.PUBLISH != 'true'
+        uses: ./.github/actions/upload-build
+        with:
+          name: ${{ env.RELEASE_TAG }}
+      - name: Upload release notes for manual run
+        if: env.PUBLISH != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cardbe-${{ env.RELEASE_TAG }}-release-notes
+          path: release-notes.md
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload portable release
-        if: ${{ github.event_name == 'push' || inputs.publish }}
+        if: env.PUBLISH == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $binary = 'src-tauri/target/release/Cardbe.exe'
-          if (-not (Test-Path $binary)) {
-            throw 'Tauri build did not produce the portable executable.'
-          }
           $asset = Join-Path $env:RUNNER_TEMP "Cardbe_$env:RELEASE_TAG-portable.exe"
-          Copy-Item -LiteralPath $binary -Destination $asset
+          Copy-Item -LiteralPath 'src-tauri/target/release/Cardbe.exe' -Destination $asset
           gh release upload $env:RELEASE_TAG $asset --clobber
