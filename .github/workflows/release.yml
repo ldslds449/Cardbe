@@ -30,7 +30,7 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: true
@@ -142,7 +142,7 @@ jobs:
           name: ${{ env.RELEASE_TAG }}
       - name: Upload release notes for manual run
         if: env.PUBLISH != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Cardbe-${{ env.RELEASE_TAG }}-release-notes
           path: release-notes.md
