@@ -5,6 +5,7 @@
   } from "#lib/command-errors.js";
   import { getLocale, formatNumber } from "#lib/i18n/index.js";
   import * as m from "#lib/paraglide/messages.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { logger } from "#lib/logger.js";
   import { tick, untrack } from "svelte";
   import { toast } from "svelte-sonner";
@@ -32,6 +33,7 @@
     save_calendar_export,
     save_split_calendar_png_export,
     selected_calendar_days,
+    PALETTES as EXPORT_PALETTES,
     type CalendarExportFormat,
     type CalendarExportEstimate,
     type CalendarExportOptions,
@@ -568,446 +570,459 @@
       </Dialog.Description>
     </Dialog.Header>
 
-    <div
-      class="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain px-6 pb-6 pt-2"
-    >
-      {#if view_mode === "month"}
-        <div
-          class="flex flex-wrap items-end justify-between gap-3 rounded-lg border bg-muted/20 p-3"
-        >
-          <div class="grid flex-1 gap-3 sm:grid-cols-2">
-            <label class="grid gap-1.5 text-sm font-medium">
-              {m.ui_start_month()}
-              <MonthPicker
-                bind:value={start_month}
-                onValueChange={schedule_period_rebuild}
-                disabled={exporting}
-              />
-            </label>
-            <label class="grid gap-1.5 text-sm font-medium">
-              {m.ui_end_month()}
-              <MonthPicker
-                bind:value={end_month}
-                onValueChange={schedule_period_rebuild}
-                disabled={exporting}
-              />
-            </label>
-          </div>
-          <p class="pb-2 text-xs text-muted-foreground">
-            {m.export_month_count({ count: month_count })}
-            {m.export_max_months()}
-          </p>
-        </div>
-      {/if}
-
-      <div class="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:grid-cols-3">
-        <fieldset class="grid gap-2">
-          <legend class="text-sm font-medium">{m.ui_format()}</legend>
+    <ScrollArea class="min-h-0 flex-1">
+      <div class="grid gap-4 px-6 pb-6 pt-2">
+        {#if view_mode === "month"}
           <div
-            class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
+            class="flex flex-wrap items-end justify-between gap-3 rounded-lg border bg-muted/20 p-3"
           >
-            <Button
-              variant={format === "png" ? "secondary" : "ghost"}
-              size="sm"
-              class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
-              aria-pressed={format === "png"}
-              onclick={() => {
-                format = "png";
-              }}>PNG</Button
-            >
-            <Button
-              variant={format === "pdf" ? "secondary" : "ghost"}
-              size="sm"
-              class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
-              aria-pressed={format === "pdf"}
-              onclick={() => {
-                format = "pdf";
-              }}>PDF</Button
-            >
+            <div class="grid flex-1 gap-3 sm:grid-cols-2">
+              <label class="grid gap-1.5 text-sm font-medium">
+                {m.ui_start_month()}
+                <MonthPicker
+                  bind:value={start_month}
+                  onValueChange={schedule_period_rebuild}
+                  disabled={exporting}
+                />
+              </label>
+              <label class="grid gap-1.5 text-sm font-medium">
+                {m.ui_end_month()}
+                <MonthPicker
+                  bind:value={end_month}
+                  onValueChange={schedule_period_rebuild}
+                  disabled={exporting}
+                />
+              </label>
+            </div>
+            <p class="pb-2 text-xs text-muted-foreground">
+              {m.export_month_count({ count: month_count })}
+              {m.export_max_months()}
+            </p>
           </div>
-        </fieldset>
-        <fieldset class="grid gap-2">
-          <legend class="text-sm font-medium">{m.ui_theme()}</legend>
-          <div
-            class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
-          >
-            <Button
-              variant={theme === "light" ? "secondary" : "ghost"}
-              size="sm"
-              class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
-              aria-pressed={theme === "light"}
-              onclick={() => {
-                theme = "light";
-              }}>{m.ui_light()}</Button
-            >
-            <Button
-              variant={theme === "dark" ? "secondary" : "ghost"}
-              size="sm"
-              class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
-              aria-pressed={theme === "dark"}
-              onclick={() => {
-                theme = "dark";
-              }}>{m.ui_dark()}</Button
-            >
-          </div>
-        </fieldset>
-        {#if format === "png"}
-          <label class="grid gap-2 text-sm font-medium">
-            DPI
-            <Input
-              type="number"
-              min="72"
-              max="300"
-              step="1"
-              bind:value={dpi}
-              onfocusout={set_dpi}
-            />
-          </label>
         {/if}
 
-        {#if format === "png" && view_mode === "month"}
-          <fieldset class="grid gap-2 sm:col-span-3">
-            <legend class="text-sm font-medium">{m.ui_png_layout()}</legend>
+        <div
+          class="grid gap-4 rounded-lg border bg-muted/20 p-3 sm:grid-cols-3"
+        >
+          <fieldset class="grid gap-2">
+            <legend class="text-sm font-medium">{m.ui_format()}</legend>
             <div
               class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
             >
               <Button
-                variant={png_layout === "combined" ? "secondary" : "ghost"}
+                variant={format === "png" ? "secondary" : "ghost"}
                 size="sm"
                 class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
-                aria-pressed={png_layout === "combined"}
+                aria-pressed={format === "png"}
                 onclick={() => {
-                  png_layout = "combined";
-                }}>{m.ui_single_image()}</Button
+                  format = "png";
+                }}>PNG</Button
               >
               <Button
-                variant={png_layout === "separate" ? "secondary" : "ghost"}
+                variant={format === "pdf" ? "secondary" : "ghost"}
                 size="sm"
                 class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
-                aria-pressed={png_layout === "separate"}
+                aria-pressed={format === "pdf"}
                 onclick={() => {
-                  png_layout = "separate";
-                }}>{m.ui_separate_images()}</Button
+                  format = "pdf";
+                }}>PDF</Button
               >
-            </div>
-            {#if png_layout === "separate"}
-              <p class="text-xs text-muted-foreground">
-                {m.ui_saves_one_png_per_month_in_a_folder_you_choose()}
-              </p>
-            {/if}
-          </fieldset>
-        {/if}
-
-        {#if format === "pdf"}
-          <fieldset class="grid gap-2 sm:col-span-2">
-            <legend class="text-sm font-medium">{m.ui_pdf_page_size()}</legend>
-            <div
-              class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
-            >
-              {#each [["fit", m.ui_fit_content()], ["a4", m.export_a4_landscape()], ["a3", m.export_a3_landscape()]] as [value, label]}
-                <Button
-                  variant={pdf_paper === value ? "secondary" : "ghost"}
-                  size="sm"
-                  class="h-full flex-1 rounded-none border-0 border-r shadow-none last:border-r-0 focus-visible:z-10"
-                  aria-pressed={pdf_paper === value}
-                  onclick={() => {
-                    pdf_paper = value as CalendarPdfPaper;
-                  }}>{label}</Button
-                >
-              {/each}
             </div>
           </fieldset>
           <fieldset class="grid gap-2">
-            <legend class="text-sm font-medium">{m.ui_pagination()}</legend>
+            <legend class="text-sm font-medium">{m.ui_theme()}</legend>
             <div
               class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
             >
               <Button
-                variant={pdf_pagination === "single" ? "secondary" : "ghost"}
+                variant={theme === "light" ? "secondary" : "ghost"}
                 size="sm"
                 class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
-                aria-pressed={pdf_pagination === "single"}
+                aria-pressed={theme === "light"}
                 onclick={() => {
-                  pdf_pagination = "single";
-                }}
-                >{view_mode === "month"
-                  ? m.ui_months()
-                  : m.ui_one_page()}</Button
+                  theme = "light";
+                }}>{m.ui_light()}</Button
               >
               <Button
-                variant={pdf_pagination === "weeks" ? "secondary" : "ghost"}
+                variant={theme === "dark" ? "secondary" : "ghost"}
                 size="sm"
                 class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
-                aria-pressed={pdf_pagination === "weeks"}
+                aria-pressed={theme === "dark"}
                 onclick={() => {
-                  pdf_pagination = "weeks";
-                }}>{m.ui_weeks()}</Button
+                  theme = "dark";
+                }}>{m.ui_dark()}</Button
               >
             </div>
           </fieldset>
-        {/if}
+          {#if format === "png"}
+            <label class="grid gap-2 text-sm font-medium">
+              DPI
+              <Input
+                type="number"
+                min="72"
+                max="300"
+                step="1"
+                bind:value={dpi}
+                onfocusout={set_dpi}
+              />
+            </label>
+          {/if}
 
-        <div class="grid gap-2 sm:col-span-3">
-          <label class="flex cursor-pointer items-center gap-2 text-sm">
-            <Checkbox
-              checked={show_details}
-              onCheckedChange={(checked) => {
-                show_details = checked === true;
-              }}
-            />
-            {m.ui_show_entry_count_and_date()}
-          </label>
-        </div>
-      </div>
-
-      <div
-        class={`rounded-lg border p-3 ${estimate.too_large ? "border-destructive/50 bg-destructive/5" : "bg-muted/20"}`}
-      >
-        {#if preparing_periods || calculating_estimate}
-          <div
-            class="flex min-h-5 items-center gap-2 text-xs text-muted-foreground"
-            role="status"
-          >
-            <LoaderCircleIcon class="size-3.5 animate-spin" />
-            {m.ui_calculating_output_size()}
-          </div>
-        {:else}
-          <div
-            class="flex flex-wrap items-center justify-between gap-2 text-xs"
-          >
-            {#if format === "pdf"}
-              <span class="text-muted-foreground"
-                >{m.ui_vector_pdf_scalable_text_and_graphics()}</span
+          {#if format === "png" && view_mode === "month"}
+            <fieldset class="grid gap-2 sm:col-span-3">
+              <legend class="text-sm font-medium">{m.ui_png_layout()}</legend>
+              <div
+                class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
               >
-              <span class="text-muted-foreground"
-                >{m.export_page_count({ count: estimate.page_count })}</span
-              >
-            {:else}
-              <span
-                class={estimate.too_large
-                  ? "font-medium text-destructive"
-                  : "text-muted-foreground"}
-              >
-                {estimate.width.toLocaleString(getLocale())}
-                × {estimate.height.toLocaleString(getLocale())} px ·
-                {formatNumber(estimate.megapixels, {
-                  minimumFractionDigits: 1,
-                  maximumFractionDigits: 1,
-                })}
-                MP · ~{formatNumber(estimate.memory_mb, {
-                  maximumFractionDigits: 0,
-                })}
-                {m.export_canvas_memory()}
-              </span>
+                <Button
+                  variant={png_layout === "combined" ? "secondary" : "ghost"}
+                  size="sm"
+                  class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
+                  aria-pressed={png_layout === "combined"}
+                  onclick={() => {
+                    png_layout = "combined";
+                  }}>{m.ui_single_image()}</Button
+                >
+                <Button
+                  variant={png_layout === "separate" ? "secondary" : "ghost"}
+                  size="sm"
+                  class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
+                  aria-pressed={png_layout === "separate"}
+                  onclick={() => {
+                    png_layout = "separate";
+                  }}>{m.ui_separate_images()}</Button
+                >
+              </div>
               {#if png_layout === "separate"}
-                <span class="text-muted-foreground"
-                  >{m.export_image_count({ count: estimate.page_count })}</span
-                >
+                <p class="text-xs text-muted-foreground">
+                  {m.ui_saves_one_png_per_month_in_a_folder_you_choose()}
+                </p>
               {/if}
-            {/if}
-          </div>
-        {/if}
-        {#if !preparing_periods && !calculating_estimate && estimate.too_large}
-          <p class="mt-1 text-xs text-destructive">
-            {format === "pdf"
-              ? "A PDF page is too large. Lower the DPI or export one page per week."
-              : png_layout === "separate"
-                ? m.ui_a_monthly_image_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_or_use_pdf()
-                : m.ui_output_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_use_separate_png_images_or_use_pdf()}
-          </p>
-        {/if}
-      </div>
+            </fieldset>
+          {/if}
 
-      <div
-        class="relative isolate shrink-0 rounded-lg border p-3 shadow-inner"
-        style={`background:${theme === "dark" ? "#0f172a" : "#f8fafc"};color:${theme === "dark" ? "#f8fafc" : "#0f172a"};`}
-        aria-label={m.ui_export_preview()}
-        aria-busy={preparing_periods || calculating_estimate}
-      >
-        {#if preparing_periods || calculating_estimate}
-          <div
-            class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[1px]"
-            role="status"
-          >
-            <span
-              class="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm"
-            >
-              <LoaderCircleIcon class="size-4 animate-spin" />
-              {m.ui_updating_preview()}
-            </span>
-          </div>
-        {/if}
-        <div class="mb-2 flex items-end justify-between gap-3">
-          <div class="min-w-0">
-            <div class="break-words text-sm font-bold leading-tight">
-              {periods[0]?.label ?? period_label}
-            </div>
-            {#if show_details}
-              <div class="mt-0.5 text-[10px] opacity-60">
-                {m.export_entries_date({
-                  count: valid_selected_entry_keys.length,
-                  date: new Date().toLocaleDateString(getLocale()),
-                })}
+          {#if format === "pdf"}
+            <fieldset class="grid gap-2 sm:col-span-2">
+              <legend class="text-sm font-medium">{m.ui_pdf_page_size()}</legend
+              >
+              <div
+                class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
+              >
+                {#each [["fit", m.ui_fit_content()], ["a4", m.export_a4_landscape()], ["a3", m.export_a3_landscape()]] as [value, label]}
+                  <Button
+                    variant={pdf_paper === value ? "secondary" : "ghost"}
+                    size="sm"
+                    class="h-full flex-1 rounded-none border-0 border-r shadow-none last:border-r-0 focus-visible:z-10"
+                    aria-pressed={pdf_paper === value}
+                    onclick={() => {
+                      pdf_paper = value as CalendarPdfPaper;
+                    }}>{label}</Button
+                  >
+                {/each}
               </div>
-            {/if}
-          </div>
-          <span class="shrink-0 text-[10px] uppercase tracking-wide opacity-50"
-            >{m.common_preview()}</span
-          >
-        </div>
-        <div
-          class="grid grid-cols-7 gap-px overflow-hidden rounded border border-current/15 bg-current/15"
-        >
-          {#each preview_days as day (day.key)}
-            <div
-              class="min-h-16 bg-[var(--preview-day)] p-1"
-              style={`--preview-day:${theme === "dark" ? "#111827" : "#ffffff"}`}
-            >
-              <div class="text-[9px] font-semibold opacity-65">
-                {day.date.getDate()}
-              </div>
-              {#if day.tasks.length > 0}
-                <div
-                  class="mt-1 line-clamp-3 break-words rounded border border-current/15 px-1 py-0.5 text-[8px] leading-tight"
+            </fieldset>
+            <fieldset class="grid gap-2">
+              <legend class="text-sm font-medium">{m.ui_pagination()}</legend>
+              <div
+                class="flex h-9 items-stretch overflow-hidden rounded-md border bg-background"
+              >
+                <Button
+                  variant={pdf_pagination === "single" ? "secondary" : "ghost"}
+                  size="sm"
+                  class="h-full flex-1 rounded-none border-0 border-r shadow-none focus-visible:z-10"
+                  aria-pressed={pdf_pagination === "single"}
+                  onclick={() => {
+                    pdf_pagination = "single";
+                  }}
+                  >{view_mode === "month"
+                    ? m.ui_months()
+                    : m.ui_one_page()}</Button
                 >
-                  {day.tasks[0].task.title || m.task_untitled()}
+                <Button
+                  variant={pdf_pagination === "weeks" ? "secondary" : "ghost"}
+                  size="sm"
+                  class="h-full flex-1 rounded-none border-0 shadow-none focus-visible:z-10"
+                  aria-pressed={pdf_pagination === "weeks"}
+                  onclick={() => {
+                    pdf_pagination = "weeks";
+                  }}>{m.ui_weeks()}</Button
+                >
+              </div>
+            </fieldset>
+          {/if}
+
+          <div class="grid gap-2 sm:col-span-3">
+            <label class="flex cursor-pointer items-center gap-2 text-sm">
+              <Checkbox
+                checked={show_details}
+                onCheckedChange={(checked) => {
+                  show_details = checked === true;
+                }}
+              />
+              {m.ui_show_entry_count_and_date()}
+            </label>
+          </div>
+        </div>
+
+        <div
+          class={`rounded-lg border p-3 ${estimate.too_large ? "border-destructive/50 bg-destructive/5" : "bg-muted/20"}`}
+        >
+          {#if preparing_periods || calculating_estimate}
+            <div
+              class="flex min-h-5 items-center gap-2 text-xs text-muted-foreground"
+              role="status"
+            >
+              <LoaderCircleIcon class="size-3.5 animate-spin" />
+              {m.ui_calculating_output_size()}
+            </div>
+          {:else}
+            <div
+              class="flex flex-wrap items-center justify-between gap-2 text-xs"
+            >
+              {#if format === "pdf"}
+                <span class="text-muted-foreground"
+                  >{m.ui_vector_pdf_scalable_text_and_graphics()}</span
+                >
+                <span class="text-muted-foreground"
+                  >{m.export_page_count({ count: estimate.page_count })}</span
+                >
+              {:else}
+                <span
+                  class={estimate.too_large
+                    ? "font-medium text-destructive"
+                    : "text-muted-foreground"}
+                >
+                  {estimate.width.toLocaleString(getLocale())}
+                  × {estimate.height.toLocaleString(getLocale())} px ·
+                  {formatNumber(estimate.megapixels, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}
+                  MP · ~{formatNumber(estimate.memory_mb, {
+                    maximumFractionDigits: 0,
+                  })}
+                  {m.export_canvas_memory()}
+                </span>
+                {#if png_layout === "separate"}
+                  <span class="text-muted-foreground"
+                    >{m.export_image_count({
+                      count: estimate.page_count,
+                    })}</span
+                  >
+                {/if}
+              {/if}
+            </div>
+          {/if}
+          {#if !preparing_periods && !calculating_estimate && estimate.too_large}
+            <p class="mt-1 text-xs text-destructive">
+              {format === "pdf"
+                ? "A PDF page is too large. Lower the DPI or export one page per week."
+                : png_layout === "separate"
+                  ? m.ui_a_monthly_image_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_or_use_pdf()
+                  : m.ui_output_is_too_large_lower_the_dpi_hide_empty_first_last_weeks_use_separate_png_images_or_use_pdf()}
+            </p>
+          {/if}
+        </div>
+
+        <div
+          class="relative isolate shrink-0 rounded-lg border p-3 shadow-inner"
+          style={`background:${EXPORT_PALETTES[theme].page};color:${EXPORT_PALETTES[theme].text};`}
+          aria-label={m.ui_export_preview()}
+          aria-busy={preparing_periods || calculating_estimate}
+        >
+          {#if preparing_periods || calculating_estimate}
+            <div
+              class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[1px]"
+              role="status"
+            >
+              <span
+                class="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-xs text-foreground shadow-sm"
+              >
+                <LoaderCircleIcon class="size-4 animate-spin" />
+                {m.ui_updating_preview()}
+              </span>
+            </div>
+          {/if}
+          <div class="mb-2 flex items-end justify-between gap-3">
+            <div class="min-w-0">
+              <div class="break-words text-sm font-bold leading-tight">
+                {periods[0]?.label ?? period_label}
+              </div>
+              {#if show_details}
+                <div class="mt-0.5 text-[10px] opacity-60">
+                  {m.export_entries_date({
+                    count: valid_selected_entry_keys.length,
+                    date: new Date().toLocaleDateString(getLocale()),
+                  })}
                 </div>
               {/if}
             </div>
-          {/each}
-        </div>
-        {#if preview_entry}
-          <div class="mt-2 truncate text-[9px] opacity-55">
-            {m.export_sample()}
-            {preview_entry.column.name}
+            <span
+              class="shrink-0 text-[10px] uppercase tracking-wide opacity-50"
+              >{m.common_preview()}</span
+            >
           </div>
-        {/if}
-      </div>
-
-      <div class="grid gap-2">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <div class="text-sm font-medium">{m.ui_entries_to_include()}</div>
-            <div class="text-xs text-muted-foreground">
-              {m.export_entries_selected({
-                selected: valid_selected_entry_keys.length,
-                total: all_entry_keys.length,
-              })}
-            </div>
-          </div>
-        </div>
-        <div class="relative">
-          <SearchIcon
-            class="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground"
-          />
-          <Input
-            class="pl-9"
-            bind:value={search}
-            placeholder={m.ui_search_tasks_columns_descriptions_or_labels()}
-            aria-label={m.ui_search_calendar_entries()}
-          />
-        </div>
-        <div class="flex items-center justify-between gap-3">
-          <span class="text-xs tabular-nums text-muted-foreground"
-            >{search.trim()
-              ? m.export_matching_entries({ count: visible_entry_keys.length })
-              : m.export_available_entries({
-                  count: visible_entry_keys.length,
-                })}</span
+          <div
+            class="grid grid-cols-7 gap-px overflow-hidden rounded border border-current/15 bg-current/15"
           >
-          <div class="flex gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={visible_entry_keys.length === 0 || all_visible_selected}
-              onclick={() => set_visible_selected(true)}
-              >{m.ui_select_all()}</Button
-            >
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={visible_entry_keys.length === 0 || no_visible_selected}
-              onclick={() => set_visible_selected(false)}
-              >{m.ui_clear_all()}</Button
-            >
+            {#each preview_days as day (day.key)}
+              <div
+                class="min-h-16 bg-[var(--preview-day)] p-1"
+                style={`--preview-day:${EXPORT_PALETTES[theme].day}`}
+              >
+                <div class="text-[9px] font-semibold opacity-65">
+                  {day.date.getDate()}
+                </div>
+                {#if day.tasks.length > 0}
+                  <div
+                    class="mt-1 line-clamp-3 break-words rounded border border-current/15 px-1 py-0.5 text-[8px] leading-tight"
+                  >
+                    {day.tasks[0].task.title || m.task_untitled()}
+                  </div>
+                {/if}
+              </div>
+            {/each}
           </div>
+          {#if preview_entry}
+            <div class="mt-2 truncate text-[9px] opacity-55">
+              {m.export_sample()}
+              {preview_entry.column.name}
+            </div>
+          {/if}
         </div>
 
-        <div class="max-h-80 space-y-2 overflow-y-auto rounded-md border p-2">
-          {#each visible_days as day (day.key)}
-            {@const day_keys = day.tasks.map((entry) =>
-              calendar_entry_key(day, entry),
-            )}
-            {@const selected_in_day = day_keys.filter((key) =>
-              selected_entry_keys.includes(key),
-            ).length}
-            <div class="rounded-md border bg-muted/20">
-              <label
-                class="flex cursor-pointer items-center gap-3 rounded-t-md px-3 py-2 hover:bg-muted/60"
-              >
-                <Checkbox
-                  checked={selected_in_day === day_keys.length}
-                  indeterminate={selected_in_day > 0 &&
-                    selected_in_day < day_keys.length}
-                  onCheckedChange={(checked) =>
-                    set_day_selected(day, checked === true)}
-                />
-                <span class="min-w-0 flex-1 truncate text-sm font-medium"
-                  >{day.date.toLocaleDateString(getLocale(), {
-                    weekday: "short",
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  })}</span
-                >
-                <span class="text-xs tabular-nums text-muted-foreground"
-                  >{selected_in_day}/{formatNumber(day_keys.length)}</span
-                >
-              </label>
-              <div class="border-t px-2 py-1">
-                {#each day.tasks as entry (calendar_entry_key(day, entry))}
-                  {@const key = calendar_entry_key(day, entry)}
-                  <label
-                    class="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/60"
-                  >
-                    <Checkbox
-                      class="mt-0.5"
-                      checked={selected_entry_keys.includes(key)}
-                      onCheckedChange={(checked) =>
-                        set_entry_selected(key, checked === true)}
-                    />
-                    <span class="min-w-0 flex-1">
-                      <span class="block truncate text-sm"
-                        >{#if format_time(entry.task.due_time, entry.task.due_at_midnight)}
-                          <span class="mr-1 text-muted-foreground"
-                            >{format_time(
-                              entry.task.due_time,
-                              entry.task.due_at_midnight,
-                            )}</span
-                          >
-                        {/if}
-                        {entry.task.title || m.task_untitled()}</span
-                      >
-                      <span class="block truncate text-xs text-muted-foreground"
-                        >{entry.column.name}{entry.archived
-                          ? " · Archived"
-                          : entry.preview
-                            ? " · Recurring preview"
-                            : ""}</span
-                      >
-                    </span>
-                  </label>
-                {/each}
+        <div class="grid gap-2">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm font-medium">{m.ui_entries_to_include()}</div>
+              <div class="text-xs text-muted-foreground">
+                {m.export_entries_selected({
+                  selected: valid_selected_entry_keys.length,
+                  total: all_entry_keys.length,
+                })}
               </div>
             </div>
-          {:else}
-            <p class="p-5 text-center text-sm text-muted-foreground">
-              {m.ui_no_matching_calendar_entries()}
-            </p>
-          {/each}
+          </div>
+          <div class="relative">
+            <SearchIcon
+              class="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground"
+            />
+            <Input
+              class="pl-9"
+              bind:value={search}
+              placeholder={m.ui_search_tasks_columns_descriptions_or_labels()}
+              aria-label={m.ui_search_calendar_entries()}
+            />
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-xs tabular-nums text-muted-foreground"
+              >{search.trim()
+                ? m.export_matching_entries({
+                    count: visible_entry_keys.length,
+                  })
+                : m.export_available_entries({
+                    count: visible_entry_keys.length,
+                  })}</span
+            >
+            <div class="flex gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={visible_entry_keys.length === 0 ||
+                  all_visible_selected}
+                onclick={() => set_visible_selected(true)}
+                >{m.ui_select_all()}</Button
+              >
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={visible_entry_keys.length === 0 ||
+                  no_visible_selected}
+                onclick={() => set_visible_selected(false)}
+                >{m.ui_clear_all()}</Button
+              >
+            </div>
+          </div>
+
+          <ScrollArea class="h-80 rounded-md border">
+            <div class="space-y-2 p-2">
+              {#each visible_days as day (day.key)}
+                {@const day_keys = day.tasks.map((entry) =>
+                  calendar_entry_key(day, entry),
+                )}
+                {@const selected_in_day = day_keys.filter((key) =>
+                  selected_entry_keys.includes(key),
+                ).length}
+                <div class="rounded-md border bg-muted/20">
+                  <label
+                    class="flex cursor-pointer items-center gap-3 rounded-t-md px-3 py-2 hover:bg-muted/60"
+                  >
+                    <Checkbox
+                      checked={selected_in_day === day_keys.length}
+                      indeterminate={selected_in_day > 0 &&
+                        selected_in_day < day_keys.length}
+                      onCheckedChange={(checked) =>
+                        set_day_selected(day, checked === true)}
+                    />
+                    <span class="min-w-0 flex-1 truncate text-sm font-medium"
+                      >{day.date.toLocaleDateString(getLocale(), {
+                        weekday: "short",
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}</span
+                    >
+                    <span class="text-xs tabular-nums text-muted-foreground"
+                      >{selected_in_day}/{formatNumber(day_keys.length)}</span
+                    >
+                  </label>
+                  <div class="border-t px-2 py-1">
+                    {#each day.tasks as entry (calendar_entry_key(day, entry))}
+                      {@const key = calendar_entry_key(day, entry)}
+                      <label
+                        class="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/60"
+                      >
+                        <Checkbox
+                          class="mt-0.5"
+                          checked={selected_entry_keys.includes(key)}
+                          onCheckedChange={(checked) =>
+                            set_entry_selected(key, checked === true)}
+                        />
+                        <span class="min-w-0 flex-1">
+                          <span class="block truncate text-sm"
+                            >{#if format_time(entry.task.due_time, entry.task.due_at_midnight)}
+                              <span class="mr-1 text-muted-foreground"
+                                >{format_time(
+                                  entry.task.due_time,
+                                  entry.task.due_at_midnight,
+                                )}</span
+                              >
+                            {/if}
+                            {entry.task.title || m.task_untitled()}</span
+                          >
+                          <span
+                            class="block truncate text-xs text-muted-foreground"
+                            >{entry.column.name}{entry.archived
+                              ? " · Archived"
+                              : entry.preview
+                                ? " · Recurring preview"
+                                : ""}</span
+                          >
+                        </span>
+                      </label>
+                    {/each}
+                  </div>
+                </div>
+              {:else}
+                <p class="p-5 text-center text-sm text-muted-foreground">
+                  {m.ui_no_matching_calendar_entries()}
+                </p>
+              {/each}
+            </div>
+          </ScrollArea>
         </div>
-      </div>
-    </div>
+      </div></ScrollArea
+    >
 
     <Dialog.Footer
       class="relative z-20 shrink-0 border-t bg-background px-6 py-4"

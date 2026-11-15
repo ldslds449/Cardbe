@@ -594,200 +594,213 @@
       class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:grid-cols-[16rem_minmax(0,1fr)] md:grid-rows-1"
     >
       <aside
-        class="flex max-h-52 min-h-0 min-w-0 flex-col gap-3 overflow-y-auto border-b bg-muted/20 p-4 md:max-h-none md:border-b-0 md:border-r"
+        class="min-h-0 min-w-0 border-b bg-muted/20 md:border-b-0 md:border-r"
         aria-label={m.ui_published_web_views()}
       >
-        <section class="grid gap-2.5" aria-labelledby="existing-shares-heading">
-          <div class="flex items-center gap-2">
-            <h3 id="existing-shares-heading" class="text-sm font-semibold">
-              {m.ui_published_views()}
-            </h3>
-            <span
-              class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+        <ScrollArea
+          class="h-full [&_[data-slot=scroll-area-viewport]]:max-h-52 md:[&_[data-slot=scroll-area-viewport]]:max-h-none"
+        >
+          <div class="flex flex-col gap-3 p-4">
+            <section
+              class="grid gap-2.5"
+              aria-labelledby="existing-shares-heading"
             >
-              {formatNumber(all_managed_shares.length)}
-            </span>
-          </div>
-          {#if legacy_share_count > 0}
-            <div
-              class="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs"
-              role="status"
-            >
-              <p>
-                {m.share_legacy_count({ count: legacy_share_count })}
-              </p>
-              {#each legacy_shares as legacy (legacy.id)}
-                <div class="flex min-w-0 items-center justify-between gap-2">
-                  <span class="min-w-0 flex-1 truncate">{legacy.title}</span>
-                  <Button
-                    class="shrink-0 whitespace-nowrap"
-                    size="sm"
-                    variant="outline"
-                    disabled={active_board_id === null}
-                    onclick={() =>
-                      active_board_id !== null &&
-                      rebind_managed_share(legacy.id, active_board_id)}
-                    >{m.ui_assign_to_this_board()}</Button
-                  >
-                </div>
-              {/each}
-              <p class="text-muted-foreground">
-                {m.ui_review_and_enable_it_after_assigning()}
-              </p>
-            </div>
-          {/if}
-          {#if all_managed_shares.length > 0}
-            <div class="grid gap-1">
-              {#each all_managed_shares as candidate (candidate.id)}
-                {@const candidate_enabled = is_managed_share_enabled(candidate)}
-                <ContextMenu.Root
-                  open={context_menu_share_id === candidate.id}
-                  onOpenChange={(menu_open) => {
-                    if (menu_open) {
-                      context_menu_share_id = candidate.id;
-                    } else if (context_menu_share_id === candidate.id) {
-                      context_menu_share_id = null;
-                    }
-                  }}
+              <div class="flex items-center gap-2">
+                <h3 id="existing-shares-heading" class="text-sm font-semibold">
+                  {m.ui_published_views()}
+                </h3>
+                <span
+                  class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
                 >
-                  <ContextMenu.Trigger>
-                    {#snippet child({ props })}
-                      <button
-                        {...props}
-                        type="button"
-                        class={`grid w-full min-w-0 gap-1 rounded-md border px-3 py-2.5 text-left transition-colors ${
-                          share?.id === candidate.id
-                            ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                            : "bg-card hover:border-primary/50 hover:bg-muted/40"
-                        }`}
-                        disabled={publishing || revoking}
-                        onpointerdown={(event) => event.stopPropagation()}
-                        onclick={(event) => {
-                          event.stopPropagation();
-                          void select_share(candidate);
-                        }}
-                        aria-pressed={share?.id === candidate.id}
-                        title={`${candidate.title} — Right-click for actions`}
+                  {formatNumber(all_managed_shares.length)}
+                </span>
+              </div>
+              {#if legacy_share_count > 0}
+                <div
+                  class="grid gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2 text-xs"
+                  role="status"
+                >
+                  <p>
+                    {m.share_legacy_count({ count: legacy_share_count })}
+                  </p>
+                  {#each legacy_shares as legacy (legacy.id)}
+                    <div
+                      class="flex min-w-0 items-center justify-between gap-2"
+                    >
+                      <span class="min-w-0 flex-1 truncate">{legacy.title}</span
                       >
-                        <span class="flex min-w-0 items-center gap-2">
-                          <span class="min-w-0 truncate text-sm font-medium"
-                            >{candidate.title}</span
-                          >
-                          <span
-                            class={`size-1.5 shrink-0 rounded-full ${candidate_enabled ? "bg-success" : "bg-muted-foreground/50"}`}
-                            aria-label={candidate_enabled
-                              ? m.explorer_active()
-                              : "Disabled"}
-                          ></span>
-                        </span>
-                        <span
-                          class="block min-w-0 truncate text-xs text-muted-foreground"
-                          title={board_name(candidate.board_id)}
-                        >
-                          <span
-                            class={candidate_enabled
-                              ? "text-success"
-                              : undefined}
-                          >
-                            {candidate_enabled
-                              ? m.explorer_active()
-                              : m.ui_disabled()}
-                          </span>
-                          <span aria-hidden="true">·</span>
-                          <span class="truncate"
-                            >{board_name(candidate.board_id)}</span
-                          >
-                          {" · "}
-                          {candidate.expires_at
-                            ? m.share_expires_date({
-                                date: share_date_formatter.format(
-                                  new Date(candidate.expires_at),
-                                ),
-                              })
-                            : m.ui_no_expiration()}
-                        </span>
-                      </button>
-                    {/snippet}
-                  </ContextMenu.Trigger>
-                  <ContextMenu.Content class="w-56 rounded-lg shadow-lg">
-                    <ContextMenu.Item
-                      class="h-9 gap-2.5 rounded-md px-2.5"
-                      disabled={publishing || revoking}
-                      onclick={() => void select_share(candidate, true)}
-                    >
-                      <PencilIcon class="size-4 text-muted-foreground" />
-                      {m.ui_edit_settings()}
-                    </ContextMenu.Item>
-                    <ContextMenu.Item
-                      class="h-9 gap-2.5 rounded-md px-2.5"
-                      onclick={() => void copy_link(candidate)}
-                    >
-                      <CopyIcon class="size-4 text-muted-foreground" />
-                      {m.ui_copy_address()}
-                    </ContextMenu.Item>
-                    <ContextMenu.Separator class="my-1" />
-                    <ContextMenu.Item
-                      class="h-9 gap-2.5 rounded-md px-2.5"
-                      disabled={publishing || revoking}
-                      onclick={() =>
-                        candidate_enabled
-                          ? void disable(candidate)
-                          : void enable(candidate)}
-                    >
-                      <PowerIcon
-                        class={candidate_enabled
-                          ? "size-4 text-success"
-                          : "size-4 text-muted-foreground"}
-                      />
-                      {candidate_enabled
-                        ? m.ui_disable_view()
-                        : m.ui_enable_view()}
-                    </ContextMenu.Item>
-                    <ContextMenu.Separator class="my-1" />
-                    <ContextMenu.Item
-                      variant="destructive"
-                      class="h-9 gap-2.5 rounded-md px-2.5"
-                      disabled={publishing || revoking}
-                      onclick={() => {
-                        void select_share(candidate).then((selected) => {
-                          if (selected) {
-                            delete_confirm_open = true;
-                          }
-                        });
+                      <Button
+                        class="shrink-0 whitespace-nowrap"
+                        size="sm"
+                        variant="outline"
+                        disabled={active_board_id === null}
+                        onclick={() =>
+                          active_board_id !== null &&
+                          rebind_managed_share(legacy.id, active_board_id)}
+                        >{m.ui_assign_to_this_board()}</Button
+                      >
+                    </div>
+                  {/each}
+                  <p class="text-muted-foreground">
+                    {m.ui_review_and_enable_it_after_assigning()}
+                  </p>
+                </div>
+              {/if}
+              {#if all_managed_shares.length > 0}
+                <div class="grid gap-1">
+                  {#each all_managed_shares as candidate (candidate.id)}
+                    {@const candidate_enabled =
+                      is_managed_share_enabled(candidate)}
+                    <ContextMenu.Root
+                      open={context_menu_share_id === candidate.id}
+                      onOpenChange={(menu_open) => {
+                        if (menu_open) {
+                          context_menu_share_id = candidate.id;
+                        } else if (context_menu_share_id === candidate.id) {
+                          context_menu_share_id = null;
+                        }
                       }}
                     >
-                      <Trash2Icon />
-                      {m.ui_delete_view()}
-                    </ContextMenu.Item>
-                  </ContextMenu.Content>
-                </ContextMenu.Root>
-              {/each}
-            </div>
-          {:else if !managed_share_state.storage_error}
-            <div class="px-2 py-3 text-center">
-              <p class="text-xs text-muted-foreground">
-                {m.ui_no_published_views_yet()}
-              </p>
-            </div>
-          {/if}
-        </section>
+                      <ContextMenu.Trigger>
+                        {#snippet child({ props })}
+                          <button
+                            {...props}
+                            type="button"
+                            class={`grid w-full min-w-0 gap-1 rounded-md border px-3 py-2.5 text-left transition-colors ${
+                              share?.id === candidate.id
+                                ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                                : "bg-card hover:border-primary/50 hover:bg-muted/40"
+                            }`}
+                            disabled={publishing || revoking}
+                            onpointerdown={(event) => event.stopPropagation()}
+                            onclick={(event) => {
+                              event.stopPropagation();
+                              void select_share(candidate);
+                            }}
+                            aria-pressed={share?.id === candidate.id}
+                            title={`${candidate.title} — Right-click for actions`}
+                          >
+                            <span class="flex min-w-0 items-center gap-2">
+                              <span class="min-w-0 truncate text-sm font-medium"
+                                >{candidate.title}</span
+                              >
+                              <span
+                                class={`size-1.5 shrink-0 rounded-full ${candidate_enabled ? "bg-success" : "bg-muted-foreground/50"}`}
+                                aria-label={candidate_enabled
+                                  ? m.explorer_active()
+                                  : "Disabled"}
+                              ></span>
+                            </span>
+                            <span
+                              class="block min-w-0 truncate text-xs text-muted-foreground"
+                              title={board_name(candidate.board_id)}
+                            >
+                              <span
+                                class={candidate_enabled
+                                  ? "text-success"
+                                  : undefined}
+                              >
+                                {candidate_enabled
+                                  ? m.explorer_active()
+                                  : m.ui_disabled()}
+                              </span>
+                              <span aria-hidden="true">·</span>
+                              <span class="truncate"
+                                >{board_name(candidate.board_id)}</span
+                              >
+                              {" · "}
+                              {candidate.expires_at
+                                ? m.share_expires_date({
+                                    date: share_date_formatter.format(
+                                      new Date(candidate.expires_at),
+                                    ),
+                                  })
+                                : m.ui_no_expiration()}
+                            </span>
+                          </button>
+                        {/snippet}
+                      </ContextMenu.Trigger>
+                      <ContextMenu.Content class="w-56 rounded-lg shadow-lg">
+                        <ContextMenu.Item
+                          class="h-9 gap-2.5 rounded-md px-2.5"
+                          disabled={publishing || revoking}
+                          onclick={() => void select_share(candidate, true)}
+                        >
+                          <PencilIcon class="size-4 text-muted-foreground" />
+                          {m.ui_edit_settings()}
+                        </ContextMenu.Item>
+                        <ContextMenu.Item
+                          class="h-9 gap-2.5 rounded-md px-2.5"
+                          onclick={() => void copy_link(candidate)}
+                        >
+                          <CopyIcon class="size-4 text-muted-foreground" />
+                          {m.ui_copy_address()}
+                        </ContextMenu.Item>
+                        <ContextMenu.Separator class="my-1" />
+                        <ContextMenu.Item
+                          class="h-9 gap-2.5 rounded-md px-2.5"
+                          disabled={publishing || revoking}
+                          onclick={() =>
+                            candidate_enabled
+                              ? void disable(candidate)
+                              : void enable(candidate)}
+                        >
+                          <PowerIcon
+                            class={candidate_enabled
+                              ? "size-4 text-success"
+                              : "size-4 text-muted-foreground"}
+                          />
+                          {candidate_enabled
+                            ? m.ui_disable_view()
+                            : m.ui_enable_view()}
+                        </ContextMenu.Item>
+                        <ContextMenu.Separator class="my-1" />
+                        <ContextMenu.Item
+                          variant="destructive"
+                          class="h-9 gap-2.5 rounded-md px-2.5"
+                          disabled={publishing || revoking}
+                          onclick={() => {
+                            void select_share(candidate).then((selected) => {
+                              if (selected) {
+                                delete_confirm_open = true;
+                              }
+                            });
+                          }}
+                        >
+                          <Trash2Icon />
+                          {m.ui_delete_view()}
+                        </ContextMenu.Item>
+                      </ContextMenu.Content>
+                    </ContextMenu.Root>
+                  {/each}
+                </div>
+              {:else if !managed_share_state.storage_error}
+                <div class="px-2 py-3 text-center">
+                  <p class="text-xs text-muted-foreground">
+                    {m.ui_no_published_views_yet()}
+                  </p>
+                </div>
+              {/if}
+            </section>
 
-        <section aria-labelledby="new-share-heading">
-          <Button
-            class={`w-full justify-start ${!share ? "ring-2 ring-primary/30" : ""}`}
-            variant={share ? "outline" : "default"}
-            disabled={publishing || revoking || !share}
-            onclick={() => void select_share(null)}
-            aria-current={!share ? "page" : undefined}
-          >
-            <PlusIcon />
-            <span id="new-share-heading"
-              >{share
-                ? m.ui_new_published_view()
-                : m.ui_creating_published_view()}</span
-            >
-          </Button>
-        </section>
+            <section aria-labelledby="new-share-heading">
+              <Button
+                class={`w-full justify-start ${!share ? "ring-2 ring-primary/30" : ""}`}
+                variant={share ? "outline" : "default"}
+                disabled={publishing || revoking || !share}
+                onclick={() => void select_share(null)}
+                aria-current={!share ? "page" : undefined}
+              >
+                <PlusIcon />
+                <span id="new-share-heading"
+                  >{share
+                    ? m.ui_new_published_view()
+                    : m.ui_creating_published_view()}</span
+                >
+              </Button>
+            </section>
+          </div>
+        </ScrollArea>
       </aside>
 
       <ScrollArea class="min-h-0 min-w-0" orientation="vertical">

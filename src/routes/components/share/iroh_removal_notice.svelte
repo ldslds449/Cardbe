@@ -1,6 +1,7 @@
 <script lang="ts">
   import { m } from "#lib/paraglide/messages.js";
   import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
 
   let {
     notice,
@@ -17,25 +18,27 @@
 
 <AlertDialog.Root open={true}>
   <AlertDialog.Content
-    class="max-h-[calc(100dvh-2rem)] overflow-y-auto"
+    class="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)_auto]"
     onEscapeKeydown={(event) => event.preventDefault()}
     onInteractOutside={(event) => event.preventDefault()}
   >
-    <AlertDialog.Header>
-      <AlertDialog.Title>{m.share_removed_notice_title()}</AlertDialog.Title>
-      <AlertDialog.Description class="break-words">
-        {notice.reason === "SHARE_INVITATION_DELETED"
-          ? m.share_removed_notice_invitation({ name: notice.board_name })
-          : m.share_removed_notice_revoked({ name: notice.board_name })}
-        {#if notice.switched_to !== null}
-          <span class="mt-2 block"
-            >{m.share_removed_notice_switched({
-              name: notice.switched_to,
-            })}</span
-          >
-        {/if}
-      </AlertDialog.Description>
-    </AlertDialog.Header>
+    <ScrollArea class="min-h-0">
+      <AlertDialog.Header>
+        <AlertDialog.Title>{m.share_removed_notice_title()}</AlertDialog.Title>
+        <AlertDialog.Description class="break-words">
+          {notice.reason === "SHARE_INVITATION_DELETED"
+            ? m.share_removed_notice_invitation({ name: notice.board_name })
+            : m.share_removed_notice_revoked({ name: notice.board_name })}
+          {#if notice.switched_to !== null}
+            <span class="mt-2 block"
+              >{m.share_removed_notice_switched({
+                name: notice.switched_to,
+              })}</span
+            >
+          {/if}
+        </AlertDialog.Description>
+      </AlertDialog.Header>
+    </ScrollArea>
     <AlertDialog.Footer>
       <AlertDialog.Action onclick={onacknowledge}>
         {m.share_removed_notice_acknowledge()}

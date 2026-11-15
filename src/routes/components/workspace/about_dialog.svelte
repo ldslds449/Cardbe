@@ -13,6 +13,7 @@
   import * as Card from "#lib/components/ui/card/index.js";
   import { Button } from "#lib/components/ui/button/index.js";
   import * as Dialog from "#lib/components/ui/dialog/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { logger } from "#lib/logger.js";
   import updateConfig from "../../../config/update.json";
   import type { DiagnosticInfo } from "./diagnostics";
@@ -69,7 +70,7 @@
 
 <Dialog.Root bind:open>
   <Dialog.Content
-    class="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-[500px]"
+    class="max-h-[calc(100vh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-[500px]"
   >
     <Dialog.Header class="border-b pb-4">
       <div class="flex items-start gap-3 pr-8">
@@ -87,77 +88,82 @@
       </div>
     </Dialog.Header>
 
-    <Card.Root class="gap-0 overflow-hidden py-0">
-      <Card.Header class="bg-muted/30 py-4">
-        <Card.Title class="text-base">Cardbe</Card.Title>
-        <Card.Description
-          >{m.ui_desktop_task_management_kept_simple()}</Card.Description
-        >
-      </Card.Header>
-      <Card.Content class="grid grid-cols-2 gap-4 py-4">
-        <div class="space-y-1">
-          <div class="text-xs font-medium text-muted-foreground">
-            {m.ui_version()}
-          </div>
-          <div class="font-mono text-sm">
-            {diagnostics?.appVersion ??
-              (diagnostics_loading ? m.ui_loading() : "Unknown")}
-          </div>
-        </div>
-        <div class="space-y-1">
-          <div class="text-xs font-medium text-muted-foreground">
-            {m.ui_build()}
-          </div>
-          <div class="font-mono text-sm">
-            {diagnostics?.buildCommit ??
-              (diagnostics_loading ? m.ui_loading() : "Unknown")}
-          </div>
-        </div>
-      </Card.Content>
-    </Card.Root>
+    <ScrollArea class="min-h-0">
+      <div class="grid gap-4">
+        <Card.Root class="gap-0 overflow-hidden py-0">
+          <Card.Header class="bg-muted/30 py-4">
+            <Card.Title class="text-base">Cardbe</Card.Title>
+            <Card.Description
+              >{m.ui_desktop_task_management_kept_simple()}</Card.Description
+            >
+          </Card.Header>
+          <Card.Content class="grid grid-cols-2 gap-4 py-4">
+            <div class="space-y-1">
+              <div class="text-xs font-medium text-muted-foreground">
+                {m.ui_version()}
+              </div>
+              <div class="font-mono text-sm">
+                {diagnostics?.appVersion ??
+                  (diagnostics_loading ? m.ui_loading() : "Unknown")}
+              </div>
+            </div>
+            <div class="space-y-1">
+              <div class="text-xs font-medium text-muted-foreground">
+                {m.ui_build()}
+              </div>
+              <div class="font-mono text-sm">
+                {diagnostics?.buildCommit ??
+                  (diagnostics_loading ? m.ui_loading() : "Unknown")}
+              </div>
+            </div>
+          </Card.Content>
+        </Card.Root>
 
-    <div class="grid gap-2">
-      <Button
-        class="w-full justify-between"
-        disabled={update_check_in_progress}
-        onclick={() => void onCheckForUpdates(true)}
-      >
-        <span class="flex items-center gap-2">
-          {#if update_check_in_progress}
-            <LoaderCircleIcon class="size-4 animate-spin" />
-          {:else}
-            <RefreshCwIcon class="size-4" />
-          {/if}
-          {m.ui_check_for_updates()}
-        </span>
-        <span class="text-xs font-normal opacity-70"
-          >{m.ui_current_version()}</span
-        >
-      </Button>
-      <Button
-        variant="outline"
-        class="w-full justify-between"
-        onclick={() => void open_external_url(github_url, "help.github.failed")}
-      >
-        <span class="flex items-center gap-2">
-          <FolderGitIcon class="size-4" />
-          {m.ui_github_repository()}
-        </span>
-        <ExternalLinkIcon class="size-4 text-muted-foreground" />
-      </Button>
-      <Button
-        variant="outline"
-        class="w-full justify-between"
-        onclick={() =>
-          void open_external_url(license_url, "help.license.failed")}
-      >
-        <span class="flex items-center gap-2">
-          <FileTextIcon class="size-4" />
-          {m.ui_licenses()}
-        </span>
-        <ExternalLinkIcon class="size-4 text-muted-foreground" />
-      </Button>
-    </div>
+        <div class="grid gap-2">
+          <Button
+            class="w-full justify-between"
+            disabled={update_check_in_progress}
+            onclick={() => void onCheckForUpdates(true)}
+          >
+            <span class="flex items-center gap-2">
+              {#if update_check_in_progress}
+                <LoaderCircleIcon class="size-4 animate-spin" />
+              {:else}
+                <RefreshCwIcon class="size-4" />
+              {/if}
+              {m.ui_check_for_updates()}
+            </span>
+            <span class="text-xs font-normal opacity-70"
+              >{m.ui_current_version()}</span
+            >
+          </Button>
+          <Button
+            variant="outline"
+            class="w-full justify-between"
+            onclick={() =>
+              void open_external_url(github_url, "help.github.failed")}
+          >
+            <span class="flex items-center gap-2">
+              <FolderGitIcon class="size-4" />
+              {m.ui_github_repository()}
+            </span>
+            <ExternalLinkIcon class="size-4 text-muted-foreground" />
+          </Button>
+          <Button
+            variant="outline"
+            class="w-full justify-between"
+            onclick={() =>
+              void open_external_url(license_url, "help.license.failed")}
+          >
+            <span class="flex items-center gap-2">
+              <FileTextIcon class="size-4" />
+              {m.ui_licenses()}
+            </span>
+            <ExternalLinkIcon class="size-4 text-muted-foreground" />
+          </Button>
+        </div>
+      </div>
+    </ScrollArea>
 
     <Dialog.Footer class="border-t pt-4">
       <Dialog.Close class={close_button_class}>{m.common_close()}</Dialog.Close>

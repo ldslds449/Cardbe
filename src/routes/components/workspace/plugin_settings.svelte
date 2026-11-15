@@ -733,9 +733,13 @@
       <Popover.Content
         align="start"
         aria-label={m.plugin_field_help({ label: pluginText(field.label) })}
-        class="max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-sm"
+        class="text-sm"
       >
-        {pluginText(field.description ?? null)}
+        <ScrollArea class="[&_[data-slot=scroll-area-viewport]]:max-h-64">
+          <div class="whitespace-pre-wrap break-words">
+            {pluginText(field.description ?? null)}
+          </div>
+        </ScrollArea>
       </Popover.Content>
     </Popover.Root>
   {/if}

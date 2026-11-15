@@ -24,6 +24,7 @@
   import WifiIcon from "@lucide/svelte/icons/wifi";
 
   import { Button } from "#lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
   import CalendarView from "../../components/calendar/calendar_view.svelte";
   import ViewTaskDialog from "../../components/dialog/view_task_dialog.svelte";
@@ -364,9 +365,9 @@
       </div>
     </header>
 
-    <section class="min-h-0 flex-1 overflow-auto">
+    <ScrollArea class="min-h-0 flex-1" orientation="both">
       {#key active_view}
-        <div class="h-full animate-in fade-in-0 duration-200">
+        <div class="min-h-full animate-in fade-in-0 duration-200">
           {#if active_view === "calendar"}
             <CalendarView
               {columns}
@@ -383,7 +384,7 @@
           {/if}
         </div>
       {/key}
-    </section>
+    </ScrollArea>
   </main>
 
   <ViewTaskDialog bind:open={task_dialog_open} task={selected_task} />

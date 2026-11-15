@@ -11,6 +11,7 @@
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import * as m from "#lib/paraglide/messages.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { dragged_tab_ids, tab_label, type FlowTab } from "./flow";
 
   let {
@@ -162,101 +163,103 @@
 
 <div class="flex min-w-0 items-center gap-1">
   <DragDropProvider {sensors} onDragOver={drag_over} onDragEnd={drag_end}>
-    <div
-      class="flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      role="tablist"
-      aria-label={m.flow_tabs()}
-    >
-      {#each shown_tabs as tab, index (tab.id)}
-        {@const active = tab.id === active_id}
-        <FlowTabSortable
-          id={tab.id}
-          {index}
-          disabled={read_only || busy || renaming_id !== null}
-          class={`flex h-7 shrink-0 items-center rounded-md transition-colors has-[[role=tab]:focus-visible]:outline-2 has-[[role=tab]:focus-visible]:-outline-offset-2 has-[[role=tab]:focus-visible]:outline-ring ${active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          {#snippet children(handle)}
-            {#if renaming_id === tab.id}
-              <Input
-                bind:ref={editor}
-                bind:value={draft}
-                maxlength={60}
-                aria-label={m.flow_tab_name()}
-                placeholder={m.flow_tab_default()}
-                class="mx-0.5 h-6 w-40 px-2 text-sm"
-                disabled={busy}
-                onblur={commit_rename}
-                onkeydown={(event) => {
-                  if (event.key === "Enter") {
+    <ScrollArea orientation="horizontal" class="min-w-0 rounded-lg bg-muted">
+      <div
+        class="flex w-max min-w-full items-center gap-0.5 p-0.5"
+        role="tablist"
+        aria-label={m.flow_tabs()}
+      >
+        {#each shown_tabs as tab, index (tab.id)}
+          {@const active = tab.id === active_id}
+          <FlowTabSortable
+            id={tab.id}
+            {index}
+            disabled={read_only || busy || renaming_id !== null}
+            class={`flex h-7 shrink-0 items-center rounded-md transition-colors has-[[role=tab]:focus-visible]:outline-2 has-[[role=tab]:focus-visible]:-outline-offset-2 has-[[role=tab]:focus-visible]:outline-ring ${active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {#snippet children(handle)}
+              {#if renaming_id === tab.id}
+                <Input
+                  bind:ref={editor}
+                  bind:value={draft}
+                  maxlength={60}
+                  aria-label={m.flow_tab_name()}
+                  placeholder={m.flow_tab_default()}
+                  class="mx-0.5 h-6 w-40 px-2 text-sm"
+                  disabled={busy}
+                  onblur={commit_rename}
+                  onkeydown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void commit_rename();
+                    } else if (event.key === "Escape") {
+                      event.preventDefault();
+                      cancel_rename();
+                    }
+                  }}
+                />
+              {:else}
+                <Button
+                  {@attach handle}
+                  id={tab_element_id(tab.id)}
+                  variant="ghost"
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls={active ? panel_id : undefined}
+                  tabindex={active ? 0 : -1}
+                  aria-keyshortcuts={read_only
+                    ? undefined
+                    : "Alt+ArrowLeft Alt+ArrowRight"}
+                  title={tab_label(tab)}
+                  class={`h-full max-w-48 rounded-md px-2.5 text-sm font-normal hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 ${active && !read_only ? "pr-0.5 font-medium" : active ? "font-medium" : ""}`}
+                  onclick={() => select(tab.id)}
+                  ondblclick={() => start_rename(tab.id)}
+                  oncontextmenu={(event) => {
                     event.preventDefault();
-                    void commit_rename();
-                  } else if (event.key === "Escape") {
-                    event.preventDefault();
-                    cancel_rename();
-                  }
-                }}
-              />
-            {:else}
-              <Button
-                {@attach handle}
-                id={tab_element_id(tab.id)}
-                variant="ghost"
-                role="tab"
-                aria-selected={active}
-                aria-controls={active ? panel_id : undefined}
-                tabindex={active ? 0 : -1}
-                aria-keyshortcuts={read_only
-                  ? undefined
-                  : "Alt+ArrowLeft Alt+ArrowRight"}
-                title={tab_label(tab)}
-                class={`h-full max-w-48 rounded-md px-2.5 text-sm font-normal hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 ${active && !read_only ? "pr-0.5 font-medium" : active ? "font-medium" : ""}`}
-                onclick={() => select(tab.id)}
-                ondblclick={() => start_rename(tab.id)}
-                oncontextmenu={(event) => {
-                  event.preventDefault();
-                  select(tab.id);
-                  if (!read_only) {
-                    menu_open = true;
-                  }
-                }}
-                onkeydown={(event) => tab_keydown(event, index)}
-                ><span class="truncate">{tab_label(tab)}</span></Button
-              >
-              {#if active && !read_only}
-                <DropdownMenu.Root bind:open={menu_open}>
-                  <DropdownMenu.Trigger
-                    class={`${buttonVariants({ size: "icon-sm", variant: "ghost" })} mr-0.5 size-6 text-muted-foreground hover:bg-muted focus-visible:border-transparent focus-visible:bg-muted focus-visible:ring-0`}
-                    aria-label={m.flow_tab_options({ name: tab_label(tab) })}
-                    title={m.flow_tab_options({ name: tab_label(tab) })}
-                    disabled={busy}><ChevronDownIcon /></DropdownMenu.Trigger
-                  >
-                  <DropdownMenu.Content
-                    align="start"
-                    onCloseAutoFocus={(event) => {
-                      // Keep focus in the rename field opened from this menu.
-                      if (renaming_id !== null) {
-                        event.preventDefault();
-                      }
-                    }}
-                  >
-                    <DropdownMenu.Item onclick={() => start_rename(tab.id)}
-                      ><PencilIcon />{m.flow_tab_rename()}</DropdownMenu.Item
+                    select(tab.id);
+                    if (!read_only) {
+                      menu_open = true;
+                    }
+                  }}
+                  onkeydown={(event) => tab_keydown(event, index)}
+                  ><span class="truncate">{tab_label(tab)}</span></Button
+                >
+                {#if active && !read_only}
+                  <DropdownMenu.Root bind:open={menu_open}>
+                    <DropdownMenu.Trigger
+                      class={`${buttonVariants({ size: "icon-sm", variant: "ghost" })} mr-0.5 size-6 text-muted-foreground hover:bg-muted focus-visible:border-transparent focus-visible:bg-muted focus-visible:ring-0`}
+                      aria-label={m.flow_tab_options({ name: tab_label(tab) })}
+                      title={m.flow_tab_options({ name: tab_label(tab) })}
+                      disabled={busy}><ChevronDownIcon /></DropdownMenu.Trigger
                     >
-                    <DropdownMenu.Separator />
-                    <DropdownMenu.Item
-                      variant="destructive"
-                      disabled={tabs.length <= 1}
-                      onclick={() => onDelete(tab.id)}
-                      ><Trash2Icon />{m.flow_tab_delete()}</DropdownMenu.Item
+                    <DropdownMenu.Content
+                      align="start"
+                      onCloseAutoFocus={(event) => {
+                        // Keep focus in the rename field opened from this menu.
+                        if (renaming_id !== null) {
+                          event.preventDefault();
+                        }
+                      }}
                     >
-                  </DropdownMenu.Content>
-                </DropdownMenu.Root>
+                      <DropdownMenu.Item onclick={() => start_rename(tab.id)}
+                        ><PencilIcon />{m.flow_tab_rename()}</DropdownMenu.Item
+                      >
+                      <DropdownMenu.Separator />
+                      <DropdownMenu.Item
+                        variant="destructive"
+                        disabled={tabs.length <= 1}
+                        onclick={() => onDelete(tab.id)}
+                        ><Trash2Icon />{m.flow_tab_delete()}</DropdownMenu.Item
+                      >
+                    </DropdownMenu.Content>
+                  </DropdownMenu.Root>
+                {/if}
               {/if}
-            {/if}
-          {/snippet}
-        </FlowTabSortable>
-      {/each}
-    </div>
+            {/snippet}
+          </FlowTabSortable>
+        {/each}
+      </div>
+    </ScrollArea>
   </DragDropProvider>
   {#if !read_only}
     <Button

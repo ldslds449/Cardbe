@@ -6,6 +6,7 @@
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import * as Card from "#lib/components/ui/card/index.js";
   import { Button } from "#lib/components/ui/button/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { Spinner } from "#lib/components/ui/spinner/index.js";
   import type { Archive } from "../../type/archive.svelte";
   import type { Column } from "../../type/column.svelte";
@@ -145,7 +146,7 @@
         </div>
       </Card.Header>
       <Card.Content>
-        <div class="overflow-x-auto pb-2">
+        <ScrollArea orientation="horizontal" class="pb-2">
           <div class="flex min-w-max gap-2">
             <div
               class="grid grid-rows-8 gap-1 text-[10px] leading-3 text-muted-foreground"
@@ -189,7 +190,7 @@
               {/each}
             </div>
           </div>
-        </div>
+        </ScrollArea>
         <div
           class="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground"
         >

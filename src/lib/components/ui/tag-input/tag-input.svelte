@@ -2,6 +2,7 @@
   import * as m from "#lib/paraglide/messages.js";
   import { cn } from "#lib/utils.js";
   import * as Chip from "#lib/components/ui/chip/index.js";
+  import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
 
   let {
     tags = $bindable([]),
@@ -129,20 +130,24 @@
   {#if suggestionsOpen && filteredSuggestions.length > 0}
     <div
       id="tag-input-suggestions"
-      class="absolute top-full left-0 z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-md"
+      class="absolute top-full left-0 z-50 mt-1 w-full rounded-md border bg-popover shadow-md"
     >
-      {#each filteredSuggestions as suggestion (suggestion)}
-        <button
-          type="button"
-          class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-          onmousedown={(event) => {
-            event.preventDefault();
-            addTag(suggestion);
-          }}
-        >
-          {suggestion}
-        </button>
-      {/each}
+      <ScrollArea class="[&_[data-slot=scroll-area-viewport]]:max-h-48">
+        <div class="p-1">
+          {#each filteredSuggestions as suggestion (suggestion)}
+            <button
+              type="button"
+              class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+              onmousedown={(event) => {
+                event.preventDefault();
+                addTag(suggestion);
+              }}
+            >
+              {suggestion}
+            </button>
+          {/each}
+        </div>
+      </ScrollArea>
     </div>
   {/if}
 </div>
