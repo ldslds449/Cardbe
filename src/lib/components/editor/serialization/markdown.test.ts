@@ -17,6 +17,30 @@ import {
   serializeMarkdown,
 } from "./markdown";
 
+/** Stops a detached POSIX process group and waits until every member exits. */
+async function stopProcessGroup(child: ChildProcess) {
+  const group = -child.pid!;
+  const alive = () => {
+    try {
+      process.kill(group, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const mainExited =
+    child.exitCode !== null || child.signalCode !== null
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  if (alive()) process.kill(group, "SIGTERM");
+  await mainExited;
+  for (let waited = 0; alive(); waited += 100) {
+    if (waited === 5_000) process.kill(group, "SIGKILL");
+    if (waited >= 10_000) throw new Error("Browser processes did not exit");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 const markdown = [
   "# Heading",
   "",
@@ -698,7 +722,13 @@ it("blocks XSS in Markdown previews, clipboard content and public shares", async
         `--user-data-dir=${profile}`,
         `http://127.0.0.1:${port}/__xss.html`,
       ],
-      { stdio: ["ignore", "ignore", "pipe"], windowsHide: true },
+      {
+        stdio: ["ignore", "ignore", "pipe"],
+        windowsHide: true,
+        // Own process group so cleanup can stop Chromium's helper processes,
+        // which otherwise keep writing to the profile after the main process.
+        detached: process.platform !== "win32",
+      },
     );
     child.on("error", rejectResult);
     child.stderr!.on("data", (chunk) => process.stderr.write(chunk));
@@ -728,12 +758,8 @@ it("blocks XSS in Markdown previews, clipboard content and public shares", async
           windowsHide: true,
           stdio: "ignore",
         });
-      } else if (child.exitCode === null && child.signalCode === null) {
-        const exited = new Promise<void>((resolve) =>
-          child!.once("exit", () => resolve()),
-        );
-        child.kill();
-        await exited;
+      } else {
+        await stopProcessGroup(child);
       }
     }
     await server.close();
