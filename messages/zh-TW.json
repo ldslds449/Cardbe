@@ -2205,6 +2205,8 @@
   "template_copied_board": "已將範本複製到看板",
   "share_iroh_enable": "啟用 P2P 分享",
   "share_iroh_disabled": "P2P 分享已關閉，請至連線設定啟用。",
+  "share_iroh_disabled_title": "P2P 分享尚未啟用",
+  "share_iroh_enable_prompt": "啟用後即可分享看板或加入別人的看板，之後可隨時在連線設定中更改。",
   "share_update_connection": "更新連線",
   "share_update_connection_help": "貼上擁有者重新複製的邀請連結，儲存後再同步。",
   "share_connection_updated": "連線資訊已更新，請按「同步」重新連線。",

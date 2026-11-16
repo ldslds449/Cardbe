@@ -2512,6 +2512,8 @@
   "template_copied_board": "Template copied to the board",
   "share_iroh_enable": "Enable P2P sharing",
   "share_iroh_disabled": "P2P sharing is off. Turn it on in connection settings.",
+  "share_iroh_disabled_title": "P2P sharing is off",
+  "share_iroh_enable_prompt": "Turn it on to share boards or join someone else's. You can change this later in connection settings.",
   "share_update_connection": "Update connection",
   "share_update_connection_help": "Paste a new link for this invitation from the owner, save, then sync.",
   "share_connection_updated": "Connection information updated. Click Sync to reconnect.",

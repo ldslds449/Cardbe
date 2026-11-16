@@ -18,6 +18,7 @@
   import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import PlusIcon from "@lucide/svelte/icons/plus";
+  import WifiOffIcon from "@lucide/svelte/icons/wifi-off";
   import { onMount, tick, untrack } from "svelte";
   import { Badge } from "#lib/components/ui/badge/index.js";
   import { Button } from "#lib/components/ui/button/index.js";
@@ -38,6 +39,9 @@
     settingsDialog,
   } from "../workspace/settings-dialog.svelte";
   import IrohReceivedBoardCard from "../share/iroh_received_board_card.svelte";
+  import type {
+    IrohNetworkSettings,
+  } from "../share/iroh_network_settings.svelte";
   import {
     IrohDeviceStatus,
     type IrohInvite,
@@ -426,6 +430,40 @@
   function open_network_settings() {
     open = false;
     openSettings("sharing");
+  }
+  let enabling_iroh = $state(false);
+  let enable_iroh_error = $state<CommandError | null>(null);
+  /** Turns on P2P sharing with the saved network settings. */
+  async function enable_iroh() {
+    if (enabling_iroh) {
+      return;
+    }
+    enabling_iroh = true;
+    enable_iroh_error = null;
+    try {
+      const settings = await invoke<IrohNetworkSettings>(
+        "get_iroh_network_settings",
+      );
+      const restart_error = await invoke<unknown>("set_iroh_network_settings", {
+        settings: { ...settings, enabled: true },
+      });
+      board.iroh_enabled = true;
+      settingsDialog.networkVersion++;
+      if (restart_error === null) {
+        board.reconnect_iroh_boards();
+      } else {
+        enable_iroh_error = parseCommandError(restart_error) ?? {
+          code: "INTERNAL_ERROR",
+        };
+      }
+    } catch (error) {
+      logger.error("iroh.enable.failed", error);
+      enable_iroh_error = parseCommandError(error) ?? {
+        code: "INTERNAL_ERROR",
+      };
+    } finally {
+      enabling_iroh = false;
+    }
   }
   async function create() {
     if (creating || selected_board_id === null) {
@@ -902,9 +940,49 @@
       >
     {:else if flow === "home"}
       {#if !board.iroh_enabled}
-        <p class="text-muted-foreground text-sm">
-          {m.share_iroh_disabled()}
-        </p>
+        <Card.Root
+          class="gap-3 border-primary/40 bg-primary/5 p-4 shadow-none"
+        >
+          <div class="flex items-start gap-3">
+            <WifiOffIcon
+              class="mt-0.5 size-5 shrink-0 text-primary"
+              aria-hidden="true"
+            />
+            <div class="grid gap-1">
+              <Card.Title class="text-base"
+                >{m.share_iroh_disabled_title()}</Card.Title
+              >
+              <Card.Description
+                >{m.share_iroh_enable_prompt()}</Card.Description
+              >
+            </div>
+          </div>
+          {#if enable_iroh_error}
+            <p role="alert" class="text-sm text-destructive">
+              {translateCommandError(enable_iroh_error)}
+            </p>
+          {/if}
+          <div class="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              disabled={enabling_iroh}
+              onclick={open_network_settings}
+              ><Settings2Icon />
+              {m.share_connection_settings()}</Button
+            >
+            <Button
+              disabled={enabling_iroh}
+              onclick={() => void enable_iroh()}
+            >
+              {#if enabling_iroh}
+                <LoaderCircleIcon class="animate-spin" />
+                {m.ui_enabling()}
+              {:else}
+                {m.share_iroh_enable()}
+              {/if}
+            </Button>
+          </div>
+        </Card.Root>
       {/if}
       <div class="grid gap-3 sm:grid-cols-2">
         <button
