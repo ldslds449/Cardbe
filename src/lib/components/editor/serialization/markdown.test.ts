@@ -32,11 +32,17 @@ async function stopProcessGroup(child: ChildProcess) {
     child.exitCode !== null || child.signalCode !== null
       ? Promise.resolve()
       : new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  if (alive()) process.kill(group, "SIGTERM");
+  if (alive()) {
+    process.kill(group, "SIGTERM");
+  }
   await mainExited;
   for (let waited = 0; alive(); waited += 100) {
-    if (waited === 5_000) process.kill(group, "SIGKILL");
-    if (waited >= 10_000) throw new Error("Browser processes did not exit");
+    if (waited === 5_000) {
+      process.kill(group, "SIGKILL");
+    }
+    if (waited >= 10_000) {
+      throw new Error("Browser processes did not exit");
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
