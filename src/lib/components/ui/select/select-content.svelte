@@ -1,7 +1,5 @@
 <script lang="ts">
   import { Select as SelectPrimitive } from "bits-ui";
-  import SelectScrollUpButton from "./select-scroll-up-button.svelte";
-  import SelectScrollDownButton from "./select-scroll-down-button.svelte";
   import { ScrollArea } from "#lib/components/ui/scroll-area/index.js";
   import { cn, type WithoutChild } from "#lib/utils.js";
 
@@ -28,19 +26,18 @@
     )}
     {...restProps}
   >
-    <SelectScrollUpButton />
+    <!-- ScrollArea owns scrolling; the bits-ui viewport grows with its items
+         (overriding its inline overflow) so the list is not clipped to the
+         trigger height behind hover-to-scroll arrow buttons. -->
     <ScrollArea
       type="auto"
       class="max-h-[inherit] min-h-0 [&>[data-slot=scroll-area-viewport]]:max-h-[inherit]"
     >
       <SelectPrimitive.Viewport
-        class={cn(
-          "h-(--bits-select-anchor-height) min-w-(--bits-select-anchor-width) w-full scroll-my-1 p-1",
-        )}
+        class="min-w-(--bits-select-anchor-width) w-full scroll-my-1 p-1 overflow-visible!"
       >
         {@render children?.()}
       </SelectPrimitive.Viewport>
     </ScrollArea>
-    <SelectScrollDownButton />
   </SelectPrimitive.Content>
 </SelectPrimitive.Portal>
