@@ -1080,6 +1080,32 @@ fn network_settings_validate_direct_and_self_hosted_relay_addresses() {
     .is_err());
 }
 
+/// Binds until the saved automatic port is reused. The OS may release a closed
+/// endpoint's UDP socket shortly after close, in which case `bind_endpoint`
+/// deliberately falls back to another port; retry instead of failing.
+async fn bind_reusing_automatic_port(
+    config: &super::IrohNetworkConfig,
+    key: iroh::SecretKey,
+    network: &IrohShareState,
+    saved: Option<u16>,
+) -> iroh::Endpoint {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            let endpoint = super::bind_endpoint(config, key.clone(), network)
+                .await
+                .unwrap();
+            if *network.automatic_direct_port.lock().unwrap() == saved {
+                break endpoint;
+            }
+            endpoint.close().await;
+            *network.automatic_direct_port.lock().unwrap() = saved;
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the saved automatic port should be reused")
+}
+
 #[tokio::test]
 async fn automatic_direct_port_survives_direct_relay_direct_switches() {
     let network = IrohShareState::default();
@@ -1115,7 +1141,9 @@ async fn automatic_direct_port_survives_direct_relay_direct_switches() {
     assert!(endpoint.bound_sockets().is_empty());
     endpoint.close().await;
     drop(endpoint);
-    let endpoint = super::bind_endpoint(&direct, key, &network).await.unwrap();
+    // Relay-only binding must keep the automatic port for the next direct bind.
+    assert_eq!(*network.automatic_direct_port.lock().unwrap(), Some(port));
+    let endpoint = bind_reusing_automatic_port(&direct, key, &network, Some(port)).await;
     assert_eq!(endpoint.id(), id);
     assert!(endpoint
         .bound_sockets()
@@ -1144,22 +1172,7 @@ async fn saved_automatic_port_is_reused_after_restart() {
     // A new process starts with empty in-memory state.
     let restarted = IrohShareState::default();
     super::restore_automatic_port(&restarted, saved).unwrap();
-    let endpoint = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-        loop {
-            let endpoint = super::bind_endpoint(&config, key.clone(), &restarted)
-                .await
-                .unwrap();
-            if *restarted.automatic_direct_port.lock().unwrap() == saved {
-                break endpoint;
-            }
-            // Windows may release the previous socket shortly after close.
-            endpoint.close().await;
-            *restarted.automatic_direct_port.lock().unwrap() = saved;
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("the saved automatic port should be reused");
+    let endpoint = bind_reusing_automatic_port(&config, key, &restarted, saved).await;
     assert!(endpoint
         .bound_sockets()
         .iter()
