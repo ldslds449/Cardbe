@@ -17,6 +17,7 @@
   import ArrowUpDownIcon from "@lucide/svelte/icons/arrow-up-down";
   import ClipboardPasteIcon from "@lucide/svelte/icons/clipboard-paste";
   import SquareCheckIcon from "@lucide/svelte/icons/square-check";
+  import BellIcon from "@lucide/svelte/icons/bell";
   import BellOffIcon from "@lucide/svelte/icons/bell-off";
   import CircleCheckIcon from "@lucide/svelte/icons/circle-check";
 
@@ -279,12 +280,21 @@
           {/if}
         {/if}
         {#if onToggleNotifyMuted}
-          <ContextMenu.CheckboxItem
-            checked={notify_muted}
-            onCheckedChange={(checked) => onToggleNotifyMuted(checked)}
-          >
-            {m.column_notify_mute()}
-          </ContextMenu.CheckboxItem>
+          <ContextMenu.Item onclick={() => onToggleNotifyMuted(!notify_muted)}>
+            {#if notify_muted}<BellIcon />{:else}<BellOffIcon />{/if}
+            <div class="flex flex-col">
+              <span
+                >{notify_muted
+                  ? m.column_notify_unmute()
+                  : m.column_notify_mute()}</span
+              >
+              <span class="text-xs text-muted-foreground"
+                >{notify_muted
+                  ? m.column_notify_muted_hint()
+                  : m.column_notify_active_hint()}</span
+              >
+            </div>
+          </ContextMenu.Item>
         {/if}
         {#if !read_only}
           <ContextMenu.Separator />
