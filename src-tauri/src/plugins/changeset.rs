@@ -74,7 +74,7 @@ pub fn merge(
                 .position(|t| t.id == link.task_id)
                 .map(|ti| (ci, ti))
         });
-        // Tombstones also cover archives and cross-board moves; never recreate a deliberately removed task.
+        // Archived tasks are tombstones; a deleted task is recreated below.
         if let Some((ci, ti)) = position {
             let mut next = link.clone();
             let mut task = data.columns[ci].tasks.remove(ti);
@@ -119,7 +119,9 @@ pub fn merge(
             };
             return Ok((next, false, changed));
         }
-        return Ok((link.clone(), false, false));
+        if data.archives.iter().any(|a| a.task.id == link.task_id) {
+            return Ok((link.clone(), false, false));
+        }
     }
     let id = data.allocate_task_id().map_err(DomainError::Internal)?;
     data.columns[destination].tasks.push(Task {
@@ -213,7 +215,7 @@ pub(crate) fn persist_sources(
         if source_raw(connection, instance, key)? != change.expected {
             return Err(DomainError::StaleBoardRequest);
         }
-        connection.execute("INSERT INTO cardbe_plugin_sources(instance_id,external_key,board_id,task_id,last_import) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(instance_id,board_id,external_key) DO UPDATE SET last_import=excluded.last_import",params![instance.id,key,instance.board_id,change.link.task_id,serde_json::to_string(&change.link).map_err(|e| DomainError::Internal(e.to_string()))?]).map_err(|e| DomainError::repository(Box::new(e)))?;
+        connection.execute("INSERT INTO cardbe_plugin_sources(instance_id,external_key,board_id,task_id,last_import) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(instance_id,board_id,external_key) DO UPDATE SET task_id=excluded.task_id,last_import=excluded.last_import",params![instance.id,key,instance.board_id,change.link.task_id,serde_json::to_string(&change.link).map_err(|e| DomainError::Internal(e.to_string()))?]).map_err(|e| DomainError::repository(Box::new(e)))?;
     }
     if !within_source_limits(connection, instance)? {
         prune_tombstones(connection, instance, changes)?;
@@ -369,14 +371,24 @@ mod tests {
         assert_eq!(d.columns[0].tasks[0].priority, Some(TaskPriority::Low));
     }
     #[test]
-    fn removed_task_is_not_recreated() {
+    fn deleted_task_is_recreated_but_archived_task_is_not() {
         let mut d = data();
         let t = task();
         let (l, _, _) = merge(&mut d, &t, None).unwrap();
-        d.columns[0].tasks.clear();
-        let (_, new, changed) = merge(&mut d, &t, Some(&l)).unwrap();
+        let mut archived = d.clone();
+        let task = archived.columns[0].tasks.remove(0);
+        archived
+            .archives
+            .push(crate::models::Archive { time: 1, task });
+        let (_, new, changed) = merge(&mut archived, &t, Some(&l)).unwrap();
         assert!(!new && !changed);
-        assert!(d.columns[0].tasks.is_empty());
+        assert!(archived.columns[0].tasks.is_empty());
+        d.columns[0].tasks.clear();
+        let (recreated, new, _) = merge(&mut d, &t, Some(&l)).unwrap();
+        assert!(new);
+        assert_ne!(recreated.task_id, l.task_id);
+        assert_eq!(d.columns[0].tasks[0].id, recreated.task_id);
+        assert_eq!(d.columns[0].tasks[0].title, "Original");
     }
     #[test]
     fn preexisting_user_label_is_never_claimed() {
@@ -635,16 +647,33 @@ mod persistence_tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
-    fn changed_board_uses_separate_source_mapping_and_preserves_tombstones() {
+    fn deleted_or_moved_tasks_are_recreated_and_moved_copies_are_detached() {
         let (dir, mut db, mut i) = fixture();
         let out = output();
         commit(&mut db, &i, &out, || true).unwrap();
         let mut data = db.read_board_complete(i.board_id).unwrap();
+        let deleted = data.columns[0].tasks[0].id;
         data.columns[0].tasks.clear();
         db.replace_board_as_local_edit(i.board_id, &data).unwrap();
+        let (created, updated, data) = commit(&mut db, &i, &out, || true).unwrap();
+        assert_eq!((created, updated), (1, 0));
+        let recreated = data.columns[0].tasks[0].id;
+        assert_ne!(recreated, deleted);
         let (created, updated, _) = commit(&mut db, &i, &out, || true).unwrap();
         assert_eq!((created, updated), (0, 0));
-        let second = db.create_board_with_data("Second", &data).unwrap();
+        let mut empty = db.read_board_complete(i.board_id).unwrap();
+        empty.columns[0].tasks.clear();
+        let second = db.create_board_with_data("Second", &empty).unwrap();
+        db.move_tasks_to_board(i.board_id, &[recreated], second.id, 1)
+            .unwrap();
+        let mut renamed = output();
+        renamed.tasks[0].title = "Renamed".into();
+        let (created, updated, data) = commit(&mut db, &i, &renamed, || true).unwrap();
+        assert_eq!((created, updated), (1, 0));
+        assert_eq!(data.columns[0].tasks[0].title, "Renamed");
+        assert_ne!(data.columns[0].tasks[0].id, recreated);
+        let moved = db.read_board_complete(second.id).unwrap();
+        assert_eq!(moved.columns[0].tasks[0].title, "Imported");
         i.board_id = second.id;
         let (created, updated, _) = commit(&mut db, &i, &out, || true).unwrap();
         assert_eq!((created, updated), (1, 0));

@@ -354,6 +354,15 @@ impl Database {
             )?;
             task_events::record_transfer(&tx, id, before, after)?;
         }
+        // Moved tasks leave their plugin sources, which recreate them on the source board.
+        if table_exists(&tx, "cardbe_plugin_sources")? {
+            for task_id in task_ids {
+                tx.execute(
+                    "DELETE FROM cardbe_plugin_sources WHERE board_id=?1 AND task_id=?2",
+                    params![source_id, task_id],
+                )?;
+            }
+        }
         tx.commit()?;
         self.positions = self.load_board_positions(self.active_board_id)?;
         Ok(source)
