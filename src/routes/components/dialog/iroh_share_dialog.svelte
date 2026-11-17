@@ -39,9 +39,7 @@
     settingsDialog,
   } from "../workspace/settings-dialog.svelte";
   import IrohReceivedBoardCard from "../share/iroh_received_board_card.svelte";
-  import type {
-    IrohNetworkSettings,
-  } from "../share/iroh_network_settings.svelte";
+  import type { IrohNetworkSettings } from "../share/iroh_network_settings.svelte";
   import {
     IrohDeviceStatus,
     type IrohInvite,
@@ -940,9 +938,7 @@
       >
     {:else if flow === "home"}
       {#if !board.iroh_enabled}
-        <Card.Root
-          class="gap-3 border-primary/40 bg-primary/5 p-4 shadow-none"
-        >
+        <Card.Root class="gap-3 border-primary/40 bg-primary/5 p-4 shadow-none">
           <div class="flex items-start gap-3">
             <WifiOffIcon
               class="mt-0.5 size-5 shrink-0 text-primary"
@@ -952,8 +948,7 @@
               <Card.Title class="text-base"
                 >{m.share_iroh_disabled_title()}</Card.Title
               >
-              <Card.Description
-                >{m.share_iroh_enable_prompt()}</Card.Description
+              <Card.Description>{m.share_iroh_enable_prompt()}</Card.Description
               >
             </div>
           </div>
@@ -970,10 +965,7 @@
               ><Settings2Icon />
               {m.share_connection_settings()}</Button
             >
-            <Button
-              disabled={enabling_iroh}
-              onclick={() => void enable_iroh()}
-            >
+            <Button disabled={enabling_iroh} onclick={() => void enable_iroh()}>
               {#if enabling_iroh}
                 <LoaderCircleIcon class="animate-spin" />
                 {m.ui_enabling()}
