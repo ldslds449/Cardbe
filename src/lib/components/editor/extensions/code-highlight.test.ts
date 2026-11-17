@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vite-plus/test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { Editor } from "@tiptap/core";
 import { EditorState } from "@tiptap/pm/state";
 import { Decoration } from "@tiptap/pm/view";
@@ -10,15 +17,21 @@ import {
 } from "../../../../routes/components/highlighter.svelte";
 
 describe("editor code highlighting", () => {
+  // Shiki stops tokenizing after 500 ms by default and leaves the rest of the
+  // line unhighlighted, so a busy CI runner can produce fewer tokens. Disable
+  // the limit for the plugin and the expected tokens alike.
+  beforeEach(() => {
+    const highlighter = getHighlighter();
+    const tokenize = highlighter.codeToTokensBase.bind(highlighter);
+    vi.spyOn(highlighter, "codeToTokensBase").mockImplementation(
+      (code, options) => tokenize(code, { ...options, tokenizeTimeLimit: 0 }),
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
   it("uses shared Shiki colors and keeps token positions across lines", async () => {
     await loadHighlightLanguage("typescript");
     const code = "const answer = 42;\n// 中文";
-    // Warm the grammar so cold regex compilation cannot hit Shiki's time limit.
-    getHighlighter().codeToTokensBase(code, {
-      lang: "typescript",
-      theme: "cardbe",
-      tokenizeTimeLimit: 0,
-    });
     const editor = new Editor({
       element: null,
       extensions: createEditorExtensions(),
