@@ -38,7 +38,7 @@
       <Select.Trigger
         id={typeof props.id === "string" ? props.id : undefined}
         size="sm"
-        class={cn("gap-1 ps-2 pe-1.5 font-medium", className)}
+        class={cn("relative gap-1 ps-2 pe-1.5 font-medium", className)}
       >
         {monthItems.find((item) => item.value === current)?.label ??
           selectedMonthItem?.label}
