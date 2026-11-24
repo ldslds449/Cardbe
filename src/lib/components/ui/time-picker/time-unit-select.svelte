@@ -70,7 +70,7 @@
   >
     {value}
   </Select.Trigger>
-  <Select.Content>
+  <Select.Content class="max-h-60">
     {#each options as option}
       <Select.Item value={option}>{option}</Select.Item>
     {/each}

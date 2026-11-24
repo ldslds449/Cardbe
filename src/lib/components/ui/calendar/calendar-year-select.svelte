@@ -1,55 +1,53 @@
 <script lang="ts">
   import { Calendar as CalendarPrimitive } from "bits-ui";
+  import * as Select from "#lib/components/ui/select/index.js";
   import { cn, type WithoutChildrenOrChild } from "#lib/utils.js";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 
   let {
     ref = $bindable(null),
     class: className,
     value,
+    onValueChange,
     ...restProps
-  }: WithoutChildrenOrChild<CalendarPrimitive.YearSelectProps> = $props();
+  }: Omit<
+    WithoutChildrenOrChild<CalendarPrimitive.YearSelectProps>,
+    "value" | "onchange"
+  > & {
+    value?: number;
+    onValueChange?: (year: number) => void;
+  } = $props();
 </script>
 
-<span
-  class={cn(
-    "has-focus:border-ring border-input has-focus:ring-ring/50 relative flex rounded-md border shadow-xs has-focus:ring-[3px]",
-    className,
-  )}
->
-  <CalendarPrimitive.YearSelect
-    bind:ref
-    class="absolute inset-0 opacity-0"
-    {...restProps}
-  >
-    {#snippet child({ props, yearItems, selectedYearItem })}
-      <select
-        {...props}
-        class={cn(
-          typeof props.class === "string" ? props.class : undefined,
-          "bg-popover text-popover-foreground [color-scheme:light] dark:[color-scheme:dark] [&>option]:bg-popover [&>option]:text-popover-foreground",
-        )}
-        {value}
+<!-- bits-ui only supplies the localized year items here; the list itself is
+     a shadcn-svelte Select so it scrolls inside ScrollArea instead of a
+     native <select> popup. -->
+<CalendarPrimitive.YearSelect bind:ref {...restProps}>
+  {#snippet child({ props, yearItems, selectedYearItem })}
+    {@const current = value ?? selectedYearItem?.value}
+    <Select.Root
+      type="single"
+      value={String(current)}
+      disabled={Boolean(props.disabled)}
+      onValueChange={(next) => {
+        const year = Number.parseInt(next, 10);
+        if (!Number.isNaN(year)) {
+          onValueChange?.(year);
+        }
+      }}
+    >
+      <Select.Trigger
+        id={typeof props.id === "string" ? props.id : undefined}
+        size="sm"
+        class={cn("gap-1 ps-2 pe-1.5 font-medium", className)}
       >
+        {yearItems.find((item) => item.value === current)?.label ??
+          selectedYearItem?.label}
+      </Select.Trigger>
+      <Select.Content class="max-h-60">
         {#each yearItems as yearItem (yearItem.value)}
-          <option
-            value={yearItem.value}
-            selected={value !== undefined
-              ? yearItem.value === value
-              : yearItem.value === selectedYearItem.value}
-          >
-            {yearItem.label}
-          </option>
+          <Select.Item value={String(yearItem.value)} label={yearItem.label} />
         {/each}
-      </select>
-      <span
-        class="[&>svg]:text-muted-foreground flex h-8 items-center gap-1 rounded-md ps-2 pe-1 text-sm font-medium select-none [&>svg]:size-3.5"
-        aria-hidden="true"
-      >
-        {yearItems.find((item) => item.value === value)?.label ||
-          selectedYearItem.label}
-        <ChevronDownIcon class="size-4" />
-      </span>
-    {/snippet}
-  </CalendarPrimitive.YearSelect>
-</span>
+      </Select.Content>
+    </Select.Root>
+  {/snippet}
+</CalendarPrimitive.YearSelect>

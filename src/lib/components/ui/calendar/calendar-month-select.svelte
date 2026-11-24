@@ -1,57 +1,56 @@
 <script lang="ts">
   import { Calendar as CalendarPrimitive } from "bits-ui";
+  import * as Select from "#lib/components/ui/select/index.js";
   import { cn, type WithoutChildrenOrChild } from "#lib/utils.js";
-  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 
   let {
     ref = $bindable(null),
     class: className,
     value,
-    onchange,
+    onValueChange,
     ...restProps
-  }: WithoutChildrenOrChild<CalendarPrimitive.MonthSelectProps> = $props();
+  }: Omit<
+    WithoutChildrenOrChild<CalendarPrimitive.MonthSelectProps>,
+    "value" | "onchange"
+  > & {
+    value?: number;
+    onValueChange?: (month: number) => void;
+  } = $props();
 </script>
 
-<span
-  class={cn(
-    "has-focus:border-ring border-input has-focus:ring-ring/50 relative flex rounded-md border shadow-xs has-focus:ring-[3px]",
-    className,
-  )}
->
-  <CalendarPrimitive.MonthSelect
-    bind:ref
-    class="absolute inset-0 opacity-0"
-    {...restProps}
-  >
-    {#snippet child({ props, monthItems, selectedMonthItem })}
-      <select
-        {...props}
-        class={cn(
-          typeof props.class === "string" ? props.class : undefined,
-          "bg-popover text-popover-foreground [color-scheme:light] dark:[color-scheme:dark] [&>option]:bg-popover [&>option]:text-popover-foreground",
-        )}
-        {value}
-        {onchange}
+<!-- bits-ui only supplies the localized month items here; the list itself is
+     a shadcn-svelte Select so it scrolls inside ScrollArea instead of a
+     native <select> popup. -->
+<CalendarPrimitive.MonthSelect bind:ref {...restProps}>
+  {#snippet child({ props, monthItems, selectedMonthItem })}
+    {@const current = value ?? selectedMonthItem?.value}
+    <Select.Root
+      type="single"
+      value={String(current)}
+      disabled={Boolean(props.disabled)}
+      onValueChange={(next) => {
+        const month = Number.parseInt(next, 10);
+        if (!Number.isNaN(month)) {
+          onValueChange?.(month);
+        }
+      }}
+    >
+      <Select.Trigger
+        id={typeof props.id === "string" ? props.id : undefined}
+        size="sm"
+        class={cn("gap-1 ps-2 pe-1.5 font-medium", className)}
       >
+        {monthItems.find((item) => item.value === current)?.label ??
+          selectedMonthItem?.label}
+      </Select.Trigger>
+      <Select.Content class="max-h-60">
         {#each monthItems as monthItem (monthItem.value)}
-          <option
-            value={monthItem.value}
-            selected={value !== undefined
-              ? monthItem.value === value
-              : monthItem.value === selectedMonthItem.value}
-          >
-            {monthItem.label}
-          </option>
+          <Select.Item
+            value={String(monthItem.value)}
+            label={monthItem.label}
+          />
         {/each}
-      </select>
-      <span
-        class="[&>svg]:text-muted-foreground flex h-8 items-center gap-1 rounded-md ps-2 pe-1 text-sm font-medium select-none [&>svg]:size-3.5"
-        aria-hidden="true"
-      >
-        {monthItems.find((item) => item.value === value)?.label ||
-          selectedMonthItem.label}
-        <ChevronDownIcon class="size-4" />
-      </span>
-    {/snippet}
-  </CalendarPrimitive.MonthSelect>
-</span>
+      </Select.Content>
+    </Select.Root>
+  {/snippet}
+</CalendarPrimitive.MonthSelect>
