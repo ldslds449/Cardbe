@@ -36,6 +36,7 @@
   import { Input } from "#lib/components/ui/input/index.js";
   import { TagInput } from "#lib/components/ui/tag-input/index.js";
   import * as Popover from "#lib/components/ui/popover/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import {
     deserialize_column,
     type Column,
@@ -989,31 +990,45 @@
 
           {#if !share || editing}
             {#if !share}
-              <label class="grid gap-1.5 text-sm font-medium">
-                {m.ui_board_to_share()}
-                <select
-                  value={selected_board_id === null
-                    ? ""
-                    : String(selected_board_id)}
-                  disabled={publishing || loading_board_content}
-                  onchange={(event) => {
-                    const target = Number(event.currentTarget.value);
-                    event.currentTarget.value =
+              <div class="grid gap-1.5 text-sm font-medium">
+                <label for="share-board-select">{m.ui_board_to_share()}</label>
+                <!-- Controlled: the selection only changes once
+                     select_new_share_board accepts it (it may be cancelled
+                     by the unsaved-changes confirmation). -->
+                <Select.Root
+                  type="single"
+                  bind:value={
+                    () =>
                       selected_board_id === null
                         ? ""
-                        : String(selected_board_id);
-                    void select_new_share_board(target);
-                  }}
-                  class="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-10 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-[3px] disabled:opacity-50"
+                        : String(selected_board_id),
+                    (next) => void select_new_share_board(Number(next))
+                  }
+                  disabled={publishing || loading_board_content}
                 >
-                  {#each owned_boards as target (target.id)}
-                    <option value={String(target.id)}>{target.name}</option>
-                  {/each}
-                </select>
+                  <Select.Trigger
+                    id="share-board-select"
+                    class="w-full bg-background font-normal data-[size=default]:h-10"
+                  >
+                    <span class="truncate"
+                      >{selected_board_id === null
+                        ? ""
+                        : board_name(selected_board_id)}</span
+                    >
+                  </Select.Trigger>
+                  <Select.Content>
+                    {#each owned_boards as target (target.id)}
+                      <Select.Item
+                        value={String(target.id)}
+                        label={target.name}
+                      />
+                    {/each}
+                  </Select.Content>
+                </Select.Root>
                 <span class="text-xs font-normal text-muted-foreground"
                   >{m.ui_the_new_link_will_publish_content_from_this_board()}</span
                 >
-              </label>
+              </div>
             {:else}
               <p class="text-sm text-muted-foreground">
                 {m.ui_sharing_from()}

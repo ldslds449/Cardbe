@@ -32,6 +32,7 @@
   import { Button } from "#lib/components/ui/button/index.js";
   import { Input } from "#lib/components/ui/input/index.js";
   import { Textarea } from "#lib/components/ui/textarea/index.js";
+  import * as Select from "#lib/components/ui/select/index.js";
   import {
     priority_label,
     TASK_PRIORITIES,
@@ -81,6 +82,8 @@
   let title = $state("");
   let details = $state("");
   let priority = $state<TaskPriority | "">("");
+  // Select items cannot use an empty value, so "no priority" gets a sentinel.
+  const PRIORITY_NONE = "none";
   let database_ready = $state(false);
   let loading = $state(mode === "task");
   let saving = $state(false);
@@ -442,17 +445,24 @@
           class="text-xs font-medium text-muted-foreground"
           >{m.ui_add_to_board()}</label
         >
-        <select
-          id="quick-add-board"
+        <Select.Root
+          type="single"
           bind:value={selected_board_id}
           disabled={saving || boards.length === 0}
-          onchange={() => void select_board()}
-          class="border-input bg-background h-10 w-full rounded-md border px-3 text-sm outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
+          onValueChange={() => void select_board()}
         >
-          {#each boards as target (target.id)}
-            <option value={String(target.id)}>{target.name}</option>
-          {/each}
-        </select>
+          <Select.Trigger id="quick-add-board" class="w-full data-[size=default]:h-10 bg-background focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40">
+            <span class="truncate"
+              >{boards.find((target) => String(target.id) === selected_board_id)
+                ?.name ?? ""}</span
+            >
+          </Select.Trigger>
+          <Select.Content>
+            {#each boards as target (target.id)}
+              <Select.Item value={String(target.id)} label={target.name} />
+            {/each}
+          </Select.Content>
+        </Select.Root>
       </div>
       <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,9rem)] gap-3">
         <div class="grid gap-1.5">
@@ -461,21 +471,29 @@
             class="text-xs font-medium text-muted-foreground"
             >{m.ui_add_to_column()}</label
           >
-          <select
-            id="quick-add-column"
+          <Select.Root
+            type="single"
             bind:value={column_id}
             disabled={loading || columns.length === 0}
-            aria-label={m.ui_task_column()}
-            class="border-input bg-background h-10 w-full rounded-md border px-3 text-sm outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
           >
-            {#if columns.length === 0}
-              <option value="">{m.ui_no_columns_yet()}</option>
-            {:else}
+            <Select.Trigger
+              id="quick-add-column"
+              aria-label={m.ui_task_column()}
+              class="w-full data-[size=default]:h-10 bg-background focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            >
+              <span class="truncate"
+                >{columns.length === 0
+                  ? m.ui_no_columns_yet()
+                  : (columns.find((column) => String(column.id) === column_id)
+                      ?.name ?? "")}</span
+              >
+            </Select.Trigger>
+            <Select.Content>
               {#each columns as column (column.id)}
-                <option value={String(column.id)}>{column.name}</option>
+                <Select.Item value={String(column.id)} label={column.name} />
               {/each}
-            {/if}
-          </select>
+            </Select.Content>
+          </Select.Root>
         </div>
         <div class="grid gap-1.5">
           <label
@@ -483,17 +501,33 @@
             class="text-xs font-medium text-muted-foreground"
             >{m.task_priority()}</label
           >
-          <select
-            id="quick-add-priority"
-            bind:value={priority}
+          <Select.Root
+            type="single"
+            bind:value={
+              () => priority || PRIORITY_NONE,
+              (next) =>
+                (priority =
+                  next === PRIORITY_NONE ? "" : (next as TaskPriority))
+            }
             disabled={saving}
-            class="border-input bg-background h-10 w-full rounded-md border px-3 text-sm outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
           >
-            <option value="">{m.task_priority_none()}</option>
-            {#each [...TASK_PRIORITIES].reverse() as level (level)}
-              <option value={level}>{priority_label(level)}</option>
-            {/each}
-          </select>
+            <Select.Trigger id="quick-add-priority" class="w-full data-[size=default]:h-10 bg-background focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40">
+              <span class="truncate"
+                >{priority
+                  ? priority_label(priority)
+                  : m.task_priority_none()}</span
+              >
+            </Select.Trigger>
+            <Select.Content>
+              <Select.Item
+                value={PRIORITY_NONE}
+                label={m.task_priority_none()}
+              />
+              {#each [...TASK_PRIORITIES].reverse() as level (level)}
+                <Select.Item value={level} label={priority_label(level)} />
+              {/each}
+            </Select.Content>
+          </Select.Root>
         </div>
       </div>
     {/if}
