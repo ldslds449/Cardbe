@@ -451,7 +451,10 @@
           disabled={saving || boards.length === 0}
           onValueChange={() => void select_board()}
         >
-          <Select.Trigger id="quick-add-board" class="w-full data-[size=default]:h-10 bg-background focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40">
+          <Select.Trigger
+            id="quick-add-board"
+            class="w-full data-[size=default]:h-10 bg-background focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          >
             <span class="truncate"
               >{boards.find((target) => String(target.id) === selected_board_id)
                 ?.name ?? ""}</span
@@ -511,7 +514,10 @@
             }
             disabled={saving}
           >
-            <Select.Trigger id="quick-add-priority" class="w-full data-[size=default]:h-10 bg-background focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40">
+            <Select.Trigger
+              id="quick-add-priority"
+              class="w-full data-[size=default]:h-10 bg-background focus-visible:shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            >
               <span class="truncate"
                 >{priority
                   ? priority_label(priority)
