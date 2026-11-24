@@ -34,6 +34,7 @@
 
   let { editor, revision }: { editor: Editor | null; revision: number } =
     $props();
+  const linkInputId = $props.id();
   let linkOpen = $state(false);
   let linkHref = $state("");
   let linkError = $state<"required" | "invalid" | "">("");
@@ -165,11 +166,25 @@
       input.focus();
       return;
     }
-    const linked = editor
-      .chain()
-      .setTextSelection(linkSelection)
-      .setLink({ href: linkHref.trim() })
-      .run();
+    const href = linkHref.trim();
+    // Without selected text, a link mark would only apply to later typing;
+    // insert the address as the link text instead.
+    // A chain dispatches even when a step fails, so validate first.
+    const linked =
+      editor.can().setLink({ href }) &&
+      (linkSelection.from === linkSelection.to
+        ? editor
+            .chain()
+            .setTextSelection(linkSelection)
+            .setLink({ href })
+            .insertContent({ type: "text", text: href })
+            .unsetMark("link")
+            .run()
+        : editor
+            .chain()
+            .setTextSelection(linkSelection)
+            .setLink({ href })
+            .run());
     if (!linked) {
       linkError = "invalid";
       input.focus();
@@ -462,20 +477,20 @@
     </Dialog.Header>
     <form class="grid gap-4" novalidate autocomplete="off" onsubmit={addLink}>
       <div class="grid gap-2">
-        <Label for="editor-link-url">{m.editor_link_url()}</Label>
+        <Label for={linkInputId}>{m.editor_link_url()}</Label>
         <Input
-          id="editor-link-url"
+          id={linkInputId}
           type="text"
           autocomplete="off"
           bind:value={linkHref}
           placeholder="https://example.com"
           required
           aria-invalid={linkError ? true : undefined}
-          aria-describedby={linkError ? "editor-link-error" : undefined}
+          aria-describedby={linkError ? `${linkInputId}-error` : undefined}
           oninput={() => (linkError = "")}
         />
         {#if linkError}
-          <FieldError id="editor-link-error"
+          <FieldError id={`${linkInputId}-error`}
             >{linkError === "required"
               ? m.editor_link_required()
               : m.editor_link_invalid()}</FieldError

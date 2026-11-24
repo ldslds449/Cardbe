@@ -92,3 +92,35 @@ describe("URL paste and explicit images", () => {
     expect(editor(markdown).getJSON()).toEqual(instance.getJSON());
   });
 });
+
+describe("typed image syntax", () => {
+  it.each([
+    ["![alt](https://example.com/a.png", "![alt](https://example.com/a.png)"],
+    [
+      'See ![alt](https://example.com/a.png "Title"',
+      'See ![alt](https://example.com/a.png "Title")',
+    ],
+  ])(
+    "turns %s) into one image without a stray parenthesis",
+    (typed, markdown) => {
+      const instance = editor();
+      instance.view.dispatch(instance.state.tr.insertText(typed, 1));
+      const { from, to } = instance.state.selection;
+      const handled = instance.extensionManager.plugins.some((plugin) =>
+        plugin.props.handleTextInput?.call(
+          plugin,
+          instance.view,
+          from,
+          to,
+          ")",
+          () => instance.state.tr.insertText(")", from, to),
+        ),
+      );
+      expect(handled).toBe(true);
+      expect(instance.state.doc.textContent).toBe(
+        typed.startsWith("See") ? "See " : "",
+      );
+      expect(serializeMarkdown(instance)).toBe(markdown);
+    },
+  );
+});

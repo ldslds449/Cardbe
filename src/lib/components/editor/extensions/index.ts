@@ -142,6 +142,14 @@ declare module "@tiptap/core" {
 }
 
 const AlignedTable = Table.extend({
+  // Tiptap pads the table with newlines, which adds blank lines around it
+  // when blocks are joined.
+  renderMarkdown(node, helpers, context) {
+    return String(this.parent?.(node, helpers, context) ?? "").replace(
+      /^\n+|\n+$/g,
+      "",
+    );
+  },
   addCommands() {
     return {
       ...this.parent?.(),
@@ -169,15 +177,64 @@ const AlignedTable = Table.extend({
   },
 });
 
+// Backspace right after a Markdown shortcut would turn the result back into
+// its typed syntax (`**bold**` reappears as literal asterisks) instead of
+// deleting. Forget the shortcut so Backspace deletes; Undo still reverts it.
+const BACKSPACE_KEYS = [
+  "Backspace",
+  "Mod-Backspace",
+  "Shift-Backspace",
+  "Alt-Backspace",
+  "Ctrl-h",
+];
+
+export const DeleteAfterInputRule = Extension.create({
+  name: "deleteAfterInputRule",
+  priority: 1000,
+  addKeyboardShortcuts() {
+    const forgetInputRule = () => {
+      const { state, view } = this.editor;
+      if (
+        state.plugins.some(
+          (plugin) => plugin.spec.isInputRules && plugin.getState(state),
+        )
+      ) {
+        view.dispatch(
+          state.tr.setSelection(state.selection).setMeta("addToHistory", false),
+        );
+      }
+      return false;
+    };
+    return Object.fromEntries(
+      BACKSPACE_KEYS.map((key) => [key, forgetInputRule]),
+    );
+  },
+});
+
+// Tiptap's ordered list tokenizer nests by indentation alone, so in
+// `1. a` / `   - b` / `     1. c` it lifts `c` out of `b`. Marked's CommonMark
+// list parsing, which the Markdown preview matches, handles ordered lists.
+const COMMONMARK_ORDERED_LIST = {
+  name: "orderedList",
+  level: "block" as const,
+  start: () => -1,
+  tokenize: () => undefined,
+};
+
 export function createEditorExtensions(
-  placeholder = "Start writing…",
+  placeholder: string | (() => string) = "Start writing…",
   cardReferenceSuggestion: CardReferenceSuggestion | null = null,
 ) {
   return [
+    DeleteAfterInputRule,
     StarterKit.extend({
       addExtensions() {
         return this.parent!().map((extension) =>
-          extension instanceof Mark ? withMathMarks(extension) : extension,
+          extension instanceof Mark
+            ? withMathMarks(extension)
+            : extension.name === "orderedList"
+              ? extension.extend({ markdownTokenizer: COMMONMARK_ORDERED_LIST })
+              : extension,
         );
       },
     }).configure({
@@ -209,7 +266,10 @@ export function createEditorExtensions(
       markdownLinks: true,
       openOnClick: false,
     }),
-    Placeholder.configure({ placeholder }),
+    Placeholder.configure({
+      placeholder:
+        typeof placeholder === "function" ? () => placeholder() : placeholder,
+    }),
     Markdown.configure({ markedOptions: { gfm: true } }),
   ];
 }

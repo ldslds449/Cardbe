@@ -11,14 +11,18 @@
   let {
     source,
     display,
+    autoOpen = false,
     editable,
     save,
+    remove,
     focus,
   }: {
     source: string;
     display: boolean;
+    autoOpen?: boolean;
     editable: () => boolean;
     save: (source: string) => void;
+    remove: () => void;
     focus: () => void;
   } = $props();
   const id = $props.id();
@@ -26,7 +30,8 @@
   let draft = $state("");
   const html = $derived(renderMath(source, display));
   onMount(() => {
-    if (!source.trim() && editable()) {
+    if (autoOpen && !source.trim() && editable()) {
+      draft = source;
       open = true;
     }
   });
@@ -55,7 +60,14 @@
 {/snippet}
 
 <span contenteditable="false" class="math-node" class:math-node-block={display}>
-  <Dialog.Root bind:open>
+  <Dialog.Root
+    bind:open
+    onOpenChange={(isOpen) => {
+      if (!isOpen && !source.trim()) {
+        remove();
+      }
+    }}
+  >
     {#if display}
       <ScrollArea
         orientation="horizontal"
@@ -105,6 +117,9 @@
             variant="outline"
             onclick={() => {
               open = false;
+              if (!source.trim()) {
+                remove();
+              }
             }}>{m.common_cancel()}</Button
           >
           <Button type="submit" disabled={!draft.trim()}

@@ -4,7 +4,12 @@
   import "./markdown-content.css";
   import type { Editor } from "@tiptap/core";
   import { Editor as TiptapEditor } from "@tiptap/core";
-  import { Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+  import {
+    EditorState,
+    Selection,
+    TextSelection,
+    type Transaction,
+  } from "@tiptap/pm/state";
   import {
     count_occurrences,
     text_target_prefixes,
@@ -148,7 +153,10 @@
     };
   }
 
-  function updateSlashMenu(instance: Editor) {
+  // The menu opens only when a `/` is typed. Deleting text or moving the
+  // cursor back after an existing `/word`, or after a dismissed menu, must
+  // not open it again.
+  function updateSlashMenu(instance: Editor, transaction?: Transaction) {
     const selection = instance.state.selection;
     if (
       !instance.isFocused ||
@@ -175,6 +183,17 @@
     }
 
     const from = selection.from - match[1].length - 1;
+    const typedSlash =
+      match[1] === "" &&
+      !!transaction?.docChanged &&
+      transaction.doc.content.size > transaction.before.content.size;
+    const sameSlash =
+      slash !== null &&
+      (from === slash.from || from === transaction?.mapping.map(slash.from));
+    if (!typedSlash && !sameSlash) {
+      slash = null;
+      return;
+    }
     const next = {
       from,
       to: selection.to,
@@ -201,6 +220,18 @@
   }
 
   function handleEditorKeydown(_view: unknown, event: KeyboardEvent): boolean {
+    // Ctrl+Enter submits the surrounding dialog, as in plain text. Tiptap
+    // would also insert a line break that the submitted text then keeps.
+    if (
+      event.key === "Enter" &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.isComposing
+    ) {
+      slash = null;
+      return true;
+    }
     if (!slash || event.isComposing || visibleSlashCommands.length === 0) {
       return false;
     }
@@ -375,10 +406,20 @@
     }
   });
 
+  function editorAttributes(): Record<string, string> {
+    return {
+      role: "textbox",
+      "aria-multiline": "true",
+      ...(ariaLabel ? { "aria-label": ariaLabel } : {}),
+      ...(ariaDescribedby ? { "aria-describedby": ariaDescribedby } : {}),
+    };
+  }
+
   function createEditor(host: HTMLDivElement) {
     const instance = new TiptapEditor({
       element: host,
-      extensions: createEditorExtensions(placeholder, {
+      // Read on each render so a language change updates it.
+      extensions: createEditorExtensions(() => placeholder, {
         render: () => ({
           onStart: showReference,
           onUpdate: showReference,
@@ -393,22 +434,17 @@
       editable: !disabled && !readonly,
       injectCSS: false,
       editorProps: {
-        attributes: {
-          role: "textbox",
-          "aria-multiline": "true",
-          ...(ariaLabel ? { "aria-label": ariaLabel } : {}),
-          ...(ariaDescribedby ? { "aria-describedby": ariaDescribedby } : {}),
-        },
+        attributes: editorAttributes(),
         handleKeyDown: handleEditorKeydown,
       },
-      onUpdate: ({ editor: updatedEditor }) => {
+      onUpdate: ({ editor: updatedEditor, transaction }) => {
         const serialized = serializeMarkdown(updatedEditor);
         const nextValue =
           serialized === baselineMarkdown ? baselineValue : serialized;
         lastValue = nextValue;
         value = nextValue;
         onvaluechange?.(nextValue);
-        updateSlashMenu(updatedEditor);
+        updateSlashMenu(updatedEditor, transaction);
       },
       onSelectionUpdate: ({ editor: updatedEditor }) => {
         updateSlashMenu(updatedEditor);
@@ -439,6 +475,28 @@
     };
   }
 
+  // Labels and the placeholder are localized; follow language changes
+  // without recreating the editor.
+  $effect(() => {
+    const instance = editor;
+    const attributes = editorAttributes();
+    void placeholder;
+    if (!instance) {
+      return;
+    }
+    untrack(() => {
+      instance.setOptions({
+        editorProps: { ...instance.options.editorProps, attributes },
+      });
+      // Placeholder decorations are rebuilt where the selection is set.
+      instance.view.dispatch(
+        instance.state.tr
+          .setSelection(instance.state.selection)
+          .setMeta("addToHistory", false),
+      );
+    });
+  });
+
   $effect(() => {
     const instance = editor;
     if (instance) {
@@ -463,6 +521,17 @@
         contentType: "markdown",
         emitUpdate: false,
       });
+      // Text replaced by the caller starts a new undo history, as in plain
+      // text; undoing must not restore what the caller replaced.
+      const { state } = instance;
+      instance.view.updateState(
+        EditorState.create({
+          schema: state.schema,
+          doc: state.doc,
+          selection: state.selection,
+          plugins: state.plugins,
+        }),
+      );
       baselineValue = content;
       baselineMarkdown = serializeMarkdown(instance);
       updateSlashMenu(instance);

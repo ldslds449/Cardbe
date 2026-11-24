@@ -43,25 +43,41 @@ export function withMathMarks(mark: Mark) {
 
 const mathView: NodeViewRenderer = ({ node, editor, getPos }) => {
   const dom = document.createElement(node.isInline ? "span" : "div");
+  const current = () => {
+    const pos = getPos();
+    return pos !== undefined &&
+      editor.isEditable &&
+      !editor.isDestroyed &&
+      editor.state.doc.nodeAt(pos)?.type === node.type
+      ? pos
+      : undefined;
+  };
   const component = mount(MathNodeView, {
     target: dom,
     props: {
       source: node.attrs.latex,
       display: !node.isInline || !!node.attrs.display,
+      // Only a formula the user just created opens its editor; an empty one
+      // loaded with the document must not open a dialog.
+      autoOpen: editor.isFocused,
       editable: () => editor.isEditable,
+      // An empty formula renders nothing; drop it when editing is cancelled.
+      remove: () => {
+        const pos = current();
+        if (pos !== undefined) {
+          editor.view.dispatch(
+            editor.state.tr.delete(pos, pos + node.nodeSize),
+          );
+        }
+      },
       focus: () => {
         if (!editor.isDestroyed) {
           editor.commands.focus();
         }
       },
       save: (latex) => {
-        const pos = getPos();
-        if (
-          pos !== undefined &&
-          editor.isEditable &&
-          !editor.isDestroyed &&
-          editor.state.doc.nodeAt(pos)?.type === node.type
-        ) {
+        const pos = current();
+        if (pos !== undefined) {
           editor.view.dispatch(
             editor.state.tr.setNodeMarkup(pos, undefined, {
               ...node.attrs,
@@ -81,6 +97,14 @@ const mathView: NodeViewRenderer = ({ node, editor, getPos }) => {
     },
   };
 };
+
+// Other whitespace is part of the formula source; trimming it would rewrite
+// `$5 and $10` as `$5 and$10`.
+function stripPadding(latex: string) {
+  return latex.startsWith(" ") && latex.endsWith(" ") && latex.trim()
+    ? latex.slice(1, -1)
+    : latex;
+}
 
 export const MathInline = InlineMath.extend({
   addNodeView: () => mathView,
@@ -109,7 +133,13 @@ export const MathInline = InlineMath.extend({
     const previous = String(node.attrs?.delimiter ?? "$");
     const delimiter =
       previous.length > longest ? previous : "$".repeat(longest + 1);
-    const padding = latex.startsWith("$") || latex.endsWith("$") ? " " : "";
+    // Parsing strips one space from both ends, like a code span.
+    const padding =
+      latex.startsWith("$") ||
+      latex.endsWith("$") ||
+      (latex.startsWith(" ") && latex.endsWith(" ") && latex.trim())
+        ? " "
+        : "";
     return `${delimiter}${padding}${latex}${padding}${delimiter}`;
   },
   // Like remark-math, only a dollar run of the same length closes inline math.
@@ -128,7 +158,7 @@ export const MathInline = InlineMath.extend({
           return {
             type: "inlineMath",
             raw: source.slice(0, end + delimiter.length),
-            latex: source.slice(delimiter.length, end).trim(),
+            latex: stripPadding(source.slice(delimiter.length, end)),
             delimiter,
           };
         }
@@ -141,6 +171,10 @@ export const MathInline = InlineMath.extend({
       new InputRule({
         find: /(?:^|[^$\\])(\$(?!\$)((?:\\[^\n]|[^$\\\n])+)\$)$/,
         handler: ({ state, range, match }) => {
+          // Prices such as `$5 and $` are not formulas.
+          if (/^\s|\s$/.test(match[2])) {
+            return null;
+          }
           state.tr.replaceWith(
             range.to - match[1].length,
             range.to,

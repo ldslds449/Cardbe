@@ -460,6 +460,69 @@ describe("Markdown editor serialization", () => {
     expect(hasLink).toBe(true);
   });
 
+  it("separates tables from neighboring blocks with one blank line", () => {
+    const source = "Intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nEnd";
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    editor.commands.insertContentAt(1, { type: "text", text: "Edited " });
+    const output = serializeMarkdown(editor);
+    expect(output).toMatch(/^Edited Intro\n\n\| A +\| B +\|\n/);
+    expect(output).toMatch(/\| 1 +\| 2 +\|\n\nEnd$/);
+    expect(output).toBe(serializeDocument(editor));
+  });
+
+  it.each([
+    ["ordered, bullet, ordered", "1. a\n   - b\n     1. c"],
+    ["bullet, ordered, bullet", "- a\n  1. b\n     - c"],
+    ["ordered, ordered", "1. a\n   1. b\n      1. c"],
+  ])("keeps mixed nested lists nested (%s)", (_, source) => {
+    const editor = new Editor({
+      element: null,
+      extensions: createEditorExtensions(),
+      content: source,
+      contentType: "markdown",
+    });
+    editors.push(editor);
+    // `c` sits in the list inside `b`'s item, three lists deep.
+    let depth = 0;
+    editor.state.doc.descendants((node, position) => {
+      if (node.isText && node.text === "c") {
+        const $position = editor.state.doc.resolve(position);
+        for (let level = $position.depth; level > 0; level -= 1) {
+          depth += $position.node(level).type.name.endsWith("List") ? 1 : 0;
+        }
+      }
+    });
+    expect(depth).toBe(3);
+    expect(serializeMarkdown(editor)).toBe(source);
+  });
+
+  it("keeps ordered list starts and paragraph numbers", () => {
+    for (const source of [
+      "3. three\n4. four",
+      "Call (216) 555-1234 today",
+      "1. a\n\n   continued",
+    ]) {
+      const editor = new Editor({
+        element: null,
+        extensions: createEditorExtensions(),
+        content: source,
+        contentType: "markdown",
+      });
+      editors.push(editor);
+      editor.commands.insertContentAt(editor.state.doc.content.size, {
+        type: "paragraph",
+        content: [{ type: "text", text: "Edited" }],
+      });
+      expect(serializeMarkdown(editor)).toBe(`${source}\n\nEdited`);
+    }
+  });
+
   it("keeps table cells to one line", () => {
     const editor = new Editor({
       element: null,

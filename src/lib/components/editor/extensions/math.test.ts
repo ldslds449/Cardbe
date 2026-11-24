@@ -177,3 +177,65 @@ describe("display formulas in the rich editor", () => {
     },
   );
 });
+
+describe("inline formulas in the rich editor", () => {
+  function type(instance: Editor, text: string) {
+    for (const character of text) {
+      const { from, to } = instance.state.selection;
+      const handled = instance.extensionManager.plugins.some((plugin) =>
+        plugin.props.handleTextInput?.call(
+          plugin,
+          instance.view,
+          from,
+          to,
+          character,
+          () => instance.state.tr.insertText(character, from, to),
+        ),
+      );
+      if (!handled) {
+        instance.view.dispatch(
+          instance.state.tr.insertText(character, from, to),
+        );
+      }
+    }
+  }
+
+  it.each([
+    ["a formula", "Area $x^2$", "Area $x^2$", true],
+    ["prices", "Price $5 and $", "Price \\$5 and \\$", false],
+    ["spaced dollars", "cost $ 5 $", "cost \\$ 5 \\$", false],
+  ])(
+    "converts typed %s only when the dollars hug the formula",
+    (_, text, markdown, converted) => {
+      const instance = editor("placeholder");
+      instance.commands.setContent({
+        type: "doc",
+        content: [{ type: "paragraph" }],
+      });
+      instance.commands.setTextSelection(1);
+      type(instance, text);
+      let hasFormula = false;
+      instance.state.doc.descendants((node) => {
+        hasFormula ||= node.type.name === "inlineMath";
+      });
+      expect(hasFormula).toBe(converted);
+      expect(serializeMarkdown(instance)).toBe(markdown);
+    },
+  );
+
+  it.each([
+    ["Text $5 and $10", "5 and "],
+    ["Text $ x $", "x"],
+    ["Text $  x  $", " x "],
+  ])("keeps formula whitespace through an edit: %s", (source, latex) => {
+    const instance = editor(source);
+    expect(instance.getJSON().content?.[0]?.content?.[1]).toMatchObject({
+      type: "inlineMath",
+      attrs: { latex },
+    });
+    instance.commands.insertContentAt(1, { type: "text", text: "Edited " });
+    const output = serializeMarkdown(instance);
+    expect(output.startsWith("Edited ")).toBe(true);
+    expect(editor(output).getJSON()).toEqual(instance.getJSON());
+  });
+});
