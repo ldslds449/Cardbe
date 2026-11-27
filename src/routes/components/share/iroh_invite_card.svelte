@@ -13,8 +13,10 @@
   import {
     IrohDeviceStatus,
     type IrohConnectionDetails,
+    type IrohDeviceSync,
     type IrohInvite,
   } from "../../type/iroh-share";
+  import { short_device_id } from "../../utils/iroh-device";
   import IrohConnectionInfo from "./iroh_connection_info.svelte";
 
   let {
@@ -25,6 +27,7 @@
     qr_svg,
     devices_open,
     device_connections,
+    device_syncs,
     onupdate,
     oncopy,
     ontoggleqr,
@@ -40,6 +43,7 @@
     qr_svg: string | undefined;
     devices_open: boolean | undefined;
     device_connections: IrohConnectionDetails["devices"];
+    device_syncs: Record<string, IrohDeviceSync> | undefined;
     onupdate: (change: {
       permission?: "viewer" | "editor";
       enabled?: boolean;
@@ -57,6 +61,19 @@
       timeStyle: "short",
     }),
   );
+  function device_sync_text(sync: IrohDeviceSync) {
+    const time = sync_time.format(new Date(sync.attempted_at));
+    switch (sync.failure) {
+      case null:
+        return m.share_device_sync_ok({ time });
+      case "unreachable":
+        return m.share_device_sync_unreachable({ time });
+      case "access_revoked":
+        return m.share_device_sync_access_revoked({ time });
+      default:
+        return m.share_device_sync_failed({ time });
+    }
+  }
   function invitation_date(value: string) {
     // SQLite datetime('now') is UTC but omits the timezone.
     const date = new Date(
@@ -212,8 +229,21 @@
                         : m.share_access_revoked()}
                   </div>
                   <div class="font-mono text-xs text-muted-foreground">
-                    {device.node_id.slice(0, 8)}…{device.node_id.slice(-8)}
+                    {short_device_id(device.node_id)}
                   </div>
+                  {#if device_syncs?.[device.node_id]}
+                    {@const sync = device_syncs[device.node_id]}
+                    <p
+                      class={[
+                        "mt-1 text-xs",
+                        sync.failure
+                          ? "text-destructive"
+                          : "text-muted-foreground",
+                      ]}
+                    >
+                      {device_sync_text(sync)}
+                    </p>
+                  {/if}
                 </div>
                 {#if device.status === IrohDeviceStatus.Pending}
                   <Button

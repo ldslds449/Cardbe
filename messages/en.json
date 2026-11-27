@@ -588,6 +588,11 @@
   "common_undo": "Undo",
   "share_synced": "Shared board synced",
   "share_owner_sync_no_editors": "No approved editors to sync with yet.",
+  "share_owner_sync_failed_devices": "Not synced: {devices}. Check each device's latest sync in Manage sharing.",
+  "share_device_sync_ok": "Last synced: {time}",
+  "share_device_sync_unreachable": "Couldn't reach this device at {time}. It may be offline, or Cardbe may be closed.",
+  "share_device_sync_access_revoked": "Sync refused at {time}: this device no longer accepts the invitation.",
+  "share_device_sync_failed": "Sync failed at {time}.",
   "share_owner_sync_partial": [
     {
       "declarations": [

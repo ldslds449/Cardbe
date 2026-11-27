@@ -463,7 +463,14 @@ describe("Iroh sync", () => {
       invoke_mock.mockResolvedValue({
         board: store.boards[0],
         content_changed: synced > 0,
-        owner_sync: { synced_devices: synced, failed_devices: failed },
+        owner_sync: {
+          synced_devices: synced,
+          failed_devices: failed,
+          failed_node_ids: Array.from(
+            { length: failed },
+            () => "AAAAAAAAoffline-device-idZZZZZZZZ",
+          ),
+        },
       });
       const fetch_columns = vi
         .spyOn(store, "get_columns")
@@ -475,6 +482,11 @@ describe("Iroh sync", () => {
       expect(Boolean(store.iroh_last_synced_at[7])).toBe(synced > 0);
       expect(fetch_columns).toHaveBeenCalledTimes(synced > 0 ? 1 : 0);
       expect(store.can_undo).toBe(synced === 0);
+      if (failed > 0) {
+        expect(toast.warning).toHaveBeenCalledWith(expect.any(String), {
+          description: expect.stringContaining("AAAAAAAA…ZZZZZZZZ"),
+        });
+      }
       if (failed > 0 || synced === 0) {
         expect(toast.warning).toHaveBeenCalledOnce();
         expect(toast.success).not.toHaveBeenCalled();

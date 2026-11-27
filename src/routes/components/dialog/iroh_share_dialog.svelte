@@ -103,6 +103,7 @@
     invitation: null,
     devices: {},
     boards: {},
+    device_syncs: {},
   });
   let connection_details_error = $state<unknown>(null);
   let connection_tickets = $state<Record<number, string>>({});
@@ -1388,6 +1389,9 @@
                     : undefined}
                   devices_open={expanded_devices[invite.invite_id]}
                   device_connections={connection_details.devices}
+                  device_syncs={connection_details.device_syncs[
+                    invite.board_id
+                  ]}
                   onupdate={(change) => void update(invite, change)}
                   oncopy={() => void copy_invite(invite)}
                   ontoggleqr={() => void toggle_qr(invite)}

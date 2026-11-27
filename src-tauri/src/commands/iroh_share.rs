@@ -363,18 +363,21 @@ async fn record_connection_path(
         })
         .collect();
     log::info!(target: "iroh", "Connection to {endpoint_id} established; active paths: {active_paths:?}");
-    let observed_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
     remember_connection(
         network,
         URL_SAFE_NO_PAD.encode(endpoint_id.as_bytes()),
         IrohConnectionInfo {
-            observed_at,
+            observed_at: now_millis(),
             paths: active_paths,
         },
     );
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 fn remember_connection(network: &IrohShareState, node_id: String, info: IrohConnectionInfo) {
@@ -410,6 +413,27 @@ pub struct IrohConnectionDetails {
     invitation: Option<IrohConnectionInfo>,
     devices: HashMap<String, IrohConnectionInfo>,
     boards: HashMap<i64, IrohConnectionInfo>,
+    /// Latest owner-initiated sync outcome per owned board and device.
+    device_syncs: HashMap<i64, HashMap<String, IrohDeviceSync>>,
+}
+
+/// Why an owner-initiated sync with one editor device failed. Keep these
+/// serialized values in sync with the frontend's `IrohDeviceSyncFailure`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum IrohDeviceSyncFailure {
+    /// The device could not be reached (offline, closed, or no usable path).
+    Unreachable,
+    /// The device answered but no longer accepts this invitation.
+    AccessRevoked,
+    /// The exchange completed but the changes could not be applied.
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct IrohDeviceSync {
+    attempted_at: u64,
+    failure: Option<IrohDeviceSyncFailure>,
 }
 
 #[derive(Serialize)]
@@ -423,6 +447,8 @@ pub struct IrohSyncResult {
 struct OwnerSyncSummary {
     synced_devices: usize,
     failed_devices: usize,
+    /// Devices that failed during this sync, in the order they were tried.
+    failed_node_ids: Vec<String>,
 }
 
 #[tauri::command]
@@ -434,6 +460,11 @@ pub fn get_iroh_connection_details(
 ) -> Result<IrohConnectionDetails, CommandError> {
     let devices = network
         .connections
+        .lock()
+        .map_err(|_| CommandError::internal("Connection details are unavailable"))?
+        .clone();
+    let device_syncs = network
+        .device_syncs
         .lock()
         .map_err(|_| CommandError::internal("Connection details are unavailable"))?
         .clone();
@@ -461,6 +492,7 @@ pub fn get_iroh_connection_details(
         invitation,
         devices,
         boards,
+        device_syncs,
     })
 }
 #[derive(Serialize, Deserialize)]
@@ -707,6 +739,8 @@ pub struct IrohShareState {
     init: tokio::sync::Mutex<()>,
     last_error: Mutex<Option<String>>,
     connections: Mutex<HashMap<String, IrohConnectionInfo>>,
+    /// Session-only owner sync outcomes, replaced per board on each sync.
+    device_syncs: Mutex<HashMap<i64, HashMap<String, IrohDeviceSync>>>,
 }
 
 fn set_last_error(state: &IrohShareState, value: Option<String>) {

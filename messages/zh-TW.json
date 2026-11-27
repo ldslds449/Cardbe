@@ -477,6 +477,11 @@
   "common_undo": "復原",
   "share_synced": "已同步分享的看板",
   "share_owner_sync_no_editors": "目前沒有已核准且可編輯的裝置可供同步。",
+  "share_owner_sync_failed_devices": "未同步的裝置：{devices}。可在「管理分享」中查看各裝置最近一次的同步結果。",
+  "share_device_sync_ok": "上次同步成功：{time}",
+  "share_device_sync_unreachable": "{time} 無法連線到此裝置，可能已離線或沒有開啟 Cardbe。",
+  "share_device_sync_access_revoked": "{time} 同步遭拒：此裝置已不再接受這個邀請。",
+  "share_device_sync_failed": "{time} 同步失敗。",
   "share_owner_sync_partial": [
     {
       "declarations": [

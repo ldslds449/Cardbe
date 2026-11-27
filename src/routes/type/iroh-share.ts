@@ -25,8 +25,18 @@ export interface IrohConnectionInfo {
   paths: Array<{ kind: "Direct" | "Relay" | "Custom"; address: string }>;
 }
 
+// Keep these serialized values in sync with Rust's IrohDeviceSyncFailure.
+export type IrohDeviceSyncFailure = "unreachable" | "access_revoked" | "failed";
+
+/** Latest owner-initiated sync with one device during this app session. */
+export interface IrohDeviceSync {
+  attempted_at: number;
+  failure: IrohDeviceSyncFailure | null;
+}
+
 export interface IrohConnectionDetails {
   invitation: IrohConnectionInfo | null;
   devices: Record<string, IrohConnectionInfo>;
   boards: Record<number, IrohConnectionInfo>;
+  device_syncs: Record<number, Record<string, IrohDeviceSync>>;
 }

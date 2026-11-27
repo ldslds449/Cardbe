@@ -640,10 +640,11 @@ async fn direct_transport_exchanges_loro_updates_and_rejects_invalid_responses()
 }
 use super::{
     endpoint_address, endpoint_address_for_ticket, endpoint_builder, ensure_board_owned,
-    local_edits_at_risk, needs_editor_upload, remember_connection, snapshot_failure,
-    ticket_payload, validate_network_settings, validate_sync_snapshot, viewer_is_current,
-    BoardRole, IrohAction, IrohConnectionInfo, IrohConnectionPath, IrohNetworkConfig,
-    IrohPermission, IrohShareState, Request, Snapshot, SnapshotErrorCode, SyncStatus,
+    exchange_failure, local_edits_at_risk, needs_editor_upload, record_device_outcome,
+    remember_connection, snapshot_failure, ticket_payload, validate_network_settings,
+    validate_sync_snapshot, viewer_is_current, BoardRole, IrohAction, IrohConnectionInfo,
+    IrohConnectionPath, IrohDeviceSyncFailure, IrohNetworkConfig, IrohPermission, IrohShareState,
+    Request, Snapshot, SnapshotErrorCode, SyncStatus,
 };
 use crate::models::{Board, IrohNetworkSettings};
 
@@ -1383,4 +1384,51 @@ async fn fixed_udp_port_is_bound_and_forwarded_address_is_advertised() {
     let endpoint = endpoint_builder(&config).unwrap().bind().await.unwrap();
     assert!(endpoint.bound_sockets().is_empty());
     endpoint.close().await;
+}
+
+#[test]
+fn owner_sync_outcomes_name_each_failed_device_once() {
+    let mut outcomes = std::collections::HashMap::new();
+    let mut failed = Vec::new();
+    record_device_outcome(&mut outcomes, &mut failed, "ok".into(), None);
+    record_device_outcome(
+        &mut outcomes,
+        &mut failed,
+        "offline".into(),
+        Some(IrohDeviceSyncFailure::Unreachable),
+    );
+    // The same device approved through a second invitation.
+    record_device_outcome(
+        &mut outcomes,
+        &mut failed,
+        "offline".into(),
+        Some(IrohDeviceSyncFailure::Failed),
+    );
+    record_device_outcome(&mut outcomes, &mut failed, "partial".into(), None);
+    record_device_outcome(
+        &mut outcomes,
+        &mut failed,
+        "partial".into(),
+        Some(IrohDeviceSyncFailure::AccessRevoked),
+    );
+    assert_eq!(failed, ["offline", "partial"]);
+    assert_eq!(outcomes.len(), 3);
+    let json = serde_json::to_value(&outcomes).unwrap();
+    assert!(json["ok"]["failure"].is_null());
+    assert!(json["ok"]["attempted_at"].as_u64().unwrap() > 0);
+    assert_eq!(json["offline"]["failure"], "unreachable");
+    assert_eq!(json["partial"]["failure"], "access_revoked");
+}
+
+#[test]
+fn owner_sync_classifies_transport_failures_as_unreachable() {
+    use crate::errors::ShareError;
+    assert_eq!(
+        exchange_failure(&ShareError::Internal("timed out".into())),
+        IrohDeviceSyncFailure::Unreachable
+    );
+    assert_eq!(
+        exchange_failure(&DomainError::ShareLimitExceeded.into()),
+        IrohDeviceSyncFailure::Failed
+    );
 }

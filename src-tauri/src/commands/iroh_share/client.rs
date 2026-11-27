@@ -311,6 +311,34 @@ pub(super) async fn exchange_sync_request(
     serde_json::from_slice(&bytes).map_err(|_| "Owner sent an invalid response".into())
 }
 
+/// Connection, transfer, and timeout failures carry internal detail and mean
+/// the device is offline or has no usable path; other errors are reported as
+/// a generic failure.
+pub(super) fn exchange_failure(error: &ShareError) -> IrohDeviceSyncFailure {
+    match error {
+        ShareError::Internal(_) => IrohDeviceSyncFailure::Unreachable,
+        _ => IrohDeviceSyncFailure::Failed,
+    }
+}
+
+/// A device approved through several invitations keeps its first failure and
+/// appears once in `failed_node_ids`.
+pub(super) fn record_device_outcome(
+    outcomes: &mut HashMap<String, IrohDeviceSync>,
+    failed_node_ids: &mut Vec<String>,
+    node_id: String,
+    failure: Option<IrohDeviceSyncFailure>,
+) {
+    let outcome = outcomes.entry(node_id.clone()).or_insert(IrohDeviceSync {
+        attempted_at: now_millis(),
+        failure: None,
+    });
+    if outcome.failure.is_none() && failure.is_some() {
+        outcome.failure = failure;
+        failed_node_ids.push(node_id);
+    }
+}
+
 async fn sync_owned_iroh_board(
     app: &SharedAppData,
     app_handle: AppHandle,
@@ -344,20 +372,25 @@ async fn sync_owned_iroh_board(
     };
     let endpoint = ensure_host(network, path.clone(), app_handle.clone()).await?;
     let mut content_changed = false;
-    let mut outcomes = HashMap::new();
+    let mut outcomes: HashMap<String, IrohDeviceSync> = HashMap::new();
+    let mut failed_node_ids = Vec::new();
     for (node_id, (invite_id, secret)) in peers {
         let result = async {
+            let failed = |error: ShareError| (IrohDeviceSyncFailure::Failed, error);
             let update = {
-                let guard = lock_app(app)?;
+                let guard = lock_app(app).map_err(|error| failed(error.into()))?;
                 guard
                     .database
                     .iroh_loro_update(board_id)
-                    .map_err(DomainError::repository)?
+                    .map_err(|error| failed(DomainError::repository(error).into()))?
                     .ok_or_else(|| {
-                        ShareError::Internal("Shared board is missing its Loro document".into())
+                        failed(ShareError::Internal(
+                            "Shared board is missing its Loro document".into(),
+                        ))
                     })?
             };
-            let mut address = endpoint_address(None, &node_id, &[])?;
+            let mut address =
+                endpoint_address(None, &node_id, &[]).map_err(|error| failed(error.into()))?;
             if let Some(info) = endpoint.remote_info(address.id).await {
                 address = EndpointAddr::from_parts(
                     address.id,
@@ -368,16 +401,22 @@ async fn sync_owned_iroh_board(
                 invite_id: invite_id.clone(),
                 secret: secret.clone(),
                 action: IrohAction::LoroSync,
-                loro_state_vector: crate::loro_board::state_vector(Some(&update))?,
+                loro_state_vector: crate::loro_board::state_vector(Some(&update))
+                    .map_err(|error| failed(error.into()))?,
                 loro_update: Vec::new(),
                 known_revision: None,
                 known_permission: None,
                 status_only: false,
                 owner_pull: true,
             };
-            let response = exchange_sync_request(&endpoint, address, network, &request).await?;
+            let response = exchange_sync_request(&endpoint, address, network, &request)
+                .await
+                .map_err(|error| (exchange_failure(&error), error))?;
             if !response.ok || response.unchanged || response.permission != IrohPermission::Editor {
-                return Err(ShareError::AccessRevoked);
+                return Err((
+                    IrohDeviceSyncFailure::AccessRevoked,
+                    ShareError::AccessRevoked,
+                ));
             }
             // The merge rechecks approval when committing, including
             // revocation or permission changes while the request was in flight.
@@ -390,25 +429,32 @@ async fn sync_owned_iroh_board(
                 &node_id,
                 response.loro_update,
             )
-            .await?;
+            .await
+            .map_err(|error| failed(error.into()))?;
             content_changed |= pushed.is_some();
-            Ok::<_, ShareError>(())
+            Ok::<_, (IrohDeviceSyncFailure, ShareError)>(())
         }
         .await;
-        outcomes
-            .entry(node_id)
-            .and_modify(|ok| *ok &= result.is_ok())
-            .or_insert(result.is_ok());
-        if let Err(error) = result {
-            log::debug!(target: "iroh", "Owner-initiated board sync failed: {}",
-                crate::commands::diagnostics::redact_diagnostic_logs(format!("{error:?}")));
-        }
+        let failure = match result {
+            Ok(()) => None,
+            Err((failure, error)) => {
+                log::debug!(target: "iroh", "Owner-initiated board sync failed: {}",
+                    crate::commands::diagnostics::redact_diagnostic_logs(format!("{error:?}")));
+                Some(failure)
+            }
+        };
+        record_device_outcome(&mut outcomes, &mut failed_node_ids, node_id, failure);
     }
-    let synced_devices = outcomes.values().filter(|ok| **ok).count();
     let summary = OwnerSyncSummary {
-        synced_devices,
-        failed_devices: outcomes.len() - synced_devices,
+        synced_devices: outcomes.len() - failed_node_ids.len(),
+        failed_devices: failed_node_ids.len(),
+        failed_node_ids,
     };
+    network
+        .device_syncs
+        .lock()
+        .map_err(|_| ShareError::Internal("Sync status is unavailable".into()))?
+        .insert(board_id, outcomes);
     let guard = lock_app(app)?;
     let board = guard
         .boards

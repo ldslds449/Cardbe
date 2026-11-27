@@ -8,6 +8,7 @@ import { logger } from "#lib/logger.js";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 import { BoardStoreBase, type BoardSummary } from "./board-base.svelte";
+import { format_device_ids } from "./utils/iroh-device";
 
 const IROH_BACKGROUND_SYNC_MS = 30_000;
 const IROH_VIEWER_SYNC_MS = 180_000;
@@ -15,7 +16,11 @@ const IROH_VIEWER_SYNC_MS = 180_000;
 interface IrohSyncResult {
   board: BoardSummary;
   content_changed: boolean;
-  owner_sync?: { synced_devices: number; failed_devices: number } | null;
+  owner_sync?: {
+    synced_devices: number;
+    failed_devices: number;
+    failed_node_ids: string[];
+  } | null;
 }
 
 // Iroh board sharing: invitations, background synchronization, access
@@ -156,6 +161,13 @@ export abstract class IrohBoardStore extends BoardStoreBase {
               synced: owner_sync.synced_devices,
               failed: owner_sync.failed_devices,
             }),
+            owner_sync.failed_node_ids.length > 0
+              ? {
+                  description: m.share_owner_sync_failed_devices({
+                    devices: format_device_ids(owner_sync.failed_node_ids),
+                  }),
+                }
+              : undefined,
           );
         } else if (owner_sync && owner_sync.synced_devices === 0) {
           toast.warning(m.share_owner_sync_no_editors());
